@@ -183,7 +183,8 @@ download_lampac() {
     mkdir -p "$LAMPAC_DIR"
     cd "$LAMPAC_DIR"
 
-    local zip_file="/tmp/lampac-nextgen-$$"
+    # Use $HOME instead of /tmp — Termux /tmp may be on a restricted mount
+    local zip_file="$HOME/lampac-nextgen.zip"
 
     # Clean previous failed download
     rm -f "$zip_file"
