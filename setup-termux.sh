@@ -104,13 +104,18 @@ install_termux_deps() {
 # ─── Step 2: Install Ubuntu via proot-distro ─────────────────────────────────
 
 install_ubuntu() {
-    if proot-distro list 2>/dev/null | grep -q "ubuntu"; then
-        if proot-distro login ubuntu -- ls / &>/dev/null; then
-            ok "Ubuntu already installed via proot-distro"
-            return 0
-        fi
-        warn "Ubuntu installation broken — reinstalling..."
-        proot-distro reset ubuntu 2>/dev/null || true
+    # Check if Ubuntu container already exists (try to login)
+    if proot-distro login ubuntu -- ls / &>/dev/null; then
+        ok "Ubuntu already installed via proot-distro"
+        return 0
+    fi
+
+    # Container exists but broken — reset it
+    if proot-distro list 2>/dev/null | grep -qi "ubuntu"; then
+        warn "Ubuntu container broken — reinstalling..."
+        proot-distro reset ubuntu
+        ok "Ubuntu reinstalled"
+        return 0
     fi
 
     info "Installing Ubuntu via proot-distro (this may take a few minutes)..."
