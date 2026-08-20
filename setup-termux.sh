@@ -222,32 +222,62 @@ download_lampac() {
     fi
 
     info "Extracting..."
-    if ! unzip -oq "$zip_file" -d "$LAMPAC_DIR"; then
+    # Extract to staging dir first, then move — avoids unzip conflicts
+    # with existing directories from prior runs
+    local staging="$HOME/lampac-staging-$$"
+    rm -rf "$staging"
+    mkdir -p "$staging"
+
+    if ! unzip -oq "$zip_file" -d "$staging"; then
         err "Extraction failed — file may be corrupted."
         rm -f "$zip_file"
+        rm -rf "$staging"
         exit 1
     fi
     rm -f "$zip_file"
 
     # Handle subdirectory inside zip
     local subdirs
-    subdirs=$(find "$LAMPAC_DIR" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
+    subdirs=$(find "$staging" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
     local files_in_root
-    files_in_root=$(find "$LAMPAC_DIR" -mindepth 1 -maxdepth 1 -type f 2>/dev/null | wc -l)
+    files_in_root=$(find "$staging" -mindepth 1 -maxdepth 1 -type f 2>/dev/null | wc -l)
 
     if [[ "$subdirs" -eq 1 && "$files_in_root" -eq 0 ]]; then
         local only_subdir
-        only_subdir=$(find "$LAMPAC_DIR" -mindepth 1 -maxdepth 1 -type d | head -n1)
+        only_subdir=$(find "$staging" -mindepth 1 -maxdepth 1 -type d | head -n1)
         shopt -s dotglob nullglob
-        mv "$only_subdir"/* "$LAMPAC_DIR"/ 2>/dev/null || true
+        mv "$only_subdir"/* "$staging"/ 2>/dev/null || true
         shopt -u dotglob nullglob
         rmdir "$only_subdir" 2>/dev/null || true
     fi
 
-    if [[ ! -f "$LAMPAC_DIR/Core.dll" ]]; then
+    if [[ ! -f "$staging/Core.dll" ]]; then
         err "Core.dll not found after extraction."
+        rm -rf "$staging"
         exit 1
     fi
+
+    # Preserve user config files from old install
+    local old_init="" old_passwd="" old_mods="" old_plugins=""
+    if [[ -f "$LAMPAC_DIR/init.conf" ]]; then
+        old_init="$LAMPAC_DIR/init.conf"
+    elif [[ -f "$LAMPAC_DIR/init.yaml" ]]; then
+        old_init="$LAMPAC_DIR/init.yaml"
+    fi
+    [[ -f "$LAMPAC_DIR/passwd" ]] && old_passwd="$LAMPAC_DIR/passwd"
+    [[ -d "$LAMPAC_DIR/mods" ]] && old_mods="$LAMPAC_DIR/mods"
+    [[ -d "$LAMPAC_DIR/plugins" ]] && old_plugins="$LAMPAC_DIR/plugins"
+
+    # Remove old install and move fresh files in
+    rm -rf "$LAMPAC_DIR"
+    mv "$staging" "$LAMPAC_DIR"
+    rm -rf "$staging"
+
+    # Restore user files
+    [[ -n "$old_init" ]] && cp -a "$old_init" "$LAMPAC_DIR/" 2>/dev/null || true
+    [[ -n "$old_passwd" ]] && cp -a "$old_passwd" "$LAMPAC_DIR/" 2>/dev/null || true
+    [[ -n "$old_mods" ]] && cp -a "$old_mods" "$LAMPAC_DIR/" 2>/dev/null || true
+    [[ -n "$old_plugins" ]] && cp -a "$old_plugins" "$LAMPAC_DIR/" 2>/dev/null || true
 
     ok "Lampac downloaded to $LAMPAC_DIR"
 }
