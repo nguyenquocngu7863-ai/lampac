@@ -146,19 +146,19 @@ install_dotnet() {
 
     mkdir -p "$DOTNET_DIR"
 
-    # Use $HOME as tmpdir to avoid /tmp write issues on Android
-    local tmpdir="$HOME/.dotnet-tmp"
-    mkdir -p "$tmpdir"
+    # Force dotnet-install to use $HOME for temp — avoid /tmp on Android
+    export DOTNET_INSTALL_TEMP_DIR="$HOME/.dotnet-tmp"
+    mkdir -p "$DOTNET_INSTALL_TEMP_DIR"
 
     bash "$installer" \
         --channel "$DOTNET_CHANNEL" \
         --runtime aspnetcore \
         --install-dir "$DOTNET_DIR" \
-        --tmpdir "$tmpdir" \
         2>&1 | tail -5
 
     rm -f "$installer"
-    rm -rf "$tmpdir"
+    rm -rf "$DOTNET_INSTALL_TEMP_DIR"
+    unset DOTNET_INSTALL_TEMP_DIR
 
     # Create symlink
     ln -sf "$DOTNET_DIR/dotnet" "$PREFIX/bin/dotnet" 2>/dev/null || true
