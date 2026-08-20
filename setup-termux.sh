@@ -171,21 +171,55 @@ install_dotnet() {
 download_lampac() {
     info "Downloading Lampac NextGen release..."
 
+    # Check available disk space (need ~200MB)
+    local avail_kb
+    avail_kb=$(df /data 2>/dev/null | awk 'NR==2 {print $4}' || df . | awk 'NR==2 {print $4}')
+    if [[ -n "$avail_kb" ]] && (( avail_kb < 204800 )); then
+        err "Not enough disk space! Need ~200MB, only $(( avail_kb / 1024 ))MB available."
+        err "Free up space: pkg clean && rm -rf ~/.cache/*"
+        exit 1
+    fi
+
     mkdir -p "$LAMPAC_DIR"
     cd "$LAMPAC_DIR"
 
     local zip_file="/tmp/lampac-nextgen-$$"
 
-    # Download latest release zip
-    if ! curl -fSL --retry 3 -o "$zip_file" \
-        "https://github.com/lampac-nextgen/lampac/releases/latest/download/lampac-nextgen.zip"; then
-        err "Download failed. Check your internet connection."
+    # Clean previous failed download
+    rm -f "$zip_file"
+
+    # Download latest release zip with retries
+    info "Fetching release from GitHub..."
+    local attempt
+    for attempt in 1 2 3; do
+        if curl -fSL --retry 2 --retry-delay 3 \
+            -o "$zip_file" \
+            "https://github.com/lampac-nextgen/lampac/releases/latest/download/lampac-nextgen.zip"; then
+            # Verify file is not empty
+            if [[ -s "$zip_file" ]]; then
+                break
+            fi
+            warn "Downloaded file is empty (attempt $attempt/3)"
+        else
+            warn "Download failed (attempt $attempt/3)"
+        fi
+        rm -f "$zip_file"
+        sleep 2
+    done
+
+    if [[ ! -s "$zip_file" ]]; then
+        err "Download failed after 3 attempts."
+        err "Check: internet connection, DNS, or try again later."
         rm -f "$zip_file"
         exit 1
     fi
 
     info "Extracting..."
-    unzip -oq "$zip_file" -d "$LAMPAC_DIR"
+    if ! unzip -oq "$zip_file" -d "$LAMPAC_DIR"; then
+        err "Extraction failed — file may be corrupted."
+        rm -f "$zip_file"
+        exit 1
+    fi
     rm -f "$zip_file"
 
     # Handle subdirectory inside zip
