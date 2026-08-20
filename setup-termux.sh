@@ -215,7 +215,7 @@ install_lampac_in_ubuntu() {
     \"SkipModules\": [
       \"Catalog\", \"DLNA\", \"Tracks\", \"Transcoding\", \"WebLog\",
       \"CacheMedia\", \"ProxyLimiter\", \"ForkPlayerXML\", \"MsxNative\",
-      \"TelegramAuth\", \"TelegramAuthBot\"
+      \"TelegramAuth\", \"TelegramAuthBot\", \"GStreamer\"
     ],
     \"LoadModules\": [\".*\"]
   },
