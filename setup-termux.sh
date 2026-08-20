@@ -139,20 +139,26 @@ install_dotnet() {
 
     info "Installing .NET $DOTNET_CHANNEL ASP.NET Core runtime..."
 
-    local installer="/tmp/dotnet-install-$$"
+    # Download to $HOME — Termux /tmp is unreliable for writes
+    local installer="$HOME/dotnet-install.sh"
     curl -fsSL https://dot.net/v1/dotnet-install.sh -o "$installer"
     chmod +x "$installer"
 
     mkdir -p "$DOTNET_DIR"
 
-    # Install ASP.NET Core runtime only (smaller than full SDK)
+    # Use $HOME as tmpdir to avoid /tmp write issues on Android
+    local tmpdir="$HOME/.dotnet-tmp"
+    mkdir -p "$tmpdir"
+
     bash "$installer" \
         --channel "$DOTNET_CHANNEL" \
         --runtime aspnetcore \
         --install-dir "$DOTNET_DIR" \
-        2>&1 | tail -3
+        --tmpdir "$tmpdir" \
+        2>&1 | tail -5
 
     rm -f "$installer"
+    rm -rf "$tmpdir"
 
     # Create symlink
     ln -sf "$DOTNET_DIR/dotnet" "$PREFIX/bin/dotnet" 2>/dev/null || true
