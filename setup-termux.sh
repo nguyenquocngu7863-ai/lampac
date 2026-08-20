@@ -15,7 +15,7 @@ set -euo pipefail
 LAMPAC_DIR="$HOME/lampac"
 DOTNET_DIR="$PREFIX/share/dotnet"
 DOTNET_CHANNEL="10.0"
-DOTNET_BIN="$DOTNET_BIN" # resolved after install
+DOTNET_BIN="" # resolved after install
 LISTEN_PORT="${LAMPAC_PORT:-9118}"
 ROOT_PASSWORD="${LAMPAC_PASSWD:-lampac}"
 
