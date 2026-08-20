@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #
 # Lampac NextGen — Installer for Termux (Android)
+# Uses proot-distro (Ubuntu) for .NET runtime compatibility
 #
 # Usage:
 #   bash setup-termux.sh            # install & run
@@ -13,9 +14,6 @@ set -euo pipefail
 # ─── Config ──────────────────────────────────────────────────────────────────
 
 LAMPAC_DIR="$HOME/lampac"
-DOTNET_DIR="$PREFIX/share/dotnet"
-DOTNET_CHANNEL="10.0"
-DOTNET_BIN="" # resolved after install
 LISTEN_PORT="${LAMPAC_PORT:-9118}"
 ROOT_PASSWORD="${LAMPAC_PASSWD:-lampac}"
 
@@ -57,37 +55,24 @@ show_help() {
     banner
     printf "${BOLD}Usage:${RESET}  bash setup-termux.sh [OPTIONS]\n\n"
     printf "${BOLD}Options:${RESET}\n"
-    printf "  ${GREEN}--install${RESET}    Install dependencies, .NET runtime, and Lampac\n"
+    printf "  ${GREEN}--install${RESET}    Install proot-distro + Ubuntu + .NET + Lampac\n"
     printf "  ${GREEN}--run${RESET}        Run Lampac (skip install)\n"
     printf "  ${GREEN}--update${RESET}     Update Lampac to latest release\n"
     printf "  ${GREEN}--help${RESET}       Show this help\n\n"
     printf "${BOLD}Environment:${RESET}\n"
     printf "  ${CYAN}LAMPAC_PORT${RESET}     Listen port (default: 9118)\n"
     printf "  ${CYAN}LAMPAC_PASSWD${RESET}   Root password (default: lampac)\n\n"
+    printf "${BOLD}How it works:${RESET}\n"
+    printf "  This script installs Lampac inside proot-distro Ubuntu.\n"
+    printf "  .NET 10 runs natively inside Ubuntu (glibc compatible).\n"
+    printf "  Termux /tmp issues are avoided by using Ubuntu filesystem.\n\n"
     printf "${BOLD}Examples:${RESET}\n"
-    printf "  ${DIM}# First time setup & run${RESET}\n"
+    printf "  ${DIM}# First time setup${RESET}\n"
     printf "  bash setup-termux.sh\n\n"
-    printf "  ${DIM}# Custom port and password${RESET}\n"
-    printf "  LAMPAC_PORT=8080 LAMPAC_PASSWD=mypassword bash setup-termux.sh\n\n"
-    printf "  ${DIM}# Update to latest version${RESET}\n"
+    printf "  ${DIM}# Custom port${RESET}\n"
+    printf "  LAMPAC_PORT=8080 bash setup-termux.sh\n\n"
+    printf "  ${DIM}# Update${RESET}\n"
     printf "  bash setup-termux.sh --update\n\n"
-    printf "  ${DIM}# Run without reinstalling${RESET}\n"
-    printf "  bash setup-termux.sh --run\n\n"
-}
-
-# ─── Detect arch ─────────────────────────────────────────────────────────────
-
-detect_arch() {
-    case "$(uname -m)" in
-        aarch64|arm64) echo "linux-arm64" ;;
-        armv7l)        echo "linux-arm" ;;
-        x86_64)        echo "linux-x64" ;;
-        i686)          echo "linux-x64" ;;
-        *)
-            err "Unsupported architecture: $(uname -m)"
-            exit 1
-            ;;
-    esac
 }
 
 # ─── Check Termux ────────────────────────────────────────────────────────────
@@ -100,201 +85,159 @@ check_termux() {
     fi
 }
 
-# ─── Step 1: Install system packages ────────────────────────────────────────
+# ─── Step 1: Install Termux packages ────────────────────────────────────────
 
-install_system_deps() {
-    info "Updating package lists..."
+install_termux_deps() {
+    info "Updating Termux packages..."
     pkg update -y -o Dpkg::Options::="--force-confdef" 2>/dev/null || pkg update -y
 
-    local packages=(
-        curl wget unzip
-        git
-        jq
-        libxml2
-        libxslt
-        openssl
-    )
+    info "Installing proot-distro..."
+    if ! command -v proot-distro &>/dev/null; then
+        pkg install -y proot-distro
+    fi
+    ok "proot-distro ready"
 
-    info "Installing system packages..."
-    for pkg in "${packages[@]}"; do
-        if pkg list-installed "$pkg" 2>/dev/null | grep -q "$pkg"; then
-            ok "$pkg already installed"
-        else
-            pkg install -y "$pkg" 2>/dev/null || warn "Failed to install $pkg (non-critical)"
-            ok "$pkg installed"
-        fi
-    done
+    info "Installing helper packages..."
+    pkg install -y git curl wget 2>/dev/null || true
+    ok "Termux packages ready"
 }
 
-# ─── Step 2: Install .NET runtime ───────────────────────────────────────────
+# ─── Step 2: Install Ubuntu via proot-distro ─────────────────────────────────
 
-install_dotnet() {
-    if [[ -x "$DOTNET_DIR/dotnet" ]]; then
-        if "$DOTNET_DIR/dotnet" --list-runtimes 2>/dev/null | grep -q 'Microsoft.AspNetCore.App 10\.'; then
-            ok "ASP.NET Core 10 runtime already installed"
-            DOTNET_BIN="$DOTNET_DIR/dotnet"
+install_ubuntu() {
+    if proot-distro list 2>/dev/null | grep -q "ubuntu"; then
+        # Check if already installed and working
+        if proot-distro login ubuntu -- ls / &>/dev/null; then
+            ok "Ubuntu already installed via proot-distro"
             return 0
         fi
+        warn "Ubuntu installation broken — reinstalling..."
+        proot-distro reset ubuntu 2>/dev/null || true
     fi
 
-    info "Installing .NET $DOTNET_CHANNEL ASP.NET Core runtime..."
-
-    # Download to $HOME — Termux /tmp is unreliable for writes
-    local installer="$HOME/dotnet-install.sh"
-    curl -fsSL https://dot.net/v1/dotnet-install.sh -o "$installer"
-    chmod +x "$installer"
-
-    mkdir -p "$DOTNET_DIR"
-
-    # Force dotnet-install to use $HOME for temp — avoid /tmp on Android
-    export DOTNET_INSTALL_TEMP_DIR="$HOME/.dotnet-tmp"
-    mkdir -p "$DOTNET_INSTALL_TEMP_DIR"
-
-    bash "$installer" \
-        --channel "$DOTNET_CHANNEL" \
-        --runtime aspnetcore \
-        --install-dir "$DOTNET_DIR" \
-        2>&1 | tail -5
-
-    rm -f "$installer"
-    rm -rf "$DOTNET_INSTALL_TEMP_DIR"
-    unset DOTNET_INSTALL_TEMP_DIR
-
-    # Create symlink
-    ln -sf "$DOTNET_DIR/dotnet" "$PREFIX/bin/dotnet" 2>/dev/null || true
-
-    if ! command -v dotnet &>/dev/null; then
-        err "dotnet not found after install. Check $DOTNET_DIR"
-        exit 1
-    fi
-
-    DOTNET_BIN="$(command -v dotnet)"
-    ok ".NET $DOTNET_CHANNEL runtime installed"
+    info "Installing Ubuntu via proot-distro (this may take a few minutes)..."
+    proot-distro install ubuntu
+    ok "Ubuntu installed"
 }
 
-# ─── Step 3: Download Lampac ────────────────────────────────────────────────
+# ─── Step 3: Install .NET + Lampac inside Ubuntu ─────────────────────────────
 
-download_lampac() {
+install_lampac_in_ubuntu() {
+    info "Installing .NET 10 runtime inside Ubuntu..."
+
+    proot-distro login ubuntu -- bash -c '
+        set -euo pipefail
+
+        # Update Ubuntu
+        export DEBIAN_FRONTEND=noninteractive
+        apt-get update -qq
+        apt-get install -y -qq curl wget unzip libicu-dev libssl-dev > /dev/null 2>&1
+
+        # Install .NET 10 runtime
+        DOTNET_DIR="/opt/dotnet"
+        if [[ ! -x "$DOTNET_DIR/dotnet" ]] || ! "$DOTNET_DIR/dotnet" --list-runtimes 2>/dev/null | grep -q "Microsoft.AspNetCore.App 10"; then
+            echo "  Downloading .NET 10 ASP.NET Core runtime..."
+            curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh
+            chmod +x /tmp/dotnet-install.sh
+            bash /tmp/dotnet-install.sh \
+                --channel 10.0 \
+                --runtime aspnetcore \
+                --install-dir "$DOTNET_DIR" \
+                2>&1 | tail -3
+            rm -f /tmp/dotnet-install.sh
+            echo "  .NET 10 runtime installed"
+        else
+            echo "  .NET 10 already installed"
+        fi
+
+        # Create symlink
+        ln -sf "$DOTNET_DIR/dotnet" /usr/local/bin/dotnet 2>/dev/null || true
+
+        echo "OK"
+    '
+
+    ok ".NET 10 runtime ready inside Ubuntu"
+
     info "Downloading Lampac NextGen release..."
 
-    # Check available disk space (need ~200MB)
-    local avail_kb
-    avail_kb=$(df /data 2>/dev/null | awk 'NR==2 {print $4}' || df . | awk 'NR==2 {print $4}')
-    if [[ -n "$avail_kb" ]] && (( avail_kb < 204800 )); then
-        err "Not enough disk space! Need ~200MB, only $(( avail_kb / 1024 ))MB available."
-        err "Free up space: pkg clean && rm -rf ~/.cache/*"
-        exit 1
-    fi
+    proot-distro login ubuntu -- bash -c '
+        set -euo pipefail
+        LAMPAC_DIR="/root/lampac"
+        mkdir -p "$LAMPAC_DIR"
 
-    mkdir -p "$LAMPAC_DIR"
-    cd "$LAMPAC_DIR"
-
-    # Use $HOME instead of /tmp — Termux /tmp may be on a restricted mount
-    local zip_file="$HOME/lampac-nextgen.zip"
-
-    # Clean previous failed download
-    rm -f "$zip_file"
-
-    # Download latest release zip with retries
-    info "Fetching release from GitHub..."
-    local attempt
-    for attempt in 1 2 3; do
-        if curl -fSL --retry 2 --retry-delay 3 \
-            -o "$zip_file" \
-            "https://github.com/lampac-nextgen/lampac/releases/latest/download/lampac-nextgen.zip"; then
-            # Verify file is not empty
-            if [[ -s "$zip_file" ]]; then
+        # Download latest release
+        cd /tmp
+        for i in 1 2 3; do
+            if curl -fSL --retry 2 -o lampac.zip \
+                "https://github.com/lampac-nextgen/lampac/releases/latest/download/lampac-nextgen.zip"; then
                 break
             fi
-            warn "Downloaded file is empty (attempt $attempt/3)"
-        else
-            warn "Download failed (attempt $attempt/3)"
+            echo "  Download attempt $i failed, retrying..."
+            sleep 2
+        done
+
+        if [[ ! -s lampac.zip ]]; then
+            echo "FAIL: Download failed after 3 attempts"
+            exit 1
         fi
-        rm -f "$zip_file"
-        sleep 2
-    done
 
-    if [[ ! -s "$zip_file" ]]; then
-        err "Download failed after 3 attempts."
-        err "Check: internet connection, DNS, or try again later."
-        rm -f "$zip_file"
-        exit 1
-    fi
+        # Extract to staging
+        STAGING="/tmp/lampac-staging"
+        rm -rf "$STAGING"
+        mkdir -p "$STAGING"
+        unzip -oq lampac.zip -d "$STAGING"
+        rm -f lampac.zip
 
-    info "Extracting..."
-    # Extract to staging dir first, then move — avoids unzip conflicts
-    # with existing directories from prior runs
-    local staging="$HOME/lampac-staging-$$"
-    rm -rf "$staging"
-    mkdir -p "$staging"
+        # Handle subdirectory
+        subdirs=$(find "$STAGING" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
+        files_root=$(find "$STAGING" -mindepth 1 -maxdepth 1 -type f 2>/dev/null | wc -l)
+        if [[ "$subdirs" -eq 1 && "$files_root" -eq 0 ]]; then
+            subdir=$(find "$STAGING" -mindepth 1 -maxdepth 1 -type d | head -n1)
+            shopt -s dotglob nullglob
+            mv "$subdir"/* "$STAGING"/ 2>/dev/null || true
+            shopt -u dotglob nullglob
+            rmdir "$subdir" 2>/dev/null || true
+        fi
 
-    if ! unzip -oq "$zip_file" -d "$staging"; then
-        err "Extraction failed — file may be corrupted."
-        rm -f "$zip_file"
-        rm -rf "$staging"
-        exit 1
-    fi
-    rm -f "$zip_file"
+        if [[ ! -f "$STAGING/Core.dll" ]]; then
+            echo "FAIL: Core.dll not found"
+            rm -rf "$STAGING"
+            exit 1
+        fi
 
-    # Handle subdirectory inside zip
-    local subdirs
-    subdirs=$(find "$staging" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
-    local files_in_root
-    files_in_root=$(find "$staging" -mindepth 1 -maxdepth 1 -type f 2>/dev/null | wc -l)
+        # Preserve user config if exists
+        OLD_INIT=""
+        [[ -f "$LAMPAC_DIR/init.conf" ]] && OLD_INIT="$LAMPAC_DIR/init.conf"
+        [[ -f "$LAMPAC_DIR/init.yaml" ]] && OLD_INIT="$LAMPAC_DIR/init.yaml"
+        OLD_PASSWD=""
+        [[ -f "$LAMPAC_DIR/passwd" ]] && OLD_PASSWD="$LAMPAC_DIR/passwd"
 
-    if [[ "$subdirs" -eq 1 && "$files_in_root" -eq 0 ]]; then
-        local only_subdir
-        only_subdir=$(find "$staging" -mindepth 1 -maxdepth 1 -type d | head -n1)
-        shopt -s dotglob nullglob
-        mv "$only_subdir"/* "$staging"/ 2>/dev/null || true
-        shopt -u dotglob nullglob
-        rmdir "$only_subdir" 2>/dev/null || true
-    fi
+        # Replace old install
+        rm -rf "$LAMPAC_DIR"
+        mv "$STAGING" "$LAMPAC_DIR"
 
-    if [[ ! -f "$staging/Core.dll" ]]; then
-        err "Core.dll not found after extraction."
-        rm -rf "$staging"
-        exit 1
-    fi
+        # Restore config
+        [[ -n "$OLD_INIT" ]] && cp -a "$OLD_INIT" "$LAMPAC_DIR/" 2>/dev/null || true
+        [[ -n "$OLD_PASSWD" ]] && cp -a "$OLD_PASSWD" "$LAMPAC_DIR/" 2>/dev/null || true
 
-    # Preserve user config files from old install
-    local old_init="" old_passwd="" old_mods="" old_plugins=""
-    if [[ -f "$LAMPAC_DIR/init.conf" ]]; then
-        old_init="$LAMPAC_DIR/init.conf"
-    elif [[ -f "$LAMPAC_DIR/init.yaml" ]]; then
-        old_init="$LAMPAC_DIR/init.yaml"
-    fi
-    [[ -f "$LAMPAC_DIR/passwd" ]] && old_passwd="$LAMPAC_DIR/passwd"
-    [[ -d "$LAMPAC_DIR/mods" ]] && old_mods="$LAMPAC_DIR/mods"
-    [[ -d "$LAMPAC_DIR/plugins" ]] && old_plugins="$LAMPAC_DIR/plugins"
+        echo "OK"
+    '
 
-    # Remove old install and move fresh files in
-    rm -rf "$LAMPAC_DIR"
-    mv "$staging" "$LAMPAC_DIR"
-    rm -rf "$staging"
+    ok "Lampac downloaded inside Ubuntu"
 
-    # Restore user files
-    [[ -n "$old_init" ]] && cp -a "$old_init" "$LAMPAC_DIR/" 2>/dev/null || true
-    [[ -n "$old_passwd" ]] && cp -a "$old_passwd" "$LAMPAC_DIR/" 2>/dev/null || true
-    [[ -n "$old_mods" ]] && cp -a "$old_mods" "$LAMPAC_DIR/" 2>/dev/null || true
-    [[ -n "$old_plugins" ]] && cp -a "$old_plugins" "$LAMPAC_DIR/" 2>/dev/null || true
+    # Setup config
+    proot-distro login ubuntu -- bash -c '
+        set -euo pipefail
+        LAMPAC_DIR="/root/lampac"
+        cd "$LAMPAC_DIR"
 
-    ok "Lampac downloaded to $LAMPAC_DIR"
-}
-
-# ─── Step 4: Create config ──────────────────────────────────────────────────
-
-setup_config() {
-    cd "$LAMPAC_DIR"
-
-    # Create init.conf if missing
-    if [[ ! -f "init.conf" && ! -f "init.yaml" ]]; then
-        info "Creating init.conf..."
-        cat > init.conf <<'CONF'
+        # Create init.conf if missing
+        if [[ ! -f "init.conf" && ! -f "init.yaml" ]]; then
+            cat > init.conf << CONF
 {
   "listen": {
     "ip": "0.0.0.0",
-    "port": 9118,
+    "port": '"${LISTEN_PORT}"',
     "scheme": "http",
     "version": true
   },
@@ -321,135 +264,163 @@ setup_config() {
   }
 }
 CONF
-        # Replace default port with custom port
-        if [[ "$LISTEN_PORT" != "9118" ]]; then
-            sed -i "s/\"port\": 9118/\"port\": $LISTEN_PORT/" init.conf
+            echo "  init.conf created (port '"${LISTEN_PORT}"')"
         fi
-        ok "init.conf created (port $LISTEN_PORT)"
-    else
-        ok "Config already exists"
-    fi
 
-    # Create passwd file if missing
-    if [[ ! -f "passwd" ]]; then
-        echo -n "$ROOT_PASSWORD" > passwd
-        ok "passwd created (root password: $ROOT_PASSWORD)"
-    fi
+        # Create passwd if missing
+        if [[ ! -f "passwd" ]]; then
+            echo -n "'"${ROOT_PASSWORD}"'" > passwd
+            echo "  passwd created"
+        fi
+    '
+    ok "Config ready"
 }
 
-# ─── Step 5: Create helper scripts ──────────────────────────────────────────
+# ─── Step 4: Create launcher scripts ────────────────────────────────────────
 
-create_helper_scripts() {
-    cd "$LAMPAC_DIR"
+create_launcher() {
+    mkdir -p "$HOME"
 
-    # Start script
-    cat > start.sh <<'SCRIPT'
+    cat > "$HOME/lampac-run.sh" <<'LAUNCHER'
 #!/usr/bin/env bash
-cd "$(dirname "$0")"
-export DOTNET_ROOT="${DOTNET_ROOT:-$PREFIX/share/dotnet}"
-export DOTNET_CLI_TELEMETRY_OPTOUT=1
-exec dotnet Core.dll "$@"
-SCRIPT
-    chmod +x start.sh
+# Lampac launcher — runs inside proot-distro Ubuntu
+DOTNET_DIR="/opt/dotnet"
+LAMPAC_DIR="/root/lampac"
 
-    # Quick info script
-    cat > info.sh <<'SCRIPT'
-#!/usr/bin/env bash
-cd "$(dirname "$0")"
-PORT=$(grep -o '"port": *[0-9]*' init.conf 2>/dev/null | head -1 | grep -o '[0-9]*' || echo "9118")
-IP=$(hostname -I 2>/dev/null | awk '{print $1}')
-[[ -z "$IP" ]] && IP="<your-ip>"
 echo ""
 echo "  Lampac NextGen"
 echo "  ─────────────────────────────────"
+
+# Get port from config
+PORT=$(grep -o '"port": *[0-9]*' "$LAMPAC_DIR/init.conf" 2>/dev/null | head -1 | grep -o '[0-9]*' || echo "9118")
+IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+[[ -z "$IP" ]] && IP="<your-ip>"
+
 echo "  Local:    http://localhost:$PORT"
 echo "  Network:  http://$IP:$PORT"
-echo "  Config:   ./init.conf"
-echo "  Logs:     see terminal output"
+echo "  Config:   $LAMPAC_DIR/init.conf"
 echo "  Stop:     Ctrl+C"
 echo ""
-SCRIPT
-    chmod +x info.sh
 
-    ok "Helper scripts created (start.sh, info.sh)"
-}
+export DOTNET_ROOT="$DOTNET_DIR"
+export PATH="$DOTNET_DIR:$PATH"
+export DOTNET_CLI_TELEMETRY_OPTOUT=1
+export DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
 
-# ─── Step 6: Create session save/restore helpers ─────────────────────────────
+cd "$LAMPAC_DIR"
+exec dotnet Core.dll
+LAUNCHER
+    chmod +x "$HOME/lampac-run.sh"
+    ok "Launcher created: ~/lampac-run.sh"
 
-create_session_helpers() {
-    # Save lampac path to bashrc for convenience
-    local bashrc="$HOME/.bashrc"
-    local marker="# lampac-nextgen"
+    # Termux shortcut script
+    cat > "$PREFIX/bin/lampac" <<'SHORTCUT'
+#!/usr/bin/env bash
+# Quick Lampac commands for Termux
+case "${1:-}" in
+    start)
+        proot-distro login ubuntu -- bash /root/lampac-run.sh
+        ;;
+    stop)
+        pkill -f 'proot.*dotnet' 2>/dev/null && echo "Lampac stopped" || echo "Lampac not running"
+        ;;
+    status)
+        pgrep -f 'proot.*dotnet' > /dev/null 2>&1 && echo "Lampac is running" || echo "Lampac not running"
+        ;;
+    config)
+        echo "Edit config: proot-distro login ubuntu -- nano /root/lampac/init.conf"
+        proot-distro login ubuntu -- nano /root/lampac/init.conf
+        ;;
+    info)
+        proot-distro login ubuntu -- bash -c '
+            PORT=$(grep -o "\"port\": *[0-9]*" /root/lampac/init.conf 2>/dev/null | head -1 | grep -o "[0-9]*" || echo "9118")
+            echo ""
+            echo "  Lampac NextGen"
+            echo "  ─────────────────────────────────"
+            echo "  Local:    http://localhost:$PORT"
+            echo "  Config:   /root/lampac/init.conf (inside Ubuntu)"
+            echo "  Start:    lampac start"
+            echo "  Stop:     lampac stop"
+            echo ""
+        '
+        ;;
+    update)
+        echo "Updating Lampac..."
+        proot-distro login ubuntu -- bash -c '
+            cd /tmp
+            for i in 1 2 3; do
+                if curl -fSL --retry 2 -o lampac.zip \
+                    "https://github.com/lampac-nextgen/lampac/releases/latest/download/lampac-nextgen.zip"; then
+                    break
+                fi
+                sleep 2
+            done
+            [[ ! -s lampac.zip ]] && echo "Download failed" && exit 1
 
-    if ! grep -q "$marker" "$bashrc" 2>/dev/null; then
-        cat >> "$bashrc" <<EOF
+            STAGING="/tmp/lampac-staging"
+            rm -rf "$STAGING"
+            mkdir -p "$STAGING"
+            unzip -oq lampac.zip -d "$STAGING"
+            rm -f lampac.zip
 
-$marker
-lampac() {
-    case "\${1:-}" in
-        start)  cd ~/lampac && bash start.sh ;;
-        stop)   pkill -f 'dotnet Core.dll' && echo "Lampac stopped" ;;
-        status) pgrep -f 'dotnet Core.dll' > /dev/null && echo "Lampac is running" || echo "Lampac is not running" ;;
-        logs)   cd ~/lampac && tail -f /dev/null 2>&1 ;;
-        config) nano ~/lampac/init.conf ;;
-        info)   cd ~/lampac && bash info.sh ;;
-        *)      echo "Usage: lampac {start|stop|status|config|info}" ;;
-    esac
-}
-$marker
-EOF
-        ok "Added 'lampac' shortcut to ~/.bashrc"
-        info "Run: source ~/.bashrc  (or restart Termux)"
-    fi
+            # Handle subdirectory
+            subdirs=$(find "$STAGING" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
+            files_root=$(find "$STAGING" -mindepth 1 -maxdepth 1 -type f 2>/dev/null | wc -l)
+            if [[ "$subdirs" -eq 1 && "$files_root" -eq 0 ]]; then
+                subdir=$(find "$STAGING" -mindepth 1 -maxdepth 1 -type d | head -n1)
+                shopt -s dotglob nullglob
+                mv "$subdir"/* "$STAGING"/ 2>/dev/null || true
+                shopt -u dotglob nullglob
+                rmdir "$subdir" 2>/dev/null || true
+            fi
+
+            [[ ! -f "$STAGING/Core.dll" ]] && echo "Extraction failed" && exit 1
+
+            # Preserve config
+            cp /root/lampac/init.conf /tmp/init.conf.bak 2>/dev/null || true
+            cp /root/lampac/init.yaml /tmp/init.yaml.bak 2>/dev/null || true
+            cp /root/lampac/passwd /tmp/passwd.bak 2>/dev/null || true
+
+            rm -rf /root/lampac
+            mv "$STAGING" /root/lampac
+
+            cp /tmp/init.conf.bak /root/lampac/ 2>/dev/null || true
+            cp /tmp/init.yaml.bak /root/lampac/ 2>/dev/null || true
+            cp /tmp/passwd.bak /root/lampac/ 2>/dev/null || true
+            rm -f /tmp/*.bak
+
+            echo "Update complete!"
+        '
+        ;;
+    *)
+        echo "Usage: lampac {start|stop|status|config|info|update}"
+        echo ""
+        echo "  start   — Start Lampac server"
+        echo "  stop    — Stop Lampac server"
+        echo "  status  — Check if running"
+        echo "  config  — Edit config (init.conf)"
+        echo "  info    — Show URL and port"
+        echo "  update  — Update to latest release"
+        ;;
+esac
+SHORTCUT
+    chmod +x "$PREFIX/bin/lampac"
+    ok "Shortcut 'lampac' command available"
 }
 
 # ─── Run Lampac ──────────────────────────────────────────────────────────────
 
 run_lampac() {
-    cd "$LAMPAC_DIR"
-
-    if ! [[ -f "Core.dll" ]]; then
-        err "Core.dll not found in $LAMPAC_DIR"
-        err "Run: bash setup-termux.sh --install"
+    if ! proot-distro login ubuntu -- test -f /root/lampac/Core.dll; then
+        err "Lampac not installed. Run: bash setup-termux.sh --install"
         exit 1
     fi
 
-    bash info.sh
-
-    export DOTNET_ROOT="${DOTNET_ROOT:-$DOTNET_DIR}"
-    export DOTNET_CLI_TELEMETRY_OPTOUT=1
-
-    info "Starting Lampac on port $LISTEN_PORT..."
+    info "Starting Lampac..."
     info "Press Ctrl+C to stop"
     echo ""
 
-    exec dotnet Core.dll
-}
-
-# ─── Update ──────────────────────────────────────────────────────────────────
-
-update_lampac() {
-    if [[ ! -d "$LAMPAC_DIR" ]]; then
-        err "Lampac not installed yet. Run: bash setup-termux.sh --install"
-        exit 1
-    fi
-
-    info "Backing up config files..."
-    local backup="/tmp/lampac-backup-$$"
-    mkdir -p "$backup"
-    cp -a "$LAMPAC_DIR/init.conf" "$backup/" 2>/dev/null || true
-    cp -a "$LAMPAC_DIR/init.yaml" "$backup/" 2>/dev/null || true
-    cp -a "$LAMPAC_DIR/passwd" "$backup/" 2>/dev/null || true
-    cp -a "$LAMPAC_DIR/mods" "$backup/" 2>/dev/null || true
-
-    download_lampac
-
-    info "Restoring config files..."
-    cp -a "$backup"/* "$LAMPAC_DIR"/ 2>/dev/null || true
-    rm -rf "$backup"
-
-    ok "Update complete"
-    bash info.sh
+    exec proot-distro login ubuntu -- bash /root/lampac-run.sh
 }
 
 # ─── Main ────────────────────────────────────────────────────────────────────
@@ -469,36 +440,32 @@ main() {
             run_lampac
             ;;
         "update")
-            update_lampac
+            info "Updating Lampac inside Ubuntu..."
+            lampac update
+            ok "Done!"
             ;;
         *)
-            # Full install + run
-            install_system_deps
-            install_dotnet
-            download_lampac
-            setup_config
-            create_helper_scripts
-            create_session_helpers
+            install_termux_deps
+            install_ubuntu
+            install_lampac_in_ubuntu
+            create_launcher
 
             echo ""
             ok "Installation complete!"
             echo ""
-            info "Quick commands (after sourcing ~/.bashrc):"
+            info "Quick commands:"
             info "  lampac start   — Start Lampac"
             info "  lampac stop    — Stop Lampac"
             info "  lampac status  — Check if running"
             info "  lampac config  — Edit config"
             info "  lampac info    — Show URL & port"
-            echo ""
-            info "Or run directly:"
-            info "  cd ~/lampac && bash start.sh"
+            info "  lampac update  — Update to latest"
             echo ""
 
-            # Auto-run after install
             read -rp "  Start Lampac now? [Y/n]: " answer
             case "${answer:-Y}" in
                 [nN]|[nN][oO])
-                    info "Skipping. Run 'cd ~/lampac && bash start.sh' to start later."
+                    info "Run 'lampac start' to start later."
                     ;;
                 *)
                     run_lampac
