@@ -26,6 +26,9 @@ filters, or other options are selected.
   when only an IMDb id is available), then calls a dedicated episode route
   after selection. That route queries
   `stream/series/{id}:{season}:{episode}.json` and returns the playable result.
+- Episode links are marked for the client helper to show a link picker before
+  the player starts. This avoids an automatic playlist attempt hiding which
+  individual source failed and lets the user choose a 4K/1080p/provider link.
 - Only HTTP(S) `stream.url` values are accepted. `magnet:`, `externalUrl`, and
   other non-HTTP values are intentionally skipped.
 - Stremio `behaviorHints.proxyHeaders.request` and `url|Header=value` headers

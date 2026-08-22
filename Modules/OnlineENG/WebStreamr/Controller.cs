@@ -680,18 +680,18 @@ public sealed class WebStreamrController : BaseOnlineController<ModuleConf>
         foreach (WebStreamItem stream in streams)
         {
             string key = stream.Quality ?? "auto";
+            string source = SourceGroupName(stream);
+            if (!string.IsNullOrWhiteSpace(source))
+                key += $" • {source}";
+
             if (!keys.Add(key))
             {
-                string source = Compact(stream.Name);
-                key = string.IsNullOrWhiteSpace(source)
-                    ? $"{key}-{keys.Count + 1}"
-                    : $"{key} {source}";
-
-                if (!keys.Add(key))
-                    key = $"{key}-{keys.Count + 1}";
+                key = $"{key} #{keys.Count + 1}";
+                while (!keys.Add(key))
+                    key += "#";
             }
 
-            quality.Append(BuildVideoEndpoint(stream), key);
+            quality.Append(BuildVideoEndpoint(stream, selectLink: true), key);
         }
 
         StreamQualityDto first = quality.Firts();
@@ -711,7 +711,7 @@ public sealed class WebStreamrController : BaseOnlineController<ModuleConf>
         return (json, first.link);
     }
 
-    string BuildVideoEndpoint(WebStreamItem stream)
+    string BuildVideoEndpoint(WebStreamItem stream, bool selectLink = false)
     {
         string route = stream.Format switch
         {
@@ -728,6 +728,9 @@ public sealed class WebStreamrController : BaseOnlineController<ModuleConf>
             string json = JsonConvert.SerializeObject(stream.Headers);
             endpoint += $"&h={HttpUtility.UrlEncode(EncryptQuery(json))}";
         }
+
+        if (selectLink)
+            endpoint += "&webstreamr_select=1";
 
         return accsArgs(endpoint + "&play=true");
     }

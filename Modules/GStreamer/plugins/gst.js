@@ -392,6 +392,67 @@
         }
     }
 
+    function withoutWebstreamrSelect(url) {
+        return String(url || '')
+            .replace(/([?&])webstreamr_select=1&?/i, '$1');
+    }
+
+    function isWebstreamrSelection(e) {
+        return !!(e && e.data &&
+            typeof e.data.url === 'string' &&
+            e.data.url.indexOf('webstreamr_select=1') !== -1 &&
+            !e.data.__webstreamrSelected);
+    }
+
+    function showWebstreamrSelection(e) {
+        var quality = e.data && e.data.quality;
+        var items = [];
+
+        if (quality && typeof quality === 'object') {
+            for (var name in quality) {
+                if (!Object.prototype.hasOwnProperty.call(quality, name) || !quality[name])
+                    continue;
+
+                items.push({
+                    title: name,
+                    url: quality[name]
+                });
+            }
+        }
+
+        if (items.length < 2) {
+            e.data.__webstreamrSelected = true;
+            e.data.url = withoutWebstreamrSelect(e.data.url);
+            if (e.data.playlist)
+                delete e.data.playlist;
+            Lampa.Player.play(e.data);
+            return;
+        }
+
+        e.abort();
+
+        Lampa.Select.show({
+            title: 'Chọn link WebStreamr',
+            items: items,
+            onSelect: function (item) {
+                Lampa.Select.close();
+
+                var selected = Lampa.Arrays.clone(e.data);
+                selected.url = withoutWebstreamrSelect(item.url);
+                selected.__webstreamrSelected = true;
+                // Do not let a failed first source start the whole episode
+                // playlist before the user has chosen a link.
+                if (selected.playlist)
+                    delete selected.playlist;
+
+                Lampa.Player.play(selected);
+            },
+            onBack: function () {
+                Lampa.Select.close();
+            }
+        });
+    }
+
     function startGstreamerTranscode(e) {
         if (e.data.url.indexOf('/gst/') != -1 || e.data.url.indexOf('.m3u8') != -1)
             return;
@@ -511,6 +572,11 @@
     }
 
     function handlePlayerStart(e) {
+        if (isWebstreamrSelection(e)) {
+            showWebstreamrSelection(e);
+            return;
+        }
+
         if (!isMkvSource(e.data))
             return;
 
