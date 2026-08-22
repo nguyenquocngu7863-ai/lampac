@@ -858,10 +858,10 @@ public sealed class WebStreamrController : BaseOnlineController<ModuleConf>
         if (Regex.IsMatch(value, @"\.mkv(?:$|[?#&\s])|\bmatroska\b", RegexOptions.IgnoreCase))
             return "mkv";
 
-        if (Regex.IsMatch(value, @"\.m3u8(?:$|[?#&\s])|\bm3u8\b", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(value, @"\.m3u8(?:$|[?#&\s])|\bm3u8\b|\bHLS(?:\s+Stream)?\b", RegexOptions.IgnoreCase))
             return "m3u8";
 
-        if (Regex.IsMatch(value, @"\.mp4(?:$|[?#&\s])", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(value, @"\.mp4(?:$|[?#&\s])|\bmp4\b", RegexOptions.IgnoreCase))
             return "mp4";
 
         return null;
