@@ -490,6 +490,14 @@ public sealed class WebStreamrController : BaseOnlineController<ModuleConf>
         string quality = FindQuality(metadata);
         string format = DetectFormat(rawUrl, metadata);
 
+        // File hosts often return an opaque download path while Stremio marks
+        // the item as notWebReady. Prefer the file player for that case so
+        // Lampa does not try to load an extensionless redirect as a generic
+        // HTML5 video. Explicit m3u8/mp4 markers above still win.
+        bool notWebReady = stream["behaviorHints"]?["notWebReady"]?.Value<bool>() == true;
+        if (format == null && notWebReady)
+            format = "mkv";
+
         return new WebStreamItem(
             rawUrl,
             name,

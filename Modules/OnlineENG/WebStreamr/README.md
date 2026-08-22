@@ -36,6 +36,8 @@ filters, or other options are selected.
   through GStreamer; when it is `false`, the same URL is allowed to redirect to
   the source/proxy for VLC/direct playback. HLS and MP4 results preserve their
   own `/file.m3u8` or `/file.mp4` suffix so Lampa selects the right player.
+  Opaque download URLs marked `behaviorHints.notWebReady` fall back to the MKV
+  route instead of being sent to an extensionless HTML5 video element.
 
 ## Configuration
 
