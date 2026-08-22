@@ -32,7 +32,15 @@ apt-get install -y --no-install-recommends ocl-icd-libopencl1
 
 The vendor OpenCL implementation comes from the installed GPU driver. If no OpenCL device is available, the same plugin automatically uses its embedded CPU graph.
 
-To rebuild the plugin, install Meson, Ninja, a C/C++ compiler, Autotools, NASM/Yasm, GStreamer development packages, and OpenCL headers/loader development files. Provide unpacked zimg and FFmpeg source directories:
+The repository currently includes the ready plugin for Linux x64. On an ARM64 Termux/proot installation the x64 binary cannot be loaded, so `hdr_to_sdr` stays unavailable until a native ARM64 plugin is built. The repository root contains `setup-gstreamer-hdr.sh`, which installs the build dependencies, downloads the pinned FFmpeg/zimg sources, and runs the ARM64 build inside the Ubuntu proot:
+
+```bash
+bash setup-gstreamer-hdr.sh
+```
+
+After the build, restart Lampac and verify `GET /gst/status` reports `hdr_backend_available: true` before enabling `hdr_to_sdr`.
+
+To rebuild the plugin manually, install Meson, Ninja, a C/C++ compiler, Autotools, NASM/Yasm, GStreamer development packages, and OpenCL headers/loader development files. Provide unpacked zimg and FFmpeg source directories:
 
 ```bash
 export ZIMG_SOURCE=/path/to/zimg-3.0.6

@@ -39,6 +39,21 @@ public class GStreamerController : BaseController
     }
     #endregion
 
+    #region status
+    [HttpGet, AllowAnonymous]
+    [Route("gst/status")]
+    public ActionResult Status()
+    {
+        return Json(new
+        {
+            enabled = ModInit.conf.enable,
+            hdr_to_sdr = ModInit.conf.hdr_to_sdr,
+            hdr_backend_available = HdrToneMappingBackend.IsAvailable,
+            runtime = HdrToneMappingBackend.RuntimeId
+        });
+    }
+    #endregion
+
     #region tracks.js
     [HttpGet, AllowAnonymous]
     [Staticache(10, always: true, setHeadersNoCache: true)]
