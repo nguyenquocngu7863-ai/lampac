@@ -11,17 +11,15 @@ import android.util.Log;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
-import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.ArrayList;
 
 /**
- * MX Sub Bridge v2
- * Nhận video URL + subtitleMeta từ Lampa → Tải sub về máy → Mở MX Player
+ * MX Sub Bridge v3
+ * Nhận subtitleMeta → Tải TẤT CẢ sub về máy → Mở MX Player
  */
 public class MainActivity extends Activity {
     private static final String TAG = "MXSubBridge";
@@ -34,7 +32,7 @@ public class MainActivity extends Activity {
 
         Intent intent = getIntent();
         if (intent == null || intent.getData() == null) {
-            Log.e(TAG, "No intent data");
+            toast("Không có dữ liệu");
             finish();
             return;
         }
@@ -44,94 +42,88 @@ public class MainActivity extends Activity {
         String title = intent.getStringExtra(Intent.EXTRA_TITLE);
         if (title == null) title = "Video";
 
-        Log.d(TAG, "Video: " + videoUrl);
-
-        // Tách subtitleMeta khỏi URL
+        // Tách subtitleMeta
         String subtitleMeta = videoUri.getQueryParameter("subtitleMeta");
         String cleanUrl = removeQueryParam(videoUrl, "subtitleMeta");
-
-        // DEBUG: hiện Toast
-        android.widget.Toast.makeText(this, 
-            "subtitleMeta: " + (subtitleMeta != null ? subtitleMeta.substring(0, Math.min(50, subtitleMeta.length())) + "..." : "NULL"), 
-            android.widget.Toast.LENGTH_LONG).show();
 
         // Parse subtitle metadata
         ArrayList<String[]> subs = new ArrayList<>();
         if (subtitleMeta != null && !subtitleMeta.isEmpty()) {
             subs = parseSubtitleMeta(subtitleMeta);
-            Log.d(TAG, "Parsed " + subs.size() + " subtitles");
-            
-            // DEBUG: hiện Toast
-            android.widget.Toast.makeText(this, 
-                "Parsed: " + subs.size() + " subs", 
-                android.widget.Toast.LENGTH_LONG).show();
-        } else {
-            android.widget.Toast.makeText(this, "NO subtitleMeta!", android.widget.Toast.LENGTH_LONG).show();
         }
 
-        // Tải sub về máy và mở MX Player trong background
+        if (subs.isEmpty()) {
+            toast("Không tìm thấy phụ đề");
+            launchMxPlayer(cleanUrl, title, new ArrayList<>());
+            finish();
+            return;
+        }
+
+        toast("Đang tải " + subs.size() + " phụ đề...");
+
+        // Tải TẤT CẢ sub về máy
         final String finalUrl = cleanUrl;
         final String finalTitle = title;
         final ArrayList<String[]> finalSubs = subs;
 
         new Thread(() -> {
             ArrayList<String[]> localSubs = new ArrayList<>();
+            int downloaded = 0;
 
             for (String[] sub : finalSubs) {
                 String localPath = downloadSubtitle(sub[0], sub[1]);
                 if (localPath != null) {
                     localSubs.add(new String[]{localPath, sub[1]});
-                    Log.d(TAG, "Downloaded: " + sub[1] + " -> " + localPath);
+                    downloaded++;
                 }
             }
 
-            // Mở MX Player
-            final int subCount = localSubs.size();
+            final int finalDownloaded = downloaded;
             runOnUiThread(() -> {
-                android.widget.Toast.makeText(this, 
-                    "Opening MX Player with " + subCount + " subs", 
-                    android.widget.Toast.LENGTH_LONG).show();
+                toast("Đã tải " + finalDownloaded + "/" + finalSubs.size() + " phụ đề");
+                
+                // Mở MX Player
+                launchMxPlayer(finalUrl, finalTitle, localSubs);
+                finish();
             });
-            
-            launchMxPlayer(finalUrl, finalTitle, localSubs);
-
-            runOnUiThread(this::finish);
         }).start();
     }
 
+    private void toast(String msg) {
+        android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_LONG).show();
+    }
+
     /**
-     * Tải sub từ URL về máy
+     * Tải sub về máy
      */
     private String downloadSubtitle(String subUrl, String label) {
         try {
-            Log.d(TAG, "Downloading: " + subUrl);
-            
             URL url = new URL(subUrl);
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setConnectTimeout(10000);
-            conn.setReadTimeout(10000);
+            conn.setConnectTimeout(15000);
+            conn.setReadTimeout(15000);
 
-            int code = conn.getResponseCode();
-            Log.d(TAG, "Response: " + code);
-            
-            if (code != 200) {
-                Log.e(TAG, "Download failed: " + code);
+            if (conn.getResponseCode() != 200) {
+                Log.e(TAG, "Download failed: " + conn.getResponseCode() + " for " + subUrl);
                 return null;
             }
 
-            // Tạo thư mục lưu sub
-            File subDir = new File(getCacheDir(), "subs");
+            // Lưu vào Downloads/subs/
+            File subDir = new File(Environment.getExternalStoragePublicDirectory(
+                Environment.DIRECTORY_DOWNLOADS), "subs");
             if (!subDir.exists()) subDir.mkdirs();
 
-            // Tên file sub
+            // Tên file: label + timestamp
             String ext = ".srt";
             if (subUrl.contains(".vtt")) ext = ".vtt";
-            String fileName = "sub_" + System.currentTimeMillis() + ext;
+            String safeName = label.replaceAll("[^a-zA-Z0-9\\-_ ]", "").trim();
+            if (safeName.length() > 50) safeName = safeName.substring(0, 50);
+            String fileName = safeName + "_" + System.currentTimeMillis() + ext;
             File subFile = new File(subDir, fileName);
 
             // Lưu file
             FileOutputStream fos = new FileOutputStream(subFile);
-            byte[] buffer = new byte[4096];
+            byte[] buffer = new byte[8192];
             int bytesRead;
             while ((bytesRead = conn.getInputStream().read(buffer)) != -1) {
                 fos.write(buffer, 0, bytesRead);
@@ -139,7 +131,7 @@ public class MainActivity extends Activity {
             fos.close();
             conn.disconnect();
 
-            Log.d(TAG, "Saved sub: " + subFile.getAbsolutePath() + " (" + subFile.length() + " bytes)");
+            Log.d(TAG, "Saved: " + subFile.getAbsolutePath());
             return subFile.getAbsolutePath();
 
         } catch (Exception e) {
@@ -149,7 +141,7 @@ public class MainActivity extends Activity {
     }
 
     /**
-     * Parse subtitleMeta (base64url JSON array)
+     * Parse subtitleMeta (base64url JSON)
      */
     private ArrayList<String[]> parseSubtitleMeta(String meta) {
         ArrayList<String[]> subs = new ArrayList<>();
@@ -162,7 +154,7 @@ public class MainActivity extends Activity {
 
             byte[] decoded = Base64.decode(b64, Base64.DEFAULT);
             String json = new String(decoded, "UTF-8");
-            Log.d(TAG, "subtitleMeta: " + json);
+            Log.d(TAG, "JSON: " + json);
 
             JSONArray arr = new JSONArray(json);
             for (int i = 0; i < arr.length(); i++) {
@@ -180,7 +172,7 @@ public class MainActivity extends Activity {
     }
 
     /**
-     * Mở MX Player với video + sub local
+     * Mở MX Player
      */
     private void launchMxPlayer(String videoUrl, String title, ArrayList<String[]> subs) {
         try {
@@ -189,42 +181,31 @@ public class MainActivity extends Activity {
             intent.putExtra(Intent.EXTRA_TITLE, title);
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
 
-            // Thêm sub local
             if (!subs.isEmpty()) {
-                ArrayList<String> subPaths = new ArrayList<>();
-                ArrayList<String> subNames = new ArrayList<>();
+                ArrayList<String> paths = new ArrayList<>();
+                ArrayList<String> names = new ArrayList<>();
                 for (String[] sub : subs) {
-                    subPaths.add(sub[0]);
-                    subNames.add(sub[1]);
+                    paths.add(sub[0]);
+                    names.add(sub[1]);
                 }
-                intent.putExtra("subs", subPaths);
-                intent.putExtra("subs.name", subNames);
-                Log.d(TAG, "Passing " + subs.size() + " local subs to MX Player");
+                intent.putExtra("subs", paths);
+                intent.putExtra("subs.name", names);
             }
 
             // Thử MX Player Pro
             intent.setPackage(MX_PLAYER_PRO);
-            try {
-                startActivity(intent);
-                Log.d(TAG, "Launched MX Player Pro");
-                return;
-            } catch (Exception e) {}
+            try { startActivity(intent); return; } catch (Exception e) {}
 
             // MX Player thường
             intent.setPackage(MX_PLAYER);
-            try {
-                startActivity(intent);
-                Log.d(TAG, "Launched MX Player");
-                return;
-            } catch (Exception e) {}
+            try { startActivity(intent); return; } catch (Exception e) {}
 
             // Fallback
             intent.setPackage(null);
             startActivity(intent);
-            Log.d(TAG, "Launched default player");
 
         } catch (Exception e) {
-            Log.e(TAG, "Launch error: " + e.getMessage());
+            toast("Lỗi mở player: " + e.getMessage());
         }
     }
 
