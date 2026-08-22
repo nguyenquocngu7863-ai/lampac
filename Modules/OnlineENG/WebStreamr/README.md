@@ -31,12 +31,11 @@ filters, or other options are selected.
 - Stremio `behaviorHints.proxyHeaders.request` and `url|Header=value` headers
   are preserved for the normal Lampac stream proxy.
 - HLS/MP4 results use a normal `/video` redirect and stay direct.
-- MKV results use a `/file.mkv` redirect only while the root `gst.enable`
-  setting is `true`. In that mode the existing `gst.js` plug-in detects the
-  suffix and sends the selected file through GStreamer. When `gst.enable` is
-  `false`, the module uses `/video` instead and VLC can play the source/proxy
-  directly. This makes the MKV path selectable through the existing GStreamer
-  setting instead of forcing every source through CPU transcoding.
+- MKV results use a `/file.mkv` redirect. The existing `gst.js` plug-in checks
+  the live root `gst.enable` status: when it is `true`, the selected MKV goes
+  through GStreamer; when it is `false`, the same URL is allowed to redirect to
+  the source/proxy for VLC/direct playback. HLS and MP4 results preserve their
+  own `/file.m3u8` or `/file.mp4` suffix so Lampa selects the right player.
 
 ## Configuration
 

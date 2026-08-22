@@ -109,9 +109,12 @@ public sealed class WebStreamrController : BaseOnlineController<ModuleConf>
 
     [HttpGet, Staticache(manually: true)]
     [Route("lite/webstreamr/video")]
-    // The .mkv alias is intentional: the client GStreamer plug-in uses the
-    // visible extension to decide whether an MKV should be transcoded.
+    // Keep the original media extension visible to Lampa. MKV is used by the
+    // client plug-in as the opt-in GStreamer hook; m3u8/mp4 lets Lampa select
+    // its normal HLS/native player instead of treating a redirect as unknown.
     [Route("lite/webstreamr/file.mkv")]
+    [Route("lite/webstreamr/file.m3u8")]
+    [Route("lite/webstreamr/file.mp4")]
     public async Task<ActionResult> Video(string u, string h, bool play = true)
     {
         if (await IsRequestBlocked(rch: false, rch_check: false))
@@ -480,14 +483,19 @@ public sealed class WebStreamrController : BaseOnlineController<ModuleConf>
             return null;
 
         string name = Compact(stream.Value<string>("name"));
-        string title = Compact(stream.Value<string>("title"));
-        string quality = FindQuality($"{name} {title} {stream.Value<string>("description")}");
+        string rawTitle = stream.Value<string>("title") ?? string.Empty;
+        string rawDescription = stream.Value<string>("description") ?? string.Empty;
+        string title = Compact(rawTitle);
+        string metadata = $"{name} {rawTitle} {rawDescription}";
+        string quality = FindQuality(metadata);
+        string format = DetectFormat(rawUrl, metadata);
 
         return new WebStreamItem(
             rawUrl,
             name,
             title,
             quality,
+            format,
             headers.Count > 0 ? headers : null
         );
     }
@@ -697,9 +705,13 @@ public sealed class WebStreamrController : BaseOnlineController<ModuleConf>
 
     string BuildVideoEndpoint(WebStreamItem stream)
     {
-        string route = IsMkvStream(stream) && IsGStreamerEnabled()
-            ? "file.mkv"
-            : "video";
+        string route = stream.Format switch
+        {
+            "mkv" => "file.mkv",
+            "m3u8" => "file.m3u8",
+            "mp4" => "file.mp4",
+            _ => "video"
+        };
 
         string endpoint = $"{host}/lite/webstreamr/{route}?u={HttpUtility.UrlEncode(EncryptQuery(stream.Url))}";
 
@@ -823,41 +835,28 @@ public sealed class WebStreamrController : BaseOnlineController<ModuleConf>
             uri.Scheme is "http" or "https";
     }
 
-    static bool IsMkvUrl(string value)
+    static string DetectFormat(string url, string metadata)
     {
-        return Uri.TryCreate(value, UriKind.Absolute, out Uri uri) &&
-            uri.AbsolutePath.EndsWith(".mkv", StringComparison.OrdinalIgnoreCase);
-    }
-
-    static bool IsMkvStream(WebStreamItem stream)
-    {
-        return IsMkvUrl(stream.Url) ||
-            Regex.IsMatch(
-                $"{stream.Name} {stream.Title}",
-                @"\b(?:mkv|matroska)\b",
-                RegexOptions.IgnoreCase
-            );
-    }
-
-    static bool IsGStreamerEnabled()
-    {
+        string value;
         try
         {
-            JToken gst = CoreInit.CurrentConf?["gst"] ?? CoreInit.CurrentConf?["GStreamer"];
-            JToken enable = (gst as JObject)?["enable"];
-
-            if (enable == null)
-                return false;
-
-            if (enable.Type == JTokenType.Boolean)
-                return enable.Value<bool>();
-
-            return bool.TryParse(enable.ToString(), out bool result) && result;
+            value = Uri.UnescapeDataString($"{url} {metadata}");
         }
         catch
         {
-            return false;
+            value = $"{url} {metadata}";
         }
+
+        if (Regex.IsMatch(value, @"\.mkv(?:$|[?#&\s])|\bmatroska\b", RegexOptions.IgnoreCase))
+            return "mkv";
+
+        if (Regex.IsMatch(value, @"\.m3u8(?:$|[?#&\s])|\bm3u8\b", RegexOptions.IgnoreCase))
+            return "m3u8";
+
+        if (Regex.IsMatch(value, @"\.mp4(?:$|[?#&\s])", RegexOptions.IgnoreCase))
+            return "mp4";
+
+        return null;
     }
 
     static string FindQuality(string value)

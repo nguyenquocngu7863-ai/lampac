@@ -48,5 +48,6 @@ public sealed record WebStreamItem(
     string Name,
     string Title,
     string Quality,
+    string Format,
     System.Collections.Generic.List<HeadersModel> Headers
 );
