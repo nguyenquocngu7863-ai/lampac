@@ -28,9 +28,9 @@ public class GStreamerController : BaseController
     [HttpGet("/gst/js/{token}")]
     public ActionResult GstJs(string token)
     {
-        if (!ModInit.conf.enable)
-            return Content(string.Empty, "application/javascript; charset=utf-8");
-
+        // Keep the client helper available even when runtime transcoding is
+        // disabled. It reads /gst/status and falls back to direct playback;
+        // this also lets it apply the landscape player behavior consistently.
         var plugin = FileCache.ReadAllText($"{ModInit.modpath}/plugins/gst.js", "gst.js")
             .Replace("{localhost}", CoreInit.Host(HttpContext))
             .Replace("{token}", HttpUtility.UrlEncode(token));

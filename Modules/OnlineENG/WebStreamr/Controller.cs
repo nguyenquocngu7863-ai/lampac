@@ -76,12 +76,11 @@ public sealed class WebStreamrController : BaseOnlineController<ModuleConf>
             );
         }
 
-        string type = isSeries ? "series" : "movie";
-        string requestId = isSeries
-            ? $"{addonId}:{s}:{e}"
-            : addonId;
+        if (isSeries)
+            return await EpisodeResponse(addonId, title, original_title, s, e, play);
 
-        List<WebStreamItem> allStreams = await GetStreams(type, requestId);
+        string type = "movie";
+        List<WebStreamItem> allStreams = await GetStreams(type, addonId);
         if (allStreams.Count == 0)
             return OnError("No direct HTTP streams returned by WebStreamr", 502);
 
@@ -93,22 +92,6 @@ public sealed class WebStreamrController : BaseOnlineController<ModuleConf>
 
         if (streams.Count == 0)
             return OnError("No streams for the selected WebStreamr source", 404);
-
-        if (isSeries)
-        {
-            var video = BuildVideoResponse(
-                streams,
-                title,
-                original_title,
-                s,
-                e
-            );
-
-            if (play)
-                return RedirectToPlay(video.firstLink);
-
-            return ContentTo(video.json);
-        }
 
         if (play)
             return RedirectToPlay(BuildVideoEndpoint(streams[0]));
@@ -165,6 +148,60 @@ public sealed class WebStreamrController : BaseOnlineController<ModuleConf>
         // is enabled. With gst disabled, the same endpoint simply redirects
         // to the source/proxy for VLC/direct playback.
         return RedirectToPlay(output);
+    }
+
+    [HttpGet, Staticache(manually: true)]
+    [Route("lite/webstreamr/episode")]
+    public async Task<ActionResult> Episode(
+        string stremio_id,
+        string title,
+        string original_title,
+        short s,
+        short e,
+        bool play = false
+    )
+    {
+        if (await IsRequestBlocked(rch: false, rch_check: !play))
+            return badInitMsg;
+
+        if (string.IsNullOrWhiteSpace(stremio_id))
+            return OnError("Missing Stremio series id", 400);
+
+        return await EpisodeResponse(stremio_id, title, original_title, s, e, play);
+    }
+
+    async Task<ActionResult> EpisodeResponse(
+        string addonId,
+        string title,
+        string original_title,
+        short season,
+        short episode,
+        bool play
+    )
+    {
+        if (season <= 0 || episode <= 0)
+            return OnError("Stremio episode requires season and episode", 400);
+
+        List<WebStreamItem> streams = await GetStreams(
+            "series",
+            $"{addonId}:{season}:{episode}"
+        );
+
+        if (streams.Count == 0)
+            return OnError("No direct HTTP streams returned by WebStreamr", 502);
+
+        var video = BuildVideoResponse(
+            streams,
+            title,
+            original_title,
+            season,
+            episode
+        );
+
+        if (play)
+            return RedirectToPlay(video.firstLink);
+
+        return ContentTo(video.json);
     }
 
     async Task<ActionResult> Seasons(
@@ -225,20 +262,18 @@ public sealed class WebStreamrController : BaseOnlineController<ModuleConf>
                 ? $"Episode {number}"
                 : $"{number}. {episodeName}";
 
-            string link = BuildIndexUrl(
+            string link = BuildEpisodeUrl(
                 addonId,
                 title,
                 original_title,
-                serial: 1,
                 season,
                 (short)number
             );
 
-            string streamLink = BuildIndexUrl(
+            string streamLink = BuildEpisodeUrl(
                 addonId,
                 title,
                 original_title,
-                serial: 1,
                 season,
                 (short)number,
                 play: true
@@ -675,6 +710,27 @@ public sealed class WebStreamrController : BaseOnlineController<ModuleConf>
         }
 
         return accsArgs(endpoint + "&play=true");
+    }
+
+    string BuildEpisodeUrl(
+        string addonId,
+        string title,
+        string original_title,
+        short season,
+        short episode,
+        bool play = false
+    )
+    {
+        string query =
+            $"stremio_id={HttpUtility.UrlEncode(addonId)}" +
+            $"&title={HttpUtility.UrlEncode(title)}" +
+            $"&original_title={HttpUtility.UrlEncode(original_title)}" +
+            $"&s={season}&e={episode}";
+
+        if (play)
+            query += "&play=true";
+
+        return accsArgs($"{host}/lite/webstreamr/episode?{query}");
     }
 
     string BuildIndexUrl(

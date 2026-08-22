@@ -23,9 +23,9 @@ filters, or other options are selected.
   cards to one provider without hiding same-resolution releases.
 - Stremio asks for one series episode at a time. The bridge first builds the
   Lampa season/episode UI from the TMDB API (with a Cinemeta metadata fallback
-  when only an IMDb id is available), then queries
-  `stream/series/{id}:{season}:{episode}.json` only after the user selects an
-  episode.
+  when only an IMDb id is available), then calls a dedicated episode route
+  after selection. That route queries
+  `stream/series/{id}:{season}:{episode}.json` and returns the playable result.
 - Only HTTP(S) `stream.url` values are accepted. `magnet:`, `externalUrl`, and
   other non-HTTP values are intentionally skipped.
 - Stremio `behaviorHints.proxyHeaders.request` and `url|Header=value` headers
