@@ -1915,7 +1915,7 @@
             <span class="btn-label">Làm mới</span>
           </button>
           <button type="button" class="btn btn-primary btn-sm" id="saveInitBtn"
-            title="Lưu init.conf hoặc users.json ở tab hiện tại (Ctrl+S)">
+            title="Lưu init.conf hoặc users.json; trong Trình chỉnh sửa hãy dùng nút Lưu ngay trong mục (Ctrl+S)">
             <svg style="width:13px;height:13px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
               stroke-linecap="round">
               <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
@@ -3368,8 +3368,15 @@
       }
 
       async function saveActiveConfig() {
-        if (activePanelId() === 'users')
+        const panel = activePanelId();
+        if (panel === 'users')
           return saveUsersJson();
+
+        if (panel === 'simple') {
+          showToast('Hãy bấm nút Lưu ngay trong mục cấu hình cần sửa.', 'warn');
+          return;
+        }
+
         return saveFullInit();
       }
 
