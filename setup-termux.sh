@@ -16,6 +16,8 @@ set -euo pipefail
 LAMPAC_DIR="$HOME/lampac"
 LISTEN_PORT="${LAMPAC_PORT:-9118}"
 ROOT_PASSWORD="${LAMPAC_PASSWD:-lampac}"
+# Custom modules maintained in this repository. Override when using a private fork.
+CUSTOM_SOURCE_BASE="${LAMPAC_CUSTOM_SOURCE_BASE:-https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a028cf-lampac}"
 
 MODE=""
 [[ "${1:-}" == "--install" ]] && MODE="install"
@@ -219,7 +221,18 @@ install_lampac_in_ubuntu() {
     ],
     \"LoadModules\": [\".*\"]
   },
-  \"chromium\": { \"enable\": false },
+  \"chromium\": {
+    \"enable\": true,
+    \"Headless\": true,
+    \"executablePath\": \"/usr/bin/google-chrome-stable\",
+    \"Args\": [
+      \"--no-sandbox\",
+      \"--disable-setuid-sandbox\",
+      \"--disable-dev-shm-usage\",
+      \"--disable-gpu\"
+    ],
+    \"context\": { \"keepopen\": false, \"min\": 0, \"max\": 1 }
+  },
   \"firefox\":  { \"enable\": false },
   \"rch\":      { \"enable\": false },
   \"WAF\":      { \"enable\": false },
@@ -236,6 +249,92 @@ CONF
         echo \"  Config ready\"
     "
     ok "Config ready"
+}
+
+# ─── Optional ARM64 Chromium + custom modules ────────────────────────────────
+
+install_chromium_in_ubuntu() {
+    info "Checking Chromium/Chrome for Playwright..."
+
+    if proot-distro login ubuntu -- bash -c 'test -x /usr/bin/google-chrome-stable || test -x /usr/bin/chromium'; then
+        ok "ARM64-compatible Chromium executable found"
+        return 0
+    fi
+
+    if proot-distro login ubuntu -- bash -c '
+        set -euo pipefail
+        export DEBIAN_FRONTEND=noninteractive
+        arch=$(dpkg --print-architecture)
+
+        case "$arch" in
+            arm64) url="https://dl.google.com/linux/direct/google-chrome-stable_current_arm64.deb" ;;
+            amd64) url="https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb" ;;
+            *) echo "Unsupported Debian architecture: $arch" >&2; exit 2 ;;
+        esac
+
+        apt-get update -qq
+        apt-get install -y -qq ca-certificates curl
+        curl -fL --retry 3 "$url" -o /tmp/google-chrome.deb
+        apt-get install -y /tmp/google-chrome.deb
+        rm -f /tmp/google-chrome.deb
+    '; then
+        ok "Chrome installed for Playwright"
+    else
+        warn "Could not install Chrome automatically; English Playwright sources may remain disabled"
+        return 0
+    fi
+}
+
+ensure_runtime_config() {
+    info "Applying Termux runtime configuration..."
+
+    proot-distro login ubuntu -- bash -c '
+        set -euo pipefail
+        file=/root/lampac/init.conf
+        [ -f "$file" ] || exit 0
+
+        # Repair the typo produced by some nano edits: `}:,` is not valid JSON.
+        sed -i "s/^[[:space:]]*}:,/  },/" "$file"
+
+        if [ -x /usr/bin/google-chrome-stable ]; then
+            browser=/usr/bin/google-chrome-stable
+        elif [ -x /usr/bin/chromium ]; then
+            browser=/usr/bin/chromium
+        else
+            browser=/usr/bin/google-chrome-stable
+        fi
+
+        if grep -q "^[[:space:]]*\"chromium\"[[:space:]]*:" "$file"; then
+            sed -i "/^[[:space:]]*\"chromium\"[[:space:]]*:/,/^[[:space:]]*},[[:space:]]*$/ s/\"enable\"[[:space:]]*:[[:space:]]*false/\"enable\": true/" "$file"
+            if grep -q "^[[:space:]]*\"executablePath\"[[:space:]]*:" "$file"; then
+                sed -i "s#^[[:space:]]*\"executablePath\".*#    \"executablePath\": \"$browser\",#" "$file"
+            else
+                sed -i "/^[[:space:]]*\"Headless\"[[:space:]]*:/a\\    \"executablePath\": \"$browser\"," "$file"
+            fi
+        fi
+
+        if [ -f /root/lampac/init.yaml ]; then
+            echo "  warning: init.yaml also exists and may override init.conf"
+        fi
+    '
+
+    ok "Runtime configuration applied"
+}
+
+install_custom_modules() {
+    info "Installing custom KKPhim module..."
+
+    proot-distro login ubuntu -- bash -c "
+        set -euo pipefail
+        base=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineVN/KKPhim\"
+        target=/root/lampac/module/OnlineVN/KKPhim
+        mkdir -p \"\$target\"
+        for file in Controller.cs Model.cs ModInit.cs manifest.json; do
+            curl -fSL --retry 3 \"\$base/\$file\" -o \"\$target/\$file\"
+        done
+    "
+
+    ok "KKPhim module installed"
 }
 
 # ─── Step 4: Create launcher scripts (inside Ubuntu!) ────────────────────────
@@ -330,6 +429,32 @@ case "${1:-}" in
             cp /tmp/init.conf.bak /root/lampac/ 2>/dev/null || true
             cp /tmp/passwd.bak /root/lampac/ 2>/dev/null || true
             rm -f /tmp/*.bak
+
+            # Re-apply the custom ARM64/KKPhim setup after replacing the release.
+            file=/root/lampac/init.conf
+            if [ -f "$file" ]; then
+                sed -i "s/^[[:space:]]*}:,/  },/" "$file"
+                if [ -x /usr/bin/google-chrome-stable ]; then
+                    browser=/usr/bin/google-chrome-stable
+                elif [ -x /usr/bin/chromium ]; then
+                    browser=/usr/bin/chromium
+                else
+                    browser=/usr/bin/google-chrome-stable
+                fi
+                if grep -q "^[[:space:]]*\"chromium\"[[:space:]]*:" "$file"; then
+                    sed -i "/^[[:space:]]*\"chromium\"[[:space:]]*:/,/^[[:space:]]*},[[:space:]]*$/ s/\"enable\"[[:space:]]*:[[:space:]]*false/\"enable\": true/" "$file"
+                    if grep -q "^[[:space:]]*\"executablePath\"[[:space:]]*:" "$file"; then
+                        sed -i "s#^[[:space:]]*\"executablePath\".*#    \"executablePath\": \"$browser\",#" "$file"
+                    fi
+                fi
+            fi
+
+            base="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a028cf-lampac/Modules/OnlineVN/KKPhim"
+            target=/root/lampac/module/OnlineVN/KKPhim
+            mkdir -p "$target"
+            for file in Controller.cs Model.cs ModInit.cs manifest.json; do
+                curl -fSL --retry 3 "$base/$file" -o "$target/$file"
+            done
             echo "Update complete!"
         '
         ;;
@@ -403,12 +528,18 @@ main() {
                 rm -f /tmp/*.bak
                 echo "Update complete!"
             '
+            install_chromium_in_ubuntu
+            ensure_runtime_config
+            install_custom_modules
             ok "Done!"
             ;;
         *)
             install_termux_deps
             install_ubuntu
             install_lampac_in_ubuntu
+            install_chromium_in_ubuntu
+            ensure_runtime_config
+            install_custom_modules
             create_launcher
 
             echo ""
