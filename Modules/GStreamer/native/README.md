@@ -22,6 +22,12 @@ zscale (BT.2020 to BT.709 limited range)
 format (yuv420p)
 ```
 
+Both graphs explicitly enable libavfilter automatic slice threading. This is
+important on ARM64: the default single graph worker makes 4K tone mapping much
+slower than necessary. The GStreamer pipeline also uses small queues between
+decoding, tone mapping, and H.264 encoding so those stages can overlap without
+keeping a large 4K frame backlog.
+
 ## Linux
 
 The ready x64 plugin is stored at `runtimes/linux-x64/native/gstreamer-1.0/libgsthdrtonemap.so`. It requires glibc 2.35 or newer and GStreamer 1.20 or newer, and was tested on Ubuntu 22.04 and Debian 12. FFmpeg 8.0.3 and zimg 3.0.6 are linked statically, so users do not need FFmpeg/zimg development packages or a local build. The only additional runtime dependency beyond the documented GStreamer packages is the OpenCL loader:

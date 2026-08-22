@@ -231,6 +231,24 @@ https://gstreamer.freedesktop.org/download/#macos
 
 При `useGpu: true` модуль сначала пробует OpenCL GPU. Если GPU отсутствует или обработка завершается ошибкой, используется CPU fallback. CPU tone mapping 4K-видео может не успевать в реальном времени.
 
+Для Android в Ubuntu proot `/dev/dri` и `/dev/video*` часто недоступны. В таком окружении аппаратный H.264 encoder не может быть выбран, поэтому сообщение `software fallback` ожидаемо и не означает, что `hdrtonemap` сломан. OpenCL проверяется отдельно; отсутствие аппаратного encoder само по себе не делает HDR backend недоступным.
+
+Если 4K HDR фрагмент не успевает подготовиться, сначала используйте профиль ускоренной CPU-проверки, не отключая HDR-to-SDR:
+
+```json
+"gst": {
+  "enable": true,
+  "hdr_to_sdr": true,
+  "useGpu": true,
+  "hardwareAcceleration": false,
+  "x264Ultrafast": true,
+  "segment_seconds": 2,
+  "segment_buffer": 4
+}
+```
+
+`useGpu: true` здесь только даёт OpenCL шанс; при отсутствии Android OpenCL driver модуль автоматически вернётся на CPU. Сегменты по 2 секунды уменьшают время ожидания одного холодного фрагмента, а `x264Ultrafast` снижает нагрузку encoder ценой эффективности сжатия. После проверки можно вернуть `segment_seconds: 4` или `6` и отключить `x264Ultrafast`, если телефон успевает.
+
 HDR-to-SDR всегда заканчивается перекодированием в H.264, поэтому на него также влияют `video_bitrate`, `hardwareAcceleration` и `x264Ultrafast`. Dolby Vision обрабатывается только при наличии распознаваемого PQ/HLG base layer; динамические RPU metadata не применяются.
 
 Исходники и инструкции сборки native-плагина находятся в [`native/README.md`](native/README.md).

@@ -1,6 +1,7 @@
 (function () {
     var taskId = null;
     var heartbeatTimer = null;
+    var hlsTimeoutTimer = null;
 
     function account(url) {
         url = url + '';
@@ -66,12 +67,13 @@
     }
 
     function formatAudioItem(track, index) {
-        var title = track.title || ('Аудиодорожка #' + (index + 1));
-        var lang = (track.language || '').toUpperCase();
-        var codec = nameAudioCodec(track.capsName);
+        var title = objectField(track, 'title') || ('Аудиодорожка #' + (index + 1));
+        var lang = (objectField(track, 'language') || '').toUpperCase();
+        var codec = nameAudioCodec(objectField(track, 'capsName'));
 
-        var rate = track.rate
-            ? Math.round(track.rate / 1000) + ' kHz'
+        var rateValue = objectField(track, 'rate');
+        var rate = rateValue
+            ? Math.round(rateValue / 1000) + ' kHz'
             : '';
 
         var subtitleParts = [];
@@ -104,24 +106,187 @@
         return playlist
     }
 
+    function getHlsConstructor() {
+        if (typeof window !== 'undefined' && window.Hls)
+            return window.Hls;
+
+        // `Hls` is not necessarily loaded when this plugin is evaluated.
+        // `typeof` keeps this safe on old WebViews where the global is absent.
+        if (typeof Hls !== 'undefined')
+            return Hls;
+
+        return null;
+    }
+
+    function applyHlsTimeouts() {
+        var hls = getHlsConstructor();
+        if (!hls || !hls.DefaultConfig)
+            return false;
+
+        // hls.js 1.x keeps fragment timeout separately from the manifest
+        // timeout. GStreamer may need longer to produce a cold 4K segment.
+        var config = hls.DefaultConfig;
+        config.manifestLoadingTimeOut = 120000;
+        config.manifestLoadingMaxRetryTimeout = 120000;
+        config.levelLoadingTimeOut = 120000;
+        config.levelLoadingMaxRetryTimeout = 120000;
+        config.fragLoadingTimeOut = 120000;
+        config.fragLoadingMaxRetry = 6;
+        config.fragLoadingRetryDelay = 1000;
+        config.fragLoadingMaxRetryTimeout = 120000;
+
+        return true;
+    }
+
     function tuneHlsTimeouts() {
         try {
-            if (typeof Hls === 'undefined' || !Hls.DefaultConfig) return;
+            if (applyHlsTimeouts()) {
+                if (hlsTimeoutTimer) {
+                    clearInterval(hlsTimeoutTimer);
+                    hlsTimeoutTimer = null;
+                }
+                return;
+            }
 
-            // hls.js 1.x keeps fragment timeout separately from the manifest
-            // timeout. GStreamer may need longer to produce a cold 4K segment.
-            Hls.DefaultConfig.manifestLoadingTimeOut = 60000;
-            Hls.DefaultConfig.manifestLoadingMaxRetryTimeout = 90000;
-            Hls.DefaultConfig.levelLoadingTimeOut = 60000;
-            Hls.DefaultConfig.levelLoadingMaxRetryTimeout = 90000;
-            Hls.DefaultConfig.fragLoadingTimeOut = 60000;
-            Hls.DefaultConfig.fragLoadingMaxRetry = 6;
-            Hls.DefaultConfig.fragLoadingRetryDelay = 1000;
-            Hls.DefaultConfig.fragLoadingMaxRetryTimeout = 90000;
+            // Some Lampa builds load hls.js lazily immediately before the
+            // player is created. Retry briefly instead of silently leaving the
+            // library's 10/20-second defaults in place.
+            if (hlsTimeoutTimer)
+                return;
+
+            var attempts = 0;
+            hlsTimeoutTimer = setInterval(function () {
+                attempts++;
+
+                if (applyHlsTimeouts() || attempts >= 120) {
+                    clearInterval(hlsTimeoutTimer);
+                    hlsTimeoutTimer = null;
+                }
+            }, 250);
         } catch (error) {
             console.log('GStreamer', 'could not tune hls.js timeouts', error);
         }
     }
+
+    function objectField(object, name) {
+        if (!object)
+            return undefined;
+
+        if (object[name] !== undefined)
+            return object[name];
+
+        var pascalName = name.charAt(0).toUpperCase() + name.slice(1);
+        return object[pascalName];
+    }
+
+    function isLargeHdrSource(json) {
+        var probe = objectField(json, 'probe');
+        var video = objectField(probe, 'video');
+        if (!video)
+            return false;
+
+        var width = Number(objectField(video, 'width') || 0);
+        var height = Number(objectField(video, 'height') || 0);
+        if (Math.max(width, height) < 3000)
+            return false;
+
+        var isHdr = objectField(video, 'isHdr') === true ||
+            objectField(video, 'isDolbyVision') === true;
+        var transfer = String(
+            objectField(video, 'videoTransfer') ||
+            objectField(video, 'transfer') ||
+            objectField(video, 'colorimetry') ||
+            ''
+        );
+
+        return isHdr || /pq|hlg|dolby|2084|bt2100/i.test(transfer);
+    }
+
+    function gstBaseUrl(hlsUrl) {
+        var match = String(hlsUrl || '').match(/^(.*)\/master\.m3u8(?:\?.*)?$/i);
+        return match ? match[1] : null;
+    }
+
+    function warmupRequest(url, responseType, callback) {
+        var xhr = new XMLHttpRequest();
+        var finished = false;
+
+        function finish(success) {
+            if (finished)
+                return;
+
+            finished = true;
+            callback(success === true);
+        }
+
+        try {
+            xhr.open('GET', url, true);
+            xhr.timeout = 120000;
+            if (responseType)
+                xhr.responseType = responseType;
+            xhr.setRequestHeader('Cache-Control', 'no-cache');
+            xhr.onload = function () {
+                finish(xhr.status >= 200 && xhr.status < 400);
+            };
+            xhr.onerror = function () { finish(false); };
+            xhr.ontimeout = function () { finish(false); };
+            xhr.onabort = function () { finish(false); };
+            xhr.send();
+        } catch (error) {
+            finish(false);
+        }
+    }
+
+    function warmupFirstSegment(hlsUrl, audioIndex, callback) {
+        var base = gstBaseUrl(hlsUrl);
+        if (!base) {
+            callback(false);
+            return;
+        }
+
+        var query = '?audio=' + encodeURIComponent(audioIndex || 0);
+
+        // Prime the exact same task and audio track that hls.js will use. The
+        // first 4K HDR fragment is then already in Lampac's disk cache when
+        // the TV player starts, so a cold CPU encode cannot hit the short
+        // WebView fragment timeout.
+        warmupRequest(base + '/master.m3u8' + query, 'text', function (masterOk) {
+            if (!masterOk) {
+                callback(false);
+                return;
+            }
+
+            warmupRequest(base + '/init.mp4' + query, 'arraybuffer', function (initOk) {
+                if (!initOk) {
+                    callback(false);
+                    return;
+                }
+
+                warmupRequest(base + '/seg/0.m4s' + query, 'arraybuffer', callback);
+            });
+        });
+    }
+
+    function playWithWarmup(data, json, hlsUrl, audioIndex, play) {
+        if (!isLargeHdrSource(json)) {
+            play();
+            return;
+        }
+
+        Lampa.Loading.start(function () { }, 'Chuẩn bị đoạn HDR 4K đầu tiên...');
+        warmupFirstSegment(hlsUrl, audioIndex, function (success) {
+            Lampa.Loading.stop();
+
+            if (!success)
+                console.log('GStreamer', '4K HDR warmup failed; letting hls.js retry');
+
+            play();
+        });
+    }
+
+    // Apply immediately when hls.js is already present, or poll briefly when
+    // the Lampa build loads it lazily.
+    tuneHlsTimeouts();
 
     function handlePlayerStart(e) {
         if (isMkvSource(e.data)) {
@@ -150,13 +315,14 @@
                         return;
                     }
 
-                    var tracks = json.probe && Array.isArray(json.probe.tracks)
-                        ? json.probe.tracks
+                    var probe = objectField(json, 'probe');
+                    var tracks = probe && Array.isArray(objectField(probe, 'tracks'))
+                        ? objectField(probe, 'tracks')
                         : [];
 
                     var items = tracks
                         .filter(function (track) {
-                            return track && track.type === 'audio';
+                            return track && objectField(track, 'type') === 'audio';
                         })
                         .map(function (track, index) {
                             return formatAudioItem(track, index);
@@ -168,26 +334,32 @@
 
                     delete e.data.torrent_hash;
                     e.data.hls_type = 'hlsjs';
-                    // GStreamer may need up to 45s to produce a cold 4K segment.
-                    // hls.js applies this timeout to fragment XHRs through xhrSetup.
-                    e.data.hls_manifest_timeout = 60000;
-                    e.data.hls_retry_timeout = 90000;
+                    // GStreamer may need up to 120s to produce a cold 4K
+                    // CPU fragment. These fields are consumed by newer Lampa
+                    // builds; applyHlsTimeouts also covers older hls.js builds.
+                    e.data.hls_manifest_timeout = 120000;
+                    e.data.hls_retry_timeout = 120000;
+                    e.data.hls_frag_timeout = 120000;
+                    e.data.hls_frag_retry_timeout = 120000;
 
                     if (!items.length || items.length == 1) {
                         e.data.url_orig = e.data.url
                         e.data.url = json.hls;
-                        Lampa.Player.play(e.data);
-                        Lampa.Player.playlist(createPlaylist(e.data, json.audioIndex))
-                        Lampa.Player.callback(function () {
-                            Lampa.Controller.toggle('modal')
-
-                            e.data.url = e.data.url_orig
-
-                            Lampa.PlayerPlaylist.get().forEach(function (p) {
-                                p.url = p.url_orig
-                            })
-                        })
                         taskId = json.id;
+
+                        playWithWarmup(e.data, json, e.data.url, 0, function () {
+                            Lampa.Player.play(e.data);
+                            Lampa.Player.playlist(createPlaylist(e.data, 0))
+                            Lampa.Player.callback(function () {
+                                Lampa.Controller.toggle('modal')
+
+                                e.data.url = e.data.url_orig
+
+                                Lampa.PlayerPlaylist.get().forEach(function (p) {
+                                    p.url = p.url_orig
+                                })
+                            })
+                        });
                         return;
                     }
 
@@ -201,19 +373,21 @@
 
                             e.data.url_orig = e.data.url
                             e.data.url = json.hls + '?audio=' + item.audioIndex;
-
-                            Lampa.Player.play(e.data);
-                            Lampa.Player.playlist(createPlaylist(e.data, item.audioIndex))
-                            Lampa.Player.callback(function () {
-                                Lampa.Controller.toggle('modal')
-
-                                e.data.url = e.data.url_orig
-
-                                Lampa.PlayerPlaylist.get().forEach(function (p) {
-                                    p.url = p.url_orig
-                                })
-                            })
                             taskId = json.id;
+
+                            playWithWarmup(e.data, json, e.data.url, item.audioIndex, function () {
+                                Lampa.Player.play(e.data);
+                                Lampa.Player.playlist(createPlaylist(e.data, item.audioIndex))
+                                Lampa.Player.callback(function () {
+                                    Lampa.Controller.toggle('modal')
+
+                                    e.data.url = e.data.url_orig
+
+                                    Lampa.PlayerPlaylist.get().forEach(function (p) {
+                                        p.url = p.url_orig
+                                    })
+                                })
+                            });
                         },
                         onBack: function () {
                             Lampa.Controller.toggle(last_controller)

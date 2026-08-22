@@ -1,4 +1,4 @@
-﻿using Gst;
+using Gst;
 using GStreamer.Models;
 using System;
 using System.Diagnostics;
@@ -460,7 +460,10 @@ public partial class GStask
             segmentReadStarted = true;
 
             long start = Stopwatch.GetTimestamp();
-            var timeout = TimeSpan.FromSeconds(45);
+            // A 4K HDR segment may legitimately take longer than the old
+            // 45-second guard on a CPU-only ARM64 phone. The client plugin
+            // uses the same 120-second upper bound for fragment requests.
+            var timeout = TimeSpan.FromSeconds(IsVideoTranscoded ? 120 : 45);
 
             while (Stopwatch.GetElapsedTime(start) < timeout)
             {

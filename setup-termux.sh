@@ -356,7 +356,7 @@ install_custom_modules() {
         gstbase=\"${CUSTOM_SOURCE_BASE}/Modules/GStreamer\"
         gsttarget=/root/lampac/module/GStreamer
         mkdir -p \"\$gsttarget/Services\" \"\$gsttarget/plugins\"
-        for file in Controller.cs Services/HdrToneMappingBackend.cs plugins/gst.js; do
+        for file in Controller.cs Services/HdrToneMappingBackend.cs Services/GStask.Pipeline.cs Services/GStask.Producer.cs plugins/gst.js; do
             curl -fSL --retry 3 \"\$gstbase/\$file\" -o \"\$gsttarget/\$file\"
         done
     "
@@ -492,7 +492,7 @@ case "${1:-}" in
             gstbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a028cf-lampac/Modules/GStreamer"
             gsttarget=/root/lampac/module/GStreamer
             mkdir -p "$gsttarget/Services" "$gsttarget/plugins"
-            for file in Controller.cs Services/HdrToneMappingBackend.cs plugins/gst.js; do
+            for file in Controller.cs Services/HdrToneMappingBackend.cs Services/GStask.Pipeline.cs Services/GStask.Producer.cs plugins/gst.js; do
                 curl -fSL --retry 3 "$gstbase/$file" -o "$gsttarget/$file"
             done
             echo "Update complete!"

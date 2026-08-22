@@ -139,6 +139,22 @@ static void gst_hdr_tone_map_clear_graph_unlocked(GstHdrToneMap *self)
     self->backend = GST_HDR_TONE_MAP_BACKEND_NONE;
 }
 
+static void gst_hdr_tone_map_configure_graph(AVFilterGraph *graph)
+{
+    if (graph == NULL)
+        return;
+
+    /*
+     * libavfilter defaults to a single graph worker unless the caller opts
+     * into automatic threading.  That is particularly expensive for the
+     * 3840x2160 zscale/tonemap path on ARM64.  Keep the setting automatic so
+     * FFmpeg chooses a sensible number for the phone, while explicitly
+     * allowing slice-parallel filters.
+     */
+    avfilter_graph_set_threads(graph, 0);
+    avfilter_graph_set_thread_type(graph, AVFILTER_THREAD_SLICE);
+}
+
 static const gchar *gst_hdr_tone_map_av_error(gint error, gchar *buffer, gsize size)
 {
     if (av_strerror(error, buffer, size) < 0)
@@ -266,6 +282,7 @@ static gboolean gst_hdr_tone_map_build_opencl_graph_unlocked(GstHdrToneMap *self
     if (self->graph == NULL)
         return FALSE;
 
+    gst_hdr_tone_map_configure_graph(self->graph);
     gst_hdr_tone_map_source_arguments(self, source_arguments, sizeof(source_arguments));
     result = gst_hdr_tone_map_create_filter(self->graph, &self->source,
         "buffer", "input", source_arguments, NULL);
@@ -361,6 +378,7 @@ static gboolean gst_hdr_tone_map_build_cpu_graph_unlocked(GstHdrToneMap *self)
     if (self->graph == NULL)
         return FALSE;
 
+    gst_hdr_tone_map_configure_graph(self->graph);
     gst_hdr_tone_map_source_arguments(self, source_arguments, sizeof(source_arguments));
 
     result = avfilter_graph_create_filter(&self->source, buffer_source, "input",

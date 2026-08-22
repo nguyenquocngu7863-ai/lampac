@@ -29,11 +29,17 @@ if [ -n "$GST_SCANNER" ]; then
     export GST_PLUGIN_SCANNER="$GST_SCANNER"
 fi
 
-# Release archives do not always contain the native build helpers. Bootstrap
-# only the small, auditable native source tree from the selected repository.
-if [ ! -x "$NATIVE_ROOT/build-linux.sh" ]; then
-    echo "Native GStreamer build helpers are missing; downloading them..."
-    mkdir -p "$NATIVE_ROOT/src"
+# Release archives do not always contain the native build helpers. Keep the
+# small, auditable native source tree synchronized with the selected
+# repository. The version stamp also makes an existing install pick up a
+# native plugin fix after a subsequent run without downloading on every run.
+NATIVE_SOURCE_VERSION="2"
+NATIVE_SOURCE_STAMP="$WORK_ROOT/.native-source-version"
+if [ ! -x "$NATIVE_ROOT/build-linux.sh" ] ||
+   [ ! -f "$NATIVE_SOURCE_STAMP" ] ||
+   [ "$(cat "$NATIVE_SOURCE_STAMP" 2>/dev/null || true)" != "$NATIVE_SOURCE_VERSION" ]; then
+    echo "Synchronizing native GStreamer HDR sources..."
+    mkdir -p "$NATIVE_ROOT/src" "$WORK_ROOT"
     for file in build-linux.sh meson.build meson_options.txt; do
         curl -fL --retry 3 \
             "$SOURCE_BASE/Modules/GStreamer/native/$file" \
@@ -43,6 +49,7 @@ if [ ! -x "$NATIVE_ROOT/build-linux.sh" ]; then
         "$SOURCE_BASE/Modules/GStreamer/native/src/gsthdrtonemap.c" \
         -o "$NATIVE_ROOT/src/gsthdrtonemap.c"
     chmod +x "$NATIVE_ROOT/build-linux.sh"
+    printf '%s\n' "$NATIVE_SOURCE_VERSION" > "$NATIVE_SOURCE_STAMP"
 fi
 
 arch=$(dpkg --print-architecture)
@@ -127,5 +134,6 @@ GST_PLUGIN_PATH="$(dirname "$PLUGIN")${GST_PLUGIN_PATH:+:$GST_PLUGIN_PATH}" \
 UBUNTU
 
 printf '\n==> Build xong. Cấu hình trong /root/lampac/init.conf:\n'
-printf '"gst": { "enable": true, "hdr_to_sdr": true, "useGpu": false }\n'
+printf '"gst": { "enable": true, "hdr_to_sdr": true, "useGpu": true, "hardwareAcceleration": false, "x264Ultrafast": true, "segment_seconds": 2, "segment_buffer": 4 }\n'
+printf 'useGpu chỉ thử OpenCL; nếu không có driver thì tự động dùng CPU.\n'
 printf 'Sau đó restart: lampac stop && lampac start\n'
