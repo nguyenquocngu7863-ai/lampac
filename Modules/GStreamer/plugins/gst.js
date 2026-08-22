@@ -119,7 +119,8 @@
                 var src = e.data.url.replace(/&(preload|stat|m3u)/g, '&play');
 
                 var network = new Lampa.Reguest();
-                network.timeout = 40000;
+                // 4K/HDR files need more time for probing and the first segment.
+                network.timeout(90000);
 
                 network.native(account('{localhost}/gst/add?linkencode=' + encodeURIComponent(Lampa.Base64.encode(src))), function (response) {
                     Lampa.Loading.stop();
@@ -146,7 +147,10 @@
 
                     delete e.data.torrent_hash;
                     e.data.hls_type = 'hlsjs';
-                    e.data.hls_manifest_timeout = 20000;
+                    // GStreamer may need up to 45s to produce a cold 4K segment.
+                    // hls.js applies this timeout to fragment XHRs through xhrSetup.
+                    e.data.hls_manifest_timeout = 60000;
+                    e.data.hls_retry_timeout = 90000;
 
                     if (!items.length || items.length == 1) {
                         e.data.url_orig = e.data.url
