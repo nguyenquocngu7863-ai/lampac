@@ -337,6 +337,43 @@
         }
     }
 
+    function forceLandscape() {
+        try {
+            var screenObject = window.screen;
+            var orientation = screenObject && screenObject.orientation;
+            var lock = orientation && orientation.lock;
+
+            if (typeof lock === 'function') {
+                var result = lock.call(orientation, 'landscape');
+                if (result && typeof result.catch === 'function')
+                    result.catch(function () { });
+                return;
+            }
+
+            var legacyLock = screenObject && (
+                screenObject.lockOrientation ||
+                screenObject.mozLockOrientation ||
+                screenObject.msLockOrientation ||
+                screenObject.webkitLockOrientation
+            );
+
+            if (typeof legacyLock === 'function')
+                legacyLock.call(screenObject, 'landscape');
+        } catch (error) {
+            // Orientation locking is optional on desktop browsers and old TV
+            // WebViews; playback must continue when the platform rejects it.
+        }
+    }
+
+    function unlockOrientation() {
+        try {
+            var screenObject = window.screen;
+            var orientation = screenObject && screenObject.orientation;
+            if (orientation && typeof orientation.unlock === 'function')
+                orientation.unlock();
+        } catch (error) { }
+    }
+
     function startGstreamerTranscode(e) {
         if (e.data.url.indexOf('/gst/') != -1 || e.data.url.indexOf('.m3u8') != -1)
             return;
@@ -481,6 +518,8 @@
     }
 
     function handlePlayerDestroy() {
+        unlockOrientation();
+
         if (taskId != null) {
             var network = new Lampa.Reguest();
             network.timeout = 5000;
@@ -515,6 +554,8 @@
     }
 
     function handleVideoPlay() {
+        forceLandscape();
+
         if (taskId != null)
             stopHeartbeat();
     }
