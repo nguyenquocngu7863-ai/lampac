@@ -121,17 +121,32 @@
     });
   }
 
-  // thử lần lượt từng sub trong danh sách cho tới khi resolve thành công 1 bản
-  function autoResolveFirst(subs, index, callback) {
-    if (index >= subs.length) { callback(null); return; }
-    var sub = subs[index];
-    resolveToVtt(sub, function (vttUrl, err) {
-      if (vttUrl) {
-        callback(vttUrl, sub);
-      } else {
-        log('bo qua sub', sub.label, '-', err);
-        autoResolveFirst(subs, index + 1, callback);
-      }
+  // resolve toàn bộ các sub trong danh sách để Lampa Player có thể chọn từng bản
+  function autoResolveAll(subs, callback) {
+    if (!subs.length) { callback([]); return; }
+
+    var tracks = new Array(subs.length);
+    var pending = subs.length;
+
+    subs.forEach(function (sub, index) {
+      resolveToVtt(sub, function (vttUrl, err) {
+        if (vttUrl) {
+          tracks[index] = {
+            url: vttUrl,
+            label: sub.label,
+            language: sub.language || 'vi'
+          };
+        } else {
+          log('bo qua sub', sub.label, '-', err);
+        }
+
+        pending--;
+        if (pending === 0) {
+          callback(tracks.filter(function (track) {
+            return !!track;
+          }));
+        }
+      });
     });
   }
 
@@ -162,15 +177,12 @@
     fetchSubs(imdbId, type, season, episode, function (subs) {
       if (!subs.length) { log('khong co sub cho', imdbId); return; }
       var sorted = sortByEase(subs);
-      log('tim thay', subs.length, 'ban sub, dang thu gan tu dong...');
-      autoResolveFirst(sorted, 0, function (vttUrl, sub) {
-        if (!vttUrl) { log('khong gan duoc ban nao'); return; }
-        Lampa.Player.subtitles([{
-          url: vttUrl,
-          label: sub.label,
-          language: 'vi'
-        }]);
-        log('da gan sub:', sub.label);
+      log('tim thay', subs.length, 'ban sub, dang gan tat ca...');
+      autoResolveAll(sorted, function (tracks) {
+        if (!tracks.length) { log('khong gan duoc ban nao'); return; }
+
+        Lampa.Player.subtitles(tracks);
+        log('da gan', tracks.length, 'ban sub');
       });
     }, function (xhr) {
       log('loi lay danh sach sub:', xhr.status);
