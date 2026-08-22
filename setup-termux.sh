@@ -140,7 +140,11 @@ install_lampac_in_ubuntu() {
         set -euo pipefail
         export DEBIAN_FRONTEND=noninteractive
         apt-get update -qq
-        apt-get install -y -qq curl wget unzip libicu-dev libssl-dev > /dev/null 2>&1
+        apt-get install -y -qq curl wget unzip libicu-dev libssl-dev \
+            gstreamer1.0-tools libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 \
+            gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
+            gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly \
+            gstreamer1.0-libav ocl-icd-libopencl1 > /dev/null 2>&1
 
         DOTNET_DIR="/opt/dotnet"
         if [[ ! -x "$DOTNET_DIR/dotnet" ]] || ! "$DOTNET_DIR/dotnet" --list-runtimes 2>/dev/null | grep -q "Microsoft.AspNetCore.App 10"; then
@@ -223,9 +227,15 @@ install_lampac_in_ubuntu() {
     \"SkipModules\": [
       \"Catalog\", \"DLNA\", \"Tracks\", \"Transcoding\", \"WebLog\",
       \"CacheMedia\", \"ProxyLimiter\", \"ForkPlayerXML\", \"MsxNative\",
-      \"TelegramAuth\", \"TelegramAuthBot\", \"GStreamer\"
+      \"TelegramAuth\", \"TelegramAuthBot\"
     ],
     \"LoadModules\": [\".*\"]
+  },
+  \"gst\": {
+    \"enable\": true,
+    \"hdr_to_sdr\": false,
+    \"useGpu\": false,
+    \"hardwareAcceleration\": false
   },
   \"chromium\": {
     \"enable\": true,
@@ -302,6 +312,9 @@ ensure_runtime_config() {
         # Repair the typo produced by some nano edits: `}:,` is not valid JSON.
         sed -i "s/^[[:space:]]*}:,/  },/" "$file"
 
+        # The Termux profile should keep the GStreamer module available.
+        sed -i "s/\"GStreamer\",[[:space:]]*//g; s/,[[:space:]]*\"GStreamer\"//g" "$file"
+
         if [ -x /usr/bin/google-chrome-stable ]; then
             browser=/usr/bin/google-chrome-stable
         elif [ -x /usr/bin/chromium ]; then
@@ -328,19 +341,27 @@ ensure_runtime_config() {
 }
 
 install_custom_modules() {
-    info "Installing custom KKPhim module..."
+    info "Installing custom KKPhim/GStreamer module files..."
 
     proot-distro login ubuntu -- bash -c "
         set -euo pipefail
-        base=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineVN/KKPhim\"
-        target=/root/lampac/module/OnlineVN/KKPhim
-        mkdir -p \"\$target\"
+
+        kkbase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineVN/KKPhim\"
+        kktarget=/root/lampac/module/OnlineVN/KKPhim
+        mkdir -p \"\$kktarget\"
         for file in Controller.cs Model.cs ModInit.cs manifest.json; do
-            curl -fSL --retry 3 \"\$base/\$file\" -o \"\$target/\$file\"
+            curl -fSL --retry 3 \"\$kkbase/\$file\" -o \"\$kktarget/\$file\"
+        done
+
+        gstbase=\"${CUSTOM_SOURCE_BASE}/Modules/GStreamer\"
+        gsttarget=/root/lampac/module/GStreamer
+        mkdir -p \"\$gsttarget/Services\"
+        for file in Controller.cs Services/HdrToneMappingBackend.cs; do
+            curl -fSL --retry 3 \"\$gstbase/\$file\" -o \"\$gsttarget/\$file\"
         done
     "
 
-    ok "KKPhim module installed"
+    ok "KKPhim and GStreamer module files installed"
 }
 
 # ─── Step 4: Create launcher scripts (inside Ubuntu!) ────────────────────────
@@ -436,10 +457,11 @@ case "${1:-}" in
             cp /tmp/passwd.bak /root/lampac/ 2>/dev/null || true
             rm -f /tmp/*.bak
 
-            # Re-apply the custom ARM64/KKPhim setup after replacing the release.
+            # Re-apply the custom ARM64/KKPhim/GStreamer setup after replacing the release.
             file=/root/lampac/init.conf
             if [ -f "$file" ]; then
                 sed -i "s/^[[:space:]]*}:,/  },/" "$file"
+                sed -i "s/\"GStreamer\",[[:space:]]*//g; s/,[[:space:]]*\"GStreamer\"//g" "$file"
                 if [ -x /usr/bin/google-chrome-stable ]; then
                     browser=/usr/bin/google-chrome-stable
                 elif [ -x /usr/bin/chromium ]; then
@@ -460,6 +482,13 @@ case "${1:-}" in
             mkdir -p "$target"
             for file in Controller.cs Model.cs ModInit.cs manifest.json; do
                 curl -fSL --retry 3 "$base/$file" -o "$target/$file"
+            done
+
+            gstbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a028cf-lampac/Modules/GStreamer"
+            gsttarget=/root/lampac/module/GStreamer
+            mkdir -p "$gsttarget/Services"
+            for file in Controller.cs Services/HdrToneMappingBackend.cs; do
+                curl -fSL --retry 3 "$gstbase/$file" -o "$gsttarget/$file"
             done
             echo "Update complete!"
         '
