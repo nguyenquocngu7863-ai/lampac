@@ -104,6 +104,25 @@
         return playlist
     }
 
+    function tuneHlsTimeouts() {
+        try {
+            if (typeof Hls === 'undefined' || !Hls.DefaultConfig) return;
+
+            // hls.js 1.x keeps fragment timeout separately from the manifest
+            // timeout. GStreamer may need longer to produce a cold 4K segment.
+            Hls.DefaultConfig.manifestLoadingTimeOut = 60000;
+            Hls.DefaultConfig.manifestLoadingMaxRetryTimeout = 90000;
+            Hls.DefaultConfig.levelLoadingTimeOut = 60000;
+            Hls.DefaultConfig.levelLoadingMaxRetryTimeout = 90000;
+            Hls.DefaultConfig.fragLoadingTimeOut = 60000;
+            Hls.DefaultConfig.fragLoadingMaxRetry = 6;
+            Hls.DefaultConfig.fragLoadingRetryDelay = 1000;
+            Hls.DefaultConfig.fragLoadingMaxRetryTimeout = 90000;
+        } catch (error) {
+            console.log('GStreamer', 'could not tune hls.js timeouts', error);
+        }
+    }
+
     function handlePlayerStart(e) {
         if (isMkvSource(e.data)) {
             if (e.data.url.indexOf('/gst/') != -1 || e.data.url.indexOf('.m3u8') != -1)
@@ -144,6 +163,8 @@
                         });
 
                     
+
+                    tuneHlsTimeouts();
 
                     delete e.data.torrent_hash;
                     e.data.hls_type = 'hlsjs';
