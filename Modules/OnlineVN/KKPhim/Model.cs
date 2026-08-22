@@ -60,7 +60,7 @@ public sealed class KkExternalId
 {
     public string id { get; set; }
     public string type { get; set; }
-    public int season { get; set; }
+    public int? season { get; set; }
     public double vote_average { get; set; }
     public int vote_count { get; set; }
 }
