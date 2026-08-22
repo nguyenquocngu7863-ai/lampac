@@ -9,10 +9,11 @@ WORK_ROOT="${GSTREAMER_HDR_WORK_ROOT:-/root/gst-hdrtonemap-build}"
 FFMPEG_VERSION="${FFMPEG_VERSION:-8.0.3}"
 ZIMG_VERSION="${ZIMG_VERSION:-3.0.6}"
 JOBS="${JOBS:-2}"
+SOURCE_BASE="${LAMPAC_CUSTOM_SOURCE_BASE:-https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a028cf-lampac}"
 
 printf '\n==> Installing GStreamer HDR build dependencies in Ubuntu\n'
 
-proot-distro login ubuntu -- bash -s -- "$LAMPAC_ROOT" "$WORK_ROOT" "$FFMPEG_VERSION" "$ZIMG_VERSION" "$JOBS" <<'UBUNTU'
+proot-distro login ubuntu -- bash -s -- "$LAMPAC_ROOT" "$WORK_ROOT" "$FFMPEG_VERSION" "$ZIMG_VERSION" "$JOBS" "$SOURCE_BASE" <<'UBUNTU'
 set -euo pipefail
 
 LAMPAC_ROOT="$1"
@@ -20,12 +21,23 @@ WORK_ROOT="$2"
 FFMPEG_VERSION="$3"
 ZIMG_VERSION="$4"
 JOBS="$5"
+SOURCE_BASE="$6"
 NATIVE_ROOT="$LAMPAC_ROOT/module/GStreamer/native"
 
+# Release archives do not always contain the native build helpers. Bootstrap
+# only the small, auditable native source tree from the selected repository.
 if [ ! -x "$NATIVE_ROOT/build-linux.sh" ]; then
-    echo "Không tìm thấy $NATIVE_ROOT/build-linux.sh" >&2
-    echo "Hãy cài/copy module GStreamer vào /root/lampac/module trước." >&2
-    exit 1
+    echo "Native GStreamer build helpers are missing; downloading them..."
+    mkdir -p "$NATIVE_ROOT/src"
+    for file in build-linux.sh meson.build meson_options.txt; do
+        curl -fL --retry 3 \
+            "$SOURCE_BASE/Modules/GStreamer/native/$file" \
+            -o "$NATIVE_ROOT/$file"
+    done
+    curl -fL --retry 3 \
+        "$SOURCE_BASE/Modules/GStreamer/native/src/gsthdrtonemap.c" \
+        -o "$NATIVE_ROOT/src/gsthdrtonemap.c"
+    chmod +x "$NATIVE_ROOT/build-linux.sh"
 fi
 
 arch=$(dpkg --print-architecture)
