@@ -389,7 +389,7 @@ public sealed class WebStreamrController : BaseOnlineController<ModuleConf>
         if (root?["streams"] is not JArray streams)
             return result;
 
-        int maxStreams = Math.Clamp(init.maxStreams, 1, 100);
+        int maxStreams = Math.Clamp(init.maxStreams, 1, 200);
 
         foreach (JToken token in streams)
         {
@@ -767,6 +767,28 @@ public sealed class WebStreamrController : BaseOnlineController<ModuleConf>
 
     static string SourceGroupName(WebStreamItem stream)
     {
+        // WebStreamrMBG puts the extractor/source in the final title line:
+        // `🔗 Extractor from Source`. Prefer the source name so FSL, PixelDrain,
+        // and similar links for one provider are grouped together.
+        string title = Compact(stream.Title);
+        Match sourceMatch = Regex.Match(
+            title ?? string.Empty,
+            @"(?:^|\s)🔗\s*(?<extractor>.+?)(?:\s+from\s+(?<source>[^\r\n]+))?$",
+            RegexOptions.IgnoreCase
+        );
+
+        if (sourceMatch.Success)
+        {
+            string source = Compact(
+                sourceMatch.Groups["source"].Success
+                    ? sourceMatch.Groups["source"].Value
+                    : sourceMatch.Groups["extractor"].Value
+            );
+
+            if (!string.IsNullOrWhiteSpace(source))
+                return source;
+        }
+
         string name = Compact(stream.Name);
         if (string.IsNullOrWhiteSpace(name))
             return "WebStreamr";

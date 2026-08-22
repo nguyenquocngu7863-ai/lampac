@@ -30,7 +30,7 @@ public sealed class ModuleConf : BaseSettings, ICloneable
     public int timeoutSeconds { get; set; } = 25;
 
     /// <summary>Maximum number of HTTP streams shown for one title.</summary>
-    public int maxStreams { get; set; } = 24;
+    public int maxStreams { get; set; } = 100;
 
     public ModuleConf Clone()
     {
