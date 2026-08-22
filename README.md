@@ -552,6 +552,7 @@ cd publish && dotnet Core.dll
 | **TimeCode** | ✅ | Сохранение и восстановление позиции воспроизведения. SQLite. |
 | **Kit** | ✅ | Шифрование потоков (CryptoKit), конфиг `kit` в `init.conf`. |
 | **PidTor** | ✅ | Источник PidTor, маршрут `/lite/pidtor`. |
+| **WebStreamr** | ✅ | HTTP-источники из настроенного Stremio add-on, маршрут `/lite/webstreamr`. |
 | **Catalog** | ⛔ | Браузер каталогов из YAML (`sites/`). Маршрут `/catalog/`. Только в доверенной сети. |
 | **DLNA** | ⛔ | DLNA/UPnP медиасервер. Форматы: mp4, mkv, ts, webm, avi, flac и др. Только в доверенной сети. |
 | **Sync** | ✅ | Синхронизация закладок и истории. Эндпоинты `/storage/`, `/bookmark/`. SQLite. Отключение: добавьте `Sync` в `SkipModules`. |
@@ -655,7 +656,7 @@ cd publish && dotnet Core.dll
 </details>
 
 <details>
-<summary><strong>Англоязычный контент (10 источников)</strong></summary>
+<summary><strong>Англоязычный контент (11 источников)</strong></summary>
 
 | Провайдер | Сервис |
 | --- | --- |
@@ -669,6 +670,7 @@ cd publish && dotnet Core.dll
 | `VidLink` | VidLink |
 | `VidSrc` | VidSrc |
 | `Videasy` | Videasy |
+| `WebStreamr` | WebStreamrMBG (Stremio HTTP) |
 
 </details>
 

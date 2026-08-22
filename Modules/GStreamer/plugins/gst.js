@@ -2,6 +2,10 @@
     var taskId = null;
     var heartbeatTimer = null;
     var hlsTimeoutTimer = null;
+    var gstEnabled = null;
+    var gstStatusAt = 0;
+    var gstStatusPending = false;
+    var gstStatusWaiters = [];
 
     function account(url) {
         url = url + '';
@@ -288,68 +292,140 @@
     // the Lampa build loads it lazily.
     tuneHlsTimeouts();
 
-    function handlePlayerStart(e) {
-        if (isMkvSource(e.data)) {
-            if (e.data.url.indexOf('/gst/') != -1 || e.data.url.indexOf('.m3u8') != -1)
-                return;
+    function finishGstStatus(enabled) {
+        gstStatusPending = false;
+        gstEnabled = enabled === true;
+        gstStatusAt = Date.now();
 
-            e.abort()
+        var waiters = gstStatusWaiters;
+        gstStatusWaiters = [];
+        waiters.forEach(function (callback) {
+            try { callback(gstEnabled); } catch (error) { }
+        });
+    }
 
-            setTimeout(() => {
-                Lampa.Player.close();
+    function getGstStatus(callback) {
+        var now = Date.now();
+        if (gstEnabled !== null && now - gstStatusAt < 5000) {
+            callback(gstEnabled);
+            return;
+        }
 
-                Lampa.Loading.start(function () { }, 'Получение списка аудио дорожек...');
+        gstStatusWaiters.push(callback);
+        if (gstStatusPending)
+            return;
 
-                var src = e.data.url.replace(/&(preload|stat|m3u)/g, '&play');
+        gstStatusPending = true;
 
-                var network = new Lampa.Reguest();
-                // 4K/HDR files need more time for probing and the first segment.
-                network.timeout(90000);
-
-                network.native(account('{localhost}/gst/add?linkencode=' + encodeURIComponent(Lampa.Base64.encode(src))), function (response) {
-                    Lampa.Loading.stop();
-
+        try {
+            var network = new Lampa.Reguest();
+            network.timeout(3000);
+            network.native(account('{localhost}/gst/status'), function (response) {
+                var enabled = false;
+                try {
                     var json = typeof response === 'string' ? JSON.parse(response) : response;
-                    if (!json || !json.id || !json.hls) {
-                        Lampa.Noty.show('Не удалось запустить транскодинг');
-                        return;
-                    }
+                    enabled = !!json && (json.enabled === true || json.Enabled === true);
+                } catch (error) { }
+                finishGstStatus(enabled);
+            }, function () {
+                // If the module is disabled or unavailable, direct playback is
+                // safer than aborting an otherwise playable MKV.
+                finishGstStatus(false);
+            });
+        } catch (error) {
+            finishGstStatus(false);
+        }
+    }
 
-                    var probe = objectField(json, 'probe');
-                    var tracks = probe && Array.isArray(objectField(probe, 'tracks'))
-                        ? objectField(probe, 'tracks')
-                        : [];
+    function startGstreamerTranscode(e) {
+        if (e.data.url.indexOf('/gst/') != -1 || e.data.url.indexOf('.m3u8') != -1)
+            return;
 
-                    var items = tracks
-                        .filter(function (track) {
-                            return track && objectField(track, 'type') === 'audio';
+        e.abort()
+
+        setTimeout(() => {
+            Lampa.Player.close();
+
+            Lampa.Loading.start(function () { }, 'Получение списка аудио дорожек...');
+
+            var src = e.data.url.replace(/&(preload|stat|m3u)/g, '&play');
+
+            var network = new Lampa.Reguest();
+            // 4K/HDR files need more time for probing and the first segment.
+            network.timeout(90000);
+
+            network.native(account('{localhost}/gst/add?linkencode=' + encodeURIComponent(Lampa.Base64.encode(src))), function (response) {
+                Lampa.Loading.stop();
+
+                var json = typeof response === 'string' ? JSON.parse(response) : response;
+                if (!json || !json.id || !json.hls) {
+                    Lampa.Noty.show('Не удалось запустить транскодинг');
+                    return;
+                }
+
+                var probe = objectField(json, 'probe');
+                var tracks = probe && Array.isArray(objectField(probe, 'tracks'))
+                    ? objectField(probe, 'tracks')
+                    : [];
+
+                var items = tracks
+                    .filter(function (track) {
+                        return track && objectField(track, 'type') === 'audio';
+                    })
+                    .map(function (track, index) {
+                        return formatAudioItem(track, index);
+                    });
+
+
+
+                tuneHlsTimeouts();
+
+                delete e.data.torrent_hash;
+                e.data.hls_type = 'hlsjs';
+                // GStreamer may need up to 120s to produce a cold 4K
+                // CPU fragment. These fields are consumed by newer Lampa
+                // builds; applyHlsTimeouts also covers older hls.js builds.
+                e.data.hls_manifest_timeout = 120000;
+                e.data.hls_retry_timeout = 120000;
+                e.data.hls_frag_timeout = 120000;
+                e.data.hls_frag_retry_timeout = 120000;
+
+                if (!items.length || items.length == 1) {
+                    e.data.url_orig = e.data.url
+                    e.data.url = json.hls;
+                    taskId = json.id;
+
+                    playWithWarmup(e.data, json, e.data.url, 0, function () {
+                        Lampa.Player.play(e.data);
+                        Lampa.Player.playlist(createPlaylist(e.data, 0))
+                        Lampa.Player.callback(function () {
+                            Lampa.Controller.toggle('modal')
+
+                            e.data.url = e.data.url_orig
+
+                            Lampa.PlayerPlaylist.get().forEach(function (p) {
+                                p.url = p.url_orig
+                            })
                         })
-                        .map(function (track, index) {
-                            return formatAudioItem(track, index);
-                        });
+                    });
+                    return;
+                }
 
-                    
+                var last_controller = Lampa.Controller.enabled().name
 
-                    tuneHlsTimeouts();
+                Lampa.Select.show({
+                    title: 'Выберите аудиодорожку',
+                    items: items,
+                    onSelect: function (item) {
+                        Lampa.Select.close();
 
-                    delete e.data.torrent_hash;
-                    e.data.hls_type = 'hlsjs';
-                    // GStreamer may need up to 120s to produce a cold 4K
-                    // CPU fragment. These fields are consumed by newer Lampa
-                    // builds; applyHlsTimeouts also covers older hls.js builds.
-                    e.data.hls_manifest_timeout = 120000;
-                    e.data.hls_retry_timeout = 120000;
-                    e.data.hls_frag_timeout = 120000;
-                    e.data.hls_frag_retry_timeout = 120000;
-
-                    if (!items.length || items.length == 1) {
                         e.data.url_orig = e.data.url
-                        e.data.url = json.hls;
+                        e.data.url = json.hls + '?audio=' + item.audioIndex;
                         taskId = json.id;
 
-                        playWithWarmup(e.data, json, e.data.url, 0, function () {
+                        playWithWarmup(e.data, json, e.data.url, item.audioIndex, function () {
                             Lampa.Player.play(e.data);
-                            Lampa.Player.playlist(createPlaylist(e.data, 0))
+                            Lampa.Player.playlist(createPlaylist(e.data, item.audioIndex))
                             Lampa.Player.callback(function () {
                                 Lampa.Controller.toggle('modal')
 
@@ -360,45 +436,48 @@
                                 })
                             })
                         });
-                        return;
+                    },
+                    onBack: function () {
+                        Lampa.Controller.toggle(last_controller)
                     }
-
-                    var last_controller = Lampa.Controller.enabled().name
-
-                    Lampa.Select.show({
-                        title: 'Выберите аудиодорожку',
-                        items: items,
-                        onSelect: function (item) {
-                            Lampa.Select.close();
-
-                            e.data.url_orig = e.data.url
-                            e.data.url = json.hls + '?audio=' + item.audioIndex;
-                            taskId = json.id;
-
-                            playWithWarmup(e.data, json, e.data.url, item.audioIndex, function () {
-                                Lampa.Player.play(e.data);
-                                Lampa.Player.playlist(createPlaylist(e.data, item.audioIndex))
-                                Lampa.Player.callback(function () {
-                                    Lampa.Controller.toggle('modal')
-
-                                    e.data.url = e.data.url_orig
-
-                                    Lampa.PlayerPlaylist.get().forEach(function (p) {
-                                        p.url = p.url_orig
-                                    })
-                                })
-                            });
-                        },
-                        onBack: function () {
-                            Lampa.Controller.toggle(last_controller)
-                        }
-                    });
-                }, function (error) {
-                    Lampa.Loading.stop();
-                    Lampa.Noty.show('Не удалось запустить транскодинг');
                 });
-            }, 10);
+            }, function (error) {
+                Lampa.Loading.stop();
+                Lampa.Noty.show('Не удалось запустить транскодинг');
+            });
+        }, 10);
+
+    }
+
+    function handlePlayerStart(e) {
+        if (!isMkvSource(e.data))
+            return;
+
+        // The adapter uses an MKV-looking redirect deliberately. This flag is
+        // set only when the server reports that GStreamer is disabled.
+        if (e.data && e.data.__gstDirect)
+            return;
+
+        var statusAge = Date.now() - gstStatusAt;
+        if (gstEnabled === true && statusAge < 5000) {
+            startGstreamerTranscode(e);
+            return;
         }
+
+        if (gstEnabled === false && statusAge < 5000)
+            return;
+
+        // Wait for the real server setting before aborting the native player.
+        e.abort();
+        getGstStatus(function (enabled) {
+            if (!enabled) {
+                e.data.__gstDirect = true;
+                Lampa.Player.play(e.data);
+                return;
+            }
+
+            startGstreamerTranscode(e);
+        });
     }
 
     function handlePlayerDestroy() {

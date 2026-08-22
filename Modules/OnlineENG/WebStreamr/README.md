@@ -25,9 +25,13 @@ filters, or other options are selected.
   other non-HTTP values are intentionally skipped.
 - Stremio `behaviorHints.proxyHeaders.request` and `url|Header=value` headers
   are preserved for the normal Lampac stream proxy.
-- The player first opens a Lampac redirect endpoint, so a direct `.mkv` result
-  is not automatically intercepted by the GStreamer HDR-to-SDR plug-in. This
-  keeps the direct/VLC path separate from CPU transcoding.
+- HLS/MP4 results use a normal `/video` redirect and stay direct.
+- MKV results use a `/file.mkv` redirect only while the root `gst.enable`
+  setting is `true`. In that mode the existing `gst.js` plug-in detects the
+  suffix and sends the selected file through GStreamer. When `gst.enable` is
+  `false`, the module uses `/video` instead and VLC can play the source/proxy
+  directly. This makes the MKV path selectable through the existing GStreamer
+  setting instead of forcing every source through CPU transcoding.
 
 ## Configuration
 

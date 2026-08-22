@@ -108,6 +108,9 @@ public sealed class WebStreamrController : BaseOnlineController<ModuleConf>
 
     [HttpGet, Staticache(manually: true)]
     [Route("lite/webstreamr/video")]
+    // The .mkv alias is intentional: the client GStreamer plug-in uses the
+    // visible extension to decide whether an MKV should be transcoded.
+    [Route("lite/webstreamr/file.mkv")]
     public async Task<ActionResult> Video(string u, string h, bool play = true)
     {
         if (await IsRequestBlocked(rch: false, rch_check: false))
@@ -138,9 +141,11 @@ public sealed class WebStreamrController : BaseOnlineController<ModuleConf>
             return OnError("Unable to prepare WebStreamr stream", 502);
         }
 
-        // The player initially receives this Lampac endpoint, not the final
-        // .mkv URL. Therefore the GStreamer auto-interceptor does not turn a
-        // VLC/direct-play stream into a CPU HDR transcode by accident.
+        // The normal /video endpoint keeps HLS/MP4 direct. The /file.mkv
+        // alias intentionally retains the MKV suffix before this redirect, so
+        // gst.js can send a selected MKV through GStreamer when that plug-in
+        // is enabled. With gst disabled, the same endpoint simply redirects
+        // to the source/proxy for VLC/direct playback.
         return RedirectToPlay(output);
     }
 
@@ -486,7 +491,11 @@ public sealed class WebStreamrController : BaseOnlineController<ModuleConf>
 
     string BuildVideoEndpoint(WebStreamItem stream)
     {
-        string endpoint = $"{host}/lite/webstreamr/video?u={HttpUtility.UrlEncode(EncryptQuery(stream.Url))}";
+        string route = IsMkvUrl(stream.Url) && IsGStreamerEnabled()
+            ? "file.mkv"
+            : "video";
+
+        string endpoint = $"{host}/lite/webstreamr/{route}?u={HttpUtility.UrlEncode(EncryptQuery(stream.Url))}";
 
         if (stream.Headers != null && stream.Headers.Count > 0)
         {
@@ -576,6 +585,33 @@ public sealed class WebStreamrController : BaseOnlineController<ModuleConf>
     {
         return Uri.TryCreate(value, UriKind.Absolute, out Uri uri) &&
             uri.Scheme is "http" or "https";
+    }
+
+    static bool IsMkvUrl(string value)
+    {
+        return Uri.TryCreate(value, UriKind.Absolute, out Uri uri) &&
+            uri.AbsolutePath.EndsWith(".mkv", StringComparison.OrdinalIgnoreCase);
+    }
+
+    static bool IsGStreamerEnabled()
+    {
+        try
+        {
+            JToken gst = CoreInit.CurrentConf?["gst"] ?? CoreInit.CurrentConf?["GStreamer"];
+            JToken enable = (gst as JObject)?["enable"];
+
+            if (enable == null)
+                return false;
+
+            if (enable.Type == JTokenType.Boolean)
+                return enable.Value<bool>();
+
+            return bool.TryParse(enable.ToString(), out bool result) && result;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     static string FindQuality(string value)
