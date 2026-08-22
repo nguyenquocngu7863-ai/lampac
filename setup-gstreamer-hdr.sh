@@ -24,6 +24,11 @@ JOBS="$5"
 SOURCE_BASE="$6"
 NATIVE_ROOT="$LAMPAC_ROOT/module/GStreamer/native"
 
+GST_SCANNER=$(find /usr/lib /usr/libexec -type f -name gst-plugin-scanner -perm -111 2>/dev/null | head -n 1 || true)
+if [ -n "$GST_SCANNER" ]; then
+    export GST_PLUGIN_SCANNER="$GST_SCANNER"
+fi
+
 # Release archives do not always contain the native build helpers. Bootstrap
 # only the small, auditable native source tree from the selected repository.
 if [ ! -x "$NATIVE_ROOT/build-linux.sh" ]; then

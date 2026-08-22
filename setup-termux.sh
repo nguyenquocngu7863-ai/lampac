@@ -394,6 +394,11 @@ export PATH="$DOTNET_DIR:$PATH"
 export DOTNET_CLI_TELEMETRY_OPTOUT=1
 export DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
 
+GST_SCANNER=$(find /usr/lib /usr/libexec -type f -name gst-plugin-scanner -perm -111 2>/dev/null | head -n 1 || true)
+if [[ -n "$GST_SCANNER" ]]; then
+    export GST_PLUGIN_SCANNER="$GST_SCANNER"
+fi
+
 cd "$LAMPAC_DIR"
 exec dotnet Core.dll
 LAUNCHER
