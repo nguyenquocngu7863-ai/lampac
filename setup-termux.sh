@@ -531,6 +531,7 @@ main() {
             install_chromium_in_ubuntu
             ensure_runtime_config
             install_custom_modules
+            create_launcher
             ok "Done!"
             ;;
         *)
