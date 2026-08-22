@@ -4,20 +4,24 @@ import android.app.Activity;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Environment;
 import android.util.Base64;
 import android.util.Log;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.ArrayList;
 
 /**
- * MX Sub Bridge
- * Nhận video URL + subtitleMeta từ Lampa → Mở MX Player với sub
- *
- * subtitleMeta: base64url (không padding) của JSON array [{url, label, language}, ...]
- * Ví dụ URL: http://server/stream/video.mkv?subtitleMeta=eyJ1cmwiOiJodHRw...
+ * MX Sub Bridge v2
+ * Nhận video URL + subtitleMeta từ Lampa → Tải sub về máy → Mở MX Player
  */
 public class MainActivity extends Activity {
     private static final String TAG = "MXSubBridge";
@@ -44,21 +48,80 @@ public class MainActivity extends Activity {
 
         // Tách subtitleMeta khỏi URL
         String subtitleMeta = videoUri.getQueryParameter("subtitleMeta");
-
-        // Xóa subtitleMeta khỏi URL gốc (MX Player không cần param này)
         String cleanUrl = removeQueryParam(videoUrl, "subtitleMeta");
 
         // Parse subtitle metadata
         ArrayList<String[]> subs = new ArrayList<>();
         if (subtitleMeta != null && !subtitleMeta.isEmpty()) {
             subs = parseSubtitleMeta(subtitleMeta);
-            Log.d(TAG, "Parsed " + subs.size() + " subtitles from subtitleMeta");
+            Log.d(TAG, "Parsed " + subs.size() + " subtitles");
         }
 
-        // Mở MX Player
-        launchMxPlayer(cleanUrl, title, subs);
+        // Tải sub về máy và mở MX Player trong background
+        final String finalUrl = cleanUrl;
+        final String finalTitle = title;
+        final ArrayList<String[]> finalSubs = subs;
 
-        finish();
+        new Thread(() -> {
+            ArrayList<String[]> localSubs = new ArrayList<>();
+
+            for (String[] sub : finalSubs) {
+                String localPath = downloadSubtitle(sub[0], sub[1]);
+                if (localPath != null) {
+                    localSubs.add(new String[]{localPath, sub[1]});
+                    Log.d(TAG, "Downloaded: " + sub[1] + " -> " + localPath);
+                }
+            }
+
+            // Mở MX Player
+            launchMxPlayer(finalUrl, finalTitle, localSubs);
+
+            runOnUiThread(this::finish);
+        }).start();
+    }
+
+    /**
+     * Tải sub từ URL về máy
+     */
+    private String downloadSubtitle(String subUrl, String label) {
+        try {
+            URL url = new URL(subUrl);
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setConnectTimeout(10000);
+            conn.setReadTimeout(10000);
+
+            if (conn.getResponseCode() != 200) {
+                Log.e(TAG, "Download failed: " + conn.getResponseCode());
+                return null;
+            }
+
+            // Tạo thư mục lưu sub
+            File subDir = new File(getCacheDir(), "subs");
+            if (!subDir.exists()) subDir.mkdirs();
+
+            // Tên file sub
+            String ext = ".srt";
+            if (subUrl.contains(".vtt")) ext = ".vtt";
+            String fileName = "sub_" + System.currentTimeMillis() + ext;
+            File subFile = new File(subDir, fileName);
+
+            // Lưu file
+            FileOutputStream fos = new FileOutputStream(subFile);
+            byte[] buffer = new byte[4096];
+            int bytesRead;
+            while ((bytesRead = conn.getInputStream().read(buffer)) != -1) {
+                fos.write(buffer, 0, bytesRead);
+            }
+            fos.close();
+            conn.disconnect();
+
+            Log.d(TAG, "Saved sub: " + subFile.getAbsolutePath() + " (" + subFile.length() + " bytes)");
+            return subFile.getAbsolutePath();
+
+        } catch (Exception e) {
+            Log.e(TAG, "Download error: " + e.getMessage());
+            return null;
+        }
     }
 
     /**
@@ -67,7 +130,6 @@ public class MainActivity extends Activity {
     private ArrayList<String[]> parseSubtitleMeta(String meta) {
         ArrayList<String[]> subs = new ArrayList<>();
         try {
-            // Thêm padding nếu cần
             String b64 = meta.replace('-', '+').replace('_', '/');
             switch (b64.length() % 4) {
                 case 2: b64 += "=="; break;
@@ -76,27 +138,25 @@ public class MainActivity extends Activity {
 
             byte[] decoded = Base64.decode(b64, Base64.DEFAULT);
             String json = new String(decoded, "UTF-8");
-            Log.d(TAG, "subtitleMeta JSON: " + json);
+            Log.d(TAG, "subtitleMeta: " + json);
 
             JSONArray arr = new JSONArray(json);
             for (int i = 0; i < arr.length(); i++) {
                 JSONObject obj = arr.getJSONObject(i);
                 String url = obj.optString("url", "");
                 String label = obj.optString("label", "Sub " + (i + 1));
-                String lang = obj.optString("language", "vi");
                 if (!url.isEmpty()) {
-                    subs.add(new String[]{url, label, lang});
-                    Log.d(TAG, "Sub: " + label + " -> " + url);
+                    subs.add(new String[]{url, label});
                 }
             }
         } catch (Exception e) {
-            Log.e(TAG, "Parse subtitleMeta error: " + e.getMessage());
+            Log.e(TAG, "Parse error: " + e.getMessage());
         }
         return subs;
     }
 
     /**
-     * Mở MX Player với video + subtitles
+     * Mở MX Player với video + sub local
      */
     private void launchMxPlayer(String videoUrl, String title, ArrayList<String[]> subs) {
         try {
@@ -105,40 +165,36 @@ public class MainActivity extends Activity {
             intent.putExtra(Intent.EXTRA_TITLE, title);
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
 
-            // Thêm subtitles
+            // Thêm sub local
             if (!subs.isEmpty()) {
-                ArrayList<String> subUrls = new ArrayList<>();
+                ArrayList<String> subPaths = new ArrayList<>();
                 ArrayList<String> subNames = new ArrayList<>();
                 for (String[] sub : subs) {
-                    subUrls.add(sub[0]);
+                    subPaths.add(sub[0]);
                     subNames.add(sub[1]);
                 }
-                // MX Player format
-                intent.putExtra("subs", subUrls);
+                intent.putExtra("subs", subPaths);
                 intent.putExtra("subs.name", subNames);
+                Log.d(TAG, "Passing " + subs.size() + " local subs to MX Player");
             }
 
-            // Thử MX Player Pro trước
+            // Thử MX Player Pro
             intent.setPackage(MX_PLAYER_PRO);
             try {
                 startActivity(intent);
-                Log.d(TAG, "Launched MX Player Pro with " + subs.size() + " subs");
+                Log.d(TAG, "Launched MX Player Pro");
                 return;
-            } catch (Exception e) {
-                Log.d(TAG, "MX Player Pro not found");
-            }
+            } catch (Exception e) {}
 
             // MX Player thường
             intent.setPackage(MX_PLAYER);
             try {
                 startActivity(intent);
-                Log.d(TAG, "Launched MX Player with " + subs.size() + " subs");
+                Log.d(TAG, "Launched MX Player");
                 return;
-            } catch (Exception e) {
-                Log.d(TAG, "MX Player not found");
-            }
+            } catch (Exception e) {}
 
-            // Fallback: bất kỳ player nào
+            // Fallback
             intent.setPackage(null);
             startActivity(intent);
             Log.d(TAG, "Launched default player");
@@ -148,9 +204,6 @@ public class MainActivity extends Activity {
         }
     }
 
-    /**
-     * Xóa query param khỏi URL
-     */
     private String removeQueryParam(String url, String param) {
         try {
             Uri uri = Uri.parse(url);
