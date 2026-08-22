@@ -289,7 +289,7 @@ public class KKPhimController : BaseOnlineController
         }
 
         if (season == -1)
-            season = seasons.FirstOrDefault(1);
+            season = (short)seasons.FirstOrDefault(1);
 
         var candidates = detail.episodes
             .Select((server, index) => new
