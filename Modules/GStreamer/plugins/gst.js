@@ -374,6 +374,22 @@
         } catch (error) { }
     }
 
+    function playDirectAfterGstFailure(e, reason) {
+        try {
+            Lampa.Loading.stop();
+            console.log('GStreamer', 'falling back to direct playback', reason || 'unknown error');
+
+            if (e && e.data) {
+                // Prevent this same MKV from re-entering the interceptor. The
+                // next playlist item remains independent and will be tested.
+                e.data.__gstDirect = true;
+                Lampa.Player.play(e.data);
+            }
+        } catch (error) {
+            console.log('GStreamer', 'direct fallback failed', error);
+        }
+    }
+
     function startGstreamerTranscode(e) {
         if (e.data.url.indexOf('/gst/') != -1 || e.data.url.indexOf('.m3u8') != -1)
             return;
@@ -392,13 +408,20 @@
             network.timeout(90000);
 
             network.native(account('{localhost}/gst/add?linkencode=' + encodeURIComponent(Lampa.Base64.encode(src))), function (response) {
-                Lampa.Loading.stop();
-
-                var json = typeof response === 'string' ? JSON.parse(response) : response;
-                if (!json || !json.id || !json.hls) {
-                    Lampa.Noty.show('Не удалось запустить транскодинг');
+                var json;
+                try {
+                    json = typeof response === 'string' ? JSON.parse(response) : response;
+                } catch (error) {
+                    playDirectAfterGstFailure(e, 'invalid /gst/add response');
                     return;
                 }
+
+                if (!json || !json.id || !json.hls) {
+                    playDirectAfterGstFailure(e, 'GStreamer rejected this source');
+                    return;
+                }
+
+                Lampa.Loading.stop();
 
                 var probe = objectField(json, 'probe');
                 var tracks = probe && Array.isArray(objectField(probe, 'tracks'))
@@ -479,8 +502,7 @@
                     }
                 });
             }, function (error) {
-                Lampa.Loading.stop();
-                Lampa.Noty.show('Не удалось запустить транскодинг');
+                playDirectAfterGstFailure(e, 'GStreamer request failed');
             });
         }, 10);
 
