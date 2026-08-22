@@ -50,11 +50,23 @@ public class MainActivity extends Activity {
         String subtitleMeta = videoUri.getQueryParameter("subtitleMeta");
         String cleanUrl = removeQueryParam(videoUrl, "subtitleMeta");
 
+        // DEBUG: hiện Toast
+        android.widget.Toast.makeText(this, 
+            "subtitleMeta: " + (subtitleMeta != null ? subtitleMeta.substring(0, Math.min(50, subtitleMeta.length())) + "..." : "NULL"), 
+            android.widget.Toast.LENGTH_LONG).show();
+
         // Parse subtitle metadata
         ArrayList<String[]> subs = new ArrayList<>();
         if (subtitleMeta != null && !subtitleMeta.isEmpty()) {
             subs = parseSubtitleMeta(subtitleMeta);
             Log.d(TAG, "Parsed " + subs.size() + " subtitles");
+            
+            // DEBUG: hiện Toast
+            android.widget.Toast.makeText(this, 
+                "Parsed: " + subs.size() + " subs", 
+                android.widget.Toast.LENGTH_LONG).show();
+        } else {
+            android.widget.Toast.makeText(this, "NO subtitleMeta!", android.widget.Toast.LENGTH_LONG).show();
         }
 
         // Tải sub về máy và mở MX Player trong background
@@ -74,6 +86,13 @@ public class MainActivity extends Activity {
             }
 
             // Mở MX Player
+            final int subCount = localSubs.size();
+            runOnUiThread(() -> {
+                android.widget.Toast.makeText(this, 
+                    "Opening MX Player with " + subCount + " subs", 
+                    android.widget.Toast.LENGTH_LONG).show();
+            });
+            
             launchMxPlayer(finalUrl, finalTitle, localSubs);
 
             runOnUiThread(this::finish);
@@ -85,13 +104,18 @@ public class MainActivity extends Activity {
      */
     private String downloadSubtitle(String subUrl, String label) {
         try {
+            Log.d(TAG, "Downloading: " + subUrl);
+            
             URL url = new URL(subUrl);
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setConnectTimeout(10000);
             conn.setReadTimeout(10000);
 
-            if (conn.getResponseCode() != 200) {
-                Log.e(TAG, "Download failed: " + conn.getResponseCode());
+            int code = conn.getResponseCode();
+            Log.d(TAG, "Response: " + code);
+            
+            if (code != 200) {
+                Log.e(TAG, "Download failed: " + code);
                 return null;
             }
 
