@@ -1,0 +1,88 @@
+using Microsoft.AspNetCore.Http;
+using Shared;
+using Shared.Models.Base;
+using Shared.Models.Events;
+using Shared.Models.Module;
+using Shared.Models.Module.Interfaces;
+using Shared.Models.Online.Settings;
+using Shared.Services;
+using System.Collections.Generic;
+
+namespace KKPhim;
+
+/// <summary>
+/// KKPhim is a separate module copied from the HDVB integration. The original
+/// HDVB module is intentionally left unchanged.
+/// </summary>
+public class ModInit : IModuleLoaded, IModuleOnline, IModuleOnlineSpider
+{
+    public static OnlinesSettings conf;
+
+    public List<ModuleOnlineItem> Invoke(
+        HttpContext httpContext,
+        RequestModel requestInfo,
+        string host,
+        OnlineEventsModel args)
+    {
+        return new List<ModuleOnlineItem>
+        {
+            new(conf, plugin: "kkphim", name: "KKPhim")
+        };
+    }
+
+    public List<ModuleOnlineSpiderItem> Spider(
+        HttpContext httpContext,
+        RequestModel requestInfo,
+        string host,
+        OnlineSpiderModel args)
+    {
+        return new List<ModuleOnlineSpiderItem>
+        {
+            new(conf, "kkphim-search")
+        };
+    }
+
+    public void Loaded(InitspaceModel baseconf)
+    {
+        CoreInit.conf.online.with_search.Add("kkphim");
+
+        updateConf();
+        EventListener.UpdateInitFile += updateConf;
+        EventListener.OnlineApiQuality += onlineApiQuality;
+    }
+
+    public void Dispose()
+    {
+        EventListener.UpdateInitFile -= updateConf;
+        EventListener.OnlineApiQuality -= onlineApiQuality;
+    }
+
+    private static void updateConf()
+    {
+        conf = ModuleInvoke.Init(
+            "KKPhim",
+            new OnlinesSettings(
+                "KKPhim",
+                "https://phimapi.com",
+                streamproxy: true,
+                rch_access: "apk,cors",
+                stream_access: "apk,cors,web"
+            )
+            {
+                displayindex = 575,
+                headers = HeadersModel.Init(Http.defaultFullHeaders).ToDictionary(),
+                headers_stream = HeadersModel.Init(
+                    Http.defaultFullHeaders,
+                    ("accept", "*/*"),
+                    ("origin", "https://phimapi.com"),
+                    ("referer", "https://phimapi.com/")
+                ).ToDictionary()
+            }
+        );
+    }
+
+    private static string onlineApiQuality(EventOnlineApiQuality e)
+    {
+        return e.balanser == "kkphim" ? " ~ 1080p" : null;
+    }
+}

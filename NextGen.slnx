@@ -121,6 +121,9 @@
     <Project Path="Modules/OnlineRUS/Zetflix/Zetflix.csproj" />
     <Project Path="Modules/OnlineRUS/ZetflixDB/ZetflixDB.csproj" />
   </Folder>
+  <Folder Name="/Modules/OnlineVN/">
+    <Project Path="Modules/OnlineVN/KKPhim/KKPhim.csproj" />
+  </Folder>
   <Folder Name="/Modules/OnlineUKR/">
     <Project Path="Modules/OnlineUKR/Ashdi/Ashdi.csproj" />
     <Project Path="Modules/OnlineUKR/BamBoo/BamBoo.csproj" />
