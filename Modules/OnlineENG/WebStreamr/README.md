@@ -21,9 +21,11 @@ filters, or other options are selected.
 - Movies query `stream/movie/{id}.json`; every returned file stays visible as
   its own Lampac card. The source filter buttons above the list can narrow the
   cards to one provider without hiding same-resolution releases.
-- Series seasons and episodes are listed through the configured TMDB API (with
-  a Cinemeta metadata fallback), then episodes query
-  `stream/series/{id}:{season}:{episode}.json`.
+- Stremio asks for one series episode at a time. The bridge first builds the
+  Lampa season/episode UI from the TMDB API (with a Cinemeta metadata fallback
+  when only an IMDb id is available), then queries
+  `stream/series/{id}:{season}:{episode}.json` only after the user selects an
+  episode.
 - Only HTTP(S) `stream.url` values are accepted. `magnet:`, `externalUrl`, and
   other non-HTTP values are intentionally skipped.
 - Stremio `behaviorHints.proxyHeaders.request` and `url|Header=value` headers

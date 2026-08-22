@@ -175,8 +175,8 @@ public sealed class WebStreamrController : BaseOnlineController<ModuleConf>
     )
     {
         long tvId = ResolveTmdbId(addonId, tmdb_id);
-        if (tvId <= 0)
-            return OnError("Series season list requires a TMDB id", 400);
+        if (tvId <= 0 && !IsImdbId(addonId))
+            return OnError("Series season list requires a TMDB or IMDb id", 400);
 
         List<(int Number, int EpisodeCount)> seasons = await GetSeasonRows(addonId, tvId);
         if (seasons.Count == 0)
@@ -205,8 +205,8 @@ public sealed class WebStreamrController : BaseOnlineController<ModuleConf>
     )
     {
         long tvId = ResolveTmdbId(addonId, tmdb_id);
-        if (tvId <= 0 || season <= 0)
-            return OnError("Series episode list requires a TMDB id and season", 400);
+        if ((tvId <= 0 && !IsImdbId(addonId)) || season <= 0)
+            return OnError("Series episode list requires a TMDB or IMDb id and season", 400);
 
         List<(int Number, string Name)> episodes = await GetEpisodeRows(addonId, tvId, season);
         if (episodes.Count == 0)
@@ -282,7 +282,9 @@ public sealed class WebStreamrController : BaseOnlineController<ModuleConf>
     {
         var result = new List<(int Number, int EpisodeCount)>();
 
-        JObject tmdb = await GetTmdb($"tv/{tvId}");
+        JObject tmdb = tvId > 0
+            ? await GetTmdb($"tv/{tvId}")
+            : null;
         if (tmdb?["seasons"] is JArray seasons)
         {
             foreach (JToken token in seasons)
@@ -331,7 +333,9 @@ public sealed class WebStreamrController : BaseOnlineController<ModuleConf>
     {
         var result = new List<(int Number, string Name)>();
 
-        JObject tmdb = await GetTmdb($"tv/{tvId}/season/{season}");
+        JObject tmdb = tvId > 0
+            ? await GetTmdb($"tv/{tvId}/season/{season}")
+            : null;
         if (tmdb?["episodes"] is JArray episodes)
         {
             foreach (JToken token in episodes)
@@ -734,6 +738,12 @@ public sealed class WebStreamrController : BaseOnlineController<ModuleConf>
         }
 
         return null;
+    }
+
+    static bool IsImdbId(string value)
+    {
+        return !string.IsNullOrWhiteSpace(value) &&
+            value.StartsWith("tt", StringComparison.OrdinalIgnoreCase);
     }
 
     static long ResolveTmdbId(string addonId, long tmdbId)
