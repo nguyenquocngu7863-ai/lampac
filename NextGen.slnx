@@ -81,6 +81,7 @@
     <Project Path="Modules/OnlineENG/Videasy/Videasy.csproj" />
     <Project Path="Modules/OnlineENG/VidLink/VidLink.csproj" />
     <Project Path="Modules/OnlineENG/VidSrc/VidSrc.csproj" />
+    <Project Path="Modules/OnlineENG/WebStreamr/WebStreamr.csproj" />
   </Folder>
   <Folder Name="/Modules/OnlineGEO/">
     <Project Path="Modules/OnlineGEO/AsiaGe/AsiaGe.csproj" />

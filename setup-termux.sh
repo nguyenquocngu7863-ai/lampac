@@ -353,6 +353,13 @@ install_custom_modules() {
             curl -fSL --retry 3 \"\$kkbase/\$file\" -o \"\$kktarget/\$file\"
         done
 
+        webbase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineENG/WebStreamr\"
+        webtarget=/root/lampac/module/OnlineENG/WebStreamr
+        mkdir -p \"\$webtarget\"
+        for file in Controller.cs Model.cs ModInit.cs manifest.json; do
+            curl -fSL --retry 3 \"\$webbase/\$file\" -o \"\$webtarget/\$file\"
+        done
+
         gstbase=\"${CUSTOM_SOURCE_BASE}/Modules/GStreamer\"
         gsttarget=/root/lampac/module/GStreamer
         mkdir -p \"\$gsttarget/Services\" \"\$gsttarget/plugins\"
@@ -371,7 +378,7 @@ install_custom_modules() {
         fi
     "
 
-    ok "KKPhim, GStreamer and AdminPanel files installed"
+    ok "KKPhim, WebStreamr, GStreamer and AdminPanel files installed"
 }
 
 # ─── Step 4: Create launcher scripts (inside Ubuntu!) ────────────────────────
@@ -497,6 +504,13 @@ case "${1:-}" in
             mkdir -p "$target"
             for file in Controller.cs Model.cs ModInit.cs manifest.json; do
                 curl -fSL --retry 3 "$base/$file" -o "$target/$file"
+            done
+
+            webbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a028cf-lampac/Modules/OnlineENG/WebStreamr"
+            webtarget=/root/lampac/module/OnlineENG/WebStreamr
+            mkdir -p "$webtarget"
+            for file in Controller.cs Model.cs ModInit.cs manifest.json; do
+                curl -fSL --retry 3 "$webbase/$file" -o "$webtarget/$file"
             done
 
             gstbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a028cf-lampac/Modules/GStreamer"
