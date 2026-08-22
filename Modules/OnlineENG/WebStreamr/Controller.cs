@@ -525,9 +525,7 @@ public sealed class WebStreamrController : BaseOnlineController<ModuleConf>
         // into the quality selector instead of rendering 20 duplicate cards.
         foreach (WebStreamItem stream in streams)
         {
-            string name = Compact(stream.Name);
-            if (string.IsNullOrWhiteSpace(name))
-                name = "WebStreamr";
+            string name = SourceGroupName(stream);
 
             if (!groupIndexes.TryGetValue(name, out int groupIndex))
             {
@@ -767,17 +765,26 @@ public sealed class WebStreamrController : BaseOnlineController<ModuleConf>
             : null;
     }
 
-    static string BuildLabel(WebStreamItem stream)
+    static string SourceGroupName(WebStreamItem stream)
     {
         string name = Compact(stream.Name);
-        string quality = stream.Quality;
-
         if (string.IsNullOrWhiteSpace(name))
-            name = "WebStreamr";
+            return "WebStreamr";
 
-        return string.IsNullOrWhiteSpace(quality)
-            ? name
-            : $"{name} • {quality}";
+        Match quality = Regex.Match(
+            name,
+            @"(?<!\d)(2160|1440|1080|720|576|480|360|240|144)p?(?!\d)",
+            RegexOptions.IgnoreCase
+        );
+
+        if (!quality.Success)
+            quality = Regex.Match(name, @"\b(?:4k|uhd)\b", RegexOptions.IgnoreCase);
+
+        if (quality.Success)
+            name = name[..quality.Index];
+
+        name = Regex.Replace(name, @"\s*[•|·\-]+\s*$", "").Trim();
+        return string.IsNullOrWhiteSpace(name) ? "WebStreamr" : name;
     }
 
     static string Compact(string value)
