@@ -18,9 +18,12 @@ filters, or other options are selected.
 ## Behavior
 
 - The source accepts IMDb ids (`tt...`) and TMDB ids (`tmdb:...`).
-- Movies query `stream/movie/{id}.json`.
-- Series seasons and episodes are listed through the configured TMDB API, then
-  episodes query `stream/series/{id}:{season}:{episode}.json`.
+- Movies query `stream/movie/{id}.json`; every returned file stays visible as
+  its own Lampac card. The source filter buttons above the list can narrow the
+  cards to one provider without hiding same-resolution releases.
+- Series seasons and episodes are listed through the configured TMDB API (with
+  a Cinemeta metadata fallback), then episodes query
+  `stream/series/{id}:{season}:{episode}.json`.
 - Only HTTP(S) `stream.url` values are accepted. `magnet:`, `externalUrl`, and
   other non-HTTP values are intentionally skipped.
 - Stremio `behaviorHints.proxyHeaders.request` and `url|Header=value` headers

@@ -31,6 +31,7 @@ public sealed class WebStreamrController : BaseOnlineController<ModuleConf>
         string original_title,
         string original_language,
         string source,
+        string stream_source,
         int serial = 0,
         short s = -1,
         short e = -1,
@@ -80,9 +81,18 @@ public sealed class WebStreamrController : BaseOnlineController<ModuleConf>
             ? $"{addonId}:{s}:{e}"
             : addonId;
 
-        List<WebStreamItem> streams = await GetStreams(type, requestId);
-        if (streams.Count == 0)
+        List<WebStreamItem> allStreams = await GetStreams(type, requestId);
+        if (allStreams.Count == 0)
             return OnError("No direct HTTP streams returned by WebStreamr", 502);
+
+        List<WebStreamItem> streams = string.IsNullOrWhiteSpace(stream_source)
+            ? allStreams
+            : allStreams
+                .Where(i => SourceGroupName(i).Equals(stream_source, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+        if (streams.Count == 0)
+            return OnError("No streams for the selected WebStreamr source", 404);
 
         if (isSeries)
         {
@@ -103,7 +113,15 @@ public sealed class WebStreamrController : BaseOnlineController<ModuleConf>
         if (play)
             return RedirectToPlay(BuildVideoEndpoint(streams[0]));
 
-        return ContentTpl(BuildMovieTemplate(streams, title, original_title));
+        VoiceTpl sourceFilter = BuildSourceFilter(
+            allStreams,
+            addonId,
+            title,
+            original_title,
+            stream_source
+        );
+
+        return ContentTpl(BuildMovieTemplate(streams, title, original_title, sourceFilter));
     }
 
     [HttpGet, Staticache(manually: true)]
@@ -513,57 +531,84 @@ public sealed class WebStreamrController : BaseOnlineController<ModuleConf>
     MovieTpl BuildMovieTemplate(
         List<WebStreamItem> streams,
         string title,
-        string original_title
+        string original_title,
+        VoiceTpl sourceFilter
     )
     {
-        var tpl = new MovieTpl(title, original_title, streams.Count);
-        var groups = new List<(string Name, List<WebStreamItem> Streams)>();
-        var groupIndexes = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var tpl = new MovieTpl(title, original_title, sourceFilter, streams.Count);
+        var labels = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
-        // One Stremio response may contain many quality links from the same
-        // extractor. Keep one Lampac card per source and put its resolutions
-        // into the quality selector instead of rendering 20 duplicate cards.
+        // Keep every returned file as a card. The source buttons above the
+        // list provide grouping/filtering, while same-resolution releases are
+        // not collapsed into a single quality entry.
         foreach (WebStreamItem stream in streams)
         {
-            string name = SourceGroupName(stream);
+            string source = SourceGroupName(stream);
+            string label = source;
+            if (!string.IsNullOrWhiteSpace(stream.Quality))
+                label += $" • {stream.Quality}";
 
-            if (!groupIndexes.TryGetValue(name, out int groupIndex))
-            {
-                groupIndex = groups.Count;
-                groupIndexes[name] = groupIndex;
-                groups.Add((name, new List<WebStreamItem>()));
-            }
-
-            groups[groupIndex].Streams.Add(stream);
-        }
-
-        foreach (var group in groups)
-        {
-            var quality = new StreamQualityTpl(group.Streams.Count);
-            var qualityKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-            foreach (WebStreamItem stream in group.Streams)
-            {
-                string key = stream.Quality ?? "auto";
-                if (!qualityKeys.Add(key))
-                    key = $"{key} ({qualityKeys.Count + 1})";
-
-                quality.Append(BuildVideoEndpoint(stream), key);
-            }
-
-            StreamQualityDto first = quality.Firts();
-            if (first == null)
-                continue;
+            labels.TryGetValue(label, out int count);
+            count++;
+            labels[label] = count;
+            if (count > 1)
+                label += $" #{count}";
 
             tpl.Append(
-                group.Name,
-                first.link,
+                label,
+                BuildVideoEndpoint(stream),
                 "play",
-                streamquality: quality
+                quality: stream.Quality,
+                details: Compact(stream.Title)
             );
         }
 
         return tpl;
+    }
+
+    VoiceTpl BuildSourceFilter(
+        List<WebStreamItem> streams,
+        string addonId,
+        string title,
+        string original_title,
+        string selectedSource
+    )
+    {
+        var groups = new List<string>();
+        var known = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (WebStreamItem stream in streams)
+        {
+            string source = SourceGroupName(stream);
+            if (known.Add(source))
+                groups.Add(source);
+        }
+
+        if (groups.Count == 0)
+            return null;
+
+        var filter = new VoiceTpl(groups.Count);
+        for (int index = 0; index < groups.Count; index++)
+        {
+            string source = groups[index];
+            bool active = string.IsNullOrWhiteSpace(selectedSource)
+                ? index == 0
+                : source.Equals(selectedSource, StringComparison.OrdinalIgnoreCase);
+
+            filter.Append(
+                source,
+                active,
+                BuildIndexUrl(
+                    addonId,
+                    title,
+                    original_title,
+                    serial: 0,
+                    streamSource: source
+                )
+            );
+        }
+
+        return filter;
     }
 
     (string json, string firstLink) BuildVideoResponse(
@@ -635,6 +680,7 @@ public sealed class WebStreamrController : BaseOnlineController<ModuleConf>
         int serial,
         int season = -1,
         int episode = -1,
+        string streamSource = null,
         bool play = false
     )
     {
@@ -648,6 +694,8 @@ public sealed class WebStreamrController : BaseOnlineController<ModuleConf>
             query += $"&s={season}";
         if (episode > 0)
             query += $"&e={episode}";
+        if (!string.IsNullOrWhiteSpace(streamSource))
+            query += $"&stream_source={HttpUtility.UrlEncode(streamSource)}";
         if (play)
             query += "&play=true";
 
