@@ -359,9 +359,19 @@ install_custom_modules() {
         for file in Controller.cs Services/HdrToneMappingBackend.cs Services/GStask.Pipeline.cs Services/GStask.Producer.cs plugins/gst.js; do
             curl -fSL --retry 3 \"\$gstbase/\$file\" -o \"\$gsttarget/\$file\"
         done
+
+        # The AdminPanel is protected by the Lampac root password. If it is
+        # already installed/enabled, keep its Vietnamese UI in sync too.
+        admintarget=/root/lampac/module/AdminPanel
+        if [ -d \"\$admintarget\" ]; then
+            adminbase=\"${CUSTOM_SOURCE_BASE}/Modules/AdminPanel\"
+            for file in auth.html index.html ConfigSectionGroups.cs; do
+                curl -fSL --retry 3 \"\$adminbase/\$file\" -o \"\$admintarget/\$file\"
+            done
+        fi
     "
 
-    ok "KKPhim and GStreamer module files installed"
+    ok "KKPhim, GStreamer and AdminPanel files installed"
 }
 
 # ─── Step 4: Create launcher scripts (inside Ubuntu!) ────────────────────────
@@ -495,6 +505,14 @@ case "${1:-}" in
             for file in Controller.cs Services/HdrToneMappingBackend.cs Services/GStask.Pipeline.cs Services/GStask.Producer.cs plugins/gst.js; do
                 curl -fSL --retry 3 "$gstbase/$file" -o "$gsttarget/$file"
             done
+
+            admintarget=/root/lampac/module/AdminPanel
+            if [ -d "$admintarget" ]; then
+                adminbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a028cf-lampac/Modules/AdminPanel"
+                for file in auth.html index.html ConfigSectionGroups.cs; do
+                    curl -fSL --retry 3 "$adminbase/$file" -o "$admintarget/$file"
+                done
+            fi
             echo "Update complete!"
         '
         ;;

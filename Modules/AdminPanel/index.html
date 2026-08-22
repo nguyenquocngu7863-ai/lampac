@@ -1,11 +1,11 @@
 <!DOCTYPE html>
-<html lang="ru" data-theme="dark">
+<html lang="vi" data-theme="dark">
 
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0c0e12" id="metaTheme">
-  <title>Admin — Lampac</title>
+  <title>Quản trị — Lampac</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link
@@ -1822,7 +1822,7 @@
     <div class="app-chrome" id="appChrome">
       <!-- TOPBAR -->
       <header class="topbar">
-        <button type="button" class="btn-icon mobile-nav-toggle" id="navToggle" title="Навигация">
+        <button type="button" class="btn-icon mobile-nav-toggle" id="navToggle" title="Điều hướng">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
             <line x1="3" y1="6" x2="21" y2="6" />
             <line x1="3" y1="12" x2="21" y2="12" />
@@ -1842,10 +1842,10 @@
 
         <div class="topbar-divider"></div>
 
-        <nav class="topbar-app-nav" aria-label="Lampac pages">
-          <a href="/adminpanel" aria-current="page">Admin</a>
-          <a href="/stats">Stats</a>
-          <a href="/weblog">Weblog</a>
+        <nav class="topbar-app-nav" aria-label="Các trang Lampac">
+          <a href="/adminpanel" aria-current="page">Quản trị</a>
+          <a href="/stats">Thống kê</a>
+          <a href="/weblog">Nhật ký</a>
           <a href="/telemetry">Telemetry</a>
         </nav>
 
@@ -1858,7 +1858,7 @@
               <rect x="3" y="14" width="7" height="7" />
               <rect x="14" y="14" width="7" height="7" />
             </svg>
-            Группы
+            Nhóm
           </button>
           <button type="button" class="tab" data-panel="simple" role="tab">
             <svg style="width:12px;height:12px;margin-right:4px;vertical-align:-1px" viewBox="0 0 24 24" fill="none"
@@ -1866,7 +1866,7 @@
               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
               <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
             </svg>
-            Редактор
+            Trình chỉnh sửa
           </button>
           <button type="button" class="tab" data-panel="init" role="tab">
             <svg style="width:12px;height:12px;margin-right:4px;vertical-align:-1px" viewBox="0 0 24 24" fill="none"
@@ -1899,38 +1899,38 @@
         <div class="topbar-spacer"></div>
 
         <div class="topbar-actions">
-          <div class="unsaved-dot" id="unsavedDot" title="Есть несохранённые изменения"></div>
-          <button type="button" class="btn-icon" id="themeBtn" title="Сменить тему (Alt+T)">
+          <div class="unsaved-dot" id="unsavedDot" title="Có thay đổi chưa lưu"></div>
+          <button type="button" class="btn-icon" id="themeBtn" title="Đổi giao diện (Alt+T)">
             <svg id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
               stroke-linecap="round">
               <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
             </svg>
           </button>
-          <button type="button" class="btn btn-ghost btn-sm" id="reloadBtn" title="Перезагрузить (Alt+R)">
+          <button type="button" class="btn btn-ghost btn-sm" id="reloadBtn" title="Tải lại (Alt+R)">
             <svg style="width:13px;height:13px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
               stroke-linecap="round">
               <polyline points="23 4 23 10 17 10" />
               <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
             </svg>
-            <span class="btn-label">Обновить</span>
+            <span class="btn-label">Làm mới</span>
           </button>
           <button type="button" class="btn btn-primary btn-sm" id="saveInitBtn"
-            title="Сохранить: init.conf или users.json на активной вкладке (Ctrl+S)">
+            title="Lưu init.conf hoặc users.json ở tab hiện tại (Ctrl+S)">
             <svg style="width:13px;height:13px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
               stroke-linecap="round">
               <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
               <polyline points="17 21 17 13 7 13 7 21" />
               <polyline points="7 3 7 8 15 8" />
             </svg>
-            <span class="btn-label">Сохранить</span>
+            <span class="btn-label">Lưu</span>
           </button>
         </div>
       </header>
 
       <!-- MOBILE TABS (visible < 900px) -->
       <div class="mobile-tabs" id="mobileTabs">
-        <button type="button" class="tab active" data-panel="sections">Группы</button>
-        <button type="button" class="tab" data-panel="simple">Редактор</button>
+        <button type="button" class="tab active" data-panel="sections">Nhóm</button>
+        <button type="button" class="tab" data-panel="simple">Trình chỉnh sửa</button>
         <button type="button" class="tab" data-panel="init">init.conf</button>
         <button type="button" class="tab" data-panel="current">current</button>
         <button type="button" class="tab" data-panel="users">users</button>
@@ -1939,20 +1939,20 @@
 
     <div class="layout">
       <!-- SIDEBAR -->
-      <aside class="sidebar" id="sidebar" aria-label="Разделы конфигурации">
-        <nav class="sidebar-app-nav" aria-label="Другие страницы Lampac">
-          <a href="/adminpanel">Admin</a>
-          <a href="/stats">Stats</a>
-          <a href="/weblog">Weblog</a>
+      <aside class="sidebar" id="sidebar" aria-label="Các phần cấu hình">
+        <nav class="sidebar-app-nav" aria-label="Các trang Lampac khác">
+          <a href="/adminpanel">Quản trị</a>
+          <a href="/stats">Thống kê</a>
+          <a href="/weblog">Nhật ký</a>
           <a href="/telemetry">Telemetry</a>
         </nav>
         <div id="sidebarJsonNav">
           <div class="nav-section">
-            <div class="nav-h">Группы</div>
+            <div class="nav-h">Nhóm</div>
             <div id="navGroups"></div>
           </div>
           <div class="nav-section">
-            <div class="nav-h">Быстрый переход</div>
+            <div class="nav-h">Truy cập nhanh</div>
             <button type="button" class="nav-btn" data-jump="sections-top">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                 <rect x="3" y="3" width="7" height="7" />
@@ -1960,7 +1960,7 @@
                 <rect x="3" y="14" width="7" height="7" />
                 <rect x="14" y="14" width="7" height="7" />
               </svg>
-              Все группы
+              Tất cả nhóm
             </button>
             <button type="button" class="nav-btn" data-jump="grp-other">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
@@ -1968,18 +1968,18 @@
                 <circle cx="19" cy="12" r="1" />
                 <circle cx="5" cy="12" r="1" />
               </svg>
-              Прочее
+              Khác
             </button>
           </div>
         </div>
 
         <div id="sidebarSimpleNav" hidden>
           <div class="nav-section">
-            <div class="nav-h">Каталог групп</div>
+            <div class="nav-h">Danh mục nhóm</div>
             <div id="navCatalog"></div>
           </div>
           <div class="nav-section">
-            <div class="nav-h">Быстрый переход</div>
+            <div class="nav-h">Truy cập nhanh</div>
             <button type="button" class="nav-btn" data-jump-simple="simple-top">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                 <rect x="3" y="3" width="7" height="7" />
@@ -1987,7 +1987,7 @@
                 <rect x="3" y="14" width="7" height="7" />
                 <rect x="14" y="14" width="7" height="7" />
               </svg>
-              Все группы
+              Tất cả nhóm
             </button>
             <button type="button" class="nav-btn" data-jump-simple="simple-grp-other">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
@@ -1995,16 +1995,16 @@
                 <circle cx="19" cy="12" r="1" />
                 <circle cx="5" cy="12" r="1" />
               </svg>
-              Прочее
+              Khác
             </button>
           </div>
         </div>
 
         <div class="sidebar-footer">
           <div class="sidebar-hint" style="margin-top:var(--sp-1)">
-            <span class="kbd">Ctrl+S</span> сохранить &nbsp;
-            <span class="kbd">Alt+R</span> обновить &nbsp;
-            <span class="kbd">Alt+T</span> тема
+            <span class="kbd">Ctrl+S</span> lưu &nbsp;
+            <span class="kbd">Alt+R</span> làm mới &nbsp;
+            <span class="kbd">Alt+T</span> giao diện
           </div>
         </div>
       </aside>
@@ -2018,9 +2018,9 @@
         <div class="panel active" id="panel-sections" data-panel="sections">
           <div class="panel-header">
             <div class="panel-header-info">
-              <h2>Группы (JSON)</h2>
-              <p>Ключи из <code>current.conf</code>, сгруппированные по секциям. Правки сохраняются в
-                <strong>init.conf</strong>. Удалить ключ: используйте <code>null</code> или редактируйте весь файл.
+              <h2>Nhóm (JSON)</h2>
+              <p>Các khóa từ <code>current.conf</code>, được nhóm theo từng phần. Thay đổi được lưu vào
+                <strong>init.conf</strong>. Để xóa khóa, dùng <code>null</code> hoặc sửa toàn bộ tệp.
               </p>
             </div>
           </div>
@@ -2029,7 +2029,7 @@
               <circle cx="11" cy="11" r="8" />
               <line x1="21" y1="21" x2="16.65" y2="16.65" />
             </svg>
-            <input type="search" class="filter-input" id="keyFilter" placeholder="Поиск по ключу..." autocomplete="off"
+            <input type="search" class="filter-input" id="keyFilter" placeholder="Tìm theo khóa..." autocomplete="off"
               spellcheck="false">
             <button class="search-clear" id="keyFilterClear" type="button">&times;</button>
             <div class="filter-count" id="keyFilterCount"></div>
@@ -2045,9 +2045,9 @@
         <div class="panel" id="panel-simple" data-panel="simple">
           <div class="panel-header">
             <div class="panel-header-info">
-              <h2>Простой редактор</h2>
-              <p>Поля формы по структуре <code>current.conf</code> + <code>init.conf</code>. Значения берутся из init,
-                подсказки — из current. Массивы и вложенные объекты — JSON-блоки.</p>
+              <h2>Trình chỉnh sửa đơn giản</h2>
+              <p>Các trường biểu mẫu theo cấu trúc <code>current.conf</code> + <code>init.conf</code>. Giá trị lấy từ init,
+                gợi ý lấy từ current. Mảng và object lồng nhau hiển thị dưới dạng JSON.</p>
             </div>
           </div>
           <div class="search-bar">
@@ -2055,7 +2055,7 @@
               <circle cx="11" cy="11" r="8" />
               <line x1="21" y1="21" x2="16.65" y2="16.65" />
             </svg>
-            <input type="search" class="filter-input" id="keyFilterSimple" placeholder="Поиск по ключу..."
+            <input type="search" class="filter-input" id="keyFilterSimple" placeholder="Tìm theo khóa..."
               autocomplete="off" spellcheck="false">
             <button class="search-clear" id="keyFilterSimpleClear" type="button">&times;</button>
             <div class="filter-count" id="keyFilterSimpleCount"></div>
@@ -2076,7 +2076,7 @@
                   <polyline points="16 18 22 12 16 6" />
                   <polyline points="8 6 2 12 8 18" />
                 </svg>
-                Форматировать
+                Định dạng
               </button>
               <button type="button" class="btn btn-ghost btn-sm" id="copyInitBtn">
                 <svg style="width:13px;height:13px" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -2084,11 +2084,11 @@
                   <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
                   <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
                 </svg>
-                Копировать
+                Sao chép
               </button>
               <span class="editor-toolbar .hint-text"
                 style="font-size:var(--text-xs);color:var(--text-faint);margin-left:auto">
-                <span class="kbd">Ctrl+S</span> сохранить
+                <span class="kbd">Ctrl+S</span> lưu
               </span>
             </div>
             <textarea class="code" id="initRaw" spellcheck="false" autocomplete="off"></textarea>
@@ -2099,9 +2099,9 @@
         <div class="panel" id="panel-current" data-panel="current">
           <div class="editor-wrap">
             <div class="editor-toolbar">
-              <span class="badge badge-warn" style="font-size:var(--text-xs)">Только просмотр</span>
-              <span style="font-size:var(--text-xs);color:var(--text-faint)">Полный снимок после слияния дефолтов и
-                модулей</span>
+              <span class="badge badge-warn" style="font-size:var(--text-xs)">Chỉ xem</span>
+              <span style="font-size:var(--text-xs);color:var(--text-faint)">Bản đầy đủ sau khi ghép giá trị mặc định và
+                module</span>
               <span style="flex:1"></span>
               <button type="button" class="btn btn-ghost btn-sm" id="copyCurrentBtn">
                 <svg style="width:13px;height:13px" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -2109,7 +2109,7 @@
                   <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
                   <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
                 </svg>
-                Копировать
+                Sao chép
               </button>
             </div>
             <textarea class="code" id="currentRaw" spellcheck="false" readonly></textarea>
@@ -2126,7 +2126,7 @@
                   <polyline points="16 18 22 12 16 6" />
                   <polyline points="8 6 2 12 8 18" />
                 </svg>
-                Форматировать
+                Định dạng
               </button>
               <button type="button" class="btn btn-ghost btn-sm" id="copyUsersBtn">
                 <svg style="width:13px;height:13px" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -2134,7 +2134,7 @@
                   <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
                   <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
                 </svg>
-                Копировать
+                Sao chép
               </button>
               <button type="button" class="btn btn-primary btn-sm" id="saveUsersBtn">
                 <svg style="width:13px;height:13px" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -2143,32 +2143,32 @@
                   <polyline points="17 21 17 13 7 13 7 21" />
                   <polyline points="7 3 7 8 15 8" />
                 </svg>
-                Сохранить users.json
+                Lưu users.json
               </button>
               <span class="hint-text" style="font-size:var(--text-xs);color:var(--text-faint);margin-left:auto">
-                <span class="kbd">Ctrl+S</span> на этой вкладке тоже сохраняет users.json
+                <span class="kbd">Ctrl+S</span> ở tab này cũng lưu users.json
               </span>
             </div>
             <div class="users-editor-subrow">
-              <span style="font-size:var(--text-xs);font-weight:600;color:var(--text-muted)">Режим</span>
-              <div class="tabs users-inner-tabs" role="tablist" aria-label="Редактор users.json">
-                <button type="button" class="tab active" data-users-view="form" role="tab">Форма</button>
+              <span style="font-size:var(--text-xs);font-weight:600;color:var(--text-muted)">Chế độ</span>
+              <div class="tabs users-inner-tabs" role="tablist" aria-label="Trình chỉnh sửa users.json">
+                <button type="button" class="tab active" data-users-view="form" role="tab">Biểu mẫu</button>
                 <button type="button" class="tab" data-users-view="json" role="tab">JSON</button>
               </div>
             </div>
             <div id="usersEditorForm" class="users-editor-form-panel">
               <div class="users-form-toolbar">
-                <button type="button" class="btn btn-primary btn-sm" id="usersAddBtn">+ Пользователь</button>
-                <button type="button" class="btn btn-ghost btn-sm" id="usersFormFromJsonBtn">Обновить из JSON</button>
+                <button type="button" class="btn btn-primary btn-sm" id="usersAddBtn">+ Người dùng</button>
+                <button type="button" class="btn btn-ghost btn-sm" id="usersFormFromJsonBtn">Cập nhật từ JSON</button>
               </div>
               <div class="users-split">
-                <aside class="users-list-aside" aria-label="Список учётных записей">
-                  <div class="users-list-h">Пользователи</div>
+                <aside class="users-list-aside" aria-label="Danh sách tài khoản">
+                  <div class="users-list-h">Người dùng</div>
                   <div id="usersListMount" class="users-list-mount" aria-live="polite"></div>
                 </aside>
                 <div class="users-detail-aside">
-                  <p id="usersDetailEmpty" class="users-detail-empty" hidden>Выберите запись в списке слева или нажмите
-                    «+ Пользователь».</p>
+                  <p id="usersDetailEmpty" class="users-detail-empty" hidden>Chọn một mục ở danh sách bên trái hoặc nhấn
+                    «+ Người dùng».</p>
                   <div id="usersDetailMount" class="users-detail-mount"></div>
                 </div>
               </div>
@@ -2185,11 +2185,11 @@
   <!-- CONFIRM DIALOG -->
   <div class="dialog-overlay hidden" id="confirmDialog">
     <div class="dialog">
-      <h3 id="confirmTitle">Подтверждение</h3>
-      <p id="confirmMsg">Вы уверены?</p>
+      <h3 id="confirmTitle">Xác nhận</h3>
+      <p id="confirmMsg">Bạn chắc chứ?</p>
       <div class="dialog-actions">
-        <button type="button" class="btn btn-ghost btn-sm" id="confirmCancel">Отмена</button>
-        <button type="button" class="btn btn-primary btn-sm" id="confirmOk">Подтвердить</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="confirmCancel">Hủy</button>
+        <button type="button" class="btn btn-primary btn-sm" id="confirmOk">Xác nhận</button>
       </div>
     </div>
   </div>
@@ -2357,7 +2357,7 @@
         ]);
         if (!ri.ok || !rc.ok) {
           if (ri.status === 404 || rc.status === 404)
-            throw new Error('Нет доступа (установите cookie на /adminpanel/auth)');
+            throw new Error('Không có quyền truy cập (hãy đăng nhập tại /adminpanel/auth)');
           throw new Error('load ' + ri.status + ' / ' + rc.status);
         }
         initText = await ri.text();
@@ -2372,7 +2372,7 @@
         const ru = await api('/adminpanel/api/users-json');
         if (!ru.ok) {
           if (ru.status === 404)
-            throw new Error('Нет доступа (установите cookie на /adminpanel/auth)');
+            throw new Error('Không có quyền truy cập (hãy đăng nhập tại /adminpanel/auth)');
           throw new Error('users-json ' + ru.status);
         }
         const txt = await ru.text();
@@ -2438,7 +2438,7 @@
           throw new Error('JSON: ' + e.message);
         }
         if (!Array.isArray(parsed))
-          throw new Error('Корень должен быть JSON-массивом');
+          throw new Error('Gốc phải là một mảng JSON');
         return parsed.map(usersNormalizeFromJson);
       }
 
@@ -2446,18 +2446,18 @@
         return (
           '<div class="user-card">' +
           '  <div class="user-card-head">' +
-          '    <span class="user-card-title">Параметры записи</span>' +
-          '    <button type="button" class="btn btn-danger btn-sm uf-remove" title="Удалить пользователя из списка">Удалить</button>' +
+          '    <span class="user-card-title">Thông tin mục</span>' +
+          '    <button type="button" class="btn btn-danger btn-sm uf-remove" title="Xóa người dùng khỏi danh sách">Xóa</button>' +
           '  </div>' +
-          '  <div class="simple-row"><label>id <span style="color:var(--err)">*</span></label><div><input type="text" class="uf-id" autocomplete="off" spellcheck="false" placeholder="основной UID или логин" /></div></div>' +
-          '  <div class="simple-row"><label>ids</label><div><textarea class="uf-ids simple-json" spellcheck="false" placeholder="дополнительные UID — по одному в строку или через запятую"></textarea></div></div>' +
+          '  <div class="simple-row"><label>id <span style="color:var(--err)">*</span></label><div><input type="text" class="uf-id" autocomplete="off" spellcheck="false" placeholder="UID chính hoặc tên đăng nhập" /></div></div>' +
+          '  <div class="simple-row"><label>ids</label><div><textarea class="uf-ids simple-json" spellcheck="false" placeholder="UID bổ sung — mỗi dòng một UID hoặc ngăn cách bằng dấu phẩy"></textarea></div></div>' +
           '  <div class="simple-row"><label>expires</label><div><input type="text" class="uf-expires" autocomplete="off" spellcheck="false" placeholder="ISO 8601" /></div></div>' +
           '  <div class="simple-row"><label>group</label><div><input type="number" class="uf-group" step="1" /></div></div>' +
-          '  <div class="simple-row"><label>ban</label><div class="simple-check"><input type="checkbox" class="uf-ban" /> <span style="font-size:var(--text-xs);color:var(--text-muted)">заблокирован</span></div></div>' +
-          '  <div class="simple-row"><label>ban_msg</label><div><input type="text" class="uf-ban_msg" autocomplete="off" spellcheck="false" placeholder="текст при бане" /></div></div>' +
+          '  <div class="simple-row"><label>ban</label><div class="simple-check"><input type="checkbox" class="uf-ban" /> <span style="font-size:var(--text-xs);color:var(--text-muted)">bị khóa</span></div></div>' +
+          '  <div class="simple-row"><label>ban_msg</label><div><input type="text" class="uf-ban_msg" autocomplete="off" spellcheck="false" placeholder="nội dung khi bị khóa" /></div></div>' +
           '  <div class="simple-row"><label>comment</label><div><input type="text" class="uf-comment" autocomplete="off" spellcheck="false" /></div></div>' +
-          '  <div class="simple-row"><label>IsPasswd</label><div class="simple-check"><input type="checkbox" class="uf-ispasswd" /> <span style="font-size:var(--text-xs);color:var(--text-muted)">метка «вход по паролю» (TelegramAuth / accs)</span></div></div>' +
-          '  <div class="simple-row" style="display:block"><label style="display:block;margin-bottom:var(--sp-2)">params (JSON-объект)</label><textarea class="uf-params simple-json" spellcheck="false" placeholder="{ }"></textarea></div>' +
+          '  <div class="simple-row"><label>IsPasswd</label><div class="simple-check"><input type="checkbox" class="uf-ispasswd" /> <span style="font-size:var(--text-xs);color:var(--text-muted)">đánh dấu “đăng nhập bằng mật khẩu” (TelegramAuth / accs)</span></div></div>' +
+          '  <div class="simple-row" style="display:block"><label style="display:block;margin-bottom:var(--sp-2)">params (object JSON)</label><textarea class="uf-params simple-json" spellcheck="false" placeholder="{ }"></textarea></div>' +
           '</div>'
         );
       }
@@ -2487,7 +2487,7 @@
             throw new Error('params: ' + e.message);
           }
           if (typeof params !== 'object' || params === null || Array.isArray(params))
-            throw new Error('params должен быть JSON-объектом');
+            throw new Error('params phải là một object JSON');
         }
         let expires = (card.querySelector('.uf-expires')?.value || '').trim();
         if (!expires) expires = usersDefaultExpires();
@@ -2545,11 +2545,11 @@
         detMount.innerHTML = '';
 
         if (!usersFormData.length) {
-          listMount.innerHTML = '<p class="users-list-empty">Нет записей. «+ Пользователь» или «Обновить из JSON».</p>';
+          listMount.innerHTML = '<p class="users-list-empty">Chưa có mục nào. Nhấn «+ Người dùng» hoặc «Cập nhật từ JSON».</p>';
           usersSelectedIndex = -1;
           if (emptyEl) {
             emptyEl.hidden = false;
-            emptyEl.textContent = 'Список пуст. Добавьте пользователя или загрузите JSON.';
+            emptyEl.textContent = 'Danh sách trống. Hãy thêm người dùng hoặc tải JSON.';
           }
           return;
         }
@@ -2569,7 +2569,7 @@
           if (idStr) idSpan.textContent = idStr;
           else {
             idSpan.classList.add('users-list-id-muted');
-            idSpan.textContent = '(без id)';
+            idSpan.textContent = '(không có id)';
           }
           const meta = document.createElement('span');
           meta.className = 'users-list-meta';
@@ -2628,7 +2628,7 @@
             out.push(obj);
           });
           if (skipped.length)
-            showToast('Записи без id не попадают в JSON: строки списка ' + skipped.join(', '), 'warn');
+            showToast('Các mục không có id sẽ không được đưa vào JSON: dòng ' + skipped.join(', '), 'warn');
           $('#usersRaw').value = JSON.stringify(out, null, 2);
           usersFormData = out.map(usersNormalizeFromJson);
           if (usersSelectedIndex >= usersFormData.length)
@@ -2735,7 +2735,7 @@
           const t = el.value.trim();
           if (t === '') return null;
           const n = Number(t);
-          if (Number.isNaN(n)) throw new Error('Не число');
+          if (Number.isNaN(n)) throw new Error('Không phải số');
           return n;
         }
         const t = el.value;
@@ -2813,7 +2813,7 @@
           det.style.display = vis ? '' : 'none';
         });
         if (q.length > 0) {
-          countEl.textContent = 'Найдено: ' + visible + ' из ' + total;
+          countEl.textContent = 'Tìm thấy: ' + visible + ' trên ' + total;
           countEl.classList.add('visible');
         } else {
           countEl.classList.remove('visible');
@@ -2839,7 +2839,7 @@
           det.style.display = vis ? '' : 'none';
         });
         if (q.length > 0) {
-          countEl.textContent = 'Найдено: ' + visible + ' из ' + total;
+          countEl.textContent = 'Tìm thấy: ' + visible + ' trên ' + total;
           countEl.classList.add('visible');
         } else {
           countEl.classList.remove('visible');
@@ -2926,7 +2926,7 @@
         const inInit = initObj && key in initObj;
         const badge = document.createElement('span');
         badge.className = 'badge' + (inInit ? ' badge-accent' : '');
-        badge.textContent = inInit ? 'в init' : 'только current';
+        badge.textContent = inInit ? 'trong init' : 'chỉ trong current';
         head.appendChild(badge);
         const actions = document.createElement('div');
         actions.className = 'key-actions';
@@ -2937,12 +2937,12 @@
         bCopy.addEventListener('click', () => {
           const ta = wrap.querySelector('.ta-init');
           ta.value = stringifyKey(currentObj, key) || 'null';
-          showToast('Значение из current скопировано', 'ok');
+          showToast('Đã sao chép giá trị từ current', 'ok');
         });
         const bSave = document.createElement('button');
         bSave.type = 'button';
         bSave.className = 'btn btn-sm';
-        bSave.innerHTML = '<svg style="width:12px;height:12px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg> Сохранить';
+        bSave.innerHTML = '<svg style="width:12px;height:12px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg> Lưu';
         bSave.addEventListener('click', () => saveSection(key, wrap));
         actions.appendChild(bCopy);
         actions.appendChild(bSave);
@@ -2953,10 +2953,10 @@
         dual.className = 'dual';
         const colInit = document.createElement('div');
         colInit.className = 'dual-col';
-        colInit.innerHTML = '<h4><span class="dot dot-init"></span> init.conf (редактор)</h4>';
+        colInit.innerHTML = '<h4><span class="dot dot-init"></span> init.conf (chỉnh sửa)</h4>';
         const colCur = document.createElement('div');
         colCur.className = 'dual-col';
-        colCur.innerHTML = '<h4><span class="dot dot-current"></span> current.conf (просмотр)</h4>';
+        colCur.innerHTML = '<h4><span class="dot dot-current"></span> current.conf (chỉ xem)</h4>';
         const taInit = document.createElement('textarea');
         taInit.className = 'code code-sm ta-init';
         taInit.spellcheck = false;
@@ -2965,7 +2965,7 @@
         taCur.className = 'code code-sm';
         taCur.readOnly = true;
         taCur.style.opacity = '0.65';
-        taCur.value = stringifyKey(currentObj, key) || '// нет в current';
+        taCur.value = stringifyKey(currentObj, key) || '// không có trong current';
         colInit.appendChild(taInit);
         colCur.appendChild(taCur);
         dual.appendChild(colInit);
@@ -3070,7 +3070,7 @@
         if (spec.current !== undefined) {
           const h = document.createElement('div');
           h.className = 'simple-cur-hint';
-          h.textContent = 'Образец из current: ' + formatHintValue(spec.current);
+          h.textContent = 'Mẫu từ current: ' + formatHintValue(spec.current);
           wrap.appendChild(h);
         }
         return wrap;
@@ -3100,7 +3100,7 @@
         if (!any) {
           const p = document.createElement('p');
           p.className = 'simple-missing';
-          p.textContent = 'Нет полей для отображения.';
+          p.textContent = 'Không có trường để hiển thị.';
           container.appendChild(p);
         }
       }
@@ -3110,7 +3110,7 @@
         if (spec.type === 'missing') {
           const p = document.createElement('p');
           p.className = 'simple-missing';
-          p.textContent = 'Секции нет в current и init. Добавьте ключ на вкладке «Группы (JSON)».';
+          p.textContent = 'Không tìm thấy phần này trong current và init. Hãy thêm khóa ở tab «Nhóm (JSON)».';
           mount.appendChild(p);
           return;
         }
@@ -3118,7 +3118,7 @@
           const row = document.createElement('div');
           row.className = 'simple-row';
           const lab = document.createElement('label');
-          lab.textContent = 'Значение («' + sectionKey + '»)';
+          lab.textContent = 'Giá trị (“' + sectionKey + '»)';
           const cell = document.createElement('div');
           cell.appendChild(makeScalarControl(spec, true));
           if (spec.current !== undefined) {
@@ -3134,7 +3134,7 @@
         }
         if (spec.type === 'json') {
           const lab = document.createElement('label');
-          lab.textContent = 'Секция (JSON)';
+          lab.textContent = 'Phần (JSON)';
           lab.style.display = 'block';
           lab.style.marginBottom = 'var(--sp-2)';
           lab.style.fontSize = 'var(--text-xs)';
@@ -3150,7 +3150,7 @@
           if (spec.current !== undefined) {
             const h = document.createElement('div');
             h.className = 'simple-cur-hint';
-            h.textContent = 'Образец из current: ' + formatHintValue(spec.current);
+            h.textContent = 'Mẫu từ current: ' + formatHintValue(spec.current);
             mount.appendChild(h);
           }
           return;
@@ -3178,14 +3178,14 @@
         const inCur = currentObj && key in currentObj;
         const badge = document.createElement('span');
         badge.className = 'badge' + (inInit ? ' badge-accent' : '');
-        badge.textContent = inInit ? 'в init' : (inCur ? 'только current' : 'нет');
+        badge.textContent = inInit ? 'trong init' : (inCur ? 'chỉ trong current' : 'không có');
         sum.appendChild(badge);
         const actions = document.createElement('div');
         actions.className = 'key-actions';
         const bSave = document.createElement('button');
         bSave.type = 'button';
         bSave.className = 'btn btn-sm';
-        bSave.innerHTML = '<svg style="width:12px;height:12px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg> Сохранить';
+        bSave.innerHTML = '<svg style="width:12px;height:12px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg> Lưu';
         bSave.addEventListener('click', (e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -3211,10 +3211,10 @@
 
       function collectSimpleSection(wrap) {
         const mount = wrap.querySelector('.simple-form-mount');
-        if (!mount) throw new Error('Нет формы');
+        if (!mount) throw new Error('Không có biểu mẫu');
         const hasControl = mount.querySelector('[data-form-path], textarea[data-form-root-json="1"], [data-form-root-scalar="1"]');
         if (mount.querySelector('.simple-missing') && !hasControl)
-          throw new Error('Секции нет в current/init — добавьте ключ на вкладке «Группы (JSON)»');
+          throw new Error('Không tìm thấy phần này trong current/init — hãy thêm khóa ở tab «Nhóm (JSON)»');
         const rootJ = mount.querySelector('textarea[data-form-root-json="1"]');
         if (rootJ) {
           const t = rootJ.value.trim();
@@ -3224,7 +3224,7 @@
         const rootS = mount.querySelector('[data-form-root-scalar="1"]');
         if (rootS) {
           const inner = rootS.tagName === 'INPUT' ? rootS : rootS.querySelector('input[type="checkbox"]');
-          if (!inner) throw new Error('Некорректная разметка формы');
+          if (!inner) throw new Error('Cấu trúc biểu mẫu không hợp lệ');
           return parseScalarInput(inner);
         }
         const obj = {};
@@ -3245,7 +3245,7 @@
             if (t === '' && kind === 'num') return;
             if (kind === 'num') {
               const n = Number(t);
-              if (Number.isNaN(n)) throw new Error('Не число: ' + path);
+              if (Number.isNaN(n)) throw new Error('Không phải số: ' + path);
               val = n;
             } else val = t;
           }
@@ -3263,7 +3263,7 @@
           body = raw === '' ? '{}' : raw;
           JSON.parse(body);
         } catch (e) {
-          showToast('JSON ошибка в «' + key + '»: ' + e.message, 'err');
+          showToast('Lỗi JSON ở “' + key + '»: ' + e.message, 'err');
           return;
         }
         const res = await api('/adminpanel/api/init/section/' + encodeURIComponent(key), {
@@ -3272,12 +3272,12 @@
           body: body
         });
         if (!res.ok) {
-          let err = 'Ошибка ' + res.status;
+          let err = 'Lỗi ' + res.status;
           try { const j = await res.json(); if (j.error) err = j.error + (j.detail ? ': ' + j.detail : ''); } catch (e) { }
           showToast(err, 'err');
           return;
         }
-        showToast('«' + key + '» сохранено в init.conf', 'ok');
+        showToast('«' + key + '» đã lưu vào init.conf', 'ok');
         await refresh();
       }
 
@@ -3291,7 +3291,7 @@
         }
         const raw = JSON.stringify(body);
         try { JSON.parse(raw); } catch (e) {
-          showToast('JSON ошибка: ' + e.message, 'err');
+          showToast('Lỗi JSON: ' + e.message, 'err');
           return;
         }
         const res = await api('/adminpanel/api/init/section/' + encodeURIComponent(key), {
@@ -3300,22 +3300,22 @@
           body: raw
         });
         if (!res.ok) {
-          let err = 'Ошибка ' + res.status;
+          let err = 'Lỗi ' + res.status;
           try { const j = await res.json(); if (j.error) err = j.error + (j.detail ? ': ' + j.detail : ''); } catch (e) { }
           showToast(err, 'err');
           return;
         }
-        showToast('«' + key + '» сохранено (простой редактор)', 'ok');
+        showToast('«' + key + '» đã lưu (trình chỉnh sửa đơn giản)', 'ok');
         await refresh();
       }
 
       async function saveFullInit() {
         const raw = $('#initRaw').value;
         try { JSON.parse(raw); } catch (e) {
-          showToast('JSON ошибка: ' + e.message, 'err');
+          showToast('Lỗi JSON: ' + e.message, 'err');
           return;
         }
-        const ok = await showConfirm('Сохранить init.conf?', 'Весь файл init.conf будет перезаписан. Это действие нельзя отменить.');
+        const ok = await showConfirm('Lưu init.conf?', 'Toàn bộ tệp init.conf sẽ bị ghi đè. Không thể hoàn tác thao tác này.');
         if (!ok) return;
 
         const res = await api('/adminpanel/api/init', {
@@ -3324,12 +3324,12 @@
           body: raw
         });
         if (!res.ok) {
-          let err = 'Ошибка ' + res.status;
+          let err = 'Lỗi ' + res.status;
           try { const j = await res.json(); if (j.error) err = j.error + (j.detail ? ': ' + j.detail : ''); } catch (e) { }
           showToast(err, 'err');
           return;
         }
-        showToast('init.conf сохранён', 'ok');
+        showToast('init.conf đã được lưu', 'ok');
         await refresh();
       }
 
@@ -3341,14 +3341,14 @@
         try {
           parsed = JSON.parse(raw === '' ? '[]' : raw);
         } catch (e) {
-          showToast('JSON ошибка: ' + e.message, 'err');
+          showToast('Lỗi JSON: ' + e.message, 'err');
           return;
         }
         if (!Array.isArray(parsed)) {
-          showToast('Корень должен быть JSON-массивом', 'err');
+          showToast('Gốc phải là một mảng JSON', 'err');
           return;
         }
-        const ok = await showConfirm('Сохранить users.json?', 'Файл users.json в рабочей директории будет перезаписан.');
+        const ok = await showConfirm('Lưu users.json?', 'Tệp users.json trong thư mục làm việc sẽ bị ghi đè.');
         if (!ok) return;
 
         const body = JSON.stringify(parsed);
@@ -3358,12 +3358,12 @@
           body: body
         });
         if (!res.ok) {
-          let err = 'Ошибка ' + res.status;
+          let err = 'Lỗi ' + res.status;
           try { const j = await res.json(); if (j.error) err = j.error + (j.detail ? ': ' + j.detail : ''); } catch (e) { }
           showToast(err, 'err');
           return;
         }
-        showToast('users.json сохранён', 'ok');
+        showToast('users.json đã được lưu', 'ok');
         await refresh();
       }
 
@@ -3376,9 +3376,9 @@
       /* ── Copy to clipboard ── */
       function copyToClipboard(text, label) {
         navigator.clipboard.writeText(text).then(() => {
-          showToast(label + ' скопировано', 'ok');
+          showToast(label + ' đã sao chép', 'ok');
         }).catch(() => {
-          showToast('Не удалось скопировать', 'err');
+          showToast('Không thể sao chép', 'err');
         });
       }
 
@@ -3407,9 +3407,9 @@
       $('#formatInitBtn').addEventListener('click', () => {
         try {
           $('#initRaw').value = JSON.stringify(JSON.parse($('#initRaw').value), null, 2);
-          showToast('JSON отформатирован', 'ok');
+          showToast('JSON đã được định dạng', 'ok');
         } catch (e) {
-          showToast('Формат: ' + e.message, 'err');
+          showToast('Định dạng: ' + e.message, 'err');
         }
       });
 
@@ -3419,9 +3419,9 @@
           const t = $('#usersRaw').value.trim();
           $('#usersRaw').value = JSON.stringify(JSON.parse(t === '' ? '[]' : t), null, 2);
           if (usersEditorView === 'form') usersRefreshFormFromTextarea();
-          showToast('JSON отформатирован', 'ok');
+          showToast('JSON đã được định dạng', 'ok');
         } catch (e) {
-          showToast('Формат: ' + e.message, 'err');
+          showToast('Định dạng: ' + e.message, 'err');
         }
       });
 
@@ -3452,7 +3452,7 @@
 
       $('#usersFormFromJsonBtn').addEventListener('click', () => {
         usersRefreshFormFromTextarea();
-        showToast('Форма обновлена из JSON', 'ok');
+        showToast('Biểu mẫu đã được cập nhật từ JSON', 'ok');
       });
 
       // Tabs (только верхняя полоса и мобильные — не внутренние вкладки users.json)

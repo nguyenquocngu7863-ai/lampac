@@ -11,48 +11,48 @@ public static class ConfigSectionGroups
 
     public static readonly GroupSpec[] Catalog =
     {
-        new("runtime", "Рантайм", "Поля снимка; обычно приходят из current, в init не обязательны.",
+        new("runtime", "Hệ thống", "Các trường hệ thống; thường lấy từ current, không bắt buộc trong init.",
             new[] { "guid", "freeDiskSpace" }),
-        new("listen", "HTTP-сервер (listen)", "Адрес, порт, схема, таймауты, compression.",
+        new("listen", "Máy chủ HTTP (listen)", "Địa chỉ, cổng, giao thức, timeout, compression.",
             new[] { "listen" }),
-        new("security", "Безопасность и доступ", "WAF, accsdb, список модулей и middleware ядра.",
+        new("security", "Bảo mật và quyền truy cập", "WAF, accsdb, danh sách module và middleware lõi.",
             new[] { "WAF", "accsdb", "BaseModule" }),
-        new("network", "Сеть и прокси", "Прокси исходящих запросов, CORS, доверенные сети.",
+        new("network", "Mạng và proxy", "Proxy cho request đi ra, CORS, mạng tin cậy.",
             new[] { "serverproxy", "proxy", "globalproxy", "corsehost", "KnownProxies" }),
 
-        new("pools", "Пулы и служебное", "Буферы, apn, kit.",
+        new("pools", "Pool và hệ thống", "Buffer, APN, kit.",
             new[] { "pool", "apn", "kit" }),
-        new("cache-gc", "Кэш и память", "Гибридный кэш, Staticache, настройки GC.",
+        new("cache-gc", "Cache và bộ nhớ", "Hybrid cache, Staticache, cấu hình GC.",
             new[] { "cache", "Staticache", "GC" }),
-        new("media", "Изображения и постеры", "Движок картинок, Poster API.",
+        new("media", "Ảnh và poster", "Engine hình ảnh, Poster API.",
             new[] { "imagelibrary", "posterApi" }),
 
-        new("realtime", "WebSocket и RCH", "Нативные сокеты и удалённый хаб.",
+        new("realtime", "WebSocket và RCH", "Socket native và hub từ xa.",
             new[] { "WebSocket", "rch" }),
-        new("browser", "Браузеры (Playwright)", "Chromium / Firefox для автоматизации.",
+        new("browser", "Trình duyệt (Playwright)", "Chromium / Firefox dùng cho tự động hóa.",
             new[] { "chromium", "firefox" }),
-        new("diagnostics", "Логи и диагностика", "Serilog, обработчик исключений, openstat.",
+        new("diagnostics", "Log và chẩn đoán", "Serilog, xử lý exception, openstat.",
             new[] { "serilog", "useDeveloperExceptionPage", "exceptionHandlerLogTarget", "exceptionHandlerLogFile", "watcherInit", "openstat" }),
 
-        new("app", "Приложение и оболочка", "online, cub, sisi, реклама, дефолты, omdb.",
+        new("app", "Ứng dụng và giao diện", "online, cub, sisi, quảng cáo, mặc định, omdb.",
             new[] { "online", "cub", "sisi", "vast", "disableEng", "defaultOn", "omdbapi_key", "overrideResponse" }),
-        new("client", "Клиент Lampa и API", "Оболочка Lampa, cookie, PidTor, TMDB.",
-            new[] { "tmdb", "LampaWeb", "Cookie", "PidTor" }),
-        new("modules", "Модули расширения", "Секции подключаемых модулей в корне конфига.",
+        new("client", "Client Lampa và API", "Giao diện Lampa, cookie, PidTor, TMDB.",
+            new[] { "tmdb", "LampaWeb", "Cookie", "PidTor", "gst" }),
+        new("modules", "Module mở rộng", "Các section module ở cấp cao nhất của config.",
             new[] { "Catalog", "DLNA", "JacRed", "Sync", "TimeCode", "TorrServer", "Tracks", "transcoding", "TmdbProxy", "CubProxy", "WebLog" }),
 
-        new("src-anime", "Источники · аниме", "Онлайн-балансеры аниме и смежные (в т.ч. Kodik).",
+        new("src-anime", "Nguồn · anime", "Nguồn anime online và liên quan (gồm Kodik).",
             new[] { "AniLiberty", "AniLibria", "Animebesst", "AnimeGo", "AnimeLib", "AnimeON", "Animevost", "AniMedia", "Dreamerscast", "Kodik", "Mikai", "MoonAnime" }),
-        new("src-embed", "Источники · встраиваемые плееры", "Embed и агрегаторы сторонних плееров.",
+        new("src-embed", "Nguồn · player nhúng", "Embed và aggregator player bên thứ ba.",
             new[] { "Autoembed", "Hydraflix", "MovPI", "Playembed", "Rgshows", "Smashystream", "Twoembed", "VidLink", "Videasy", "Vidsrc" }),
-        new("src-vod", "Источники · VOD и CDN", "Кино, сериалы, региональные и CDN-провайдеры.",
+        new("src-vod", "Nguồn · VOD và CDN", "Phim, series, nguồn khu vực và CDN.",
             new[]
             {
                 "Alloha", "Ashdi", "AsiaGe", "BamBoo", "CDNvideohub", "Collaps", "Eneyida", "FanCDN", "Filmix", "FilmixPartner", "FilmixTV", "FlixCDN",
                 "Geosaitebi", "GetsTV", "HDVB", "HdvbUA", "IptvOnline", "iRemux", "Kinobase", "Kinoflix", "Kinogo", "Kinotochka", "Kinoukr", "KinoPub",
                 "LeProduction", "Mirage", "Rezka", "RezkaPrem", "RutubeMovie", "Tortuga", "UaKino", "VideoDB", "Videoseed", "VeoVeo", "Vibix", "VkMovie", "VoKino"
             }),
-        new("src-adult", "Источники · 18+", "SISI / взрослые сайты.",
+        new("src-adult", "Nguồn · 18+", "SISI / trang người lớn.",
             new[]
             {
                 "BongaCams", "Chaturbate", "Ebalovo", "Eporner", "HQporner", "PornHub", "PornHubPremium", "Porntrex", "Runetki", "Spankbang", "Tizam",
@@ -86,7 +86,7 @@ public static class ConfigSectionGroups
 
         var orphans = inFile.Where(k => !assigned.Contains(k)).OrderBy(k => k, StringComparer.Ordinal).ToArray();
         if (orphans.Length > 0)
-            result.Add(new GroupDto("other", "Прочее", "Ключи из current.conf, не попавшие в каталог (новые модули).", orphans));
+            result.Add(new GroupDto("other", "Khác", "Các khóa từ current.conf chưa có trong danh mục (module mới).", orphans));
 
         return result;
     }
