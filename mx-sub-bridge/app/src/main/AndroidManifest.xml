@@ -3,18 +3,19 @@
     package="com.mxsub.bridge">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
 
     <application
         android:allowBackup="true"
-        android:label="MX Sub Bridge"
-        android:icon="@android:drawable/ic_media_play"
+        android:label="Sub Downloader"
+        android:icon="@android:drawable/ic_menu_save"
         android:theme="@android:style/Theme.DeviceDefault.Light">
 
-        <!-- Launcher: hiện trong danh sách app -->
+        <!-- Launcher -->
         <activity
             android:name=".LauncherActivity"
             android:exported="true"
-            android:label="MX Sub Bridge">
+            android:label="Sub Downloader">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -30,14 +31,6 @@
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="video/*" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="http" />
-                <data android:scheme="https" />
                 <data android:mimeType="video/*" />
             </intent-filter>
         </activity>

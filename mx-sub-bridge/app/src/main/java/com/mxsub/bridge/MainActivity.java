@@ -18,13 +18,11 @@ import java.net.URL;
 import java.util.ArrayList;
 
 /**
- * MX Sub Bridge v3
- * Nhận subtitleMeta → Tải TẤT CẢ sub về máy → Mở MX Player
+ * Sub Downloader v4
+ * Chỉ tải sub về Downloads/subs/ - không mở player
  */
 public class MainActivity extends Activity {
-    private static final String TAG = "MXSubBridge";
-    private static final String MX_PLAYER = "com.mxtech.videoplayer.ad";
-    private static final String MX_PLAYER_PRO = "com.mxtech.videoplayer.pro";
+    private static final String TAG = "SubDownloader";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -38,52 +36,36 @@ public class MainActivity extends Activity {
         }
 
         Uri videoUri = intent.getData();
-        String videoUrl = videoUri.toString();
-        String title = intent.getStringExtra(Intent.EXTRA_TITLE);
-        if (title == null) title = "Video";
-
-        // Tách subtitleMeta
         String subtitleMeta = videoUri.getQueryParameter("subtitleMeta");
-        String cleanUrl = removeQueryParam(videoUrl, "subtitleMeta");
 
-        // Parse subtitle metadata
-        ArrayList<String[]> subs = new ArrayList<>();
-        if (subtitleMeta != null && !subtitleMeta.isEmpty()) {
-            subs = parseSubtitleMeta(subtitleMeta);
+        if (subtitleMeta == null || subtitleMeta.isEmpty()) {
+            toast("Không tìm thấy phụ đề");
+            finish();
+            return;
         }
 
+        ArrayList<String[]> subs = parseSubtitleMeta(subtitleMeta);
+
         if (subs.isEmpty()) {
-            toast("Không tìm thấy phụ đề");
-            launchMxPlayer(cleanUrl, title, new ArrayList<>());
+            toast("Không parse được phụ đề");
             finish();
             return;
         }
 
         toast("Đang tải " + subs.size() + " phụ đề...");
 
-        // Tải TẤT CẢ sub về máy
-        final String finalUrl = cleanUrl;
-        final String finalTitle = title;
-        final ArrayList<String[]> finalSubs = subs;
-
+        // Tải sub trong background
         new Thread(() -> {
-            ArrayList<String[]> localSubs = new ArrayList<>();
             int downloaded = 0;
-
-            for (String[] sub : finalSubs) {
-                String localPath = downloadSubtitle(sub[0], sub[1]);
-                if (localPath != null) {
-                    localSubs.add(new String[]{localPath, sub[1]});
+            for (String[] sub : subs) {
+                if (downloadSubtitle(sub[0], sub[1])) {
                     downloaded++;
                 }
             }
 
-            final int finalDownloaded = downloaded;
+            final int count = downloaded;
             runOnUiThread(() -> {
-                toast("Đã tải " + finalDownloaded + "/" + finalSubs.size() + " phụ đề");
-                
-                // Mở MX Player
-                launchMxPlayer(finalUrl, finalTitle, localSubs);
+                toast("Đã tải " + count + "/" + subs.size() + " phụ đề vào Downloads/subs/");
                 finish();
             });
         }).start();
@@ -93,10 +75,7 @@ public class MainActivity extends Activity {
         android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_LONG).show();
     }
 
-    /**
-     * Tải sub về máy
-     */
-    private String downloadSubtitle(String subUrl, String label) {
+    private boolean downloadSubtitle(String subUrl, String label) {
         try {
             URL url = new URL(subUrl);
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
@@ -104,45 +83,37 @@ public class MainActivity extends Activity {
             conn.setReadTimeout(15000);
 
             if (conn.getResponseCode() != 200) {
-                Log.e(TAG, "Download failed: " + conn.getResponseCode() + " for " + subUrl);
-                return null;
+                Log.e(TAG, "Failed: " + conn.getResponseCode());
+                return false;
             }
 
-            // Lưu vào Downloads/subs/
             File subDir = new File(Environment.getExternalStoragePublicDirectory(
                 Environment.DIRECTORY_DOWNLOADS), "subs");
             if (!subDir.exists()) subDir.mkdirs();
 
-            // Tên file: label + timestamp
-            String ext = ".srt";
-            if (subUrl.contains(".vtt")) ext = ".vtt";
+            String ext = subUrl.contains(".vtt") ? ".vtt" : ".srt";
             String safeName = label.replaceAll("[^a-zA-Z0-9\\-_ ]", "").trim();
             if (safeName.length() > 50) safeName = safeName.substring(0, 50);
-            String fileName = safeName + "_" + System.currentTimeMillis() + ext;
-            File subFile = new File(subDir, fileName);
+            File subFile = new File(subDir, safeName + ext);
 
-            // Lưu file
             FileOutputStream fos = new FileOutputStream(subFile);
-            byte[] buffer = new byte[8192];
-            int bytesRead;
-            while ((bytesRead = conn.getInputStream().read(buffer)) != -1) {
-                fos.write(buffer, 0, bytesRead);
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = conn.getInputStream().read(buf)) != -1) {
+                fos.write(buf, 0, n);
             }
             fos.close();
             conn.disconnect();
 
             Log.d(TAG, "Saved: " + subFile.getAbsolutePath());
-            return subFile.getAbsolutePath();
+            return true;
 
         } catch (Exception e) {
-            Log.e(TAG, "Download error: " + e.getMessage());
-            return null;
+            Log.e(TAG, "Error: " + e.getMessage());
+            return false;
         }
     }
 
-    /**
-     * Parse subtitleMeta (base64url JSON)
-     */
     private ArrayList<String[]> parseSubtitleMeta(String meta) {
         ArrayList<String[]> subs = new ArrayList<>();
         try {
@@ -154,7 +125,6 @@ public class MainActivity extends Activity {
 
             byte[] decoded = Base64.decode(b64, Base64.DEFAULT);
             String json = new String(decoded, "UTF-8");
-            Log.d(TAG, "JSON: " + json);
 
             JSONArray arr = new JSONArray(json);
             for (int i = 0; i < arr.length(); i++) {
@@ -169,58 +139,5 @@ public class MainActivity extends Activity {
             Log.e(TAG, "Parse error: " + e.getMessage());
         }
         return subs;
-    }
-
-    /**
-     * Mở MX Player
-     */
-    private void launchMxPlayer(String videoUrl, String title, ArrayList<String[]> subs) {
-        try {
-            Intent intent = new Intent(Intent.ACTION_VIEW);
-            intent.setDataAndType(Uri.parse(videoUrl), "video/*");
-            intent.putExtra(Intent.EXTRA_TITLE, title);
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-
-            if (!subs.isEmpty()) {
-                ArrayList<String> paths = new ArrayList<>();
-                ArrayList<String> names = new ArrayList<>();
-                for (String[] sub : subs) {
-                    paths.add(sub[0]);
-                    names.add(sub[1]);
-                }
-                intent.putExtra("subs", paths);
-                intent.putExtra("subs.name", names);
-            }
-
-            // Thử MX Player Pro
-            intent.setPackage(MX_PLAYER_PRO);
-            try { startActivity(intent); return; } catch (Exception e) {}
-
-            // MX Player thường
-            intent.setPackage(MX_PLAYER);
-            try { startActivity(intent); return; } catch (Exception e) {}
-
-            // Fallback
-            intent.setPackage(null);
-            startActivity(intent);
-
-        } catch (Exception e) {
-            toast("Lỗi mở player: " + e.getMessage());
-        }
-    }
-
-    private String removeQueryParam(String url, String param) {
-        try {
-            Uri uri = Uri.parse(url);
-            Uri.Builder builder = uri.buildUpon().clearQuery();
-            for (String key : uri.getQueryParameterNames()) {
-                if (!key.equals(param)) {
-                    builder.appendQueryParameter(key, uri.getQueryParameter(key));
-                }
-            }
-            return builder.build().toString();
-        } catch (Exception e) {
-            return url;
-        }
     }
 }
