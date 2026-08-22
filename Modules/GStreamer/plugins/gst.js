@@ -324,16 +324,18 @@
                 var enabled = false;
                 try {
                     var json = typeof response === 'string' ? JSON.parse(response) : response;
-                    enabled = !!json && (json.enabled === true || json.Enabled === true);
+                    var value = json && (json.enabled !== undefined ? json.enabled : json.Enabled);
+                    enabled = value === true || String(value).toLowerCase() === 'true';
                 } catch (error) { }
                 finishGstStatus(enabled);
             }, function () {
-                // If the module is disabled or unavailable, direct playback is
-                // safer than aborting an otherwise playable MKV.
-                finishGstStatus(false);
+                // If the status endpoint is temporarily unavailable, try
+                // GStreamer once and let /gst/add fail open per-file. A known
+                // cached false value still keeps direct playback.
+                finishGstStatus(gstEnabled === null ? true : gstEnabled);
             });
         } catch (error) {
-            finishGstStatus(false);
+            finishGstStatus(gstEnabled === null ? true : gstEnabled);
         }
     }
 

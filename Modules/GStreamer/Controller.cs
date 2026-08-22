@@ -86,6 +86,8 @@ public class GStreamerController : BaseController
         var gstask = await GService.GetOrAdd(link ?? CrypTo.DecodeBase64(linkencode), user_id);
         if (gstask.task == null)
         {
+            Console.WriteLine($"GStreamer: add rejected source. Reason={gstask.error}");
+            Serilog.Log.Warning("GStreamer add rejected source. Reason={Reason}", gstask.error);
             HttpContext.Response.StatusCode = StatusCodes.Status502BadGateway;
             return Content(gstask.error);
         }
