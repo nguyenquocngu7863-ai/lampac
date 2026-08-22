@@ -160,24 +160,18 @@ public sealed class WebStreamrController : BaseOnlineController<ModuleConf>
         if (tvId <= 0)
             return OnError("Series season list requires a TMDB id", 400);
 
-        JObject root = await GetTmdb($"tv/{tvId}");
-        JArray seasons = root?["seasons"] as JArray;
-        if (seasons == null)
+        List<(int Number, int EpisodeCount)> seasons = await GetSeasonRows(addonId, tvId);
+        if (seasons.Count == 0)
             return OnError("Unable to load series seasons", 502);
 
         var tpl = new SeasonTpl(seasons.Count);
 
-        foreach (JToken token in seasons)
+        foreach (var seasonInfo in seasons)
         {
-            int number = token.Value<int?>("season_number") ?? 0;
-            int episodeCount = token.Value<int?>("episode_count") ?? 0;
-            if (number <= 0 || episodeCount <= 0)
-                continue;
-
             tpl.Append(
-                $"Season {number}",
-                BuildIndexUrl(addonId, title, original_title, serial: 1, season: number),
-                number
+                $"Season {seasonInfo.Number}",
+                BuildIndexUrl(addonId, title, original_title, serial: 1, season: seasonInfo.Number),
+                seasonInfo.Number
             );
         }
 
@@ -196,20 +190,19 @@ public sealed class WebStreamrController : BaseOnlineController<ModuleConf>
         if (tvId <= 0 || season <= 0)
             return OnError("Series episode list requires a TMDB id and season", 400);
 
-        JObject root = await GetTmdb($"tv/{tvId}/season/{season}");
-        JArray episodes = root?["episodes"] as JArray;
-        if (episodes == null)
+        List<(int Number, string Name)> episodes = await GetEpisodeRows(addonId, tvId, season);
+        if (episodes.Count == 0)
             return OnError("Unable to load series episodes", 502);
 
         var tpl = new EpisodeTpl(episodes.Count);
 
-        foreach (JToken token in episodes)
+        foreach (var episodeInfo in episodes)
         {
-            int number = token.Value<int?>("episode_number") ?? 0;
+            int number = episodeInfo.Number;
             if (number <= 0 || number > short.MaxValue)
                 continue;
 
-            string episodeName = token.Value<string>("name");
+            string episodeName = episodeInfo.Name;
             string name = string.IsNullOrWhiteSpace(episodeName)
                 ? $"Episode {number}"
                 : $"{number}. {episodeName}";
@@ -264,6 +257,106 @@ public sealed class WebStreamrController : BaseOnlineController<ModuleConf>
                 timeoutSeconds: 8,
                 proxy: proxy
             )
+        );
+    }
+
+    async Task<List<(int Number, int EpisodeCount)>> GetSeasonRows(string addonId, long tvId)
+    {
+        var result = new List<(int Number, int EpisodeCount)>();
+
+        JObject tmdb = await GetTmdb($"tv/{tvId}");
+        if (tmdb?["seasons"] is JArray seasons)
+        {
+            foreach (JToken token in seasons)
+            {
+                int number = token.Value<int?>("season_number") ?? 0;
+                int episodeCount = token.Value<int?>("episode_count") ?? 0;
+                if (number > 0 && episodeCount > 0)
+                    result.Add((number, episodeCount));
+            }
+        }
+
+        if (result.Count > 0)
+            return result;
+
+        // Some installations do not have a TMDB API key. Cinemeta is only a
+        // metadata fallback; stream URLs still come exclusively from the
+        // configured Stremio add-on.
+        JObject cinemeta = await GetCinemeta(addonId);
+        if (cinemeta?["meta"]?["videos"] is not JArray videos)
+            return result;
+
+        var counts = new Dictionary<int, int>();
+        foreach (JToken token in videos)
+        {
+            int number = token.Value<int?>("season") ?? 0;
+            int episode = token.Value<int?>("episode") ?? 0;
+            if (number <= 0 || episode <= 0)
+                continue;
+
+            counts[number] = counts.TryGetValue(number, out int count)
+                ? Math.Max(count, episode)
+                : episode;
+        }
+
+        return counts
+            .OrderBy(i => i.Key)
+            .Select(i => (i.Key, i.Value))
+            .ToList();
+    }
+
+    async Task<List<(int Number, string Name)>> GetEpisodeRows(
+        string addonId,
+        long tvId,
+        short season
+    )
+    {
+        var result = new List<(int Number, string Name)>();
+
+        JObject tmdb = await GetTmdb($"tv/{tvId}/season/{season}");
+        if (tmdb?["episodes"] is JArray episodes)
+        {
+            foreach (JToken token in episodes)
+            {
+                int number = token.Value<int?>("episode_number") ?? 0;
+                if (number > 0)
+                    result.Add((number, token.Value<string>("name")));
+            }
+        }
+
+        if (result.Count > 0)
+            return result;
+
+        JObject cinemeta = await GetCinemeta(addonId);
+        if (cinemeta?["meta"]?["videos"] is not JArray videos)
+            return result;
+
+        foreach (JToken token in videos)
+        {
+            int tokenSeason = token.Value<int?>("season") ?? 0;
+            int number = token.Value<int?>("episode") ?? 0;
+            if (tokenSeason == season && number > 0)
+                result.Add((number, token.Value<string>("name") ?? token.Value<string>("title")));
+        }
+
+        return result
+            .OrderBy(i => i.Number)
+            .ToList();
+    }
+
+    async Task<JObject> GetCinemeta(string addonId)
+    {
+        if (string.IsNullOrWhiteSpace(addonId) ||
+            !addonId.StartsWith("tt", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        string uri = $"https://v3-cinemeta.strem.io/meta/series/{Uri.EscapeDataString(addonId)}.json";
+        return await InvokeCache(
+            $"webstreamr:cinemeta:{addonId}",
+            TimeSpan.FromHours(6),
+            () => Http.Get<JObject>(uri, timeoutSeconds: 8, proxy: proxy)
         );
     }
 
@@ -424,20 +517,51 @@ public sealed class WebStreamrController : BaseOnlineController<ModuleConf>
     )
     {
         var tpl = new MovieTpl(title, original_title, streams.Count);
-        var labels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var groups = new List<(string Name, List<WebStreamItem> Streams)>();
+        var groupIndexes = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
+        // One Stremio response may contain many quality links from the same
+        // extractor. Keep one Lampac card per source and put its resolutions
+        // into the quality selector instead of rendering 20 duplicate cards.
         foreach (WebStreamItem stream in streams)
         {
-            string label = BuildLabel(stream);
-            if (!labels.Add(label))
-                label += $" ({labels.Count + 1})";
+            string name = Compact(stream.Name);
+            if (string.IsNullOrWhiteSpace(name))
+                name = "WebStreamr";
+
+            if (!groupIndexes.TryGetValue(name, out int groupIndex))
+            {
+                groupIndex = groups.Count;
+                groupIndexes[name] = groupIndex;
+                groups.Add((name, new List<WebStreamItem>()));
+            }
+
+            groups[groupIndex].Streams.Add(stream);
+        }
+
+        foreach (var group in groups)
+        {
+            var quality = new StreamQualityTpl(group.Streams.Count);
+            var qualityKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (WebStreamItem stream in group.Streams)
+            {
+                string key = stream.Quality ?? "auto";
+                if (!qualityKeys.Add(key))
+                    key = $"{key} ({qualityKeys.Count + 1})";
+
+                quality.Append(BuildVideoEndpoint(stream), key);
+            }
+
+            StreamQualityDto first = quality.Firts();
+            if (first == null)
+                continue;
 
             tpl.Append(
-                label,
-                BuildVideoEndpoint(stream),
+                group.Name,
+                first.link,
                 "play",
-                quality: stream.Quality,
-                details: stream.Title
+                streamquality: quality
             );
         }
 
@@ -491,7 +615,7 @@ public sealed class WebStreamrController : BaseOnlineController<ModuleConf>
 
     string BuildVideoEndpoint(WebStreamItem stream)
     {
-        string route = IsMkvUrl(stream.Url) && IsGStreamerEnabled()
+        string route = IsMkvStream(stream) && IsGStreamerEnabled()
             ? "file.mkv"
             : "video";
 
@@ -591,6 +715,16 @@ public sealed class WebStreamrController : BaseOnlineController<ModuleConf>
     {
         return Uri.TryCreate(value, UriKind.Absolute, out Uri uri) &&
             uri.AbsolutePath.EndsWith(".mkv", StringComparison.OrdinalIgnoreCase);
+    }
+
+    static bool IsMkvStream(WebStreamItem stream)
+    {
+        return IsMkvUrl(stream.Url) ||
+            Regex.IsMatch(
+                $"{stream.Name} {stream.Title}",
+                @"\b(?:mkv|matroska)\b",
+                RegexOptions.IgnoreCase
+            );
     }
 
     static bool IsGStreamerEnabled()
