@@ -3013,7 +3013,12 @@
           wrap.className = 'simple-check';
           const inp = document.createElement('input');
           inp.type = 'checkbox';
-          inp.checked = spec.init === true;
+          // When a value only exists in current.conf (a module default),
+          // preserve that default while editing another field. Otherwise
+          // saving just `manifest` would silently write `enable: false`.
+          inp.checked = spec.init !== undefined
+            ? spec.init === true
+            : spec.current === true;
           inp.dataset.scalarKind = 'bool';
           if (isRoot) inp.dataset.formRootScalar = '1';
           else inp.dataset.formPath = spec.path;
