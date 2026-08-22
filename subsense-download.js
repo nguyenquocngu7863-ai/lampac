@@ -107,5 +107,26 @@ Lampa.Listener.follow('full', function(e) {
 
 log('plugin loaded - download mode');
 
+// Settings
+try {
+    Lampa.SettingsApi.addComponent({
+        component: 'subsense',
+        icon: '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 9h8"/><path d="M6 13h12"/><path d="M6 17h6"/></svg>',
+        name: 'SubSense'
+    });
+    Lampa.SettingsApi.addParam({
+        component: 'subsense',
+        param: { name: 'subsense_manifest', type: 'input', values: '', default: '', placeholder: 'https://subsense.nepiraw.com/xxxx/manifest.json' },
+        field: { name: 'SubSense manifest URL', description: 'Lấy tại subsense.nepiraw.com/configure → Copy Manifest URL' },
+        onChange: function(v) { SUBSENSE_BASE = v.replace(/\/manifest\.json.*$/, '').replace(/^stremio:\/\//, 'https://'); }
+    });
+} catch(e) {}
+
+// Đọc config
+var savedUrl = Lampa.Storage.get('subsense_manifest', '');
+if (savedUrl) {
+    SUBSENSE_BASE = savedUrl.replace(/\/manifest\.json.*$/, '').replace(/^stremio:\/\//, 'https://');
+}
+
 window.SubSensePlugin = { fetchSubs: fetchSubs, attachAutoSub: attachAutoSub };
 })();
