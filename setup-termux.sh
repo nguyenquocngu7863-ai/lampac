@@ -7,6 +7,7 @@
 #   bash setup-termux.sh            # install & run
 #   bash setup-termux.sh --install  # install only
 #   bash setup-termux.sh --run      # run only (skip install)
+#   bash setup-termux.sh --sync     # apply KKPhim/Chromium setup without replacing Lampac
 #   bash setup-termux.sh --update   # update to latest release
 #
 set -euo pipefail
@@ -22,6 +23,7 @@ CUSTOM_SOURCE_BASE="${LAMPAC_CUSTOM_SOURCE_BASE:-https://raw.githubusercontent.c
 MODE=""
 [[ "${1:-}" == "--install" ]] && MODE="install"
 [[ "${1:-}" == "--run" ]]    && MODE="run"
+[[ "${1:-}" == "--sync" ]]   && MODE="sync"
 [[ "${1:-}" == "--update" ]] && MODE="update"
 [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]] && { MODE="help"; }
 
@@ -59,6 +61,7 @@ show_help() {
     printf "${BOLD}Options:${RESET}\n"
     printf "  ${GREEN}--install${RESET}    Install proot-distro + Ubuntu + .NET + Lampac\n"
     printf "  ${GREEN}--run${RESET}        Run Lampac (skip install)\n"
+    printf "  ${GREEN}--sync${RESET}       Apply KKPhim + ARM64 Chromium setup without replacing Lampac\n"
     printf "  ${GREEN}--update${RESET}     Update Lampac to latest release\n"
     printf "  ${GREEN}--help${RESET}       Show this help\n\n"
     printf "${BOLD}Environment:${RESET}\n"
@@ -72,6 +75,9 @@ show_help() {
     printf "  bash setup-termux.sh\n\n"
     printf "  ${DIM}# Custom port${RESET}\n"
     printf "  LAMPAC_PORT=8080 bash setup-termux.sh\n\n"
+    printf "  ${DIM}# Apply KKPhim + Chromium setup without replacing the current release${RESET}\n"
+    printf "  bash setup-termux.sh --sync\n\n"
+
     printf "  ${DIM}# Update${RESET}\n"
     printf "  bash setup-termux.sh --update\n\n"
 }
@@ -466,7 +472,7 @@ case "${1:-}" in
         echo "  status  — Check if running"
         echo "  config  — Edit config (init.conf)"
         echo "  info    — Show URL and port"
-        echo "  update  — Update to latest release"
+        echo "  update  — Update to latest release (also restores KKPhim/Chromium setup)"
         ;;
 esac
 SHORTCUT
@@ -499,6 +505,18 @@ main() {
     case "$MODE" in
         "run")
             run_lampac
+            ;;
+        "sync")
+            if ! proot-distro login ubuntu -- test -f /root/lampac/Core.dll 2>/dev/null; then
+                err "Lampac not installed. Run: bash setup-termux.sh --install"
+                exit 1
+            fi
+
+            install_chromium_in_ubuntu
+            ensure_runtime_config
+            install_custom_modules
+            create_launcher
+            ok "KKPhim + ARM64 Chromium setup applied"
             ;;
         "update")
             info "Updating Lampac inside Ubuntu..."
