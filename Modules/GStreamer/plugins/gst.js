@@ -448,7 +448,9 @@
                 Lampa.Player.play(selected);
             },
             onBack: function () {
-                Lampa.Select.close();
+                // Lampa.Select closes itself before invoking onBack. Calling
+                // close() here recursively re-enters jQuery and overflows the
+                // old WebView call stack.
             }
         });
     }
