@@ -20,25 +20,6 @@ function ensureJSZip(callback) {
     document.head.appendChild(script);
 }
 
-// === MOI: bo ma hoa base64url + them query (dung cho MX Sub Bridge) ===
-function base64UrlEncode(str) {
-    try {
-        var utf8 = unescape(encodeURIComponent(str));
-        var b64 = btoa(utf8);
-        return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-    } catch (e) {
-        log('base64UrlEncode loi:', e.message);
-        return '';
-    }
-}
-
-function appendQuery(url, key, value) {
-    if (!url || typeof url !== 'string') return url;
-    var sep = url.indexOf('?') === -1 ? '?' : '&';
-    return url + sep + encodeURIComponent(key) + '=' + encodeURIComponent(value);
-}
-// === het phan moi ===
-
 function buildId(imdbId, season, episode) {
     if (season && episode) return imdbId + ':' + season + ':' + episode;
     return imdbId;
@@ -275,7 +256,7 @@ function fetchSeasonSubs(imdbId, season, episodeCount, callback) {
 
     for (var ep = 1; ep <= episodeCount; ep++) {
       (function (epNum) {
-    fetchSubs(imdbId, 'series', season, epNum, function (subs) {
+        fetchSubs(imdbId, 'series', season, epNum, function (subs) {
           subs.forEach(function (s) {
             s.label = 'Tập ' + epNum + ' - ' + s.label;
           });
@@ -408,22 +389,6 @@ if (Lampa.Android && typeof Lampa.Android.openPlayer === 'function') {
           data.subs = tracks.map(function (t) {
             return { url: t.url, name: t.label, lang: t.language };
           });
-
-          // === MOI: nhét subtitleMeta (base64url JSON) vào LINK để MX Sub Bridge APK đọc ra ===
-          try {
-            var meta = tracks.map(function (t) {
-              return { url: t.url, label: t.label, language: t.language };
-            });
-            var encoded = base64UrlEncode(JSON.stringify(meta));
-            if (encoded) {
-              args[0] = appendQuery(args[0], 'subtitleMeta', encoded);
-              log('MX Player: da gan subtitleMeta vao link (' + tracks.length + ' sub)');
-            }
-          } catch (e) {
-            log('MX Player: khong gan duoc subtitleMeta:', e.message);
-          }
-          // === het phan moi ===
-
           log('MX Player: da nhet', tracks.length, 'sub vao data, mo MX Player');
           log('DEBUG data gui qua MX:', data);
           openNow();
