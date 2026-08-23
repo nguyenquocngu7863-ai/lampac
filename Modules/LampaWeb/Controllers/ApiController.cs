@@ -1081,7 +1081,7 @@ public class ApiController : BaseController
                 return Ok(new { subtitles = Array.Empty<object>(), error = "no sd_id" });
 
             // Step 2: search subtitles using sd_id
-            var url = $"https://api.subdl.com/api/v2/subtitles/search?sd_id={sdId}";
+            var url = $"https://api.subdl.com/api/v2/subtitles/search?sd_id={sdId}&unpack=1";
             if (season.HasValue) url += $"&season={season}";
             if (episode.HasValue) url += $"&episode={episode}";
             if (!string.IsNullOrWhiteSpace(languages)) url += $"&languages={languages}";
@@ -1103,15 +1103,33 @@ public class ApiController : BaseController
             {
                 foreach (Newtonsoft.Json.Linq.JObject sub in subsArr)
                 {
-                    var subUrl = sub["url"]?.ToString() ?? sub["download_link"]?.ToString() ?? string.Empty;
-                    // SubDL returns relative URLs like /subtitle/xxx.zip - prepend domain
-                    if (!string.IsNullOrWhiteSpace(subUrl) && subUrl.StartsWith("/"))
-                        subUrl = "https://subdl.com" + subUrl;
                     var releaseName = sub["release_name"]?.ToString() ?? sub["filename"]?.ToString() ?? string.Empty;
                     var lang = sub["lang"]?.ToString() ?? sub["language"]?.ToString() ?? string.Empty;
+                    var format = "unknown";
 
-                    if (!string.IsNullOrWhiteSpace(subUrl))
-                        result.Add(new { url = subUrl, label = releaseName, lang = lang });
+                    // Prefer unpack_files (individual .srt) over zip URL
+                    var unpackFiles = sub["unpack_files"] as JArray;
+                    if (unpackFiles != null && unpackFiles.Count > 0)
+                    {
+                        foreach (JObject uf in unpackFiles)
+                        {
+                            var ufUrl = uf["url"]?.ToString() ?? string.Empty;
+                            if (!string.IsNullOrWhiteSpace(ufUrl) && ufUrl.StartsWith("/"))
+                                ufUrl = "https://dl.subdl.com" + ufUrl;
+                            var ufFormat = uf["format"]?.ToString() ?? "srt";
+                            if (!string.IsNullOrWhiteSpace(ufUrl))
+                                result.Add(new { url = ufUrl, label = releaseName, lang = lang, format = ufFormat });
+                        }
+                    }
+                    else
+                    {
+                        // Fallback to zip URL
+                        var subUrl = sub["url"]?.ToString() ?? sub["download_link"]?.ToString() ?? string.Empty;
+                        if (!string.IsNullOrWhiteSpace(subUrl) && subUrl.StartsWith("/"))
+                            subUrl = "https://dl.subdl.com" + subUrl;
+                        if (!string.IsNullOrWhiteSpace(subUrl))
+                            result.Add(new { url = subUrl, label = releaseName, lang = lang, format = "zip" });
+                    }
                 }
             }
 
