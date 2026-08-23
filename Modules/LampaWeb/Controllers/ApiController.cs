@@ -1067,8 +1067,8 @@ public class ApiController : BaseController
         try
         {
             var url = $"https://api.subdl.com/api/v2/subtitles?q={Uri.EscapeDataString(searchQuery)}&type={type ?? "movie"}";
-            if (season.HasValue) url += $"&season={season}";
-            if (episode.HasValue) url += $"&episode={episode}";
+            if (season.HasValue) url += $"&season_number={season}";
+            if (episode.HasValue) url += $"&episode_number={episode}";
             if (!string.IsNullOrWhiteSpace(languages)) url += $"&languages={languages}";
             else url += "&languages=vi";
 
