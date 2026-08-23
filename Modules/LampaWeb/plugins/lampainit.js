@@ -52,6 +52,24 @@
   function syncPlugins() {
     var plugins = Lampa.Plugins.get() || [];
 
+    // One controlled migration after the duplicate-plugin incident: retain a
+    // backup of every client entry, remove only old Lampac-hosted add-ons, then
+    // add the current server list below in its declared order. Third-party
+    // plugin URLs (for example jsDelivr) are never touched.
+    var resetKey = 'lampac_plugin_reset_20260823_v1';
+    if (Lampa.Storage.get(resetKey, 'false') !== 'true') {
+      Lampa.Storage.set('lampac_plugins_backup_20260823', plugins);
+      var lampacPluginPath = /\/(?:dlna|tracks|transcoding|tmdbproxy|cubproxy|online|watchtogether|catalog|dorama|subsense|subfinder|stremiosub|adminpanel|gst|sisi|startpage|sync|timecode|bookmark|ts|backup)\.js(?:[?#]|$)/i;
+      plugins.forEach(function (plugin) {
+        var url = plugin && plugin.url || '';
+        if (url.indexOf(window.location.origin + '/') === 0 && lampacPluginPath.test(url)) {
+          Lampa.Plugins.remove(plugin);
+        }
+      });
+      Lampa.Storage.set(resetKey, 'true');
+      plugins = Lampa.Plugins.get() || [];
+    }
+
     // Collapse duplicate URLs through Lampa's own registry API.
     // Plugins.get() only returns an array copy; splice() does not remove entries
     // from Lampa's live _loaded registry on Android.
