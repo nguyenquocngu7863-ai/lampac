@@ -39,9 +39,11 @@ public class InitPlugins
 
     public bool watch_together { get; set; }
 
-    public bool subsense { get; set; } = true;
+    // StremioSub is the single built-in subtitle provider. Keep older
+    // auto-subtitle plugins opt-in so they cannot attach duplicate tracks.
+    public bool subsense { get; set; }
 
-    public bool subfinder { get; set; } = true;
+    public bool subfinder { get; set; }
 
     /// <summary>Loads the Stremio SubDL/SubSource subtitle plugin.</summary>
     public bool stremiosub { get; set; } = true;

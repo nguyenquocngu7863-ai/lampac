@@ -48,8 +48,9 @@ public class ModInit : IModuleLoaded
             tree = "cbc0797cf8109f042dc289b1f27e78c92fe17435",
             initPlugins = new InitPlugins
             {
-                // A built-in client plugin: load it unless an administrator explicitly disables it.
-                subsenseAuto = true
+                // StremioSub is the single built-in subtitle provider.
+                // Legacy SubSense Auto remains available only when explicitly enabled.
+                subsenseAuto = false
             },
             limit_map = new List<WafLimitRootMap>()
             {

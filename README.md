@@ -143,23 +143,9 @@ Cấu hình mặc định của script đã bao gồm:
 
 Thiết lập này ưu tiên ổn định và tiết kiệm RAM. Nếu máy yếu, không nên bật cùng lúc nhiều module nặng, nhiều Chromium context hoặc transcoding.
 
-## SubSense tự động chèn phụ đề Việt
+## Phụ đề: chỉ dùng StremioSub mặc định
 
-Trong mã nguồn Lampac, plugin gốc `/subsense-auto.js` được bật bằng:
-
-```json
-{
-  "LampaWeb": {
-    "initPlugins": {
-      "subsenseAuto": true
-    }
-  }
-}
-```
-
-Plugin chạy lúc Lampa khởi động, tìm phụ đề tiếng Việt trên SubSense và gắn vào player khi có IMDb ID. Đặt `subsenseAuto` thành `false` nếu không muốn dùng.
-
-> Bản cài Termux tải Lampac từ release trước rồi ghi đè các module tuỳ biến. Khi tự build hoặc dùng release đã chứa thay đổi này, plugin sẽ có sẵn theo cấu hình trên.
+Termux/LampaWeb mặc định chỉ nạp **StremioSub** để tránh nhiều plugin phụ đề cùng tự gắn track và tạo danh sách phụ đề trùng. Các plugin cũ `subsenseAuto`, `subsense` và `subfinder` đều đã tắt mặc định; chỉ bật lại khi thật sự cần trong `LampaWeb.initPlugins`.
 
 ## StremioSub — plugin phụ đề built-in
 

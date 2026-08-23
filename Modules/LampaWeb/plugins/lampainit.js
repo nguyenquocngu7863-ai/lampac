@@ -52,6 +52,14 @@
   function syncPlugins() {
     var plugins = Lampa.Plugins.get();
 
+    // Retire legacy automatic subtitle plugins installed by older Lampac
+    // versions. StremioSub is now the only built-in automatic subtitle plugin.
+    var legacySubtitleUrls = /\/(?:subsense-auto|subsense|subfinder)\.js(?:[?#]|$)/i;
+    for (var i = plugins.length - 1; i >= 0; i--) {
+      if (legacySubtitleUrls.test(plugins[i].url || '')) plugins.splice(i, 1);
+    }
+    Lampa.Plugins.save();
+
     var plugins_add = {initiale};
 
     var plugins_push = [];
