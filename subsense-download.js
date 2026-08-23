@@ -9,7 +9,7 @@
    * selected URL to the optional SubSense Termux Bridge application.
    */
 
-  var DEFAULT_SUBSENSE_BASE = 'https://subsense.nepiraw.com/lxolz7e9-%7B%22languages%22%3A%5B%22vi%22%5D%7D';
+  var DEFAULT_SUBSENSE_BASE = 'https://subsense.nepiraw.com/bu8e9cfy-ZSnP5mVsCkziQ-DtDwHymaozxOkAUjM0O4fIZCp0Y3wd4behaNV8shVg6U5yv7RhcX7O4Rpi6xee5TQdKCetjN8wmBS-xeADnVc0LVN5jpYQmFyWOyMW7WTVxw04MHCYjyE6XHlc3Jwb1gSm6tLiMsIkGAE85EcfaM_EdeNl472Wr8knESDBNY52CDi0bJKFZ5dOZ5dgN-KhoC2LCSo-mwrKxzUt4GdnbkuzMgeFxntuHVBe2DYJhWIFkNCb4CKsEpOp9TAsifN_Jg';
   var MANIFEST_STORAGE_KEY = 'subsense_download_manifest';
   var BRIDGE_STORAGE_KEY = 'subsense_download_bridge_scheme';
   var DEFAULT_BRIDGE_SCHEME = 'mxsub';
