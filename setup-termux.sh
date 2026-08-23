@@ -406,7 +406,7 @@ install_custom_modules() {
         fi
     "
 
-    ok "KKPhim, K20, VsMov, WebStreamr and GStreamer files installed; removed retired NguonC"
+    ok "KKPhim, K20, VsMov, WebStreamr, GStreamer and LampaWeb plugin files installed; removed retired NguonC"
 }
 
 # ─── Step 4: Create launcher scripts (inside Ubuntu!) ────────────────────────

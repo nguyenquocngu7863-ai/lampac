@@ -48,7 +48,7 @@ Khi chạy lần đầu, `setup-termux.sh` thực hiện tuần tự các bướ
 4. Tải bản phát hành Lampac NextGen mới nhất, giải nén vào `/root/lampac` trong Ubuntu.
 5. Tạo `init.conf` tối ưu cho Termux: `lowMemoryMode`, GStreamer, Chromium headless và các module nặng được tắt bớt.
 6. Cài Chrome/Chromium tương thích `arm64` hoặc `amd64` để các nguồn dùng Playwright hoạt động.
-7. Xoá nguồn đã ngừng dùng/lỗi **NguonC**, rồi đồng bộ module tuỳ biến: **KKPhim, K20, VsMov, WebStreamr, GStreamer**; AdminPanel cũng được cập nhật giao diện tiếng Việt nếu module đã có sẵn.
+7. Xoá nguồn đã ngừng dùng/lỗi **NguonC**, rồi đồng bộ module tuỳ biến: **KKPhim, K20, VsMov, WebStreamr, GStreamer** và **LampaWeb/StremioSub**; AdminPanel cũng được cập nhật giao diện tiếng Việt nếu module đã có sẵn.
 8. Tạo lệnh `lampac` để quản lý server từ Termux.
 
 Lần cài đầu có thể mất vài phút vì phải tải Ubuntu, runtime .NET, Chrome và bản phát hành Lampac. Không đóng Termux khi đang chạy script.
@@ -88,9 +88,9 @@ bash setup-termux.sh --update
 
 Cập nhật sẽ tải release mới, giữ lại `init.conf` và `passwd`, rồi cài lại Chrome/Chromium, cấu hình Termux và các module tuỳ biến. Thư mục nguồn lỗi cũ `NguonC` cũng bị xoá; `VsMov` được đồng bộ lại.
 
-### Chỉ đồng bộ KKPhim, K20, VsMov, Chromium và GStreamer
+### Chỉ đồng bộ module tuỳ biến
 
-Dùng khi release Lampac vẫn giữ nguyên nhưng bạn muốn lấy lại các thay đổi tuỳ biến:
+Dùng khi release Lampac vẫn giữ nguyên nhưng bạn muốn lấy lại các thay đổi tuỳ biến (**KKPhim, K20, VsMov, WebStreamr, GStreamer và LampaWeb/StremioSub**):
 
 ```bash
 bash setup-termux.sh --sync
@@ -160,6 +160,44 @@ Trong mã nguồn Lampac, plugin gốc `/subsense-auto.js` được bật bằng
 Plugin chạy lúc Lampa khởi động, tìm phụ đề tiếng Việt trên SubSense và gắn vào player khi có IMDb ID. Đặt `subsenseAuto` thành `false` nếu không muốn dùng.
 
 > Bản cài Termux tải Lampac từ release trước rồi ghi đè các module tuỳ biến. Khi tự build hoặc dùng release đã chứa thay đổi này, plugin sẽ có sẵn theo cấu hình trên.
+
+## StremioSub — plugin phụ đề built-in
+
+`StremioSub` tìm phụ đề qua Stremio SubDL và SubSource. Nó là plugin built-in của Lampac: **không cài bằng URL jsDelivr trong mục Extensions**. Sau một lần `--sync` và restart Lampac, Lampa nhận plugin nội bộ với tên **StremioSub — SubDL + SubSource**.
+
+Kiểm tra Lampac đã đưa plugin vào init chưa:
+
+```bash
+curl -s http://127.0.0.1:9118/lampainit.js | grep -oE 'StremioSub[^" ]*|stremiosub\.js'
+```
+
+Nếu lệnh không in ra `stremiosub.js`, đồng bộ và khởi động lại:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a028cf-lampac/setup-termux.sh | bash -s -- --sync
+lampac stop
+lampac start
+```
+
+Xóa các card **Untitled** đã cài thủ công từ jsDelivr trước khi mở lại Lampa để không tải trùng plugin.
+
+## Thêm/sửa plugin LampaWeb vào bản Lampac trong `/root`
+
+Bản Termux chạy release ở `/root/lampac`; LampaWeb là **dynamic module**. Vì vậy chỉ thêm file `.js` vào repository là chưa đủ: release đang chạy còn dùng controller/model cũ để tạo `/lampainit.js`.
+
+Khi thêm một plugin built-in mới, cập nhật cả ba phần sau:
+
+1. **Script plugin:** `Modules/LampaWeb/plugins/<ten>.js`.
+2. **Đăng ký server:** thêm cờ `initPlugins.<ten>` trong `Modules/LampaWeb/Models/InitPlugins.cs`, route JS và entry vào cả danh sách `/lampainit.js` lẫn `/on.js` trong `Modules/LampaWeb/Controllers/ApiController.cs`.
+3. **Deploy Termux:** thêm các file nguồn cần thiết vào `install_custom_modules()` trong `setup-termux.sh`. File được chép phải đúng cây runtime:
+
+   ```text
+   /root/lampac/module/LampaWeb/Controllers/
+   /root/lampac/module/LampaWeb/Models/
+   /root/lampac/module/LampaWeb/plugins/
+   ```
+
+Sau khi mirror branch, luôn áp dụng bằng `--sync` rồi restart `lampac`. Không chép sang `/root/lampac/plugins/`: LampaWeb không đọc plugin từ đường dẫn đó.
 
 ## Xử lý lỗi thường gặp
 
