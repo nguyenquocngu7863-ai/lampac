@@ -385,6 +385,16 @@ install_custom_modules() {
             curl -fSL --retry 3 \"\$gstbase/\$file\" -o \"\$gsttarget/\$file\"
         done
 
+        # Overlay the LampaWeb plugin assets.  The release binary already
+        # serves these files; lampainit.js registers StremioSub as a named,
+        # built-in plugin even when the release predates its server-side entry.
+        webplugintarget=/root/lampac/plugins
+        mkdir -p "\$webplugintarget"
+        webpluginbase="${CUSTOM_SOURCE_BASE}/Modules/LampaWeb/plugins"
+        for file in lampainit.js stremiosub.js; do
+            curl -fSL --retry 3 "\$webpluginbase/\$file" -o "\$webplugintarget/\$file"
+        done
+
         # The AdminPanel is protected by the Lampac root password. If it is
         # already installed/enabled, keep its Vietnamese UI in sync too.
         admintarget=/root/lampac/module/AdminPanel
