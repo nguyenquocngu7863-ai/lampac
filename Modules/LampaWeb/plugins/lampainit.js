@@ -50,30 +50,37 @@
   // so plugins added on the server later never reached already-connected
   // devices. The url-dedup check below makes repeated syncing harmless.
   function syncPlugins() {
-    var plugins = Lampa.Plugins.get();
+    var plugins = Lampa.Plugins.get() || [];
 
-    // Retire legacy automatic subtitle plugins installed by older Lampac
-    // versions. StremioSub is now the only built-in automatic subtitle plugin.
+    // Remove retired subtitle providers and collapse every persisted duplicate
+    // by URL. Old Lampac versions repeatedly added entries on some clients.
     var legacySubtitleUrls = /\/(?:subsense-auto|subsense|subfinder)\.js(?:[?#]|$)/i;
+    var knownUrls = {};
     for (var i = plugins.length - 1; i >= 0; i--) {
-      if (legacySubtitleUrls.test(plugins[i].url || '')) plugins.splice(i, 1);
+      var url = plugins[i] && plugins[i].url || '';
+      if (!url || legacySubtitleUrls.test(url) || knownUrls[url]) {
+        plugins.splice(i, 1);
+      }
+      else {
+        knownUrls[url] = true;
+      }
     }
+    // Plugins.get() is a copy on some Android builds, therefore persist the
+    // pruned array directly instead of relying on Plugins.save() alone.
+    Lampa.Storage.set('plugins', plugins);
     Lampa.Plugins.save();
 
     var plugins_add = {initiale};
-
     var plugins_push = [];
 
     plugins_add.forEach(function(plugin) {
-      if (!plugins.find(function(a) {
-          return a.url == plugin.url;
-        })) {
+      if (plugin && plugin.url && !knownUrls[plugin.url]) {
         Lampa.Plugins.add(plugin);
-        Lampa.Plugins.save();
-
+        knownUrls[plugin.url] = true;
         plugins_push.push(plugin.url);
       }
     });
+    Lampa.Plugins.save();
 
     if (plugins_push.length) Lampa.Utils.putScript(plugins_push, function() {}, function() {}, function() {}, true);
 
