@@ -48,7 +48,7 @@ Khi chạy lần đầu, `setup-termux.sh` thực hiện tuần tự các bướ
 4. Tải bản phát hành Lampac NextGen mới nhất, giải nén vào `/root/lampac` trong Ubuntu.
 5. Tạo `init.conf` tối ưu cho Termux: `lowMemoryMode`, GStreamer, Chromium headless và các module nặng được tắt bớt.
 6. Cài Chrome/Chromium tương thích `arm64` hoặc `amd64` để các nguồn dùng Playwright hoạt động.
-7. Đồng bộ các module tuỳ biến của repo này: **KKPhim, K20, WebStreamr, GStreamer**; AdminPanel cũng được cập nhật giao diện tiếng Việt nếu module đã có sẵn.
+7. Xoá các nguồn đã ngừng dùng/lỗi **VsMov** và **NguonC**, rồi đồng bộ module tuỳ biến: **KKPhim, K20, WebStreamr, GStreamer**; AdminPanel cũng được cập nhật giao diện tiếng Việt nếu module đã có sẵn.
 8. Tạo lệnh `lampac` để quản lý server từ Termux.
 
 Lần cài đầu có thể mất vài phút vì phải tải Ubuntu, runtime .NET, Chrome và bản phát hành Lampac. Không đóng Termux khi đang chạy script.
@@ -86,7 +86,7 @@ lampac update
 bash setup-termux.sh --update
 ```
 
-Cập nhật sẽ tải release mới, giữ lại `init.conf` và `passwd`, rồi cài lại Chrome/Chromium, cấu hình Termux và các module tuỳ biến.
+Cập nhật sẽ tải release mới, giữ lại `init.conf` và `passwd`, rồi cài lại Chrome/Chromium, cấu hình Termux và các module tuỳ biến. Các thư mục nguồn lỗi cũ `VsMov` và `NguonC` cũng bị xoá.
 
 ### Chỉ đồng bộ KKPhim, K20, Chromium và GStreamer
 

@@ -346,6 +346,10 @@ install_custom_modules() {
     proot-distro login ubuntu -- bash -c "
         set -euo pipefail
 
+        # VsMov and NguonC are retired: remove leftovers from older installs so
+        # the dynamic module loader cannot load the broken providers again.
+        rm -rf /root/lampac/module/OnlineVN/VsMov /root/lampac/module/OnlineVN/NguonC
+
         kkbase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineVN/KKPhim\"
         kktarget=/root/lampac/module/OnlineVN/KKPhim
         mkdir -p \"\$kktarget\"
@@ -385,7 +389,7 @@ install_custom_modules() {
         fi
     "
 
-    ok "KKPhim, WebStreamr, GStreamer and AdminPanel files installed"
+    ok "KKPhim, K20, WebStreamr and GStreamer files installed; removed retired VsMov/NguonC"
 }
 
 # ─── Step 4: Create launcher scripts (inside Ubuntu!) ────────────────────────
@@ -505,6 +509,9 @@ case "${1:-}" in
                     fi
                 fi
             fi
+
+            # Do not retain providers removed from the Termux profile.
+            rm -rf /root/lampac/module/OnlineVN/VsMov /root/lampac/module/OnlineVN/NguonC
 
             base="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a028cf-lampac/Modules/OnlineVN/KKPhim"
             target=/root/lampac/module/OnlineVN/KKPhim
