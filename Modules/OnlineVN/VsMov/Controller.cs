@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Newtonsoft.Json.Linq;
 using Shared;
 using Shared.Attributes;
 using Shared.Models;
@@ -168,6 +169,11 @@ public class VsMovController : BaseOnlineController
             if (root?.movie == null || root.episodes == null || root.episodes.Count == 0)
                 return e.Fail("detail", refresh_proxy: true);
 
+            // VSMOV sometimes exposes placeholder image playlists. K20's public
+            // manifest can provide a direct non-VSMOV fallback for the same IMDb
+            // movie (usually KKPhim), so keep a playable alternative in Lampac.
+            await AppendK20MovieFallback(root);
+
             return e.Success(root);
         });
     }
@@ -176,6 +182,65 @@ public class VsMovController : BaseOnlineController
         ("accept", "application/json"),
         ("referer", "https://vsmov.com/")
     );
+
+    const string K20Manifest = "https://sc.k-20.xyz/eyJtYWluIjpbInZzbW92LW1vdmllIiwidnNtb3Ytc2VyaWVzIl0sInNoZWx2ZXMiOltdLCJzaG93VHZPbkhvbWUiOmZhbHNlfQ/manifest.json";
+
+    async Task AppendK20MovieFallback(VsDetailResponse detail)
+    {
+        string imdbId = detail?.movie?.imdb?.id;
+        if (!IsImdbId(imdbId) || !string.Equals(detail.movie.type, "single", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        try
+        {
+            Uri manifest = new Uri(K20Manifest);
+            string endpoint = new Uri(manifest, $"stream/movie/{Uri.EscapeDataString(imdbId)}.json").AbsoluteUri;
+            JObject root = await Http.Get<JObject>(endpoint, timeoutSeconds: 15);
+            if (root?["streams"] is not JArray streams)
+                return;
+
+            foreach (JObject stream in streams.OfType<JObject>())
+            {
+                string name = stream.Value<string>("name") ?? string.Empty;
+                string title = stream.Value<string>("title") ?? string.Empty;
+                string url = stream.Value<string>("url");
+
+                // Do not duplicate the two original VSMOV links. The useful
+                // fallback is a direct source such as K20 • KKPhim.
+                if (name.Contains("VSMOV", StringComparison.OrdinalIgnoreCase) ||
+                    title.Contains("[VSMOV]", StringComparison.OrdinalIgnoreCase) ||
+                    !IsHttpUrl(url))
+                {
+                    continue;
+                }
+
+                string serverName = string.IsNullOrWhiteSpace(name) ? "K20 fallback" : name.Trim();
+                if (detail.episodes.Any(i => string.Equals(i?.server_name, serverName, StringComparison.OrdinalIgnoreCase)))
+                    continue;
+
+                detail.episodes.Add(new VsEpisodeServer
+                {
+                    server_name = serverName,
+                    server_data = new List<VsEpisode>
+                    {
+                        new()
+                        {
+                            name = string.IsNullOrWhiteSpace(title) ? "Fallback" : title,
+                            link_m3u8 = url
+                        }
+                    }
+                });
+            }
+        }
+        catch
+        {
+            // The primary VSMOV response remains usable when K20 is unavailable.
+        }
+    }
+
+    static bool IsImdbId(string value)
+        => !string.IsNullOrWhiteSpace(value) &&
+           Regex.IsMatch(value, "^tt[0-9]+$", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
     string ApiBase
         => (init?.apihost ?? init?.host ?? "https://vsmov.com").TrimEnd('/');
