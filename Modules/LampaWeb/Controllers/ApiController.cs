@@ -1050,7 +1050,7 @@ public class ApiController : BaseController
 
     [HttpGet, AllowAnonymous]
     [Route("subfinder/search")]
-    public async Task<IActionResult> SubFinderSearch(string imdb, string type, int? season, int? episode, string languages)
+    public async Task<IActionResult> SubFinderSearch(string q, string query, string type, int? season, int? episode, string languages)
     {
         SetHeadersNoCache();
 
@@ -1058,9 +1058,15 @@ public class ApiController : BaseController
         if (string.IsNullOrWhiteSpace(apiKey))
             return Ok(new { subtitles = Array.Empty<object>(), error = "subdl_api_key not configured" });
 
+        // Accept both 'q' (SubDL native) and 'query' (from plugin fallback)
+        var searchQuery = !string.IsNullOrWhiteSpace(q) ? q : query;
+        if (string.IsNullOrWhiteSpace(searchQuery))
+            return Ok(new { subtitles = Array.Empty<object>(), error = "no search query" });
+
         try
         {
-            var url = $"https://api.subdl.com/api/v2/subtitles?imdb_id={imdb}&type={type ?? "movie"}";
+            // SubDL q param accepts IMDB ID (tt1234567) or movie/series name
+            var url = $"https://api.subdl.com/api/v2/subtitles?q={Uri.EscapeDataString(searchQuery)}&type={type ?? "movie"}";
             if (season.HasValue) url += $"&season={season}";
             if (episode.HasValue) url += $"&episode={episode}";
             if (!string.IsNullOrWhiteSpace(languages)) url += $"&languages={languages}";

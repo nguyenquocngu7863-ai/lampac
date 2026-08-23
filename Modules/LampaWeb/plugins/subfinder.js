@@ -192,9 +192,10 @@
   }
 
   /* ── Search SubDL via server proxy ── */
-  function searchSubDL(imdbId, type, season, episode, cb) {
+  function searchSubDL(imdbId, query, type, season, episode, cb) {
     if (!SERVER_ORIGIN) { cb([]); return; }
-    var params = 'imdb=' + encodeURIComponent(imdbId);
+    // SubDL q param accepts both IMDB ID and name
+    var params = 'q=' + encodeURIComponent(imdbId || query || '');
     if (type === 'tv' && season && episode) {
       params += '&type=tv&season=' + season + '&episode=' + episode;
     } else {
@@ -228,9 +229,16 @@
   }
 
   /* ── Search SubSource via server proxy ── */
-  function searchSubSource(imdbId, type, season, episode, cb) {
+  function searchSubSource(imdbId, query, type, season, episode, cb) {
     if (!SERVER_ORIGIN) { cb([]); return; }
-    var params = 'imdb=' + encodeURIComponent(imdbId);
+    var params = '';
+    if (imdbId) {
+      params = 'imdb=' + encodeURIComponent(imdbId);
+    } else if (query) {
+      params = 'query=' + encodeURIComponent(query);
+    } else {
+      cb([]); return;
+    }
     if (type === 'tv' && season && episode) {
       params += '&type=tv&season=' + season + '&episode=' + episode;
     } else {
@@ -282,6 +290,9 @@
 
     log('tim sub cho', imdbId, type, season ? 'S' + season + 'E' + episode : '');
 
+    // Movie name for fallback search when no IMDB ID
+    var movieName = (movie && (movie.title || movie.name || movie.original_title || '')) || '';
+
     // Search both sources in parallel
     var allSubs = [];
     var pending = 2;
@@ -299,7 +310,7 @@
       });
 
       if (!allSubs.length) {
-        log('khong tim thay sub nao cho', imdbId);
+        log('khong tim thay sub nao cho', imdbId || movieName);
         return;
       }
 
@@ -336,13 +347,16 @@
       });
     }
 
-    searchSubDL(imdbId, type, season, episode, function (subs) {
+    // Pass imdbId || movieName so SubDL can search by name if no ID
+    var searchQuery = imdbId || movieName;
+
+    searchSubDL(imdbId, movieName, type, season, episode, function (subs) {
       log('SubDL:', subs.length, 'ket qua');
       allSubs = allSubs.concat(subs);
       done();
     });
 
-    searchSubSource(imdbId, type, season, episode, function (subs) {
+    searchSubSource(imdbId, movieName, type, season, episode, function (subs) {
       log('SubSource:', subs.length, 'ket qua');
       allSubs = allSubs.concat(subs);
       done();
