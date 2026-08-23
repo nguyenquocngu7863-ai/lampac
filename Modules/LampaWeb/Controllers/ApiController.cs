@@ -946,6 +946,15 @@ public class ApiController : BaseController
         return ContentTo(plugin, "application/javascript; charset=utf-8");
     }
 
+    [HttpGet, AllowAnonymous]
+    [Route("subtest.js")]
+    public ActionResult SubTest()
+    {
+        SetHeadersNoCache();
+        string plugin = FileCache.ReadAllText($"{ModInit.modpath}/plugins/subtest.js", "subtest.js");
+        return ContentTo(plugin, "application/javascript; charset=utf-8");
+    }
+
     // Server-side fetcher cho SubSense: trình duyệt bị chặn CORS khi tải file
     // phụ đề trực tiếp từ các nguồn như OpenSubtitles, nên tải qua server.
     private static readonly System.Net.Http.HttpClient SubSenseHttpClient = CreateSubSenseHttpClient();
