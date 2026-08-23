@@ -37,4 +37,6 @@ public class InitPlugins
     public bool watch_together { get; set; }
 
     public bool subsense { get; set; } = true;
+
+    public bool subfinder { get; set; } = true;
 }

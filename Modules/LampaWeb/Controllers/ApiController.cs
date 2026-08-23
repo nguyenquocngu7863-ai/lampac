@@ -630,6 +630,9 @@ public class ApiController : BaseController
             if (ModInit.conf.initPlugins.subsense)
                 plugins.Add(new("{localhost}/subsense.js", 1, "SubSense — phụ đề tự động", "lampac"));
 
+            if (ModInit.conf.initPlugins.subfinder)
+                plugins.Add(new("{localhost}/subfinder.js", 1, "SubFinder — SubDL + SubSource", "lampac"));
+
             if (ModInit.conf.initPlugins.sisi)
             {
                 plugins.Add(new("{localhost}/sisi.js", 1, "Клубничка", "lampac"));
@@ -812,6 +815,9 @@ public class ApiController : BaseController
             if (ModInit.conf.initPlugins.subsense)
                 send("subsense", false);
 
+            if (ModInit.conf.initPlugins.subfinder)
+                send("subfinder", false);
+
             if (ModInit.conf.initPlugins.online)
                 send("online", true);
 
@@ -916,6 +922,17 @@ public class ApiController : BaseController
     }
     #endregion
 
+    #region subfinder.js
+    [HttpGet, AllowAnonymous, Staticache(manually: true)]
+    [Route("subfinder.js")]
+    public ActionResult SubFinderJs()
+    {
+        SetHeadersNoCache();
+        string plugin = FileCache.ReadAllText($"{ModInit.modpath}/plugins/subfinder.js", "subfinder.js");
+        return ContentTo(plugin, "application/javascript; charset=utf-8");
+    }
+    #endregion
+
     #region subsense.js
     [HttpGet, AllowAnonymous, Staticache(manually: true)]
     [Route("subsense.js")]
@@ -987,6 +1004,204 @@ public class ApiController : BaseController
             .Replace("{token}", HttpUtility.UrlEncode(token ?? string.Empty));
 
         return ContentTo(plugin, "application/javascript; charset=utf-8");
+    }
+    #endregion
+
+    #region subfinder.js
+    private static readonly System.Net.Http.HttpClient SubFinderHttpClient = CreateSubFinderHttpClient();
+
+    private static System.Net.Http.HttpClient CreateSubFinderHttpClient()
+    {
+        var client = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+        client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) SubFinder/1.0");
+        client.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "application/json");
+        return client;
+    }
+
+    private string GetSubdlApiKey()
+    {
+        try
+        {
+            var init = InitPlugins.GetInitConf();
+            if (init != null && init.TryGetValue("SubFinder", out var sfObj) && sfObj is JsonElement sfEl)
+            {
+                if (sfEl.TryGetProperty("subdl_api_key", out var keyEl))
+                    return keyEl.GetString() ?? string.Empty;
+            }
+        }
+        catch { }
+        return string.Empty;
+    }
+
+    private string GetSubsourceApiKey()
+    {
+        try
+        {
+            var init = InitPlugins.GetInitConf();
+            if (init != null && init.TryGetValue("SubFinder", out var sfObj) && sfObj is JsonElement sfEl)
+            {
+                if (sfEl.TryGetProperty("subsource_api_key", out var keyEl))
+                    return keyEl.GetString() ?? string.Empty;
+            }
+        }
+        catch { }
+        return string.Empty;
+    }
+
+    [HttpGet, AllowAnonymous]
+    [Route("subfinder/search")]
+    public async Task<IActionResult> SubFinderSearch(string imdb, string type, int? season, int? episode, string languages)
+    {
+        SetHeadersNoCache();
+
+        var apiKey = GetSubdlApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+            return Ok(new { subtitles = Array.Empty<object>(), error = "subdl_api_key not configured" });
+
+        try
+        {
+            var url = $"https://api.subdl.com/api/v2/subtitles?imdb_id={imdb}&type={type ?? "movie"}";
+            if (season.HasValue) url += $"&season={season}";
+            if (episode.HasValue) url += $"&episode={episode}";
+            if (!string.IsNullOrWhiteSpace(languages)) url += $"&languages={languages}";
+            else url += "&languages=vi";
+
+            var req = new System.Net.Http.HttpRequestMessage(System.Net.HttpMethod.Get, url);
+            req.Headers.TryAddWithoutValidation("Authorization", $"Bearer {apiKey}");
+
+            using var resp = await SubFinderHttpClient.SendAsync(req);
+            var body = await resp.Content.ReadAsStringAsync();
+
+            if (!resp.IsSuccessStatusCode)
+                return Content(body, "application/json");
+
+            // Parse and normalize response
+            var doc = JsonDocument.Parse(body);
+            var result = new List<object>();
+
+            if (doc.RootElement.TryGetProperty("subtitles", out var subsArr))
+            {
+                foreach (var sub in subsArr.EnumerateArray())
+                {
+                    var subUrl = string.Empty;
+                    if (sub.TryGetProperty("url", out var u)) subUrl = u.GetString() ?? string.Empty;
+                    else if (sub.TryGetProperty("download_link", out var dl)) subUrl = dl.GetString() ?? string.Empty;
+
+                    var releaseName = string.Empty;
+                    if (sub.TryGetProperty("release_name", out var rn)) releaseName = rn.GetString() ?? string.Empty;
+                    else if (sub.TryGetProperty("filename", out var fn)) releaseName = fn.GetString() ?? string.Empty;
+
+                    var lang = string.Empty;
+                    if (sub.TryGetProperty("lang", out var l)) lang = l.GetString() ?? string.Empty;
+                    else if (sub.TryGetProperty("language", out var la)) lang = la.GetString() ?? string.Empty;
+
+                    if (!string.IsNullOrWhiteSpace(subUrl))
+                        result.Add(new { url = subUrl, label = releaseName, lang = lang });
+                }
+            }
+
+            return Ok(new { subtitles = result });
+        }
+        catch (Exception ex)
+        {
+            return Ok(new { subtitles = Array.Empty<object>(), error = ex.Message });
+        }
+    }
+
+    [HttpGet, AllowAnonymous]
+    [Route("subfinder/search-source")]
+    public async Task<IActionResult> SubFinderSearchSource(string imdb, string type, int? season, int? episode, string languages)
+    {
+        SetHeadersNoCache();
+
+        var apiKey = GetSubsourceApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+            return Ok(new { subtitles = Array.Empty<object>(), error = "subsource_api_key not configured" });
+
+        try
+        {
+            // SubSource API search
+            var url = $"https://api.subsource.net/api/getMovie?type={(type == "tv" ? "tv" : "movie")}&imdb={imdb}";
+            if (season.HasValue) url += $"&season={season}";
+            if (episode.HasValue) url += $"&episode={episode}";
+
+            var req = new System.Net.Http.HttpRequestMessage(System.Net.HttpMethod.Get, url);
+            req.Headers.TryAddWithoutValidation("X-API-Key", apiKey);
+
+            using var resp = await SubFinderHttpClient.SendAsync(req);
+            var body = await resp.Content.ReadAsStringAsync();
+
+            if (!resp.IsSuccessStatusCode)
+                return Ok(new { subtitles = Array.Empty<object>(), error = $"SubSource HTTP {resp.StatusCode}" });
+
+            var doc = JsonDocument.Parse(body);
+            var result = new List<object>();
+
+            if (doc.RootElement.TryGetProperty("subs", out var subsArr))
+            {
+                foreach (var sub in subsArr.EnumerateArray())
+                {
+                    var subUrl = string.Empty;
+                    if (sub.TryGetProperty("url", out var u)) subUrl = u.GetString() ?? string.Empty;
+
+                    var releaseName = string.Empty;
+                    if (sub.TryGetProperty("release", out var rn)) releaseName = rn.GetString() ?? string.Empty;
+
+                    var lang = string.Empty;
+                    if (sub.TryGetProperty("lang", out var l)) lang = l.GetString() ?? string.Empty;
+
+                    // Filter by language if requested
+                    if (!string.IsNullOrWhiteSpace(languages) && !string.IsNullOrWhiteSpace(lang))
+                    {
+                        var langLower = lang.ToLower();
+                        var langs = languages.ToLower().Split(',');
+                        bool match = false;
+                        foreach (var l in langs) { if (langLower.Contains(l.Trim())) { match = true; break; } }
+                        if (!match) continue;
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(subUrl))
+                        result.Add(new { url = subUrl, label = releaseName, lang = lang });
+                }
+            }
+
+            return Ok(new { subtitles = result });
+        }
+        catch (Exception ex)
+        {
+            return Ok(new { subtitles = Array.Empty<object>(), error = ex.Message });
+        }
+    }
+
+    [HttpGet, AllowAnonymous]
+    [Route("subfinder/file")]
+    public async Task<IActionResult> SubFinderFile(string url)
+    {
+        SetHeadersNoCache();
+
+        if (string.IsNullOrWhiteSpace(url) || !Regex.IsMatch(url, "^https?://", RegexOptions.IgnoreCase))
+            return BadRequest();
+
+        try
+        {
+            using var resp = await SubFinderHttpClient.GetAsync(url, System.Net.Http.HttpCompletionOption.ResponseHeadersRead);
+            if (!resp.IsSuccessStatusCode)
+                return StatusCode((int)resp.StatusCode);
+
+            var data = new IO.MemoryStream();
+            await resp.Content.CopyToAsync(data);
+
+            if (data.Length > 50 * 1024 * 1024)
+                return BadRequest("file too large");
+
+            data.Position = 0;
+            string contentType = resp.Content.Headers.ContentType?.MediaType ?? "application/octet-stream";
+            return File(data, contentType);
+        }
+        catch
+        {
+            return StatusCode(502);
+        }
     }
     #endregion
 }
