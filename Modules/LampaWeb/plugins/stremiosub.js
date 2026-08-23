@@ -11,6 +11,11 @@
 (function() {
   'use strict';
 
+  // The plugin may be present in an older client's stored extension list more
+  // than once.  Only one hook may wrap Lampa.Player.play.
+  if (window.__lampacStremioSubLoaded) return;
+  window.__lampacStremioSubLoaded = true;
+
   var SUBDL_BASE = 'https://subdl.strem.top/OUFldGw4WXpzOTBydHVNSGFIWkJTQ0JXNndPZkVYZ0ovVkkvaGlJbmNsdWRlLw';
   var SUBSOURCE_BASE = 'https://subsource.strem.top/c2tfMjNkNDNkOTUxN2RiY2IwM2IzNDNiNzRjNWU4MzgwYjczMmFlMDBlM2U4MDJhYzlkMWY5NjRlMTE5ZDdhNGVkYS92aWV0bmFtZXNlL2hpSW5jbHVkZS90eXBlOjAv';
   var lastMovie = null;

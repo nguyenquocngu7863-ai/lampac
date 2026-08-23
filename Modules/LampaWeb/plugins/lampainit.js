@@ -54,17 +54,6 @@
 
     var plugins_add = {initiale};
 
-    // Keep StremioSub native to Lampac even on release builds whose server-side
-    // plugin list predates this plugin.  {localhost} is expanded by Lampac when
-    // it serves lampainit.js; URL deduplication below makes this a no-op on new
-    // server builds that already supply the same entry in {initiale}.
-    plugins_add.push({
-      url: '{localhost}/stremiosub.js',
-      status: 1,
-      name: 'StremioSub — SubDL + SubSource',
-      author: 'lampac'
-    });
-
     var plugins_push = [];
 
     plugins_add.forEach(function(plugin) {
