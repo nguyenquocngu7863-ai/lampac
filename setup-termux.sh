@@ -391,7 +391,7 @@ install_custom_modules() {
         webtarget=/root/lampac/module/LampaWeb
         mkdir -p "\$webtarget/Controllers" "\$webtarget/Models" "\$webtarget/plugins"
         webbase="${CUSTOM_SOURCE_BASE}/Modules/LampaWeb"
-        for file in Controllers/ApiController.cs Models/InitPlugins.cs plugins/lampainit.js plugins/stremiosub.js; do
+        for file in Controllers/ApiController.cs Models/InitPlugins.cs plugins/lampainit.js plugins/stremiosub.js plugins/adminpanel.js; do
             curl -fSL --retry 3 "\$webbase/\$file" -o "\$webtarget/\$file"
         done
 
@@ -409,7 +409,7 @@ install_custom_modules() {
         admintarget=/root/lampac/module/AdminPanel
         if [ -d \"\$admintarget\" ]; then
             adminbase=\"${CUSTOM_SOURCE_BASE}/Modules/AdminPanel\"
-            for file in auth.html index.html ConfigSectionGroups.cs; do
+            for file in AdminPanelController.cs ConfigSectionGroups.cs ModInit.cs manifest.json auth.html index.html; do
                 curl -fSL --retry 3 \"\$adminbase/\$file\" -o \"\$admintarget/\$file\"
             done
         fi
@@ -577,7 +577,7 @@ case "${1:-}" in
             admintarget=/root/lampac/module/AdminPanel
             if [ -d "$admintarget" ]; then
                 adminbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a028cf-lampac/Modules/AdminPanel"
-                for file in auth.html index.html ConfigSectionGroups.cs; do
+                for file in AdminPanelController.cs ConfigSectionGroups.cs ModInit.cs manifest.json auth.html index.html; do
                     curl -fSL --retry 3 "$adminbase/$file" -o "$admintarget/$file"
                 done
             fi

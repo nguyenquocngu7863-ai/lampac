@@ -45,4 +45,7 @@ public class InitPlugins
 
     /// <summary>Loads the Stremio SubDL/SubSource subtitle plugin.</summary>
     public bool stremiosub { get; set; } = true;
+
+    /// <summary>Shows a protected AdminPanel shortcut in Lampa Settings.</summary>
+    public bool adminpanel { get; set; } = true;
 }

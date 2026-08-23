@@ -652,6 +652,9 @@ public class ApiController : BaseController
             if (ModInit.conf.initPlugins.stremiosub)
                 plugins.Add(new("{localhost}/stremiosub.js", 1, "StremioSub — SubDL + SubSource", "lampac"));
 
+            if (ModInit.conf.initPlugins.adminpanel)
+                plugins.Add(new("{localhost}/adminpanel.js", 1, "Admin Panel", "lampac"));
+
             if (ModInit.conf.initPlugins.sisi)
             {
                 plugins.Add(new("{localhost}/sisi.js", 1, "Клубничка", "lampac"));
@@ -847,6 +850,9 @@ public class ApiController : BaseController
             if (ModInit.conf.initPlugins.stremiosub)
                 send("stremiosub", false);
 
+            if (ModInit.conf.initPlugins.adminpanel)
+                send("adminpanel", false);
+
             if (ModInit.conf.initPlugins.online)
                 send("online", true);
 
@@ -981,6 +987,15 @@ public class ApiController : BaseController
     {
         SetHeadersNoCache();
         string plugin = FileCache.ReadAllText($"{ModInit.modpath}/plugins/subtest.js", "subtest.js");
+        return ContentTo(plugin, "application/javascript; charset=utf-8");
+    }
+
+    [HttpGet, AllowAnonymous]
+    [Route("adminpanel.js")]
+    public ActionResult AdminPanelJs()
+    {
+        SetHeadersNoCache();
+        string plugin = FileCache.ReadAllText($"{ModInit.modpath}/plugins/adminpanel.js", "adminpanel.js");
         return ContentTo(plugin, "application/javascript; charset=utf-8");
     }
 
