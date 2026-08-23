@@ -515,55 +515,54 @@
                 e.data.hls_frag_timeout = 120000;
                 e.data.hls_frag_retry_timeout = 120000;
 
-                if (!items.length || items.length == 1) {
-                    e.data.url_orig = e.data.url
-                    e.data.url = json.hls;
+                function playAudioTrack(item) {
+                    var audioIndex = item ? item.audioIndex : 0;
+                    e.data.url_orig = e.data.url;
+                    e.data.url = audioIndex ? json.hls + '?audio=' + audioIndex : json.hls;
                     taskId = json.id;
 
-                    playWithWarmup(e.data, json, e.data.url, 0, function () {
+                    playWithWarmup(e.data, json, e.data.url, audioIndex, function () {
                         Lampa.Player.play(e.data);
-                        Lampa.Player.playlist(createPlaylist(e.data, 0))
+                        Lampa.Player.playlist(createPlaylist(e.data, audioIndex));
                         Lampa.Player.callback(function () {
-                            Lampa.Controller.toggle('modal')
-
-                            e.data.url = e.data.url_orig
-
+                            Lampa.Controller.toggle('modal');
+                            e.data.url = e.data.url_orig;
                             Lampa.PlayerPlaylist.get().forEach(function (p) {
-                                p.url = p.url_orig
-                            })
-                        })
+                                p.url = p.url_orig;
+                            });
+                        });
                     });
+                }
+
+                if (!items.length || items.length == 1) {
+                    playAudioTrack(items[0]);
                     return;
                 }
 
-                var last_controller = Lampa.Controller.enabled().name
+                // Prefer the original English audio whenever probe metadata
+                // identifies it.  Files without an English track still show
+                // the selector, so Vietnamese/dub-only releases remain usable.
+                var englishTrack = items.find(function (item) {
+                    return /(?:^|[^a-z])(en|eng|english)(?:[^a-z]|$)/i.test(
+                        (item.subtitle || '') + ' ' + (item.title || '')
+                    );
+                });
+                if (englishTrack) {
+                    playAudioTrack(englishTrack);
+                    return;
+                }
+
+                var last_controller = Lampa.Controller.enabled().name;
 
                 Lampa.Select.show({
-                    title: 'Выберите аудиодорожку',
+                    title: 'Chọn audio',
                     items: items,
                     onSelect: function (item) {
                         Lampa.Select.close();
-
-                        e.data.url_orig = e.data.url
-                        e.data.url = json.hls + '?audio=' + item.audioIndex;
-                        taskId = json.id;
-
-                        playWithWarmup(e.data, json, e.data.url, item.audioIndex, function () {
-                            Lampa.Player.play(e.data);
-                            Lampa.Player.playlist(createPlaylist(e.data, item.audioIndex))
-                            Lampa.Player.callback(function () {
-                                Lampa.Controller.toggle('modal')
-
-                                e.data.url = e.data.url_orig
-
-                                Lampa.PlayerPlaylist.get().forEach(function (p) {
-                                    p.url = p.url_orig
-                                })
-                            })
-                        });
+                        playAudioTrack(item);
                     },
                     onBack: function () {
-                        Lampa.Controller.toggle(last_controller)
+                        Lampa.Controller.toggle(last_controller);
                     }
                 });
             }, function (error) {
