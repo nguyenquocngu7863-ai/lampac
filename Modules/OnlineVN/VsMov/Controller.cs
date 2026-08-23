@@ -108,6 +108,7 @@ public class VsMovController : BaseOnlineController
         // Match the K20 HLS flow locally: expose a local playlist and rewrite
         // every media URI to a .ts endpoint before handing it to the player.
         // This keeps the original VSMOV movie/hash and never queries K20.
+        var headers = StreamHeaders();
         string stream = PlaylistLink(source);
 
         if (play)
@@ -177,7 +178,7 @@ public class VsMovController : BaseOnlineController
             : RedirectToPlay(stream);
     }
 
-    List<HeadersModel> StreamHeaders()
+    IReadOnlyList<HeadersModel> StreamHeaders()
         => httpHeaders(init.host, init.headers_stream);
 
     string PlaylistLink(string source)
