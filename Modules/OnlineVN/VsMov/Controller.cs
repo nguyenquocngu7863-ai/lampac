@@ -9,6 +9,7 @@ using Shared.Services.Utilities;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Web;
@@ -104,10 +105,10 @@ public class VsMovController : BaseOnlineController
         if (await IsRequestBlocked(rch: true, rch_check: !play))
             return badInitMsg;
 
-        var headers = httpHeaders(init.host, init.headers_stream);
-        string stream = HostStreamProxy(source, headers: headers);
-        if (string.IsNullOrWhiteSpace(stream))
-            return OnError("stream", refresh_proxy: true);
+        // Match the K20 HLS flow locally: expose a local playlist and rewrite
+        // every media URI to a .ts endpoint before handing it to the player.
+        // This keeps the original VSMOV movie/hash and never queries K20.
+        string stream = PlaylistLink(source);
 
         if (play)
             return RedirectToPlay(stream);
@@ -121,6 +122,66 @@ public class VsMovController : BaseOnlineController
             httpContext: HttpContext
         ));
     }
+
+    [HttpGet, Staticache(manually: true)]
+    [Route("lite/vsmov/playlist.m3u8")]
+    public async Task<ActionResult> Playlist(string uri)
+    {
+        string source = DecryptQuery(uri);
+        if (!IsHttpUrl(source))
+            return OnError("uri");
+
+        var headers = StreamHeaders();
+        string playlist = await Http.Get(source, timeoutSeconds: 30, headers: headers, useDefaultHeaders: false);
+        if (string.IsNullOrWhiteSpace(playlist) || !playlist.Contains("#EXTM3U", StringComparison.OrdinalIgnoreCase))
+            return OnError("playlist", refresh_proxy: true);
+
+        var output = new StringBuilder(playlist.Length * 2);
+        Uri baseUri = new Uri(source);
+        foreach (string rawLine in playlist.Replace("\r", string.Empty).Split('\n'))
+        {
+            string line = rawLine.Trim();
+            if (line.Length == 0 || line.StartsWith("#", StringComparison.Ordinal))
+            {
+                output.Append(rawLine).Append('\n');
+                continue;
+            }
+
+            if (!Uri.TryCreate(baseUri, line, out Uri segment) || !IsHttpUrl(segment.AbsoluteUri))
+            {
+                output.Append(rawLine).Append('\n');
+                continue;
+            }
+
+            output.Append(host).Append("/lite/vsmov/segment.ts?uri=")
+                .Append(HttpUtility.UrlEncode(EncryptQuery(segment.AbsoluteUri))).Append('\n');
+        }
+
+        return ContentTo(output, "application/vnd.apple.mpegurl; charset=utf-8");
+    }
+
+    [HttpGet, Staticache(manually: true)]
+    [Route("lite/vsmov/segment.ts")]
+    public async Task<ActionResult> Segment(string uri)
+    {
+        string source = DecryptQuery(uri);
+        if (!IsHttpUrl(source))
+            return OnError("uri");
+
+        if (await IsRequestBlocked(rch: true, rch_check: false))
+            return badInitMsg;
+
+        string stream = HostStreamProxy(source, headers: StreamHeaders());
+        return string.IsNullOrWhiteSpace(stream)
+            ? OnError("segment", refresh_proxy: true)
+            : RedirectToPlay(stream);
+    }
+
+    List<HeadersModel> StreamHeaders()
+        => httpHeaders(init.host, init.headers_stream);
+
+    string PlaylistLink(string source)
+        => accsArgs($"{host}/lite/vsmov/playlist.m3u8?uri={HttpUtility.UrlEncode(EncryptQuery(source))}");
 
     #endregion
 
