@@ -429,6 +429,14 @@ public class VsMovController : BaseOnlineController
 
         try
         {
+            // VsMov pattern: https://v1.streamvsmov.com/video/{hash} → stream/{hash}/master.m3u8
+            if (embed.Contains("streamvsmov.com/video/", StringComparison.OrdinalIgnoreCase))
+            {
+                string hash = embed.Split('/').LastOrDefault();
+                if (!string.IsNullOrWhiteSpace(hash))
+                    return $"https://v1.streamvsmov.com/stream/{hash}/master.m3u8";
+            }
+
             var uri = new Uri(embed, UriKind.Absolute);
             string value = HttpUtility.ParseQueryString(uri.Query).Get("url");
             return !string.IsNullOrWhiteSpace(value) && value.Contains(".m3u8", StringComparison.OrdinalIgnoreCase)
