@@ -644,6 +644,9 @@ public class ApiController : BaseController
             if (ModInit.conf.initPlugins.subfinder)
                 plugins.Add(new("{localhost}/subfinder.js", 1, "SubFinder — SubDL + SubSource", "lampac"));
 
+            if (ModInit.conf.initPlugins.stremiosub)
+                plugins.Add(new("{localhost}/stremiosub.js", 1, "StremioSub — SubDL + SubSource", "lampac"));
+
             if (ModInit.conf.initPlugins.sisi)
             {
                 plugins.Add(new("{localhost}/sisi.js", 1, "Клубничка", "lampac"));
@@ -832,6 +835,9 @@ public class ApiController : BaseController
 
             if (ModInit.conf.initPlugins.subfinder)
                 send("subfinder", false);
+
+            if (ModInit.conf.initPlugins.stremiosub)
+                send("stremiosub", false);
 
             if (ModInit.conf.initPlugins.online)
                 send("online", true);

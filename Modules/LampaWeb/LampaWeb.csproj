@@ -41,6 +41,9 @@
     <None Update="plugins\subsense-auto.js">
       <CopyToPublishDirectory>Always</CopyToPublishDirectory>
     </None>
+    <None Update="plugins\stremiosub.js">
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+    </None>
   </ItemGroup>
 
 </Project>

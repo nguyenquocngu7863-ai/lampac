@@ -42,4 +42,7 @@ public class InitPlugins
     public bool subsense { get; set; } = true;
 
     public bool subfinder { get; set; } = true;
+
+    /// <summary>Loads the Stremio SubDL/SubSource subtitle plugin.</summary>
+    public bool stremiosub { get; set; } = true;
 }

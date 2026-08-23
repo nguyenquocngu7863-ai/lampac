@@ -22,6 +22,7 @@ Phân phối **web-client Lampa** từ **`wwwroot`**, build **`lampainit.js`** v
 | `/on.js`, `/on/js/{token}`, `/on/h/{token}`, `/on/{token}` | Chế độ online-plugin. |
 | `/dorama.js`, `/dorama/js/{token}` | Lampa plugin riêng cho mục **«Doramas»** và nguồn `lampac_dorama`. |
 | `/subsense.js` | Lampa plugin **SubSense** — tự động gắn phụ đề tiếng Việt cho player (nguồn SubSense, chuyển đổi srt/zip → VTT). |
+| `/stremiosub.js` | Lampa plugin **StremioSub** — tự động tìm phụ đề qua Stremio SubDL và SubSource. |
 | `/privateinit.js` | Khởi tạo bổ sung. |
 | `/telegram_auth_gate.js` | Plugin kịch bản xác thực Telegram (xem module Community). |
 
@@ -39,6 +40,7 @@ Các field quan trọng với giá trị mặc định trong code:
 - **`intervalupdate`** — chu kỳ cron (phút);
 - **`initPlugins.dorama`** — nối Lampa plugin riêng **`/dorama.js`** vào `/lampainit.js` và `/on.js`;
 - **`initPlugins.subsense`** — nối Lampa plugin **`/subsense.js`** vào `/lampainit.js` và `/on.js`; mặc định bật (`true`), tắt bằng cách đặt `false` trong `init.conf`;
+- **`initPlugins.stremiosub`** — nối plugin **`/stremiosub.js`** vào `/lampainit.js` và `/on.js`; dùng Stremio SubDL + SubSource, mặc định bật.
 - **`limit_map`** — WAF cho **`^/(extensions|testaccsdb|msx/)`**.
 - **`initPlugins.subsenseAuto`** — tải plugin gốc **`/subsense-auto.js`** mỗi khi Lampa khởi động; đặt `false` để tắt.
 
