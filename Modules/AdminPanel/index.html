@@ -1915,7 +1915,7 @@
             <span class="btn-label">Làm mới</span>
           </button>
           <button type="button" class="btn btn-primary btn-sm" id="saveInitBtn"
-            title="Lưu init.conf hoặc users.json; trong Trình chỉnh sửa hãy dùng nút Lưu ngay trong mục (Ctrl+S)">
+            title="Lưu init.conf, users.json hoặc mục đang mở trong Trình chỉnh sửa (Ctrl+S)">
             <svg style="width:13px;height:13px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
               stroke-linecap="round">
               <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
@@ -3378,8 +3378,15 @@
           return saveUsersJson();
 
         if (panel === 'simple') {
-          showToast('Hãy bấm nút Lưu ngay trong mục cấu hình cần sửa.', 'warn');
-          return;
+          // The top-right Save button should also work in the simple editor.
+          // Save the currently opened top-level section instead of restoring
+          // the stale whole init.conf snapshot.
+          const opened = $('#simpleMount details.simple-key-block[open]');
+          if (!opened || !opened.dataset.key) {
+            showToast('Hãy mở một mục cấu hình rồi bấm Lưu.', 'warn');
+            return;
+          }
+          return saveSimpleSection(opened.dataset.key, opened);
         }
 
         return saveFullInit();

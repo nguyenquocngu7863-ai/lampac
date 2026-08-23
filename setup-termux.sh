@@ -395,6 +395,11 @@ install_custom_modules() {
             curl -fSL --retry 3 "\$webbase/\$file" -o "\$webtarget/\$file"
         done
 
+        # base.conf is part of the published app, not the dynamic module.
+        # Sync it too so default LampaWeb subtitle flags match the controller
+        # and do not remain stuck at an older release's defaults.
+        curl -fSL --retry 3 "${CUSTOM_SOURCE_BASE}/config/base.conf" -o /root/lampac/base.conf
+
         # Some release archives already contain lampa-main, so LampaCron sees
         # no update to perform and never makes its usual lampainit.js injection.
         # Ensure the page opened at http://PHONE_IP:9118/ always boots Lampac's
@@ -575,6 +580,7 @@ case "${1:-}" in
             for file in Controllers/ApiController.cs ModInit.cs Models/InitPlugins.cs plugins/lampainit.js plugins/subsense-auto.js plugins/subsense.js plugins/subfinder.js plugins/stremiosub.js plugins/adminpanel.js; do
                 curl -fSL --retry 3 "$webbase/$file" -o "$webtarget/$file"
             done
+            curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a028cf-lampac/config/base.conf" -o /root/lampac/base.conf
 
             gstbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a028cf-lampac/Modules/GStreamer"
             gsttarget=/root/lampac/module/GStreamer
