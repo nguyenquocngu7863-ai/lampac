@@ -388,7 +388,7 @@ install_custom_modules() {
         lwbase="${CUSTOM_SOURCE_BASE}/Modules/LampaWeb"
         lwtarget=/root/lampac/module/LampaWeb
         mkdir -p "\$lwtarget/plugins"
-        for file in Controllers/ApiController.cs Models/InitPlugins.cs plugins/subsense.js plugins/subfinder.js plugins/subtest.js plugins/lampainit.js; do
+        for file in Controllers/ApiController.cs Models/InitPlugins.cs plugins/subsense.js plugins/subfinder.js plugins/subtest.js plugins/stremiosub.js plugins/lampainit.js; do
             curl -fSL --retry 3 "\$lwbase/\$file" -o "\$lwtarget/\$file"
         done
     "
