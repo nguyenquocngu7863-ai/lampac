@@ -52,27 +52,30 @@
   function syncPlugins() {
     var plugins = Lampa.Plugins.get() || [];
 
-    // Remove retired subtitle providers and collapse every persisted duplicate
-    // by URL. Old Lampac versions repeatedly added entries on some clients.
+    // Remove legacy subtitle providers and duplicate URLs through Lampa's own
+    // registry API. Plugins.get() only returns an array copy; splice() does not
+    // remove entries from Lampa's live _loaded registry on Android.
     var legacySubtitleUrls = /\/(?:subsense-auto|subsense|subfinder)\.js(?:[?#]|$)/i;
     var knownUrls = {};
-    for (var i = plugins.length - 1; i >= 0; i--) {
-      var url = plugins[i] && plugins[i].url || '';
-      if (!url || legacySubtitleUrls.test(url) || knownUrls[url]) {
-        plugins.splice(i, 1);
-      }
-      else {
-        knownUrls[url] = true;
-      }
-    }
-    // Plugins.get() is a copy on some Android builds, therefore persist the
-    // pruned array directly instead of relying on Plugins.save() alone.
-    Lampa.Storage.set('plugins', plugins);
-    Lampa.Plugins.save();
+    var remove = [];
+    plugins.forEach(function (plugin) {
+      var url = plugin && plugin.url || '';
+      if (!url || legacySubtitleUrls.test(url) || knownUrls[url]) remove.push(plugin);
+      else knownUrls[url] = true;
+    });
+    remove.forEach(function (plugin) {
+      Lampa.Plugins.remove(plugin);
+    });
+
+    // Re-read after remove() because it updates Lampa's internal registry.
+    plugins = Lampa.Plugins.get() || [];
+    knownUrls = {};
+    plugins.forEach(function (plugin) {
+      if (plugin && plugin.url) knownUrls[plugin.url] = true;
+    });
 
     var plugins_add = {initiale};
     var plugins_push = [];
-
     plugins_add.forEach(function(plugin) {
       if (plugin && plugin.url && !knownUrls[plugin.url]) {
         Lampa.Plugins.add(plugin);
@@ -80,10 +83,8 @@
         plugins_push.push(plugin.url);
       }
     });
-    Lampa.Plugins.save();
 
     if (plugins_push.length) Lampa.Utils.putScript(plugins_push, function() {}, function() {}, function() {}, true);
-
     return plugins_push.length > 0;
   }
 
