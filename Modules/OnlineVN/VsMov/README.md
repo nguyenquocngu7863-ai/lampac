@@ -17,7 +17,6 @@ Nguồn phim Việt Nam dùng API JSON miễn phí của vsmov.com. Kho phim l�
 - Chọn server/phiên bản (Vietsub, Thuyết Minh...).
 - Chọn mùa và tập khi API cung cấp thông tin mùa.
 - Chuyển link HLS qua `HostStreamProxy` của Lampac.
-- Với phim lẻ có IMDb ID, thêm fallback trực tiếp không phải VSMOV từ manifest K20 (ví dụ KKPhim) khi K20 cung cấp stream phù hợp.
 - Có endpoint search riêng cho global search của Lampa.
 
 ## Routes
