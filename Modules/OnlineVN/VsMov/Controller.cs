@@ -140,8 +140,7 @@ public class VsMovController : BaseOnlineController
                 url,
                 timeoutSeconds: 30,
                 headers: ApiHeaders,
-                useDefaultHeaders: false,
-                textJson: true
+                useDefaultHeaders: false
             );
             var items = root?.items;
 
@@ -163,8 +162,7 @@ public class VsMovController : BaseOnlineController
                 url,
                 timeoutSeconds: 30,
                 headers: ApiHeaders,
-                useDefaultHeaders: false,
-                textJson: true
+                useDefaultHeaders: false
             );
 
             if (root?.movie == null || root.episodes == null || root.episodes.Count == 0)
