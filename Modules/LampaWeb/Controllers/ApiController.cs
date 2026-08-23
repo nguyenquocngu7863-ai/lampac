@@ -626,6 +626,9 @@ public class ApiController : BaseController
             if (ModInit.conf.initPlugins.dorama)
                 plugins.Add(new("{localhost}/dorama.js", 1, "Дорамы", "lampac"));
 
+            if (ModInit.conf.initPlugins.subsense)
+                plugins.Add(new("{localhost}/subsense.js", 1, "SubSense — phụ đề tự động", "lampac"));
+
             if (ModInit.conf.initPlugins.sisi)
             {
                 plugins.Add(new("{localhost}/sisi.js", 1, "Клубничка", "lampac"));
@@ -805,6 +808,9 @@ public class ApiController : BaseController
             if (ModInit.conf.initPlugins.dorama)
                 send("dorama", true);
 
+            if (ModInit.conf.initPlugins.subsense)
+                send("subsense", false);
+
             if (ModInit.conf.initPlugins.online)
                 send("online", true);
 
@@ -906,6 +912,20 @@ public class ApiController : BaseController
             .Replace("{localhost}", host);
 
         return ContentTo(gate, "application/javascript; charset=utf-8");
+    }
+    #endregion
+
+    #region subsense.js
+    [HttpGet, AllowAnonymous, Staticache(manually: true)]
+    [Route("subsense.js")]
+    public ActionResult SubSense()
+    {
+        SetHeadersNoCache();
+
+        string plugin = FileCache.ReadAllText($"{ModInit.modpath}/plugins/subsense.js", "subsense.js")
+            .Replace("{localhost}", host);
+
+        return ContentTo(plugin, "application/javascript; charset=utf-8");
     }
     #endregion
 

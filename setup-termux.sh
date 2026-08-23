@@ -383,9 +383,17 @@ install_custom_modules() {
                 curl -fSL --retry 3 \"\$adminbase/\$file\" -o \"\$admintarget/\$file\"
             done
         fi
+
+        # Native SubSense auto-subtitle plugin (LampaWeb module).
+        lwbase="${CUSTOM_SOURCE_BASE}/Modules/LampaWeb"
+        lwtarget=/root/lampac/module/LampaWeb
+        mkdir -p "\$lwtarget/plugins"
+        for file in Controllers/ApiController.cs Models/InitPlugins.cs plugins/subsense.js; do
+            curl -fSL --retry 3 "\$lwbase/\$file" -o "\$lwtarget/\$file"
+        done
     "
 
-    ok "KKPhim, WebStreamr, GStreamer and AdminPanel files installed"
+    ok "KKPhim, WebStreamr, GStreamer, AdminPanel and SubSense files installed"
 }
 
 # ─── Step 4: Create launcher scripts (inside Ubuntu!) ────────────────────────
