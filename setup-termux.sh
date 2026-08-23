@@ -385,16 +385,14 @@ install_custom_modules() {
             curl -fSL --retry 3 \"\$gstbase/\$file\" -o \"\$gsttarget/\$file\"
         done
 
-        # Overlay the LampaWeb plugin assets.  The release binary already
-        # serves these files; lampainit.js registers StremioSub as a named,
-        # built-in plugin even when the release predates its server-side entry.
-        # LampaWeb's controllers resolve plugin files from the module folder,
-        # not the release root (/root/lampac/plugins).
-        webplugintarget=/root/lampac/module/LampaWeb/plugins
-        mkdir -p "\$webplugintarget"
-        webpluginbase="${CUSTOM_SOURCE_BASE}/Modules/LampaWeb/plugins"
-        for file in lampainit.js stremiosub.js; do
-            curl -fSL --retry 3 "\$webpluginbase/\$file" -o "\$webplugintarget/\$file"
+        # LampaWeb is a dynamic module.  Sync its controller and model as well
+        # as its assets, otherwise a release can serve stremiosub.js but its old
+        # /lampainit.js handler never adds it to Lampa's native plugin list.
+        webtarget=/root/lampac/module/LampaWeb
+        mkdir -p "\$webtarget/Controllers" "\$webtarget/Models" "\$webtarget/plugins"
+        webbase="${CUSTOM_SOURCE_BASE}/Modules/LampaWeb"
+        for file in Controllers/ApiController.cs Models/InitPlugins.cs plugins/lampainit.js plugins/stremiosub.js; do
+            curl -fSL --retry 3 "\$webbase/\$file" -o "\$webtarget/\$file"
         done
 
         # The AdminPanel is protected by the Lampac root password. If it is
