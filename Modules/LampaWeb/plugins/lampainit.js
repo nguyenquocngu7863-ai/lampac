@@ -29,7 +29,7 @@
 
   window.lampa_settings.disable_features = window.lampa_settings.disable_features || {};
   window.lampa_settings.disable_features.dmca = true;           // шлет нахер правообладателей - on
-  window.lampa_settings.disable_features.ads = true;            // Вспомогатиленые сервисы на подписку према
+  window.lampa_settings.disable_features.ads = true;            // Вспомогательные сервисы на подписку према
   window.lampa_settings.disable_features.reactions = false;     // cub реакции
   window.lampa_settings.disable_features.discuss = false;       // cub комментарии
   window.lampa_settings.disable_features.ai = false;            // cub AI-поиск
@@ -44,6 +44,33 @@
   
   
   {lampainit-invc}
+
+  // Sync the native plugin list ({initiale}) on EVERY launch.
+  // Previously this ran only once per client (guarded by lampac_initiale),
+  // so plugins added on the server later never reached already-connected
+  // devices. The url-dedup check below makes repeated syncing harmless.
+  function syncPlugins() {
+    var plugins = Lampa.Plugins.get();
+
+    var plugins_add = {initiale};
+
+    var plugins_push = [];
+
+    plugins_add.forEach(function(plugin) {
+      if (!plugins.find(function(a) {
+          return a.url == plugin.url;
+        })) {
+        Lampa.Plugins.add(plugin);
+        Lampa.Plugins.save();
+
+        plugins_push.push(plugin.url);
+      }
+    });
+
+    if (plugins_push.length) Lampa.Utils.putScript(plugins_push, function() {}, function() {}, function() {}, true);
+
+    return plugins_push.length > 0;
+  }
 
   var timer = setInterval(function() {
     if (typeof Lampa !== 'undefined') {
@@ -78,11 +105,17 @@
     }
   }, 200);
 
+
   function start() {
     {deny}
 	
-    if (lampainit_invc) lampainit_invc.appready();
-    if (Lampa.Storage.get('lampac_initiale', 'false')) return;
+    // Always sync plugins first, even on already-initialized clients
+    syncPlugins();
+
+    if (Lampa.Storage.get('lampac_initiale', 'false')) {
+      if (lampainit_invc) lampainit_invc.first_initiale();
+      return;
+    }
 
     Lampa.Storage.set('lampac_initiale', 'true');
     Lampa.Storage.set('source', 'cub');
@@ -96,25 +129,6 @@
     Lampa.Storage.set('jackett_key', '1');
     Lampa.Storage.set('parser_torrent_type', 'jackett');
 
-    var plugins = Lampa.Plugins.get();
-
-    var plugins_add = {initiale};
-
-    var plugins_push = [];
-
-    plugins_add.forEach(function(plugin) {
-      if (!plugins.find(function(a) {
-          return a.url == plugin.url;
-        })) {
-        Lampa.Plugins.add(plugin);
-        Lampa.Plugins.save();
-
-        plugins_push.push(plugin.url);
-      }
-    });
-
-    if (plugins_push.length) Lampa.Utils.putScript(plugins_push, function() {}, function() {}, function() {}, true);
-	
     if (lampainit_invc)
       lampainit_invc.first_initiale();
 
