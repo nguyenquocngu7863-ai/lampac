@@ -108,8 +108,13 @@
 
   /* ── Download + convert subtitle file ── */
   function resolveToVtt(sub, cb) {
-    var fetchUrl = SERVER_ORIGIN + '/subfinder/file?url=' + encodeURIComponent(sub.url);
-    var fmt = detectFormat(sub.url) || sub.format || 'unknown';
+    // Fix SubDL download domain: subdl.com → dl.subdl.com
+    var downloadUrl = sub.url || '';
+    if (downloadUrl.indexOf('subdl.com/subtitle/') !== -1 && downloadUrl.indexOf('dl.subdl.com') === -1) {
+      downloadUrl = downloadUrl.replace('https://subdl.com/', 'https://dl.subdl.com/');
+    }
+    var fetchUrl = downloadUrl;
+    var fmt = detectFormat(downloadUrl) || sub.format || 'unknown';
 
     if (fmt === 'ass' || fmt === 'ssa') {
       // ASS/SSA: download text, convert basic tags to VTT
