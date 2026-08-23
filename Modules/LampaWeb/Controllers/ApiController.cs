@@ -643,12 +643,6 @@ public class ApiController : BaseController
             if (ModInit.conf.initPlugins.dorama)
                 plugins.Add(new("{localhost}/dorama.js", 1, "Дорамы", "lampac"));
 
-            if (ModInit.conf.initPlugins.subsense)
-                plugins.Add(new("{localhost}/subsense.js", 1, "SubSense — phụ đề tự động", "lampac"));
-
-            if (ModInit.conf.initPlugins.subfinder)
-                plugins.Add(new("{localhost}/subfinder.js", 1, "SubFinder — SubDL + SubSource", "lampac"));
-
             if (ModInit.conf.initPlugins.stremiosub)
                 plugins.Add(new("{localhost}/stremiosub.js", 1, "StremioSub — SubDL + SubSource", "lampac"));
 
@@ -843,12 +837,6 @@ public class ApiController : BaseController
 
             if (ModInit.conf.initPlugins.dorama)
                 send("dorama", true);
-
-            if (ModInit.conf.initPlugins.subsense)
-                send("subsense", false);
-
-            if (ModInit.conf.initPlugins.subfinder)
-                send("subfinder", false);
 
             if (ModInit.conf.initPlugins.stremiosub)
                 send("stremiosub", false);
