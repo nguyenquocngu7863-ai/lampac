@@ -132,8 +132,9 @@ public class VsMovController : BaseOnlineController
         if (!IsHttpUrl(source))
             return OnError("uri");
 
-        var headers = StreamHeaders();
-        string playlist = await Http.Get(source, timeoutSeconds: 30, headers: headers, useDefaultHeaders: false);
+        // Keep the manifest request close to the working Termux curl probe.
+        // The full browser header set can make the VSMOV edge return no body.
+        string playlist = await Http.Get(source, timeoutSeconds: 30, headers: PlaylistHeaders, useDefaultHeaders: false);
         if (string.IsNullOrWhiteSpace(playlist) || !playlist.Contains("#EXTM3U", StringComparison.OrdinalIgnoreCase))
             return OnError("playlist", refresh_proxy: true);
 
@@ -236,6 +237,12 @@ public class VsMovController : BaseOnlineController
 
     static readonly IReadOnlyList<HeadersModel> ApiHeaders = HeadersModel.Init(
         ("accept", "application/json"),
+        ("referer", "https://vsmov.com/")
+    );
+
+    static readonly IReadOnlyList<HeadersModel> PlaylistHeaders = HeadersModel.Init(
+        ("accept", "*/*"),
+        ("origin", "https://vsmov.com"),
         ("referer", "https://vsmov.com/")
     );
 
