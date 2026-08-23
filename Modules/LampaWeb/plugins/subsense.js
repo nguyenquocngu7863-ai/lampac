@@ -167,6 +167,27 @@
     });
   }
 
+  // Origin của server Lampac (nơi plugin được chèn vào) để tải file phụ đề
+  // qua /subsense/file — tránh bị CORS chặn khi gọi thẳng tới OpenSubtitles...
+  var PLUGIN_ORIGIN = '';
+  (function detectOrigin() {
+    try {
+      var scripts = document.getElementsByTagName('script');
+      for (var i = scripts.length - 1; i >= 0; i--) {
+        var m = /(https?:\/\/[^\/]+)\/[^\/]*subsense\.js/.exec(scripts[i].src || '');
+        if (m) { PLUGIN_ORIGIN = m[1]; return; }
+      }
+    } catch (e) {}
+    if (window.location && /^https?:/.test(window.location.protocol)) {
+      PLUGIN_ORIGIN = window.location.origin;
+    }
+  })();
+
+  function proxiedUrl(url) {
+    if (!PLUGIN_ORIGIN) return url;
+    return PLUGIN_ORIGIN + '/subsense/file?url=' + encodeURIComponent(url);
+  }
+
   function srtToVtt(srtText) {
     return 'WEBVTT\n\n' + srtText
       .replace(/\r+/g, '')
@@ -211,7 +232,7 @@
 
     if (type === 'zip') {
       $.ajax({
-        url: sub.url,
+        url: proxiedUrl(sub.url),
         type: 'GET',
         xhrFields: { responseType: 'arraybuffer' },
         success: function(buf) { unzipFirstSub(buf, callback); },
@@ -221,11 +242,23 @@
     }
 
     // srt/vtt hoặc unknown (link OpenSubtitles thường không có đuôi file):
-    // thử đọc text trước, nếu không phải phụ đề thì thử giải nén như zip
+    // thử đọc text trước, nếu không phải phụ đề thì thử giải nén như zip.
+    // Tải qua proxy của Lampac để không dính CORS.
+    var fetchUrl = proxiedUrl(sub.url);
+
+    function fetchAsZip() {
+      $.ajax({
+        url: fetchUrl,
+        type: 'GET',
+        xhrFields: { responseType: 'arraybuffer' },
+        success: function(buf) { unzipFirstSub(buf, callback); },
+        error: function() { callback(null, 'dinh dang khong xac dinh'); }
+      });
+    }
+
     $.ajax({
-      url: sub.url,
+      url: fetchUrl,
       type: 'GET',
-      xhrFields: { responseType: 'text' },
       dataType: 'text',
       success: function(text) {
         if (typeof text === 'string' && text.indexOf('-->') !== -1) {
@@ -234,23 +267,11 @@
         }
 
         if (window.JSZip) {
-          $.ajax({
-            url: sub.url,
-            type: 'GET',
-            xhrFields: { responseType: 'arraybuffer' },
-            success: function(buf) { unzipFirstSub(buf, callback); },
-            error: function() { callback(null, 'dinh dang khong xac dinh'); }
-          });
+          fetchAsZip();
         } else {
           ensureJSZip(function() {
             if (!window.JSZip) { callback(null, 'dinh dang khong xac dinh'); return; }
-            $.ajax({
-              url: sub.url,
-              type: 'GET',
-              xhrFields: { responseType: 'arraybuffer' },
-              success: function(buf) { unzipFirstSub(buf, callback); },
-              error: function() { callback(null, 'dinh dang khong xac dinh'); }
-            });
+            fetchAsZip();
           });
         }
       },

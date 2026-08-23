@@ -15,6 +15,7 @@ using System.IO.Compression;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using System.Web;
 using IO = System.IO;
 
@@ -926,6 +927,50 @@ public class ApiController : BaseController
             .Replace("{localhost}", host);
 
         return ContentTo(plugin, "application/javascript; charset=utf-8");
+    }
+
+    // Server-side fetcher cho SubSense: trình duyệt bị chặn CORS khi tải file
+    // phụ đề trực tiếp từ các nguồn như OpenSubtitles, nên tải qua server.
+    private static readonly System.Net.Http.HttpClient SubSenseHttpClient = CreateSubSenseHttpClient();
+
+    private static System.Net.Http.HttpClient CreateSubSenseHttpClient()
+    {
+        var client = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+        client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) SubSense/1.0");
+        client.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "*/*");
+        return client;
+    }
+
+    [HttpGet, AllowAnonymous]
+    [Route("subsense/file")]
+    public async Task<IActionResult> SubSenseFile(string url)
+    {
+        SetHeadersNoCache();
+
+        if (string.IsNullOrWhiteSpace(url) || !Regex.IsMatch(url, "^https?://", RegexOptions.IgnoreCase))
+            return BadRequest();
+
+        try
+        {
+            using var resp = await SubSenseHttpClient.GetAsync(url, System.Net.Http.HttpCompletionOption.ResponseHeadersRead);
+
+            if (!resp.IsSuccessStatusCode)
+                return StatusCode((int)resp.StatusCode);
+
+            var data = new IO.MemoryStream();
+            await resp.Content.CopyToAsync(data);
+
+            if (data.Length > 50 * 1024 * 1024)
+                return BadRequest("file too large");
+
+            data.Position = 0;
+            string contentType = resp.Content.Headers.ContentType?.MediaType ?? "application/octet-stream";
+            return File(data, contentType);
+        }
+        catch
+        {
+            return StatusCode(502);
+        }
     }
     #endregion
 
