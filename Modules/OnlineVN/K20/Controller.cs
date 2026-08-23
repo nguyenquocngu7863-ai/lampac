@@ -204,7 +204,8 @@ public sealed class K20Controller : BaseOnlineController<ModuleConf>
 
         List<K20StreamItem> streams = await GetStreams(
             "series",
-            $"{addonId}:{season}:{episode}"
+            $"{addonId}:{season}:{episode}",
+            expectedSeason: season
         );
 
         if (streams.Count == 0)
@@ -437,7 +438,7 @@ public sealed class K20Controller : BaseOnlineController<ModuleConf>
         );
     }
 
-    async Task<List<K20StreamItem>> GetStreams(string type, string addonId)
+    async Task<List<K20StreamItem>> GetStreams(string type, string addonId, short expectedSeason = 0)
     {
         var result = new List<K20StreamItem>();
 
@@ -473,12 +474,37 @@ public sealed class K20Controller : BaseOnlineController<ModuleConf>
             if (result.Count >= maxStreams || token is not JObject stream)
                 break;
 
+            // K20 can return a stream from a different season even though the
+            // requested Stremio id contains S:E. Never play a labelled mismatch.
+            if (expectedSeason > 0 && !MatchesExpectedSeason(stream, expectedSeason))
+                continue;
+
             K20StreamItem item = ReadStream(stream);
             if (item != null)
                 result.Add(item);
         }
 
         return result;
+    }
+
+    static bool MatchesExpectedSeason(JObject stream, short expectedSeason)
+    {
+        string group = stream["behaviorHints"]?.Value<string>("bingeGroup") ?? string.Empty;
+        string title = stream.Value<string>("title") ?? string.Empty;
+        string text = $"{group} {title}";
+
+        // K20 currently emits groups such as `...-phan-3`; other providers
+        // commonly use season-3, mua-3 or s03. If there is no season marker,
+        // retain the stream because there is no reliable mismatch to reject.
+        Match match = Regex.Match(
+            text,
+            @"(?:phan|season|mua|mùa|s)[\s_-]*0*(\d+)(?:$|[^0-9])",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant
+        );
+
+        return !match.Success ||
+            !int.TryParse(match.Groups[1].Value, out int actualSeason) ||
+            actualSeason == expectedSeason;
     }
 
     static K20StreamItem ReadStream(JObject stream)
