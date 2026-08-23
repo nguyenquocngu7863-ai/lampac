@@ -655,6 +655,9 @@ public class ApiController : BaseController
             if (ModInit.conf.initPlugins.adminpanel)
                 plugins.Add(new("{localhost}/adminpanel.js", 1, "Admin Panel", "lampac"));
 
+            if (ModInit.conf.initPlugins.gst)
+                plugins.Add(new("{localhost}/gst.js", 1, "GStreamer", "lampac"));
+
             if (ModInit.conf.initPlugins.sisi)
             {
                 plugins.Add(new("{localhost}/sisi.js", 1, "Клубничка", "lampac"));
@@ -852,6 +855,9 @@ public class ApiController : BaseController
 
             if (ModInit.conf.initPlugins.adminpanel)
                 send("adminpanel", false);
+
+            if (ModInit.conf.initPlugins.gst)
+                send("gst", true);
 
             if (ModInit.conf.initPlugins.online)
                 send("online", true);

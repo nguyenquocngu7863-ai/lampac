@@ -48,4 +48,7 @@ public class InitPlugins
 
     /// <summary>Shows a protected AdminPanel shortcut in Lampa Settings.</summary>
     public bool adminpanel { get; set; } = true;
+
+    /// <summary>Loads the GStreamer player helper when the GStreamer module is installed.</summary>
+    public bool gst { get; set; } = true;
 }
