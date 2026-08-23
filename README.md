@@ -143,9 +143,9 @@ Cấu hình mặc định của script đã bao gồm:
 
 Thiết lập này ưu tiên ổn định và tiết kiệm RAM. Nếu máy yếu, không nên bật cùng lúc nhiều module nặng, nhiều Chromium context hoặc transcoding.
 
-## Phụ đề: chỉ dùng StremioSub mặc định
+## Plugin phụ đề
 
-Termux/LampaWeb mặc định chỉ nạp **StremioSub** để tránh nhiều plugin phụ đề cùng tự gắn track và tạo danh sách phụ đề trùng. Các plugin cũ `subsenseAuto`, `subsense` và `subfinder` đều đã tắt mặc định; chỉ bật lại khi thật sự cần trong `LampaWeb.initPlugins`.
+Lampac có SubSense Auto, SubSense, SubFinder và StremioSub. Chúng có thể được bật/tắt độc lập qua `LampaWeb.initPlugins`. Init Lampa tự dọn các URL Extension bị trùng, nhưng không tự xóa từng provider phụ đề.
 
 ## StremioSub — plugin phụ đề built-in
 

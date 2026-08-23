@@ -52,15 +52,14 @@
   function syncPlugins() {
     var plugins = Lampa.Plugins.get() || [];
 
-    // Remove legacy subtitle providers and duplicate URLs through Lampa's own
-    // registry API. Plugins.get() only returns an array copy; splice() does not
-    // remove entries from Lampa's live _loaded registry on Android.
-    var legacySubtitleUrls = /\/(?:subsense-auto|subsense|subfinder)\.js(?:[?#]|$)/i;
+    // Collapse duplicate URLs through Lampa's own registry API.
+    // Plugins.get() only returns an array copy; splice() does not remove entries
+    // from Lampa's live _loaded registry on Android.
     var knownUrls = {};
     var remove = [];
     plugins.forEach(function (plugin) {
       var url = plugin && plugin.url || '';
-      if (!url || legacySubtitleUrls.test(url) || knownUrls[url]) remove.push(plugin);
+      if (!url || knownUrls[url]) remove.push(plugin);
       else knownUrls[url] = true;
     });
     remove.forEach(function (plugin) {

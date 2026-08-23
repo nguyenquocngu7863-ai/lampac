@@ -48,9 +48,8 @@ public class ModInit : IModuleLoaded
             tree = "cbc0797cf8109f042dc289b1f27e78c92fe17435",
             initPlugins = new InitPlugins
             {
-                // StremioSub is the single built-in subtitle provider.
-                // Legacy SubSense Auto remains available only when explicitly enabled.
-                subsenseAuto = false
+                // Built-in Vietnamese subtitle helper.
+                subsenseAuto = true
             },
             limit_map = new List<WafLimitRootMap>()
             {
