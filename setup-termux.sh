@@ -385,13 +385,13 @@ install_custom_modules() {
             curl -fSL --retry 3 \"\$gstbase/\$file\" -o \"\$gsttarget/\$file\"
         done
 
-        # LampaWeb is a dynamic module.  Sync its controller and model as well
-        # as its assets, otherwise a release can serve stremiosub.js but its old
-        # /lampainit.js handler never adds it to Lampa's native plugin list.
+        # LampaWeb is a dynamic module. Sync its controller, plugin model and
+        # subtitle assets, otherwise a release can serve an old plugin list or
+        # miss the selected built-in subtitle provider.
         webtarget=/root/lampac/module/LampaWeb
         mkdir -p "\$webtarget/Controllers" "\$webtarget/Models" "\$webtarget/plugins"
         webbase="${CUSTOM_SOURCE_BASE}/Modules/LampaWeb"
-        for file in Controllers/ApiController.cs Models/InitPlugins.cs plugins/lampainit.js plugins/stremiosub.js plugins/adminpanel.js; do
+        for file in Controllers/ApiController.cs ModInit.cs Models/InitPlugins.cs plugins/lampainit.js plugins/subsense-auto.js plugins/subsense.js plugins/subfinder.js plugins/stremiosub.js plugins/adminpanel.js; do
             curl -fSL --retry 3 "\$webbase/\$file" -o "\$webtarget/\$file"
         done
 
@@ -564,6 +564,15 @@ case "${1:-}" in
             webtarget=/root/lampac/module/OnlineENG/WebStreamr
             mkdir -p "$webtarget"
             for file in Controller.cs Model.cs ModInit.cs manifest.json; do
+                curl -fSL --retry 3 "$webbase/$file" -o "$webtarget/$file"
+            done
+
+            # Keep the dynamic LampaWeb subtitle/plugin selector in sync after
+            # replacing a release archive.
+            webbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a028cf-lampac/Modules/LampaWeb"
+            webtarget=/root/lampac/module/LampaWeb
+            mkdir -p "$webtarget/Controllers" "$webtarget/Models" "$webtarget/plugins"
+            for file in Controllers/ApiController.cs ModInit.cs Models/InitPlugins.cs plugins/lampainit.js plugins/subsense-auto.js plugins/subsense.js plugins/subfinder.js plugins/stremiosub.js plugins/adminpanel.js; do
                 curl -fSL --retry 3 "$webbase/$file" -o "$webtarget/$file"
             done
 

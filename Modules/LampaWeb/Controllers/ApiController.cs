@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
@@ -643,13 +643,17 @@ public class ApiController : BaseController
             if (ModInit.conf.initPlugins.dorama)
                 plugins.Add(new("{localhost}/dorama.js", 1, "Дорамы", "lampac"));
 
-            if (ModInit.conf.initPlugins.subsense)
+            // Subtitle providers all wrap Lampa.Player.play. Load exactly one
+            // provider so one playback cannot trigger several subtitle requests
+            // or several calls to Lampa.Player.subtitles(). The explicit
+            // subsenseAuto option wins when the root auto plugin is requested.
+            if (ModInit.conf.initPlugins.subsenseAuto)
+                plugins.Add(new("{localhost}/subsense-auto.js", 1, "SubSense Auto — phụ đề tự động", "lampac"));
+            else if (ModInit.conf.initPlugins.subsense)
                 plugins.Add(new("{localhost}/subsense.js", 1, "SubSense — phụ đề tự động", "lampac"));
-
-            if (ModInit.conf.initPlugins.subfinder)
+            else if (ModInit.conf.initPlugins.subfinder)
                 plugins.Add(new("{localhost}/subfinder.js", 1, "SubFinder — SubDL + SubSource", "lampac"));
-
-            if (ModInit.conf.initPlugins.stremiosub)
+            else if (ModInit.conf.initPlugins.stremiosub)
                 plugins.Add(new("{localhost}/stremiosub.js", 1, "StremioSub — SubDL + SubSource", "lampac"));
 
             if (ModInit.conf.initPlugins.adminpanel)
@@ -691,9 +695,6 @@ public class ApiController : BaseController
             sb = sb.Replace("{initiale}", JsonConvert.SerializeObject(plugins));
             #endregion
 
-            if (ModInit.conf.initPlugins.subsenseAuto)
-                sb = sb.Replace("{subsense_auto}", "Lampa.Utils.putScriptAsync([\"{localhost}/subsense-auto.js\"], function() {});");
-
             if (ModInit.conf.initPlugins.pirate_store)
             {
                 string storejs = FileCache.ReadAllText($"{ModInit.modpath}/plugins/pirate_store.js", "pirate_store.js");
@@ -724,7 +725,6 @@ public class ApiController : BaseController
             sb = sb.Replace("{localhost}", host);
             sb = sb.Replace("{deny}", string.Empty);
             sb = sb.Replace("{pirate_store}", string.Empty);
-            sb = sb.Replace("{subsense_auto}", string.Empty);
 
             sb = sb.Replace("{ major: 0, minor: 0 }", $"{{major: 2, minor: 1}}");
 
@@ -844,13 +844,15 @@ public class ApiController : BaseController
             if (ModInit.conf.initPlugins.dorama)
                 send("dorama", true);
 
-            if (ModInit.conf.initPlugins.subsense)
+            // Keep subtitle providers mutually exclusive; each one hooks the
+            // same Lampa.Player.play method.
+            if (ModInit.conf.initPlugins.subsenseAuto)
+                send("subsense-auto", false);
+            else if (ModInit.conf.initPlugins.subsense)
                 send("subsense", false);
-
-            if (ModInit.conf.initPlugins.subfinder)
+            else if (ModInit.conf.initPlugins.subfinder)
                 send("subfinder", false);
-
-            if (ModInit.conf.initPlugins.stremiosub)
+            else if (ModInit.conf.initPlugins.stremiosub)
                 send("stremiosub", false);
 
             if (ModInit.conf.initPlugins.adminpanel)

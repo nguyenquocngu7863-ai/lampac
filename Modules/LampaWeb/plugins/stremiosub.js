@@ -11,9 +11,10 @@
 (function() {
   'use strict';
 
-  // The plugin may be present in an older client's stored extension list more
-  // than once.  Only one hook may wrap Lampa.Player.play.
-  if (window.__lampacStremioSubLoaded) return;
+  // All automatic subtitle providers use the same Player.play hook. Keep one
+  // owner even if an older client still has duplicate/raw plugin URLs.
+  if (window.__lampacSubtitleAutoOwner) return;
+  window.__lampacSubtitleAutoOwner = 'stremiosub';
   window.__lampacStremioSubLoaded = true;
 
   var SUBDL_BASE = 'https://subdl.strem.top/OUFldGw4WXpzOTBydHVNSGFIWkJTQ0JXNndPZkVYZ0ovVkkvaGlJbmNsdWRlLw';
@@ -23,6 +24,20 @@
   function log() {
     var args = ['[StremioSub]'].concat(Array.prototype.slice.call(arguments));
     console.log.apply(console, args);
+  }
+
+  function setSubtitlesSafely(tracks) {
+    try {
+      if (!Lampa.Player || typeof Lampa.Player.subtitles !== 'function') return;
+      if (typeof Lampa.Player.opened === 'function' && !Lampa.Player.opened()) {
+        log('player da dong truoc khi sub tai xong, bo qua');
+        return;
+      }
+      Lampa.Player.subtitles(tracks);
+      log('attached', tracks.length, 'subs to player');
+    } catch (error) {
+      log('bo qua gan sub vi player khong con san sang:', error.message || error);
+    }
   }
 
   /* ── Helpers ── */
@@ -119,8 +134,7 @@
           }
           downloadPending--;
           if (downloadPending === 0 && tracks.length) {
-            log('attached', tracks.length, 'subs to player');
-            try { Lampa.Player.subtitles(tracks); } catch(e) { log('player error:', e.message); }
+            setSubtitlesSafely(tracks);
           }
         });
       });

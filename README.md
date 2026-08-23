@@ -145,7 +145,7 @@ Thiết lập này ưu tiên ổn định và tiết kiệm RAM. Nếu máy yế
 
 ## Plugin phụ đề
 
-Lampac có SubSense Auto, SubSense, SubFinder và StremioSub. Chúng có thể được bật/tắt độc lập qua `LampaWeb.initPlugins`. Init Lampa tự dọn các URL Extension bị trùng, nhưng không tự xóa từng provider phụ đề.
+Lampac có SubSense Auto, SubSense, SubFinder và StremioSub. Vì các plugin tự động đều bọc `Lampa.Player.play`, chỉ nên bật **một** provider. Mặc định dùng `stremiosub`; `subsenseAuto`, `subsense` và `subfinder` là opt-in. Server sẽ ưu tiên đúng một provider nếu lỡ bật nhiều cờ, đồng thời client có khóa chung để raw URL cũ không bọc player lần nữa.
 
 ## StremioSub — plugin phụ đề built-in
 
@@ -166,6 +166,24 @@ lampac start
 ```
 
 Xóa các card **Untitled** đã cài thủ công từ jsDelivr trước khi mở lại Lampa để không tải trùng plugin.
+
+### Muốn dùng `subsense-auto.js` ngang hàng với `ts.js`
+
+Không thêm cùng lúc URL này vào `customPlugins`. Bật nó trong danh sách built-in:
+
+```json
+"LampaWeb": {
+  "initPlugins": {
+    "torrserver": true,
+    "subsenseAuto": true,
+    "subsense": false,
+    "subfinder": false,
+    "stremiosub": false
+  }
+}
+```
+
+Lampac sẽ phục vụ script tại `/subsense-auto.js` và đăng ký nó cùng danh sách với `/ts.js`. Nếu đang dùng SubSense Auto thì phải tắt `subsense`, `subfinder` và `stremiosub`; nếu không, các addon đều có thể gọi phụ đề cho cùng một lần phát. Trong lúc host SubSense trả 502, nên để `subsenseAuto: false` và dùng `stremiosub: true`.
 
 ## Thêm/sửa plugin LampaWeb vào bản Lampac trong `/root`
 

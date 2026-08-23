@@ -56,13 +56,16 @@
     // backup of every client entry, remove only old Lampac-hosted add-ons, then
     // add the current server list below in its declared order. Third-party
     // plugin URLs (for example jsDelivr) are never touched.
-    var resetKey = 'lampac_plugin_reset_20260823_v1';
+    var resetKey = 'lampac_plugin_reset_20260823_v2';
     if (Lampa.Storage.get(resetKey, 'false') !== 'true') {
       Lampa.Storage.set('lampac_plugins_backup_20260823', plugins);
-      var lampacPluginPath = /\/(?:dlna|tracks|transcoding|tmdbproxy|cubproxy|online|watchtogether|catalog|dorama|subsense|subfinder|stremiosub|adminpanel|gst|sisi|startpage|sync|timecode|bookmark|ts|backup)\.js(?:[?#]|$)/i;
+      var lampacPluginPath = /\/(?:dlna|tracks|transcoding|tmdbproxy|cubproxy|online|watchtogether|catalog|dorama|subsense-auto|subsense|subfinder|stremiosub|adminpanel|gst|sisi|startpage|sync|timecode|bookmark|ts|backup)\.js(?:[?#]|$)/i;
+      var subtitlePluginPath = /\/(?:subsense-auto|subsense|subfinder|stremiosub)\.js(?:[?#]|$)/i;
       plugins.forEach(function (plugin) {
         var url = plugin && plugin.url || '';
-        if (url.indexOf(window.location.origin + '/') === 0 && lampacPluginPath.test(url)) {
+        // Also remove old raw/GitHub subtitle URLs. They are legacy copies
+        // that otherwise run before the newly selected built-in provider.
+        if ((url.indexOf(window.location.origin + '/') === 0 && lampacPluginPath.test(url)) || subtitlePluginPath.test(url)) {
           Lampa.Plugins.remove(plugin);
         }
       });
@@ -116,10 +119,6 @@
 	  
       if (lampainit_invc)
         lampainit_invc.appload();
-
-      // Built-in plugins that must run on every application start, including for
-      // clients that completed Lampac's one-time initial setup before an upgrade.
-      {subsense_auto}
 
       if ({btn_priority_forced})
         Lampa.Storage.set('full_btn_priority', '{full_btn_priority_hash}');

@@ -1,6 +1,12 @@
 (function () {
   'use strict';
 
+  // This root copy can be loaded manually in addition to the built-in
+  // LampaWeb copy. All automatic subtitle plugins share one owner flag so a
+  // duplicate URL cannot wrap Lampa.Player.play a second time.
+  if (window.__lampacSubtitleAutoOwner) return;
+  window.__lampacSubtitleAutoOwner = 'subsense-auto';
+
   var SUBSENSE_BASE = 'https://subsense.nepiraw.com/bu8e9cfy-ZSnP5mVsCkziQ-DtDwHymaozxOkAUjM0O4fIZCp0Y3wd4behaNV8shVg6U5yv7RhcX7O4Rpi6xee5TQdKCetjN8wmBS-xeADnVc0LVN5jpYQmFyWOyMW7WTVxw04MHCYjyE6XHlc3Jwb1gSm6tLiMsIkGAE85EcfaM_EdeNl472Wr8knESDBNY52CDi0bJKFZ5dOZ5dgN-KhoC2LCSo-mwrKxzUt4GdnbkuzMgeFxntuHVBe2DYJhWIFkNCb4CKsEpOp9TAsifN_Jg';
   var JSZIP_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
   var jszipLoaded = false;
@@ -9,6 +15,20 @@
   function log() {
     var args = ['[SubSense]'].concat(Array.prototype.slice.call(arguments));
     console.log.apply(console, args);
+  }
+
+  function setSubtitlesSafely(tracks) {
+    try {
+      if (!Lampa.Player || typeof Lampa.Player.subtitles !== 'function') return;
+      if (typeof Lampa.Player.opened === 'function' && !Lampa.Player.opened()) {
+        log('player da dong truoc khi sub tai xong, bo qua');
+        return;
+      }
+      Lampa.Player.subtitles(tracks);
+      log('da gan', tracks.length, 'ban sub');
+    } catch (error) {
+      log('bo qua gan sub vi player khong con san sang:', error.message || error);
+    }
   }
 
   function ensureJSZip(callback) {
@@ -27,13 +47,19 @@
 
   function fetchSubs(imdbId, type, season, episode, onSuccess, onError) {
     var id = buildId(imdbId, season, episode);
-    var url = SUBSENSE_BASE + '/subtitles/' + (type || 'movie') + '/' + id + '.json';
+    var url = SUBSENSE_BASE + '/subtitles/' + (type || 'movie') + '/' + encodeURIComponent(id) + '.json';
     $.ajax({
       url: url,
       type: 'GET',
       dataType: 'json',
-      success: function (data) { onSuccess(data.subtitles || []); },
-      error: function (xhr) { onError && onError(xhr); }
+      timeout: 15000,
+      success: function (data) { onSuccess(data && data.subtitles || []); },
+      error: function (xhr, status, error) {
+        onError && onError({
+          status: xhr && xhr.status ? xhr.status : 0,
+          statusText: status || error || 'network/CORS or upstream unavailable'
+        });
+      }
     });
   }
 
@@ -172,7 +198,9 @@
       log('khong co imdb_id, bo qua phim:', movie && movie.title);
       return;
     }
-    var type = (movie.number_of_seasons || movie.season) ? 'series' : 'movie';
+    var type = (movie.number_of_seasons || movie.season || movie.first_air_date || movie.media_type === 'tv')
+      ? 'series'
+      : 'movie';
 
     fetchSubs(imdbId, type, season, episode, function (subs) {
       if (!subs.length) { log('khong co sub cho', imdbId); return; }
@@ -181,11 +209,12 @@
       autoResolveAll(sorted, function (tracks) {
         if (!tracks.length) { log('khong gan duoc ban nao'); return; }
 
-        Lampa.Player.subtitles(tracks);
-        log('da gan', tracks.length, 'ban sub');
+        setSubtitlesSafely(tracks);
       });
     }, function (xhr) {
-      log('loi lay danh sach sub:', xhr.status);
+      var code = xhr && xhr.status ? xhr.status : 0;
+      var reason = xhr && xhr.statusText ? xhr.statusText : 'network/CORS or upstream unavailable';
+      log('loi lay danh sach sub:', code ? 'HTTP ' + code : reason);
     });
   }
 

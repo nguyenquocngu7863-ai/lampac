@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -39,6 +39,12 @@
       <CopyToPublishDirectory>Always</CopyToPublishDirectory>
     </None>
     <None Update="plugins\subsense-auto.js">
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+    </None>
+    <None Update="plugins\subsense.js">
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+    </None>
+    <None Update="plugins\subfinder.js">
       <CopyToPublishDirectory>Always</CopyToPublishDirectory>
     </None>
     <None Update="plugins\adminpanel.js">

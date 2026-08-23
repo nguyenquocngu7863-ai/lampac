@@ -1,4 +1,4 @@
-﻿namespace LampaWeb;
+namespace LampaWeb;
 
 public class InitPlugins
 {
@@ -23,6 +23,7 @@ public class InitPlugins
     public bool dorama { get; set; }
 
     /// <summary>Installs the built-in Vietnamese SubSense subtitle plugin in Lampa.</summary>
+    /// <remarks>Opt-in: the stable default is StremioSub below.</remarks>
     public bool subsenseAuto { get; set; }
 
     public bool sisi { get; set; }
@@ -39,11 +40,15 @@ public class InitPlugins
 
     public bool watch_together { get; set; }
 
-    public bool subsense { get; set; } = true;
+    /// <summary>Loads the legacy direct SubSense provider.</summary>
+    /// <remarks>Opt-in; enable only instead of <see cref="stremiosub"/>.</remarks>
+    public bool subsense { get; set; }
 
-    public bool subfinder { get; set; } = true;
+    /// <summary>Loads the SubDL/SubSource API provider.</summary>
+    /// <remarks>Opt-in; enable only instead of <see cref="stremiosub"/>.</remarks>
+    public bool subfinder { get; set; }
 
-    /// <summary>Loads the Stremio SubDL/SubSource subtitle plugin.</summary>
+    /// <summary>Loads the stable Stremio SubDL/SubSource provider.</summary>
     public bool stremiosub { get; set; } = true;
 
     /// <summary>Shows a protected AdminPanel shortcut in Lampa Settings.</summary>

@@ -13,6 +13,10 @@
 (function () {
   'use strict';
 
+  // Do not stack another Player.play hook on top of SubSense/StremioSub.
+  if (window.__lampacSubtitleAutoOwner) return;
+  window.__lampacSubtitleAutoOwner = 'subfinder';
+
   var lastMovie = null;
   var subtitleCache = {};
   var JSZIP_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
@@ -21,6 +25,20 @@
   function log() {
     var args = ['[SubFinder]'].concat(Array.prototype.slice.call(arguments));
     console.log.apply(console, args);
+  }
+
+  function setSubtitlesSafely(tracks) {
+    try {
+      if (!Lampa.Player || typeof Lampa.Player.subtitles !== 'function') return;
+      if (typeof Lampa.Player.opened === 'function' && !Lampa.Player.opened()) {
+        log('player da dong truoc khi sub tai xong, bo qua');
+        return;
+      }
+      Lampa.Player.subtitles(tracks);
+      log('da gan', tracks.length, 'ban sub');
+    } catch (error) {
+      log('bo qua gan sub vi player khong con san sang:', error.message || error);
+    }
   }
 
   /* ── Detect server origin ── */
@@ -345,8 +363,7 @@
           }
           resolvePending--;
           if (resolvePending === 0 && tracks.length) {
-            Lampa.Player.subtitles(tracks);
-            log('da gan', tracks.length, 'ban sub');
+            setSubtitlesSafely(tracks);
           }
         });
       });

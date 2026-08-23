@@ -21,8 +21,9 @@ Phân phối **web-client Lampa** từ **`wwwroot`**, build **`lampainit.js`** v
 | `/lampainit.js` | Khởi tạo client (chèn danh sách plugin, **deny.js**, token). |
 | `/on.js`, `/on/js/{token}`, `/on/h/{token}`, `/on/{token}` | Chế độ online-plugin. |
 | `/dorama.js`, `/dorama/js/{token}` | Lampa plugin riêng cho mục **«Doramas»** và nguồn `lampac_dorama`. |
-| `/subsense.js` | Lampa plugin **SubSense** — tự động gắn phụ đề tiếng Việt cho player (nguồn SubSense, chuyển đổi srt/zip → VTT). |
-| `/stremiosub.js` | Lampa plugin **StremioSub** — tự động tìm phụ đề qua Stremio SubDL và SubSource. |
+| `/subsense-auto.js` | Plugin **SubSense Auto** (opt-in), được đăng ký giống `ts.js` và tự gắn phụ đề từ addon SubSense. |
+| `/subsense.js` | Plugin **SubSense** (legacy opt-in) — tự động gắn phụ đề tiếng Việt cho player (nguồn SubSense, chuyển đổi srt/zip → VTT). |
+| `/stremiosub.js` | Plugin **StremioSub** — tự động tìm phụ đề qua Stremio SubDL và SubSource. |
 | `/privateinit.js` | Khởi tạo bổ sung. |
 | `/telegram_auth_gate.js` | Plugin kịch bản xác thực Telegram (xem module Community). |
 
@@ -39,10 +40,12 @@ Các field quan trọng với giá trị mặc định trong code:
 - **`git`**, **`tree`** — nguồn cập nhật;
 - **`intervalupdate`** — chu kỳ cron (phút);
 - **`initPlugins.dorama`** — nối Lampa plugin riêng **`/dorama.js`** vào `/lampainit.js` và `/on.js`;
-- **`initPlugins.subsense`** — nối Lampa plugin **`/subsense.js`** vào `/lampainit.js` và `/on.js`; mặc định bật (`true`), tắt bằng cách đặt `false` trong `init.conf`;
-- **`initPlugins.stremiosub`** — nối plugin **`/stremiosub.js`** vào `/lampainit.js` và `/on.js`; dùng Stremio SubDL + SubSource, mặc định bật.
+- **`initPlugins.stremiosub`** — nối plugin **`/stremiosub.js`** vào `/lampainit.js` và `/on.js`; dùng Stremio SubDL + SubSource, bật mặc định.
+- **`initPlugins.subsenseAuto`** — nối plugin gốc **`/subsense-auto.js`** vào cùng danh sách với **`ts.js`**; mặc định tắt. Bật nó **thay cho** `stremiosub` nếu muốn dùng addon SubSense.
+- **`initPlugins.subsense`** — plugin **`/subsense.js`** legacy, mặc định tắt; chỉ bật thay cho `stremiosub`.
+- **`initPlugins.subfinder`** — plugin **`/subfinder.js`**, mặc định tắt; chỉ bật thay cho `stremiosub`.
+- Chỉ chọn **một** trong `subsenseAuto`, `subsense`, `subfinder`, `stremiosub`; server sẽ ưu tiên theo thứ tự đó nếu lỡ bật nhiều cờ. Các plugin cũng có khóa dùng chung để raw URL cũ không bọc `Lampa.Player.play` lần nữa.
 - **`limit_map`** — WAF cho **`^/(extensions|testaccsdb|msx/)`**.
-- **`initPlugins.subsenseAuto`** — tải plugin gốc **`/subsense-auto.js`** mỗi khi Lampa khởi động; đặt `false` để tắt.
 
 ## Doramas
 
@@ -54,7 +57,23 @@ Nguồn dựng các section thông qua TMDB Discover TV cho phim truyền hình 
 
 Plugin **`plugins/subsense.js`** tự động gắn phụ đề tiếng Việt cho Lampa Player. Mỗi lần bắt đầu phát, nó lấy `imdb_id` (và mùa/tập với series) từ card phim, gọi Stremio addon SubSense để lấy danh sách phụ đề, sắp xếp ưu tiên (srt/vtt trực tiếp → zip → khác), convert sang VTT (zip giải nén qua JSZip từ CDN) rồi đưa toàn bộ track vào `Lampa.Player.subtitles()`.
 
-Chỉ được nối qua **`LampaWeb.initPlugins.subsense`** (mặc định bật). Kiểm thử: mở bất kỳ phim nào qua `/lampainit.js` hoặc `/on.js`, bấm phát và xác nhận trong player xuất hiện các track phụ đề «SubSense» / «Tiếng Việt».
+Plugin này là provider legacy và mặc định tắt. Nếu bật **`LampaWeb.initPlugins.subsense`**, hãy tắt `subsenseAuto`, `subfinder` và `stremiosub`; server chỉ đăng ký một provider tự động cho mỗi client. Nếu endpoint SubSense đang lỗi 502 thì nên dùng `stremiosub` thay thế, không phải lỗi JSON của Lampac.
+
+Muốn dùng **addon trong root `subsense-auto.js`** ngang hàng với `ts.js`, cấu hình như sau:
+
+```json
+"LampaWeb": {
+  "initPlugins": {
+    "torrserver": true,
+    "subsenseAuto": true,
+    "subsense": false,
+    "subfinder": false,
+    "stremiosub": false
+  }
+}
+```
+
+Không đồng thời thêm cùng URL vào `customPlugins`; URL **`/subsense-auto.js`** đã được server đăng ký và phục vụ qua LampaWeb. Nếu muốn dùng provider đang ổn định hơn trong lúc SubSense host chết, để `subsenseAuto: false` và `stremiosub: true`.
 
 Kiểm thử sau khi sửa đổi:
 

@@ -1,4 +1,4 @@
-﻿using Shared;
+using Shared;
 using Shared.Models.AppConf;
 using Shared.Models.Events;
 using Shared.Models.Module;
@@ -46,11 +46,6 @@ public class ModInit : IModuleLoaded
             index = "lampa-main/index.html",
             git = "yumata/lampa",
             tree = "cbc0797cf8109f042dc289b1f27e78c92fe17435",
-            initPlugins = new InitPlugins
-            {
-                // Built-in Vietnamese subtitle helper.
-                subsenseAuto = true
-            },
             limit_map = new List<WafLimitRootMap>()
             {
                 new("^/(extensions|testaccsdb|msx/)", new WafLimitMap { limit = 10, second = 1 })
