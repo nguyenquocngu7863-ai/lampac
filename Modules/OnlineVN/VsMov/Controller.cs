@@ -133,7 +133,16 @@ public class VsMovController : BaseOnlineController
         return await InvokeCacheResult<List<VsMovie>>(cacheKey, TimeSpan.FromHours(2), textJson: true, onget: async e =>
         {
             string url = $"{ApiBase}/api/tim-kiem?keyword={HttpUtility.UrlEncode(query)}&limit=32";
-            var root = await httpHydra.Get<VsSearchResponse>(url, safety: true, textJson: true);
+            // VSMOV accepts a plain direct JSON request. Do not route this public API
+            // through a user CORS/RCH/proxy configuration: those relays commonly return
+            // a 503 even though vsmov.com itself is healthy.
+            var root = await Http.Get<VsSearchResponse>(
+                url,
+                timeoutSeconds: 30,
+                headers: ApiHeaders,
+                useDefaultHeaders: false,
+                textJson: true
+            );
             var items = root?.items;
 
             if (items == null || items.Count == 0)
@@ -150,7 +159,13 @@ public class VsMovController : BaseOnlineController
         return await InvokeCacheResult<VsDetailResponse>(cacheKey, TimeSpan.FromHours(2), textJson: true, onget: async e =>
         {
             string url = $"{ApiBase}/api/phim/{HttpUtility.UrlEncode(slug)}";
-            var root = await httpHydra.Get<VsDetailResponse>(url, safety: true, textJson: true);
+            var root = await Http.Get<VsDetailResponse>(
+                url,
+                timeoutSeconds: 30,
+                headers: ApiHeaders,
+                useDefaultHeaders: false,
+                textJson: true
+            );
 
             if (root?.movie == null || root.episodes == null || root.episodes.Count == 0)
                 return e.Fail("detail", refresh_proxy: true);
@@ -158,6 +173,11 @@ public class VsMovController : BaseOnlineController
             return e.Success(root);
         });
     }
+
+    static readonly IReadOnlyList<HeadersModel> ApiHeaders = HeadersModel.Init(
+        ("accept", "application/json"),
+        ("referer", "https://vsmov.com/")
+    );
 
     string ApiBase
         => (init?.apihost ?? init?.host ?? "https://vsmov.com").TrimEnd('/');
