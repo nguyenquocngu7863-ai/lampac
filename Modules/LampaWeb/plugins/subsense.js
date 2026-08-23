@@ -6,6 +6,11 @@
  * zip bằng JSZip khi cần, chuyển sang VTT và gắn toàn bộ vào player để người
  * dùng chọn bản phù hợp.
  *
+ * Xử lý bền bỉ hơn bản đầu: chấp nhận mọi dạng response của addon
+ * (subtitles/results/result/mảng thuần), chuẩn hoá trường URL của từng bản
+ * (url/file/link/download_url/download) và với link không có đuôi file
+ * (điển hình là OpenSubtitles) thì thử đọc text trước rồi thử giải nén zip.
+ *
  * Đây là plugin gốc của Lampac (LampaWeb), được nạp cùng hệ thống qua
  * /lampainit.js và /on.js khi bật LampaWeb.initPlugins.subsense.
  */
@@ -16,6 +21,7 @@
   var JSZIP_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
   var jszipLoaded = false;
   var lastMovie = null; // cache thông tin phim từ trang chi tiết, để dùng khi player start
+  var subtitleCache = {};
 
   function log() {
     var args = ['[SubSense]'].concat(Array.prototype.slice.call(arguments));
@@ -61,25 +67,104 @@
     return imdbId;
   }
 
+  function stringValue(value, fallback) {
+    if (value === null || typeof value === 'undefined') return fallback || '';
+    return String(value);
+  }
+
+  function detectFileType(url, declaredFormat) {
+    var declared = stringValue(declaredFormat, '').toLowerCase().replace(/^\./, '');
+    if (/^(srt|vtt|zip|rar)$/.test(declared)) return declared;
+
+    var clean = stringValue(url, '').split('?')[0].split('#')[0];
+    try { clean = decodeURIComponent(clean); } catch (e) {}
+
+    if (/\.srt$/i.test(clean)) return 'srt';
+    if (/\.vtt$/i.test(clean)) return 'vtt';
+    if (/\.zip$/i.test(clean)) return 'zip';
+    if (/\.rar$/i.test(clean)) return 'rar';
+    return 'unknown';
+  }
+
+  function isHttpUrl(url) {
+    return /^https?:\/\//i.test(stringValue(url, '').trim());
+  }
+
+  function looksLikeImdb(value) {
+    return typeof value === 'string' && /^tt\d+$/.test(value.trim());
+  }
+
+  // Chấp nhận nhiều tên trường cho URL vì addon đổi cấu trúc thường xuyên
+  function normalizeSubtitle(item, index) {
+    var source = item;
+    var url = '';
+
+    if (typeof source === 'string') {
+      url = source;
+      source = {};
+    } else if (source && typeof source === 'object') {
+      url = source.url || source.file || source.link || source.download_url || source.download || '';
+    } else {
+      return null;
+    }
+
+    url = stringValue(url, '').trim();
+    if (url.indexOf('//') === 0) url = 'https:' + url;
+    if (!isHttpUrl(url)) return null;
+
+    var language = stringValue(
+      source.language || source.lang || source.lang_code || source.iso_639_1 || 'vi',
+      'vi'
+    ).trim().toLowerCase();
+
+    var label = stringValue(
+      source.label || source.name || source.title || source.release || source.source,
+      ''
+    ).trim();
+
+    if (!label) label = /^(vi|vie)/.test(language) ? 'Tiếng Việt' : 'Sub ' + (index + 1);
+
+    return {
+      url: url,
+      label: label,
+      language: language || 'vi',
+      format: detectFileType(url, source.format || source.ext || source.extension || '')
+    };
+  }
+
+  function subtitlesFromResponse(data) {
+    var list = [];
+
+    if (Array.isArray(data)) list = data;
+    else if (data && Array.isArray(data.subtitles)) list = data.subtitles;
+    else if (data && Array.isArray(data.results)) list = data.results;
+    else if (data && Array.isArray(data.result)) list = data.result;
+
+    return list.map(normalizeSubtitle).filter(function(item) {
+      return !!item;
+    });
+  }
+
   function fetchSubs(imdbId, type, season, episode, onSuccess, onError) {
-    var id = buildId(imdbId, season, episode);
-    var url = SUBSENSE_BASE + '/subtitles/' + (type || 'movie') + '/' + id + '.json';
+    var id = buildId(imdbId, type === 'series' ? season : null, type === 'series' ? episode : null);
+
+    if (subtitleCache[id]) {
+      onSuccess(subtitleCache[id]);
+      return;
+    }
+
+    var url = SUBSENSE_BASE + '/subtitles/' + (type || 'movie') + '/' + encodeURIComponent(id) + '.json';
     $.ajax({
       url: url,
       type: 'GET',
       dataType: 'json',
-      success: function(data) { onSuccess(data.subtitles || []); },
+      success: function(data) {
+        var subs = subtitlesFromResponse(data);
+        subtitleCache[id] = subs;
+        onSuccess(subs);
+      },
       error: function(xhr) { onError && onError(xhr); }
     });
-  }
-
-  function detectFileType(url) {
-    var clean = decodeURIComponent(url.split('?')[0]);
-    if (/\.zip$/i.test(clean)) return 'zip';
-    if (/\.rar$/i.test(clean)) return 'rar';
-    if (/\.srt$/i.test(clean)) return 'srt';
-    if (/\.vtt$/i.test(clean)) return 'vtt';
-    return 'unknown';
   }
 
   function srtToVtt(srtText) {
@@ -94,63 +179,79 @@
     return URL.createObjectURL(blob);
   }
 
-  function resolveToVtt(sub, callback) {
-    var type = detectFileType(sub.url);
-
-    if (type === 'srt' || type === 'vtt') {
-      $.ajax({
-        url: sub.url,
-        type: 'GET',
-        success: function(text) {
-          if (type === 'vtt') {
-            callback(URL.createObjectURL(new Blob([text], { type: 'text/vtt' })));
-          } else {
-            callback(makeVttBlobUrl(text));
-          }
-        },
-        error: function() { callback(null, 'tai file that bai'); }
-      });
-      return;
-    }
-
-    if (type === 'zip') {
-      ensureJSZip(function() {
-        if (!window.JSZip) { callback(null, 'JSZip khong load duoc'); return; }
-        $.ajax({
-          url: sub.url,
-          type: 'GET',
-          xhrFields: { responseType: 'arraybuffer' },
-          success: function(buf) {
-            window.JSZip.loadAsync(buf).then(function(zip) {
-              var srtFile = null;
-              zip.forEach(function(path, entry) {
-                if (!srtFile && /\.srt$/i.test(path)) srtFile = entry;
-              });
-              if (!srtFile) { callback(null, 'khong co .srt trong zip'); return; }
-              srtFile.async('string').then(function(text) {
-                callback(makeVttBlobUrl(text));
-              });
-            }).catch(function() { callback(null, 'giai nen zip that bai'); });
-          },
-          error: function() { callback(null, 'tai zip that bai'); }
+  function unzipFirstSub(buf, callback) {
+    ensureJSZip(function() {
+      if (!window.JSZip) { callback(null, 'JSZip khong load duoc'); return; }
+      window.JSZip.loadAsync(buf).then(function(zip) {
+        // ưu tiên .srt/.vtt trong thư mục gốc, sau đó mới quét đệ quy
+        var files = [];
+        zip.forEach(function(path, entry) {
+          if (!entry.dir && /\.(srt|vtt)$/i.test(path)) files.push({ path: path, entry: entry });
         });
-      });
-      return;
-    }
+        files.sort(function(a, b) {
+          var da = a.path.indexOf('/') !== -1 ? 1 : 0;
+          var db = b.path.indexOf('/') !== -1 ? 1 : 0;
+          return da - db;
+        });
+        if (!files.length) { callback(null, 'khong co srt/vtt trong zip'); return; }
+        files[0].entry.async('string').then(function(text) {
+          callback(makeVttBlobUrl(text));
+        }).catch(function() { callback(null, 'doc file trong zip that bai'); });
+      }).catch(function() { callback(null, 'giai nen zip that bai'); });
+    });
+  }
+
+  function resolveToVtt(sub, callback) {
+    var type = sub.format;
 
     if (type === 'rar') {
       callback(null, 'dinh dang rar chua ho tro');
       return;
     }
 
+    if (type === 'zip') {
+      $.ajax({
+        url: sub.url,
+        type: 'GET',
+        xhrFields: { responseType: 'arraybuffer' },
+        success: function(buf) { unzipFirstSub(buf, callback); },
+        error: function() { callback(null, 'tai zip that bai'); }
+      });
+      return;
+    }
+
+    // srt/vtt hoặc unknown (link OpenSubtitles thường không có đuôi file):
+    // thử đọc text trước, nếu không phải phụ đề thì thử giải nén như zip
     $.ajax({
       url: sub.url,
       type: 'GET',
+      xhrFields: { responseType: 'text' },
+      dataType: 'text',
       success: function(text) {
         if (typeof text === 'string' && text.indexOf('-->') !== -1) {
           callback(makeVttBlobUrl(text));
+          return;
+        }
+
+        if (window.JSZip) {
+          $.ajax({
+            url: sub.url,
+            type: 'GET',
+            xhrFields: { responseType: 'arraybuffer' },
+            success: function(buf) { unzipFirstSub(buf, callback); },
+            error: function() { callback(null, 'dinh dang khong xac dinh'); }
+          });
         } else {
-          callback(null, 'dinh dang khong xac dinh');
+          ensureJSZip(function() {
+            if (!window.JSZip) { callback(null, 'dinh dang khong xac dinh'); return; }
+            $.ajax({
+              url: sub.url,
+              type: 'GET',
+              xhrFields: { responseType: 'arraybuffer' },
+              success: function(buf) { unzipFirstSub(buf, callback); },
+              error: function() { callback(null, 'dinh dang khong xac dinh'); }
+            });
+          });
         }
       },
       error: function() { callback(null, 'tai file that bai'); }
@@ -186,20 +287,45 @@
     });
   }
 
-  // ưu tiên sub dạng srt/vtt trực tiếp trước (nhanh, đỡ tốn request giải nén)
+  // tiếng Việt lên đầu, rồi tới định dạng dễ xử lý (nhanh, ít tốn request)
   function sortByEase(subs) {
-    var order = { srt: 0, vtt: 0, zip: 1, unknown: 2, rar: 3 };
+    function score(s) {
+      var langScore = /^vi/.test(s.language || '') ? 0 : 1;
+      var fmtScore = { srt: 0, vtt: 1, zip: 2, unknown: 3, rar: 4 }[s.format];
+      if (typeof fmtScore === 'undefined') fmtScore = 3;
+      return langScore * 10 + fmtScore;
+    }
     return subs.slice().sort(function(a, b) {
-      return order[detectFileType(a.url)] - order[detectFileType(b.url)];
+      var d = score(a) - score(b);
+      if (d) return d;
+      return String(a.label).localeCompare(String(b.label));
     });
   }
 
   function extractImdbId(movie) {
     if (!movie) return null;
-    if (movie.imdb_id) return movie.imdb_id;
-    if (movie.external_ids && movie.external_ids.imdb_id) return movie.external_ids.imdb_id;
-    if (typeof movie.id === 'string' && /^tt\d+/.test(movie.id)) return movie.id;
-    return null;
+    if (looksLikeImdb(movie.imdb_id)) return movie.imdb_id.trim();
+    if (movie.external_ids && looksLikeImdb(movie.external_ids.imdb_id)) return movie.external_ids.imdb_id.trim();
+    if (looksLikeImdb(movie.id)) return movie.id.trim();
+
+    // quét sâu phòng khi imdb nằm ở nơi khác trong object phim
+    var seen = [];
+    function scan(value, depth) {
+      if (!value || typeof value !== 'object' || depth > 4) return null;
+      if (seen.indexOf(value) >= 0) return null;
+      seen.push(value);
+      for (var key in value) {
+        if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
+        var item = value[key];
+        if (/imdb/i.test(key) && looksLikeImdb(item)) return item.trim();
+        if (item && typeof item === 'object') {
+          var found = scan(item, depth + 1);
+          if (found) return found;
+        }
+      }
+      return null;
+    }
+    return scan(movie, 0);
   }
 
   function attachAutoSub(movie, season, episode) {
@@ -208,7 +334,7 @@
       log('khong co imdb_id, bo qua phim:', movie && movie.title);
       return;
     }
-    var type = (movie.number_of_seasons || movie.season) ? 'series' : 'movie';
+    var type = (movie.number_of_seasons || movie.season || movie.first_air_date) ? 'series' : 'movie';
 
     fetchSubs(imdbId, type, season, episode, function(subs) {
       if (!subs.length) { log('khong co sub cho', imdbId); return; }
