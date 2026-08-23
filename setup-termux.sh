@@ -395,6 +395,15 @@ install_custom_modules() {
             curl -fSL --retry 3 "\$webbase/\$file" -o "\$webtarget/\$file"
         done
 
+        # Some release archives already contain lampa-main, so LampaCron sees
+        # no update to perform and never makes its usual lampainit.js injection.
+        # Ensure the page opened at http://PHONE_IP:9118/ always boots Lampac's
+        # configured built-in plugins (ts, gst, subtitles, etc.).
+        webindex=/root/lampac/wwwroot/lampa-main/index.html
+        if [ -f "\$webindex" ] && ! grep -q 'src="/lampainit.js"' "\$webindex"; then
+            sed -i 's#</body>#<script src="/lampainit.js"></script></body>#' "\$webindex"
+        fi
+
         # The AdminPanel is protected by the Lampac root password. If it is
         # already installed/enabled, keep its Vietnamese UI in sync too.
         admintarget=/root/lampac/module/AdminPanel

@@ -197,7 +197,7 @@ Khi thêm một plugin built-in mới, cập nhật cả ba phần sau:
    /root/lampac/module/LampaWeb/plugins/
    ```
 
-Sau khi mirror branch, luôn áp dụng bằng `--sync` rồi restart `lampac`. Không chép sang `/root/lampac/plugins/`: LampaWeb không đọc plugin từ đường dẫn đó.
+Sau khi mirror branch, luôn áp dụng bằng `--sync` rồi restart `lampac`. Không chép sang `/root/lampac/plugins/`: LampaWeb không đọc plugin từ đường dẫn đó. `--sync` cũng bảo đảm `wwwroot/lampa-main/index.html` có thẻ `/lampainit.js`; nếu thiếu thẻ này, URL gốc vẫn mở Lampa nhưng giống một app mới tinh và không nhận bất kỳ plugin built-in nào.
 
 ## Xử lý lỗi thường gặp
 
