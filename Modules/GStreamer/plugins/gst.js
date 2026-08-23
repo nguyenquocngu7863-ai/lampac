@@ -392,16 +392,16 @@
         }
     }
 
-    function withoutWebstreamrSelect(url) {
+    function withoutAddonSelect(url) {
         return String(url || '')
-            .replace(/([?&])webstreamr_select=1&?/i, '$1');
+            .replace(/([?&])(?:webstreamr|k20)_select=1&?/i, '$1');
     }
 
-    function isWebstreamrSelection(e) {
+    function isAddonSelection(e) {
         return !!(e && e.data &&
             typeof e.data.url === 'string' &&
-            e.data.url.indexOf('webstreamr_select=1') !== -1 &&
-            !e.data.__webstreamrSelected);
+            /(?:webstreamr|k20)_select=1/i.test(e.data.url) &&
+            !e.data.__addonSelected);
     }
 
     function showWebstreamrSelection(e) {
@@ -421,8 +421,8 @@
         }
 
         if (items.length < 2) {
-            e.data.__webstreamrSelected = true;
-            e.data.url = withoutWebstreamrSelect(e.data.url);
+            e.data.__addonSelected = true;
+            e.data.url = withoutAddonSelect(e.data.url);
             if (e.data.playlist)
                 delete e.data.playlist;
             Lampa.Player.play(e.data);
@@ -432,14 +432,14 @@
         e.abort();
 
         Lampa.Select.show({
-            title: 'Chọn link WebStreamr',
+            title: /k20_select/i.test(e.data.url) ? 'Chọn link K20' : 'Chọn link WebStreamr',
             items: items,
             onSelect: function (item) {
                 Lampa.Select.close();
 
                 var selected = Lampa.Arrays.clone(e.data);
-                selected.url = withoutWebstreamrSelect(item.url);
-                selected.__webstreamrSelected = true;
+                selected.url = withoutAddonSelect(item.url);
+                selected.__addonSelected = true;
                 // Do not let a failed first source start the whole episode
                 // playlist before the user has chosen a link.
                 if (selected.playlist)
@@ -574,7 +574,7 @@
     }
 
     function handlePlayerStart(e) {
-        if (isWebstreamrSelection(e)) {
+        if (isAddonSelection(e)) {
             showWebstreamrSelection(e);
             return;
         }

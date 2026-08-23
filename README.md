@@ -612,6 +612,7 @@ cd publish && dotnet Core.dll
 | `IptvOnline` | OnlinePaid | |
 | `iRemux` | OnlinePaid | |
 | `KKPhim` | OnlineVN | JSON API `phimapi.com`, module mới dựa trên luồng HDVB |
+| `K20` | OnlineVN | Add-on Stremio tổng hợp nguồn phim Việt, trả stream chuẩn `tt`/`tmdb:` |
 | `Kinobase` | OnlineRUS | |
 | `Kinogo` | OnlineRUS | |
 | `Kinotochka` | OnlineRUS | |
@@ -954,7 +955,7 @@ lampac/
 │   ├── OnlinePaid/             # 9 платных VOD-источников
 │   ├── OnlineRUS/              # 21 российский CDN
 │   ├── OnlineUKR/              # 8 украинских источников
-│   ├── OnlineVN/               # KKPhim JSON API (копия потока HDVB)
+│   ├── OnlineVN/               # KKPhim JSON API + K20 Stremio Việt
 │   ├── PidTor/                 # PidTor источник
 │   ├── Proxy/                  # CubProxy, TmdbProxy, CacheMedia, CorsMedia, Corseu, ProxyLimiter
 │   ├── Sync/                   # Sync, SyncEvents, Storage, TimeCode
