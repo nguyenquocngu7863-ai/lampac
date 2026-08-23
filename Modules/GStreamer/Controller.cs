@@ -72,7 +72,7 @@ public class GStreamerController : BaseController
 
     #region add
     [HttpGet("/gst/add")]
-    public async Task<ActionResult> Add(string link, string linkencode, string uid, string token)
+    public async Task<ActionResult> Add(string link, string linkencode, string uid, string token, string session)
     {
         SetHeadersNoCache();
 
@@ -83,7 +83,11 @@ public class GStreamerController : BaseController
         if (ModInit.conf.allowed_uids != null && !ModInit.conf.allowed_uids.Contains(user_id))
             return StatusCode(401);
 
-        var gstask = await GService.GetOrAdd(link ?? CrypTo.DecodeBase64(linkencode), user_id);
+        var gstask = await GService.GetOrAdd(
+            link ?? CrypTo.DecodeBase64(linkencode),
+            user_id,
+            session: session
+        );
         if (gstask.task == null)
         {
             Console.WriteLine($"GStreamer: add rejected source. Reason={gstask.error}");

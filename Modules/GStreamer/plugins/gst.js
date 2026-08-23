@@ -1,5 +1,9 @@
 (function () {
     var taskId = null;
+    var activeGstData = null;
+    var pendingTranscode = null;
+    var transcodeGeneration = 0;
+    var closingForTranscode = false;
     var heartbeatTimer = null;
     var hlsTimeoutTimer = null;
     var gstEnabled = null;
@@ -271,7 +275,10 @@
         });
     }
 
-    function playWithWarmup(data, json, hlsUrl, audioIndex, play) {
+    function playWithWarmup(data, json, hlsUrl, audioIndex, state, play) {
+        if (state && !isCurrentTranscode(state))
+            return;
+
         if (!isLargeHdrSource(json)) {
             play();
             return;
@@ -280,6 +287,9 @@
         Lampa.Loading.start(function () { }, 'Chuẩn bị đoạn HDR 4K đầu tiên...');
         warmupFirstSegment(hlsUrl, audioIndex, function (success) {
             Lampa.Loading.stop();
+
+            if (state && !isCurrentTranscode(state))
+                return;
 
             if (!success)
                 console.log('GStreamer', '4K HDR warmup failed; letting hls.js retry');
@@ -376,6 +386,44 @@
         } catch (error) { }
     }
 
+    function restoreGstData(data) {
+        if (!data)
+            return;
+
+        if (data.url_orig) {
+            data.url = data.url_orig;
+            delete data.url_orig;
+        }
+
+        // This marker is only for the immediate direct-play fallback. Keeping
+        // it on Lampa's reused card object would permanently bypass GStreamer
+        // the next time the same link is opened.
+        delete data.__gstDirect;
+    }
+
+    function isCurrentTranscode(state) {
+        return !!state &&
+            pendingTranscode === state &&
+            state.generation === transcodeGeneration;
+    }
+
+    function cancelPendingTranscode() {
+        transcodeGeneration++;
+        pendingTranscode = null;
+        try { Lampa.Loading.stop(); } catch (error) { }
+    }
+
+    function removeGstTask(id) {
+        if (id == null)
+            return;
+
+        try {
+            var network = new Lampa.Reguest();
+            network.timeout(5000);
+            network.native('{localhost}/gst/remove?id=' + id, function () { }, function () { });
+        } catch (error) { }
+    }
+
     function playDirectAfterGstFailure(e, reason) {
         try {
             Lampa.Loading.stop();
@@ -459,30 +507,68 @@
         if (e.data.url.indexOf('/gst/') != -1 || e.data.url.indexOf('.m3u8') != -1)
             return;
 
-        e.abort()
+        var state = {
+            generation: ++transcodeGeneration,
+            data: e.data,
+            selected: false,
+            playerStarted: false
+        };
+        pendingTranscode = state;
 
-        setTimeout(() => {
-            Lampa.Player.close();
+        e.abort();
+
+        setTimeout(function () {
+            if (!isCurrentTranscode(state))
+                return;
+
+            // This closes the aborted native create. Do not let its destroy
+            // event cancel the still-pending GStreamer request.
+            closingForTranscode = true;
+            try {
+                Lampa.Player.close();
+            } finally {
+                closingForTranscode = false;
+            }
 
             Lampa.Loading.start(function () { }, 'Получение списка аудио дорожек...');
 
             var src = e.data.url.replace(/&(preload|stat|m3u)/g, '&play');
+            // A new player session must receive a fresh server task even when
+            // the same card/link was just finished. The server may still have
+            // the previous EOS task in its short-lived dictionary while the
+            // asynchronous /gst/remove request is being processed.
+            var session = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
 
             var network = new Lampa.Reguest();
             // 4K/HDR files need more time for probing and the first segment.
             network.timeout(90000);
 
-            network.native(account('{localhost}/gst/add?linkencode=' + encodeURIComponent(Lampa.Base64.encode(src))), function (response) {
+            network.native(account('{localhost}/gst/add?linkencode=' + encodeURIComponent(Lampa.Base64.encode(src)) + '&session=' + encodeURIComponent(session)), function (response) {
+                if (!isCurrentTranscode(state)) {
+                    try {
+                        var abandoned = typeof response === 'string' ? JSON.parse(response) : response;
+                        if (abandoned && abandoned.id)
+                            removeGstTask(abandoned.id);
+                    } catch (error) { }
+                    return;
+                }
+
                 var json;
                 try {
                     json = typeof response === 'string' ? JSON.parse(response) : response;
                 } catch (error) {
-                    playDirectAfterGstFailure(e, 'invalid /gst/add response');
+                    if (isCurrentTranscode(state)) {
+                        pendingTranscode = null;
+                        playDirectAfterGstFailure(e, 'invalid /gst/add response');
+                    }
                     return;
                 }
 
                 if (!json || !json.id || !json.hls) {
-                    playDirectAfterGstFailure(e, 'GStreamer rejected this source');
+                    if (isCurrentTranscode(state)) {
+                        pendingTranscode = null;
+                        playDirectAfterGstFailure(e, 'GStreamer rejected this source');
+                    }
                     return;
                 }
 
@@ -516,19 +602,35 @@
                 e.data.hls_frag_retry_timeout = 120000;
 
                 function playAudioTrack(item) {
+                    if (!isCurrentTranscode(state)) {
+                        removeGstTask(json.id);
+                        return;
+                    }
+
                     var audioIndex = item ? item.audioIndex : 0;
+                    state.selected = true;
                     e.data.url_orig = e.data.url;
                     e.data.url = audioIndex ? json.hls + '?audio=' + audioIndex : json.hls;
+                    activeGstData = e.data;
                     taskId = json.id;
 
-                    playWithWarmup(e.data, json, e.data.url, audioIndex, function () {
+                    playWithWarmup(e.data, json, e.data.url, audioIndex, state, function () {
+                        if (!isCurrentTranscode(state)) {
+                            removeGstTask(json.id);
+                            return;
+                        }
+
+                        pendingTranscode = null;
+                        state.playerStarted = true;
                         Lampa.Player.play(e.data);
                         Lampa.Player.playlist(createPlaylist(e.data, audioIndex));
                         Lampa.Player.callback(function () {
                             Lampa.Controller.toggle('modal');
-                            e.data.url = e.data.url_orig;
+                            restoreGstData(e.data);
+                            if (activeGstData === e.data)
+                                activeGstData = null;
                             Lampa.PlayerPlaylist.get().forEach(function (p) {
-                                p.url = p.url_orig;
+                                restoreGstData(p);
                             });
                         });
                     });
@@ -562,10 +664,23 @@
                         playAudioTrack(item);
                     },
                     onBack: function () {
+                        if (isCurrentTranscode(state))
+                            cancelPendingTranscode();
+
+                        if (taskId === json.id)
+                            taskId = null;
+                        removeGstTask(json.id);
+                        restoreGstData(e.data);
+                        if (activeGstData === e.data)
+                            activeGstData = null;
                         Lampa.Controller.toggle(last_controller);
                     }
                 });
             }, function (error) {
+                if (!isCurrentTranscode(state))
+                    return;
+
+                pendingTranscode = null;
                 playDirectAfterGstFailure(e, 'GStreamer request failed');
             });
         }, 10);
@@ -583,8 +698,12 @@
 
         // The adapter uses an MKV-looking redirect deliberately. This flag is
         // set only when the server reports that GStreamer is disabled.
-        if (e.data && e.data.__gstDirect)
+        if (e.data && e.data.__gstDirect) {
+            // Consume the one-shot bypass flag. Do not leave it on a reused
+            // card/playlist object or the next click will skip transcoding.
+            delete e.data.__gstDirect;
             return;
+        }
 
         var statusAge = Date.now() - gstStatusAt;
         if (gstEnabled === true && statusAge < 5000) {
@@ -610,12 +729,32 @@
 
     function handlePlayerDestroy() {
         unlockOrientation();
+        stopHeartbeat();
+
+        // Do not cancel the request caused by our own close() of the aborted
+        // native create. Any later destroy belongs to the real player and must
+        // cancel a still-warming task instead of letting its callback reopen a
+        // dead player.
+        if (!closingForTranscode &&
+            pendingTranscode &&
+            !pendingTranscode.playerStarted &&
+            (taskId != null || activeGstData != null))
+        {
+            cancelPendingTranscode();
+        }
+
+        // Back can bypass the callback registered by playAudioTrack on older
+        // Lampa builds. Restore the original source here as well, otherwise a
+        // reused card keeps the previous /gst/<id>/master.m3u8 URL.
+        restoreGstData(activeGstData);
+        activeGstData = null;
 
         if (taskId != null) {
-            var network = new Lampa.Reguest();
-            network.timeout = 5000;
-            network.native('{localhost}/gst/remove?id=' + taskId, function (response) { }, function (error) { });
+            var staleTaskId = taskId;
             taskId = null;
+            var network = new Lampa.Reguest();
+            network.timeout(5000);
+            network.native('{localhost}/gst/remove?id=' + staleTaskId, function (response) { }, function (error) { });
         }
     }
 

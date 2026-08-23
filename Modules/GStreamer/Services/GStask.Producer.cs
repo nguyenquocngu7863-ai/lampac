@@ -595,13 +595,23 @@ public partial class GStask
     #region EnsureInitAsync
     public async System.Threading.Tasks.Task<bool> EnsureInitAsync(int audio, CancellationToken cancellationToken)
     {
-        if (InitMp4Ready)
-            return true;
-
         await semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
 
         try
         {
+            if (IsDead)
+                return false;
+
+            // A task can survive briefly after the client pauses or leaves. Its
+            // Frozen path deliberately deletes the init/segment cache and stops
+            // the pipeline, so revive it before checking InitMp4Ready.
+            if (IsFrozen)
+            {
+                Defrost();
+                if (IsDead || IsFrozen)
+                    return false;
+            }
+
             if (InitMp4Ready)
                 return true;
 
@@ -614,7 +624,7 @@ public partial class GStask
         }
         catch
         {
-            return InitMp4Ready;
+            return InitMp4Ready && !IsFrozen && !IsDead;
         }
         finally
         {
