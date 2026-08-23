@@ -1066,9 +1066,24 @@ public class ApiController : BaseController
 
         try
         {
-            var url = $"https://api.subdl.com/api/v2/subtitles?q={Uri.EscapeDataString(searchQuery)}&type={type ?? "movie"}";
-            if (season.HasValue) url += $"&season_number={season}";
-            if (episode.HasValue) url += $"&episode_number={episode}";
+            // Step 1: search movie to get sd_id
+            var searchUrl = $"https://api.subdl.com/api/v2/movies/search?q={Uri.EscapeDataString(searchQuery)}&type={type ?? "movie"}&limit=1";
+            var searchReq = new System.Net.Http.HttpRequestMessage(new System.Net.Http.HttpMethod("GET"), searchUrl);
+            searchReq.Headers.TryAddWithoutValidation("Authorization", $"Bearer {apiKey}");
+            using var searchResp = await SubFinderHttpClient.SendAsync(searchReq);
+            var searchBody = await searchResp.Content.ReadAsStringAsync();
+            var searchRoot = Newtonsoft.Json.Linq.JObject.Parse(searchBody);
+            var searchResults = searchRoot["results"] as Newtonsoft.Json.Linq.JArray;
+            if (searchResults == null || searchResults.Count == 0)
+                return Ok(new { subtitles = Array.Empty<object>(), error = "movie not found" });
+            var sdId = searchResults[0]["sd_id"]?.ToString();
+            if (string.IsNullOrWhiteSpace(sdId))
+                return Ok(new { subtitles = Array.Empty<object>(), error = "no sd_id" });
+
+            // Step 2: search subtitles using sd_id
+            var url = $"https://api.subdl.com/api/v2/subtitles/search?sd_id={sdId}";
+            if (season.HasValue) url += $"&season={season}";
+            if (episode.HasValue) url += $"&episode={episode}";
             if (!string.IsNullOrWhiteSpace(languages)) url += $"&languages={languages}";
             else url += "&languages=vi";
 
@@ -1089,6 +1104,9 @@ public class ApiController : BaseController
                 foreach (Newtonsoft.Json.Linq.JObject sub in subsArr)
                 {
                     var subUrl = sub["url"]?.ToString() ?? sub["download_link"]?.ToString() ?? string.Empty;
+                    // SubDL returns relative URLs like /subtitle/xxx.zip - prepend domain
+                    if (!string.IsNullOrWhiteSpace(subUrl) && subUrl.StartsWith("/"))
+                        subUrl = "https://subdl.com" + subUrl;
                     var releaseName = sub["release_name"]?.ToString() ?? sub["filename"]?.ToString() ?? string.Empty;
                     var lang = sub["lang"]?.ToString() ?? sub["language"]?.ToString() ?? string.Empty;
 
