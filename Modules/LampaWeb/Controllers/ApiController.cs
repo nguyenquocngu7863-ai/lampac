@@ -602,6 +602,11 @@ public class ApiController : BaseController
 
         try
         {
+            // The generated script embeds the request host in every built-in
+            // plugin URL. Never serve a cached localhost/127.0.0.1 response to
+            // a TV or another LAN device.
+            StatiCacheDisabled = true;
+
             string lampainitjs = FileCache.ReadAllText($"{ModInit.modpath}/plugins/lampainit.js", "lampainit.js");
             if (lampainitjs.Contains("{country}"))
                 StatiCacheDisabled = true;
@@ -794,6 +799,9 @@ public class ApiController : BaseController
 
         try
         {
+            // /on.js also embeds {localhost}; cache must not cross LAN hosts.
+            StatiCacheDisabled = true;
+
             #region plugins
             if (adult && HttpContext.Request.Path.Value.StartsWith("/on/h/"))
                 adult = false;
