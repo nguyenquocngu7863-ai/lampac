@@ -1008,26 +1008,30 @@ public class ApiController : BaseController
     #endregion
 
     #region subfinder.js
-    private static readonly System.Net.Http.HttpClient SubFinderHttpClient = CreateSubFinderHttpClient();
-
-    private static System.Net.Http.HttpClient CreateSubFinderHttpClient()
+    private static readonly System.Net.Http.HttpClient SubFinderHttpClient = new System.Net.Http.HttpClient
     {
-        var client = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(30) };
-        client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) SubFinder/1.0");
-        client.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "application/json");
-        return client;
+        Timeout = TimeSpan.FromSeconds(30)
+    };
+
+    static ApiController()
+    {
+        SubFinderHttpClient.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) SubFinder/1.0");
+        SubFinderHttpClient.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "application/json");
+    }
+
+    private static string ReadInitConfRaw()
+    {
+        try { return System.IO.File.ReadAllText("init.conf", System.Text.Encoding.UTF8); }
+        catch { return "{}"; }
     }
 
     private string GetSubdlApiKey()
     {
         try
         {
-            var init = InitPlugins.GetInitConf();
-            if (init != null && init.TryGetValue("SubFinder", out var sfObj) && sfObj is JsonElement sfEl)
-            {
-                if (sfEl.TryGetProperty("subdl_api_key", out var keyEl))
-                    return keyEl.GetString() ?? string.Empty;
-            }
+            var root = Newtonsoft.Json.Linq.JObject.Parse(ReadInitConfRaw());
+            var sf = root["SubFinder"] as Newtonsoft.Json.Linq.JObject;
+            return sf?["subdl_api_key"]?.ToString() ?? string.Empty;
         }
         catch { }
         return string.Empty;
@@ -1037,12 +1041,9 @@ public class ApiController : BaseController
     {
         try
         {
-            var init = InitPlugins.GetInitConf();
-            if (init != null && init.TryGetValue("SubFinder", out var sfObj) && sfObj is JsonElement sfEl)
-            {
-                if (sfEl.TryGetProperty("subsource_api_key", out var keyEl))
-                    return keyEl.GetString() ?? string.Empty;
-            }
+            var root = Newtonsoft.Json.Linq.JObject.Parse(ReadInitConfRaw());
+            var sf = root["SubFinder"] as Newtonsoft.Json.Linq.JObject;
+            return sf?["subsource_api_key"]?.ToString() ?? string.Empty;
         }
         catch { }
         return string.Empty;
@@ -1065,14 +1066,13 @@ public class ApiController : BaseController
 
         try
         {
-            // SubDL q param accepts IMDB ID (tt1234567) or movie/series name
             var url = $"https://api.subdl.com/api/v2/subtitles?q={Uri.EscapeDataString(searchQuery)}&type={type ?? "movie"}";
             if (season.HasValue) url += $"&season={season}";
             if (episode.HasValue) url += $"&episode={episode}";
             if (!string.IsNullOrWhiteSpace(languages)) url += $"&languages={languages}";
             else url += "&languages=vi";
 
-            var req = new System.Net.Http.HttpRequestMessage(System.Net.HttpMethod.Get, url);
+            var req = new System.Net.Http.HttpRequestMessage(new System.Net.Http.HttpMethod("GET"), url);
             req.Headers.TryAddWithoutValidation("Authorization", $"Bearer {apiKey}");
 
             using var resp = await SubFinderHttpClient.SendAsync(req);
@@ -1081,25 +1081,16 @@ public class ApiController : BaseController
             if (!resp.IsSuccessStatusCode)
                 return Content(body, "application/json");
 
-            // Parse and normalize response
-            var doc = JsonDocument.Parse(body);
+            var root = Newtonsoft.Json.Linq.JObject.Parse(body);
             var result = new List<object>();
 
-            if (doc.RootElement.TryGetProperty("subtitles", out var subsArr))
+            if (root["subtitles"] is Newtonsoft.Json.Linq.JArray subsArr)
             {
-                foreach (var sub in subsArr.EnumerateArray())
+                foreach (Newtonsoft.Json.Linq.JObject sub in subsArr)
                 {
-                    var subUrl = string.Empty;
-                    if (sub.TryGetProperty("url", out var u)) subUrl = u.GetString() ?? string.Empty;
-                    else if (sub.TryGetProperty("download_link", out var dl)) subUrl = dl.GetString() ?? string.Empty;
-
-                    var releaseName = string.Empty;
-                    if (sub.TryGetProperty("release_name", out var rn)) releaseName = rn.GetString() ?? string.Empty;
-                    else if (sub.TryGetProperty("filename", out var fn)) releaseName = fn.GetString() ?? string.Empty;
-
-                    var lang = string.Empty;
-                    if (sub.TryGetProperty("lang", out var l)) lang = l.GetString() ?? string.Empty;
-                    else if (sub.TryGetProperty("language", out var la)) lang = la.GetString() ?? string.Empty;
+                    var subUrl = sub["url"]?.ToString() ?? sub["download_link"]?.ToString() ?? string.Empty;
+                    var releaseName = sub["release_name"]?.ToString() ?? sub["filename"]?.ToString() ?? string.Empty;
+                    var lang = sub["lang"]?.ToString() ?? sub["language"]?.ToString() ?? string.Empty;
 
                     if (!string.IsNullOrWhiteSpace(subUrl))
                         result.Add(new { url = subUrl, label = releaseName, lang = lang });
@@ -1116,7 +1107,7 @@ public class ApiController : BaseController
 
     [HttpGet, AllowAnonymous]
     [Route("subfinder/search-source")]
-    public async Task<IActionResult> SubFinderSearchSource(string imdb, string type, int? season, int? episode, string languages)
+    public async Task<IActionResult> SubFinderSearchSource(string imdb, string query, string type, int? season, int? episode, string languages)
     {
         SetHeadersNoCache();
 
@@ -1126,12 +1117,15 @@ public class ApiController : BaseController
 
         try
         {
-            // SubSource API search
-            var url = $"https://api.subsource.net/api/getMovie?type={(type == "tv" ? "tv" : "movie")}&imdb={imdb}";
+            var searchVal = !string.IsNullOrWhiteSpace(imdb) ? imdb : query;
+            if (string.IsNullOrWhiteSpace(searchVal))
+                return Ok(new { subtitles = Array.Empty<object>(), error = "no search value" });
+
+            var url = $"https://api.subsource.net/api/getMovie?type={(type == "tv" ? "tv" : "movie")}&imdb={Uri.EscapeDataString(searchVal)}";
             if (season.HasValue) url += $"&season={season}";
             if (episode.HasValue) url += $"&episode={episode}";
 
-            var req = new System.Net.Http.HttpRequestMessage(System.Net.HttpMethod.Get, url);
+            var req = new System.Net.Http.HttpRequestMessage(new System.Net.Http.HttpMethod("GET"), url);
             req.Headers.TryAddWithoutValidation("X-API-Key", apiKey);
 
             using var resp = await SubFinderHttpClient.SendAsync(req);
@@ -1140,30 +1134,24 @@ public class ApiController : BaseController
             if (!resp.IsSuccessStatusCode)
                 return Ok(new { subtitles = Array.Empty<object>(), error = $"SubSource HTTP {resp.StatusCode}" });
 
-            var doc = JsonDocument.Parse(body);
+            var root = Newtonsoft.Json.Linq.JObject.Parse(body);
             var result = new List<object>();
 
-            if (doc.RootElement.TryGetProperty("subs", out var subsArr))
+            if (root["subs"] is Newtonsoft.Json.Linq.JArray subsArr)
             {
-                foreach (var sub in subsArr.EnumerateArray())
+                foreach (Newtonsoft.Json.Linq.JObject sub in subsArr)
                 {
-                    var subUrl = string.Empty;
-                    if (sub.TryGetProperty("url", out var u)) subUrl = u.GetString() ?? string.Empty;
+                    var subUrl = sub["url"]?.ToString() ?? string.Empty;
+                    var releaseName = sub["release"]?.ToString() ?? string.Empty;
+                    var lang = sub["lang"]?.ToString() ?? string.Empty;
 
-                    var releaseName = string.Empty;
-                    if (sub.TryGetProperty("release", out var rn)) releaseName = rn.GetString() ?? string.Empty;
-
-                    var lang = string.Empty;
-                    if (sub.TryGetProperty("lang", out var l)) lang = l.GetString() ?? string.Empty;
-
-                    // Filter by language if requested
                     if (!string.IsNullOrWhiteSpace(languages) && !string.IsNullOrWhiteSpace(lang))
                     {
                         var langLower = lang.ToLower();
                         var langs = languages.ToLower().Split(',');
-                        bool match = false;
-                        foreach (var l in langs) { if (langLower.Contains(l.Trim())) { match = true; break; } }
-                        if (!match) continue;
+                        bool langMatch = false;
+                        foreach (var langItem in langs) { if (langLower.Contains(langItem.Trim())) { langMatch = true; break; } }
+                        if (!langMatch) continue;
                     }
 
                     if (!string.IsNullOrWhiteSpace(subUrl))
