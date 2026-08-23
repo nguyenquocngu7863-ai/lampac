@@ -388,7 +388,9 @@ install_custom_modules() {
         # Overlay the LampaWeb plugin assets.  The release binary already
         # serves these files; lampainit.js registers StremioSub as a named,
         # built-in plugin even when the release predates its server-side entry.
-        webplugintarget=/root/lampac/plugins
+        # LampaWeb's controllers resolve plugin files from the module folder,
+        # not the release root (/root/lampac/plugins).
+        webplugintarget=/root/lampac/module/LampaWeb/plugins
         mkdir -p "\$webplugintarget"
         webpluginbase="${CUSTOM_SOURCE_BASE}/Modules/LampaWeb/plugins"
         for file in lampainit.js stremiosub.js; do
