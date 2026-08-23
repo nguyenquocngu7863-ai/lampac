@@ -75,6 +75,11 @@
   var timer = setInterval(function() {
     if (typeof Lampa !== 'undefined') {
       clearInterval(timer);
+
+      // Keep the Lampac client in English across Lampa/CUB frontend refreshes.
+      // This runs before the app-ready event on normal launches, so the core,
+      // CUB and Online UI all read the same persisted language choice.
+      Lampa.Storage.set('language', 'en');
 	  
       if (lampainit_invc)
         lampainit_invc.appload();

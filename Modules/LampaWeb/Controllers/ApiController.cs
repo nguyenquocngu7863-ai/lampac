@@ -632,7 +632,7 @@ public class ApiController : BaseController
                 plugins.Add(new("{localhost}/cubproxy.js", 1, "CUB Proxy", "lampac"));
 
             if (ModInit.conf.initPlugins.online)
-                plugins.Add(new("{localhost}/online.js", 1, "Онлайн", "lampac"));
+                plugins.Add(new("{localhost}/online.js", 1, "Online", "lampac"));
 
             if (ModInit.conf.initPlugins.watch_together)
                 plugins.Add(new("{localhost}/watchtogether.js", 1, "Watch Together", "lampac"));
