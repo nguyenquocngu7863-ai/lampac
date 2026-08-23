@@ -341,14 +341,14 @@ ensure_runtime_config() {
 }
 
 install_custom_modules() {
-    info "Installing custom KKPhim/K20/GStreamer module files..."
+    info "Installing custom KKPhim/K20/VsMov/GStreamer module files..."
 
     proot-distro login ubuntu -- bash -c "
         set -euo pipefail
 
-        # VsMov and NguonC are retired: remove leftovers from older installs so
-        # the dynamic module loader cannot load the broken providers again.
-        rm -rf /root/lampac/module/OnlineVN/VsMov /root/lampac/module/OnlineVN/NguonC
+        # NguonC is retired. Remove leftovers so the dynamic module loader does
+        # not load the broken provider again. VsMov is installed below.
+        rm -rf /root/lampac/module/OnlineVN/NguonC
 
         kkbase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineVN/KKPhim\"
         kktarget=/root/lampac/module/OnlineVN/KKPhim
@@ -362,6 +362,13 @@ install_custom_modules() {
         mkdir -p \"\$k20target\"
         for file in Controller.cs Model.cs ModInit.cs manifest.json; do
             curl -fSL --retry 3 \"\$k20base/\$file\" -o \"\$k20target/\$file\"
+        done
+
+        vsmovbase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineVN/VsMov\"
+        vsmovtarget=/root/lampac/module/OnlineVN/VsMov
+        mkdir -p \"\$vsmovtarget\"
+        for file in Controller.cs Model.cs ModInit.cs manifest.json; do
+            curl -fSL --retry 3 \"\$vsmovbase/\$file\" -o \"\$vsmovtarget/\$file\"
         done
 
         webbase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineENG/WebStreamr\"
@@ -389,7 +396,7 @@ install_custom_modules() {
         fi
     "
 
-    ok "KKPhim, K20, WebStreamr and GStreamer files installed; removed retired VsMov/NguonC"
+    ok "KKPhim, K20, VsMov, WebStreamr and GStreamer files installed; removed retired NguonC"
 }
 
 # ─── Step 4: Create launcher scripts (inside Ubuntu!) ────────────────────────
@@ -510,8 +517,8 @@ case "${1:-}" in
                 fi
             fi
 
-            # Do not retain providers removed from the Termux profile.
-            rm -rf /root/lampac/module/OnlineVN/VsMov /root/lampac/module/OnlineVN/NguonC
+            # NguonC is retired; VsMov is synced below.
+            rm -rf /root/lampac/module/OnlineVN/NguonC
 
             base="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a028cf-lampac/Modules/OnlineVN/KKPhim"
             target=/root/lampac/module/OnlineVN/KKPhim
@@ -525,6 +532,13 @@ case "${1:-}" in
             mkdir -p "$k20target"
             for file in Controller.cs Model.cs ModInit.cs manifest.json; do
                 curl -fSL --retry 3 "$k20base/$file" -o "$k20target/$file"
+            done
+
+            vsmovbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a028cf-lampac/Modules/OnlineVN/VsMov"
+            vsmovtarget=/root/lampac/module/OnlineVN/VsMov
+            mkdir -p "$vsmovtarget"
+            for file in Controller.cs Model.cs ModInit.cs manifest.json; do
+                curl -fSL --retry 3 "$vsmovbase/$file" -o "$vsmovtarget/$file"
             done
 
             webbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a028cf-lampac/Modules/OnlineENG/WebStreamr"
