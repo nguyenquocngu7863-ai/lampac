@@ -16,7 +16,12 @@ filters, or other options are selected.
 
 ## Behavior
 
-- The source accepts IMDb ids (`tt...`) and TMDB ids (`tmdb:...`).
+- The K20 add-on currently accepts canonical IMDb ids (`tt...`) for normal
+  Lampa playback. When Lampa only has a numeric TMDB id, the bridge asks
+  TMDB `external_ids` for the exact IMDb mapping first, then queries K20 with
+  that IMDb id. It never sends a raw `tmdb:...` id to the current K20 manifest;
+  if no mapping exists, it fails closed instead of guessing by title. A TMDB
+  API key in Lampac's `cub` settings is therefore needed for TMDB-only items.
 - Movies query `stream/movie/{id}.json`; every returned file stays visible as
   its own Lampac card. The source filter buttons above the list can narrow the
   cards to one provider without hiding same-resolution releases.

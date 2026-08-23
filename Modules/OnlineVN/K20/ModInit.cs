@@ -58,15 +58,21 @@ public sealed class ModInit : IModuleLoaded, IModuleOnline
 
     static bool HasSupportedId(OnlineEventsModel args)
     {
-        if (!string.IsNullOrWhiteSpace(args.imdb_id) &&
-            args.imdb_id.StartsWith("tt", StringComparison.OrdinalIgnoreCase))
-        {
+        if (IsImdbId(args.imdb_id) || IsImdbId(args.id))
             return true;
-        }
+
+        // The K20 manifest currently advertises `tt` and its own catalog
+        // prefixes, but not `tmdb:`. Keep the source visible for a numeric
+        // TMDB item only when Lampac can resolve TMDB external_ids to IMDb in
+        // the controller. This is safer than letting an upstream catalog guess
+        // a title from a bare number.
+        if (string.IsNullOrWhiteSpace(CoreInit.conf?.cub?.api_key))
+            return false;
 
         if (!string.IsNullOrWhiteSpace(args.id) &&
-            (args.id.StartsWith("tt", StringComparison.OrdinalIgnoreCase) ||
-             args.id.StartsWith("tmdb:", StringComparison.OrdinalIgnoreCase)))
+            args.id.StartsWith("tmdb:", StringComparison.OrdinalIgnoreCase) &&
+            long.TryParse(args.id[5..], out long prefixedTmdbId) &&
+            prefixedTmdbId > 0)
         {
             return true;
         }
@@ -74,5 +80,23 @@ public sealed class ModInit : IModuleLoaded, IModuleOnline
         return (args.source is "tmdb" or "cub") &&
             long.TryParse(args.id, out long tmdbId) &&
             tmdbId > 0;
+    }
+
+    static bool IsImdbId(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value) ||
+            !value.StartsWith("tt", StringComparison.OrdinalIgnoreCase) ||
+            value.Length <= 2)
+        {
+            return false;
+        }
+
+        for (int index = 2; index < value.Length; index++)
+        {
+            if (!char.IsDigit(value[index]))
+                return false;
+        }
+
+        return true;
     }
 }

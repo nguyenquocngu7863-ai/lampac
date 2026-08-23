@@ -42,18 +42,23 @@ public sealed class K20Controller : BaseOnlineController<ModuleConf>
         if (await IsRequestBlocked(rch: false, rch_check: !play))
             return badInitMsg;
 
-        string addonId = ResolveStremioId(
+        bool isSeries = serial == 1;
+        string addonId = await ResolveStremioId(
             stremio_id,
             id,
             imdb_id,
             tmdb_id,
-            source
+            source,
+            isSeries
         );
 
         if (string.IsNullOrWhiteSpace(addonId))
-            return OnError("Stremio requires an IMDb or TMDB id", 400);
-
-        bool isSeries = serial == 1;
+        {
+            return OnError(
+                "K20 requires a valid IMDb id. A TMDB id is converted through TMDB external_ids; if no exact IMDb mapping exists, K20 is not queried.",
+                400
+            );
+        }
 
         if (isSeries && s <= 0)
         {
@@ -170,7 +175,19 @@ public sealed class K20Controller : BaseOnlineController<ModuleConf>
         if (string.IsNullOrWhiteSpace(stremio_id))
             return OnError("Missing Stremio series id", 400);
 
-        return await EpisodeResponse(stremio_id, title, original_title, s, e, play);
+        string addonId = await ResolveStremioId(
+            stremio_id,
+            id: null,
+            imdbId: null,
+            tmdbId: 0,
+            source: null,
+            isSeries: true
+        );
+
+        if (string.IsNullOrWhiteSpace(addonId))
+            return OnError("K20 requires a valid IMDb series id", 400);
+
+        return await EpisodeResponse(addonId, title, original_title, s, e, play);
     }
 
     async Task<ActionResult> EpisodeResponse(
@@ -822,44 +839,156 @@ public sealed class K20Controller : BaseOnlineController<ModuleConf>
         return accsArgs($"{host}/lite/k20?{query}");
     }
 
-    static string ResolveStremioId(
+    async Task<string> ResolveStremioId(
         string stremioId,
         string id,
         string imdbId,
         long tmdbId,
+        string source,
+        bool isSeries
+    )
+    {
+        // K20's current manifest accepts `tt...` ids, not the generic
+        // `tmdb:...` prefix. Never send a raw TMDB id to the add-on: some of
+        // its upstream Vietnamese catalogs may fall back to a title search and
+        // that is exactly how a wrong movie can be returned.
+        var imdbIds = new List<string>();
+        foreach (string candidate in new[] { imdbId, stremioId, id })
+        {
+            string normalized = NormalizeImdbId(candidate);
+            if (!string.IsNullOrWhiteSpace(normalized) &&
+                !imdbIds.Contains(normalized, StringComparer.OrdinalIgnoreCase))
+            {
+                imdbIds.Add(normalized);
+            }
+        }
+
+        long inputTmdbId = ResolveInputTmdbId(stremioId, id, tmdbId, source);
+
+        if (imdbIds.Count > 1)
+        {
+            Serilog.Log.Warning(
+                "K20 rejected conflicting IMDb ids: {Ids}",
+                string.Join(",", imdbIds)
+            );
+            return null;
+        }
+
+        string imdb = imdbIds.FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(imdb))
+        {
+            // When both ids are present, verify that Lampa's IMDb and TMDB
+            // records point to the same title. If TMDB is temporarily
+            // unavailable, keep the already supplied IMDb id; it is still the
+            // canonical id understood by K20.
+            if (inputTmdbId > 0)
+            {
+                JObject externalIds = await GetTmdb(
+                    $"{(isSeries ? "tv" : "movie")}/{inputTmdbId}/external_ids"
+                );
+                string mappedImdb = NormalizeImdbId(externalIds?.Value<string>("imdb_id"));
+                if (!string.IsNullOrWhiteSpace(mappedImdb) &&
+                    !mappedImdb.Equals(imdb, StringComparison.OrdinalIgnoreCase))
+                {
+                    Serilog.Log.Warning(
+                        "K20 rejected mismatched title ids: TMDB {TmdbId} maps to {MappedImdb}, request supplied {Imdb}",
+                        inputTmdbId,
+                        mappedImdb,
+                        imdb
+                    );
+                    return null;
+                }
+            }
+
+            return imdb;
+        }
+
+        if (inputTmdbId <= 0)
+            return null;
+
+        // Resolve TMDB -> IMDb once, then use only the exact IMDb id in the
+        // Stremio stream URL. If the mapping is missing, fail closed rather
+        // than asking an upstream catalog to guess by title.
+        JObject mappedExternalIds = await GetTmdb(
+            $"{(isSeries ? "tv" : "movie")}/{inputTmdbId}/external_ids"
+        );
+        string resolvedImdb = NormalizeImdbId(
+            mappedExternalIds?.Value<string>("imdb_id")
+        );
+
+        if (string.IsNullOrWhiteSpace(resolvedImdb))
+        {
+            Serilog.Log.Warning(
+                "K20 could not resolve TMDB {TmdbId} to an IMDb id; stream lookup skipped",
+                inputTmdbId
+            );
+        }
+
+        return resolvedImdb;
+    }
+
+    static long ResolveInputTmdbId(
+        string stremioId,
+        string id,
+        long tmdbId,
         string source
     )
     {
-        foreach (string candidate in new[] { stremioId, imdbId, id })
+        if (tmdbId > 0)
+            return tmdbId;
+
+        foreach (string candidate in new[] { stremioId, id })
         {
             if (string.IsNullOrWhiteSpace(candidate))
                 continue;
 
             string value = candidate.Trim();
-            if (value.StartsWith("tt", StringComparison.OrdinalIgnoreCase) ||
-                value.StartsWith("tmdb:", StringComparison.OrdinalIgnoreCase))
+            if (value.StartsWith("tmdb:", StringComparison.OrdinalIgnoreCase) &&
+                long.TryParse(value[5..], out long prefixedId) &&
+                prefixedId > 0)
             {
-                return value;
+                return prefixedId;
             }
         }
-
-        if (tmdbId > 0)
-            return $"tmdb:{tmdbId}";
 
         if (source is "tmdb" or "cub" &&
             long.TryParse(id, out long numericId) &&
             numericId > 0)
         {
-            return $"tmdb:{numericId}";
+            return numericId;
         }
 
-        return null;
+        return 0;
+    }
+
+    static string NormalizeImdbId(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        value = value.Trim();
+        if (!IsImdbId(value))
+            return null;
+
+        return value.ToLowerInvariant();
     }
 
     static bool IsImdbId(string value)
     {
-        return !string.IsNullOrWhiteSpace(value) &&
-            value.StartsWith("tt", StringComparison.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(value) ||
+            !value.StartsWith("tt", StringComparison.OrdinalIgnoreCase) ||
+            value.Length <= 2)
+        {
+            return false;
+        }
+
+        for (int index = 2; index < value.Length; index++)
+        {
+            if (!char.IsDigit(value[index]))
+                return false;
+        }
+
+        return true;
     }
 
     static long ResolveTmdbId(string addonId, long tmdbId)
