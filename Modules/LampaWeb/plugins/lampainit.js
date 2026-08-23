@@ -79,6 +79,10 @@
       if (lampainit_invc)
         lampainit_invc.appload();
 
+      // Built-in plugins that must run on every application start, including for
+      // clients that completed Lampac's one-time initial setup before an upgrade.
+      {subsense_auto}
+
       if ({btn_priority_forced})
         Lampa.Storage.set('full_btn_priority', '{full_btn_priority_hash}');
 

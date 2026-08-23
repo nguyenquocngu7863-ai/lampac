@@ -46,6 +46,11 @@ public class ModInit : IModuleLoaded
             index = "lampa-main/index.html",
             git = "yumata/lampa",
             tree = "cbc0797cf8109f042dc289b1f27e78c92fe17435",
+            initPlugins = new InitPlugins
+            {
+                // A built-in client plugin: load it unless an administrator explicitly disables it.
+                subsenseAuto = true
+            },
             limit_map = new List<WafLimitRootMap>()
             {
                 new("^/(extensions|testaccsdb|msx/)", new WafLimitMap { limit = 10, second = 1 })

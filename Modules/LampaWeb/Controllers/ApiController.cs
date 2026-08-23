@@ -581,6 +581,17 @@ public class ApiController : BaseController
 
     #endregion
 
+    #region SubSense Auto plugin
+    [HttpGet, AllowAnonymous]
+    [Staticache(20, always: true, setHeadersNoCache: true)]
+    [Route("subsense-auto.js")]
+    public ActionResult SubSenseAuto()
+    {
+        string script = FileCache.ReadAllText($"{ModInit.modpath}/plugins/subsense-auto.js", "subsense-auto.js", saveCache: false);
+        return ContentTo(script, "application/javascript; charset=utf-8");
+    }
+    #endregion
+
     #region lampainit.js
     [HttpGet, AllowAnonymous]
     [Staticache(20, always: true, setHeadersNoCache: true)]
@@ -666,6 +677,9 @@ public class ApiController : BaseController
             sb = sb.Replace("{initiale}", JsonConvert.SerializeObject(plugins));
             #endregion
 
+            if (ModInit.conf.initPlugins.subsenseAuto)
+                sb = sb.Replace("{subsense_auto}", "Lampa.Utils.putScriptAsync([\"{localhost}/subsense-auto.js\"], function() {});");
+
             if (ModInit.conf.initPlugins.pirate_store)
             {
                 string storejs = FileCache.ReadAllText($"{ModInit.modpath}/plugins/pirate_store.js", "pirate_store.js");
@@ -696,6 +710,7 @@ public class ApiController : BaseController
             sb = sb.Replace("{localhost}", host);
             sb = sb.Replace("{deny}", string.Empty);
             sb = sb.Replace("{pirate_store}", string.Empty);
+            sb = sb.Replace("{subsense_auto}", string.Empty);
 
             sb = sb.Replace("{ major: 0, minor: 0 }", $"{{major: 2, minor: 1}}");
 

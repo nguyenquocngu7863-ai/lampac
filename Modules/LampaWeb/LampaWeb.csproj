@@ -38,6 +38,9 @@
     <None Update="plugins\privateinit.js">
       <CopyToPublishDirectory>Always</CopyToPublishDirectory>
     </None>
+    <None Update="plugins\subsense-auto.js">
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+    </None>
   </ItemGroup>
 
 </Project>

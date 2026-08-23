@@ -22,6 +22,9 @@ public class InitPlugins
 
     public bool dorama { get; set; }
 
+    /// <summary>Installs the built-in Vietnamese SubSense subtitle plugin in Lampa.</summary>
+    public bool subsenseAuto { get; set; }
+
     public bool sisi { get; set; }
 
     public bool torrserver { get; set; }

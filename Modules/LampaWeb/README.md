@@ -40,6 +40,7 @@ Các field quan trọng với giá trị mặc định trong code:
 - **`initPlugins.dorama`** — nối Lampa plugin riêng **`/dorama.js`** vào `/lampainit.js` và `/on.js`;
 - **`initPlugins.subsense`** — nối Lampa plugin **`/subsense.js`** vào `/lampainit.js` và `/on.js`; mặc định bật (`true`), tắt bằng cách đặt `false` trong `init.conf`;
 - **`limit_map`** — WAF cho **`^/(extensions|testaccsdb|msx/)`**.
+- **`initPlugins.subsenseAuto`** — tải plugin gốc **`/subsense-auto.js`** mỗi khi Lampa khởi động; đặt `false` để tắt.
 
 ## Doramas
 
