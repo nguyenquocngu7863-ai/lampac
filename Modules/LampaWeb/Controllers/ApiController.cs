@@ -969,7 +969,11 @@ public class ApiController : BaseController
 
         try
         {
-            using var resp = await SubSenseHttpClient.GetAsync(url, System.Net.Http.HttpCompletionOption.ResponseHeadersRead);
+            var req = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Get, url);
+            req.Headers.TryAddWithoutValidation("Referer", "https://dl.opensubtitles.org/");
+            req.Headers.TryAddWithoutValidation("Accept", "*/*");
+
+            using var resp = await SubSenseHttpClient.SendAsync(req, System.Net.Http.HttpCompletionOption.ResponseHeadersRead);
 
             if (!resp.IsSuccessStatusCode)
                 return StatusCode((int)resp.StatusCode);
@@ -1214,7 +1218,10 @@ public class ApiController : BaseController
 
         try
         {
-            using var resp = await SubFinderHttpClient.GetAsync(url, System.Net.Http.HttpCompletionOption.ResponseHeadersRead);
+            var req = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Get, url);
+            req.Headers.TryAddWithoutValidation("Referer", "https://subdl.com/");
+            req.Headers.TryAddWithoutValidation("Accept", "*/*");
+            using var resp = await SubFinderHttpClient.SendAsync(req, System.Net.Http.HttpCompletionOption.ResponseHeadersRead);
             if (!resp.IsSuccessStatusCode)
                 return StatusCode((int)resp.StatusCode);
 
