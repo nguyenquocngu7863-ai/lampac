@@ -341,7 +341,7 @@ ensure_runtime_config() {
 }
 
 install_custom_modules() {
-    info "Installing custom KKPhim/VsMov/NguonC/GStreamer module files..."
+    info "Installing custom KKPhim/K20/GStreamer module files..."
 
     proot-distro login ubuntu -- bash -c "
         set -euo pipefail
@@ -353,18 +353,11 @@ install_custom_modules() {
             curl -fSL --retry 3 \"\$kkbase/\$file\" -o \"\$kktarget/\$file\"
         done
 
-        vmbase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineVN/VsMov\"
-        vmtarget=/root/lampac/module/OnlineVN/VsMov
-        mkdir -p \"\$vmtarget\"
+        k20base=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineVN/K20\"
+        k20target=/root/lampac/module/OnlineVN/K20
+        mkdir -p \"\$k20target\"
         for file in Controller.cs Model.cs ModInit.cs manifest.json; do
-            curl -fSL --retry 3 \"\$vmbase/\$file\" -o \"\$vmtarget/\$file\"
-        done
-
-        ncbase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineVN/NguonC\"
-        nctarget=/root/lampac/module/OnlineVN/NguonC
-        mkdir -p \"\$nctarget\"
-        for file in Controller.cs Model.cs ModInit.cs manifest.json; do
-            curl -fSL --retry 3 \"\$ncbase/\$file\" -o \"\$nctarget/\$file\"
+            curl -fSL --retry 3 \"\$k20base/\$file\" -o \"\$k20target/\$file\"
         done
 
         webbase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineENG/WebStreamr\"
@@ -390,17 +383,9 @@ install_custom_modules() {
                 curl -fSL --retry 3 \"\$adminbase/\$file\" -o \"\$admintarget/\$file\"
             done
         fi
-
-        # Native SubSense auto-subtitle plugin (LampaWeb module).
-        lwbase="${CUSTOM_SOURCE_BASE}/Modules/LampaWeb"
-        lwtarget=/root/lampac/module/LampaWeb
-        mkdir -p "\$lwtarget/plugins"
-        for file in Controllers/ApiController.cs Models/InitPlugins.cs plugins/subsense.js plugins/subfinder.js plugins/subtest.js plugins/stremiosub.js plugins/lampainit.js; do
-            curl -fSL --retry 3 "\$lwbase/\$file" -o "\$lwtarget/\$file"
-        done
     "
 
-    ok "KKPhim, WebStreamr, GStreamer, AdminPanel and SubSense files installed"
+    ok "KKPhim, WebStreamr, GStreamer and AdminPanel files installed"
 }
 
 # ─── Step 4: Create launcher scripts (inside Ubuntu!) ────────────────────────
@@ -528,18 +513,11 @@ case "${1:-}" in
                 curl -fSL --retry 3 "$base/$file" -o "$target/$file"
             done
 
-            vmbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a028cf-lampac/Modules/OnlineVN/VsMov"
-            vmtarget=/root/lampac/module/OnlineVN/VsMov
-            mkdir -p "$vmtarget"
+            k20base="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a028cf-lampac/Modules/OnlineVN/K20"
+            k20target=/root/lampac/module/OnlineVN/K20
+            mkdir -p "$k20target"
             for file in Controller.cs Model.cs ModInit.cs manifest.json; do
-                curl -fSL --retry 3 "$vmbase/$file" -o "$vmtarget/$file"
-            done
-
-            ncbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a028cf-lampac/Modules/OnlineVN/NguonC"
-            nctarget=/root/lampac/module/OnlineVN/NguonC
-            mkdir -p "$nctarget"
-            for file in Controller.cs Model.cs ModInit.cs manifest.json; do
-                curl -fSL --retry 3 "$ncbase/$file" -o "$nctarget/$file"
+                curl -fSL --retry 3 "$k20base/$file" -o "$k20target/$file"
             done
 
             webbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a028cf-lampac/Modules/OnlineENG/WebStreamr"

@@ -124,8 +124,7 @@
   </Folder>
   <Folder Name="/Modules/OnlineVN/">
     <Project Path="Modules/OnlineVN/KKPhim/KKPhim.csproj" />
-    <Project Path="Modules/OnlineVN/VsMov/VsMov.csproj" />
-    <Project Path="Modules/OnlineVN/NguonC/NguonC.csproj" />
+    <Project Path="Modules/OnlineVN/K20/K20.csproj" />
   </Folder>
   <Folder Name="/Modules/OnlineUKR/">
     <Project Path="Modules/OnlineUKR/Ashdi/Ashdi.csproj" />
