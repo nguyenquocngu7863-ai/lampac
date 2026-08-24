@@ -341,7 +341,7 @@ ensure_runtime_config() {
 }
 
 install_custom_modules() {
-    info "Installing custom KKPhim/K20/VsMov/WebStreamr/Open Directory/GStreamer module files..."
+    info "Installing custom KKPhim/K20/VsMov/WebStreamr/Open Directory/Sootio/GStreamer module files..."
 
     proot-distro login ubuntu -- bash -c "
         set -euo pipefail
@@ -383,6 +383,13 @@ install_custom_modules() {
         mkdir -p \"\$opendirectorytarget\"
         for file in Controller.cs Model.cs ModInit.cs manifest.json; do
             curl -fSL --retry 3 \"\$opendirectorybase/\$file\" -o \"\$opendirectorytarget/\$file\"
+        done
+
+        sootiobase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineENG/Sootio\"
+        sootiotarget=/root/lampac/module/OnlineENG/Sootio
+        mkdir -p \"\$sootiotarget\"
+        for file in Controller.cs Model.cs ModInit.cs manifest.json; do
+            curl -fSL --retry 3 \"\$sootiobase/\$file\" -o \"\$sootiotarget/\$file\"
         done
 
         gstbase=\"${CUSTOM_SOURCE_BASE}/Modules/GStreamer\"
@@ -427,7 +434,7 @@ install_custom_modules() {
         fi
     "
 
-    ok "KKPhim, K20, VsMov, WebStreamr, Open Directory, GStreamer and LampaWeb files installed; removed retired NguonC"
+    ok "KKPhim, K20, VsMov, WebStreamr, Open Directory, Sootio, GStreamer and LampaWeb files installed; removed retired NguonC"
 }
 
 # ─── Step 4: Create launcher scripts (inside Ubuntu!) ────────────────────────
@@ -584,6 +591,13 @@ case "${1:-}" in
             mkdir -p "$opendirectorytarget"
             for file in Controller.cs Model.cs ModInit.cs manifest.json; do
                 curl -fSL --retry 3 "$opendirectorybase/$file" -o "$opendirectorytarget/$file"
+            done
+
+            sootiobase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a028cf-lampac/Modules/OnlineENG/Sootio"
+            sootiotarget=/root/lampac/module/OnlineENG/Sootio
+            mkdir -p "$sootiotarget"
+            for file in Controller.cs Model.cs ModInit.cs manifest.json; do
+                curl -fSL --retry 3 "$sootiobase/$file" -o "$sootiotarget/$file"
             done
 
             # Keep the dynamic LampaWeb subtitle/plugin selector in sync after

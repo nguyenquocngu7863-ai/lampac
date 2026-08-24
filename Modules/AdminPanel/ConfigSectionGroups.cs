@@ -50,7 +50,7 @@ public static class ConfigSectionGroups
                 "Alloha", "Ashdi", "AsiaGe", "BamBoo", "CDNvideohub", "Collaps", "Eneyida", "FanCDN", "Filmix", "FilmixPartner", "FilmixTV", "FlixCDN",
                 "Geosaitebi", "GetsTV", "HDVB", "HdvbUA", "IptvOnline", "iRemux", "Kinobase", "Kinoflix", "Kinogo", "Kinotochka", "Kinoukr", "KinoPub",
                 "LeProduction", "Mirage", "Rezka", "RezkaPrem", "RutubeMovie", "Tortuga", "UaKino", "VideoDB", "Videoseed", "VeoVeo", "Vibix", "VkMovie", "VoKino",
-                "WebStreamr", "K20", "OpenDirectory"
+                "WebStreamr", "K20", "OpenDirectory", "Sootio"
             }),
         new("src-adult", "Nguồn · 18+", "SISI / trang người lớn.",
             new[]
