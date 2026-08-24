@@ -36,9 +36,9 @@ public class VidSrcController : BaseENGController
         if (await IsRequestBlocked(rch: false, rch_check: !play))
             return badInitMsg;
 
-        string embed = $"{init.host}/v2/embed/movie/{id}?autoPlay=true&poster=false";
+        string embed = $"{init.host}/embed/movie/{id}?autoPlay=true&poster=false";
         if (s > 0)
-            embed = $"{init.host}/v2/embed/tv/{id}/{s}/{e}?autoPlay=true&poster=false";
+            embed = $"{init.host}/embed/tv/{id}/{s}/{e}?autoPlay=true&poster=false";
 
         var result = await black_magic(id, embed);
         if (result.m3u8 == null)

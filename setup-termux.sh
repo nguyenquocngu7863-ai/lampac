@@ -338,6 +338,12 @@ ensure_runtime_config() {
             if ! sed -n "/^[[:space:]]*\"chromium\"[[:space:]]*:/,/^[[:space:]]*},[[:space:]]*$/p" "$file" | grep -q \""Args"\"; then
                 sed -i "/^[[:space:]]*\"executablePath\"[[:space:]]*:/a\\    \"Args\": [\"--no-sandbox\", \"--disable-setuid-sandbox\", \"--disable-dev-shm-usage\", \"--disable-gpu\"]," "$file"
             fi
+            # Retired provider mirrors: point saved init.conf hosts at the live
+            # domains (verified 2026-08): videasy.net -> .to, vidfast.pro -> .vc,
+            # vidsrc.cc -> vidsrc.to (module drops the /v2 embed path).
+            sed -i "s#https://player[.]videasy[.]net#https://player.videasy.to#g" "$file"
+            sed -i "s#https://vidfast[.]pro#https://vidfast.vc#g" "$file"
+            sed -i "s#https://vidsrc[.]cc#https://vidsrc.to#g" "$file"
         fi
 
 
@@ -605,6 +611,12 @@ case "${1:-}" in
                     if ! sed -n "/^[[:space:]]*\"chromium\"[[:space:]]*:/,/^[[:space:]]*},[[:space:]]*$/p" "$file" | grep -q \""Args"\"; then
                         sed -i "/^[[:space:]]*\"executablePath\"[[:space:]]*:/a\\    \"Args\": [\"--no-sandbox\", \"--disable-setuid-sandbox\", \"--disable-dev-shm-usage\", \"--disable-gpu\"]," "$file"
                     fi
+                    # Retired provider mirrors: point saved init.conf hosts at the live
+                    # domains (verified 2026-08): videasy.net -> .to, vidfast.pro -> .vc,
+                    # vidsrc.cc -> vidsrc.to (module drops the /v2 embed path).
+                    sed -i "s#https://player[.]videasy[.]net#https://player.videasy.to#g" "$file"
+                    sed -i "s#https://vidfast[.]pro#https://vidfast.vc#g" "$file"
+                    sed -i "s#https://vidsrc[.]cc#https://vidsrc.to#g" "$file"
                 fi
             fi
 
