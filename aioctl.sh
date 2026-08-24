@@ -19,6 +19,7 @@ ENV_FILE="$AIO_DIR/.env"
 PID_FILE="$AIO_DIR/.aio.pid"
 LOG_FILE="$AIO_DIR/aio.log"
 INSTALL_LOG_FILE="$AIO_DIR/aio-install.log"
+NODE_RUNTIME_CHANGED=0
 
 info() { printf '  → %s\n' "$*"; }
 ok() { printf '  ✓ %s\n' "$*"; }
@@ -104,6 +105,15 @@ install_dependencies() {
         apt-get install -y ca-certificates curl gnupg
         curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
         apt-get install -y nodejs
+        NODE_RUNTIME_CHANGED=1
+    fi
+
+    # A previous attempt may have compiled native packages with Termux's
+    # Android Node. Rebuild from a clean project node_modules once Linux Node
+    # is installed; keep pnpm's global store so the download is still cheap.
+    if [[ "$NODE_RUNTIME_CHANGED" -eq 1 && -d "$AIO_DIR/node_modules" ]]; then
+        info "Removing native modules built by Android Node..."
+        rm -rf "$AIO_DIR/node_modules"
     fi
 
     apt-get update
