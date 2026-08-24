@@ -774,6 +774,13 @@ public sealed class AIOStreamsController : BaseOnlineController<ModuleConf>
             if (!string.IsNullOrWhiteSpace(source))
                 key += $" • {source}";
 
+            // The quality picker ("Chọn link AIOStreams") only shows the dict
+            // key, so carry the full release title there. Without it every
+            // entry from one source looks identical ("2160p • Sootio #2").
+            string details = Compact(stream.Title) ?? Compact(stream.Name);
+            if (!string.IsNullOrWhiteSpace(details))
+                key += $" • {details}";
+
             if (!keys.Add(key))
             {
                 key = $"{key} #{keys.Count + 1}";

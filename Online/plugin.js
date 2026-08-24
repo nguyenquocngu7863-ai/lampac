@@ -1136,6 +1136,7 @@
             choice.voice_name ||
             (filter_find.voice[0] ? filter_find.voice[0].title : false) ||
             element.voice_name ||
+            element.details ||
             (serial ? 'Неизвестно' : element.text) ||
             'Неизвестно';
           if (element.quality) {
@@ -1144,7 +1145,7 @@
           }
           Lampa.Arrays.extend(element, {
             voice_name: voice_name,
-            info: voice_name.length > 60 ? voice_name.substr(0, 60) + '...' : voice_name,
+            info: voice_name.length > 400 ? voice_name.substr(0, 400) + '...' : voice_name,
             quality: '',
             time: Lampa.Utils.secondsToTime((episode ? episode.runtime : object.movie.runtime) * 60, true)
           });
@@ -2150,24 +2151,36 @@
         '  display: -moz-box;',
         '  display: -ms-flexbox;',
         '  display: flex;',
-        '  -webkit-box-align: center;',
-        '  -webkit-align-items: center;',
-        '  -moz-box-align: center;',
-        '  -ms-flex-align: center;',
-        '  align-items: center;',
+        '  -webkit-box-align: start;',
+        '  -webkit-align-items: flex-start;',
+        '  -moz-box-align: start;',
+        '  -ms-flex-align: start;',
+        '  align-items: flex-start;',
+        '  -webkit-flex-wrap: wrap;',
+        '  -ms-flex-wrap: wrap;',
+        '  flex-wrap: wrap;',
         '}',
+        // Let the info spans wrap onto new lines instead of being clamped to
+        // a single ellipsized line, so the full release info stays readable.
         '.online-prestige__info > * {',
-        '  overflow: hidden;',
-        '  -o-text-overflow: ellipsis;',
-        '  text-overflow: ellipsis;',
-        '  display: -webkit-box;',
-        '  -webkit-line-clamp: 1;',
-        '  line-clamp: 1;',
-        '  -webkit-box-orient: vertical;',
+        '  white-space: normal;',
+        '  overflow: visible;',
+        '  -o-text-overflow: clip;',
+        '  text-overflow: clip;',
+        '  line-height: 1.4;',
         '}',
         '.online-prestige__quality {',
         '  padding-left: 1em;',
         '  white-space: nowrap;',
+        '}',
+        // When the info block wraps to several lines, keep the quality badge
+        // pinned to the top of the card footer instead of floating mid-text.
+        '.online-prestige__footer {',
+        '  -webkit-box-align: start;',
+        '  -webkit-align-items: flex-start;',
+        '  -moz-box-align: start;',
+        '  -ms-flex-align: start;',
+        '  align-items: flex-start;',
         '}',
         '.online-prestige__scan-file {',
         '  position: absolute;',
