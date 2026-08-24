@@ -441,8 +441,12 @@
     }
 
     function withoutAddonSelect(url) {
+        // Open Directory carries the marker in a URL fragment (#...) so the
+        // tag never reaches the origin host; strip both query and fragment
+        // forms, plus any dangling separator left over.
         return String(url || '')
-            .replace(/([?&])(?:webstreamr|k20|opendirectory|sootio|aiostreams)_select=1&?/i, '$1');
+            .replace(/([?&#])(?:webstreamr|k20|opendirectory|sootio|aiostreams)_select=1&?/i, '$1')
+            .replace(/[?&#]$/, '');
     }
 
     function isAddonSelection(e) {

@@ -18,16 +18,22 @@ Chỉ dùng các file mà người dùng có quyền truy cập.
 ## Phát
 
 Các file `.mkv`, `.mp4`, `.m3u8`, `.webm`, `.avi` và `.m2ts` được giữ đuôi
-trên URL Lampac. MKV/AVI có thể đi qua `gst.js` khi `gst.enable: true`; HLS và
-MP4 giữ route direct bình thường. Episode có nhiều release mở link picker để
-chọn từng file.
+trên URL. MKV/AVI có thể đi qua `gst.js` khi `gst.enable: true`; HLS và MP4
+giữ route direct bình thường. Episode có nhiều release mở link picker để chọn
+từng file.
 
-`streamproxy: false` (mặc định) phát **trực tiếp từ host** — endpoint Lampac
-chỉ 302 sang URL gốc, byte stream không chạy qua `/proxy/` nên nhẹ CPU/RAM cho
-máy chạy Lampac. Nếu gặp triệu chứng "thấy link ngon mà không phát được"
-(Cloudflare trả 403 cho UA của player), bật lại `streamproxy: true`; chế độ đó
-cần cả `serverproxy.enable` trong `base.conf` (mặc định repo đã bật) để Lampac
-fetch bằng UA Chrome và forward Range header.
+`directLinks: true` (mặc định) đưa **URL gốc của host** thẳng cho Lampa:
+playback không chạm vào Lampac, nhẹ CPU/RAM/pin cho máy chạy server. Lampac
+chỉ còn fetch trang listing khi tìm phim (bắt buộc, vì nó dùng UA Chrome mới
+qua được Cloudflare). Marker chọn file đi trong fragment `#opendirectory_select`
+nên origin không bao giờ thấy tham số lạ.
+
+Đặt `directLinks: false` để card/episode link trỏ endpoint
+`/lite/opendirectory/*` của Lampac (endpoint 302 sang nguồn) — cần khi bật
+`streamproxy: true`: endpoint đó sẽ 302 vào `/proxy/`, Lampac fetch byte bằng
+UA Chrome và forward Range header. Dùng chế độ proxy này nếu gặp triệu chứng
+"thấy link ngon mà không phát được" (Cloudflare 403 UA của player);
+`serverproxy.enable` trong `base.conf` đã được bật mặc định.
 
 Module không transcode. Với file lớn, kiểm tra origin có trả HTTP Range ổn
 định trước khi bật dùng thường xuyên.
@@ -39,6 +45,7 @@ Module không transcode. Với file lớn, kiểm tra origin có trả HTTP Rang
   "enable": true,
   "directoryHost": "https://a.111477.xyz",
   "streamproxy": false,
+  "directLinks": true,
   "timeoutSeconds": 20,
   "maxFiles": 40,
   "maxDirectoryEntries": 2500

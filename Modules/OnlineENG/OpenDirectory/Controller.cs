@@ -475,6 +475,12 @@ public sealed class OpenDirectoryController : BaseOnlineController<ModuleConf>
 
     string BuildVideoEndpoint(OpenDirectoryMedia media, bool selectLink = false)
     {
+        // Direct links: Lampa nhận link gốc của host, playback không chạm vào
+        // Lampac. Marker chọn file đi trong fragment - fragment không bao giờ
+        // được gửi lên origin, và gst.js gỡ nó sau khi người dùng chọn link.
+        if (init.directLinks)
+            return selectLink ? media.Url + "#opendirectory_select=1" : media.Url;
+
         string route = media.Format switch
         {
             "mkv" => "file.mkv",
