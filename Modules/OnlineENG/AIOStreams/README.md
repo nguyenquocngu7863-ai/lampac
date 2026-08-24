@@ -19,9 +19,16 @@ Nhập nó trong AdminPanel hoặc `init.conf`:
   "streamproxy": true,
   "timeoutSeconds": 30,
   "maxStreams": 100,
-  "cacheSeconds": 120
+  "cacheSeconds": 120,
+  "detailedLabels": true
 }
 ```
+
+`detailedLabels` (mặc định `true`) làm nhãn stream chi tiết hơn: tên release,
+dung lượng (📦/💾), codec video (HEVC/H.264/AV1…), HDR (DV/HDR10+…), audio
+(Atmos/TrueHD/DTS… + kênh 5.1/7.1) và số seeder (👤). Nhãn này xuất hiện trong
+danh sách card phim và khung "Chọn link" của Lampa. Đặt `false` để quay lại
+nhãn ngắn dạng `Nguồn • Chất lượng`.
 
 `enable` tắt toàn bộ cầu nối. `streams` và `subtitles` cho phép tắt riêng
 resource tương ứng. Các addon bên trong AIOStreams vẫn được bật/tắt ở chính
