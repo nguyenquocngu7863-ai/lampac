@@ -480,7 +480,11 @@
         e.abort();
 
         Lampa.Select.show({
-            title: /k20_select/i.test(e.data.url) ? 'Chọn link K20' : 'Chọn link WebStreamr',
+            title: /k20_select/i.test(e.data.url)
+                ? 'Chọn link K20'
+                : /opendirectory_select/i.test(e.data.url)
+                    ? 'Chọn file Open Directory'
+                    : 'Chọn link WebStreamr',
             items: items,
             onSelect: function (item) {
                 Lampa.Select.close();

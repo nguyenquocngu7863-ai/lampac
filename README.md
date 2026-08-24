@@ -90,7 +90,7 @@ Cập nhật sẽ tải release mới, giữ lại `init.conf` và `passwd`, r�
 
 ### Chỉ đồng bộ module tuỳ biến
 
-Dùng khi release Lampac vẫn giữ nguyên nhưng bạn muốn lấy lại các thay đổi tuỳ biến (**KKPhim, K20, VsMov, WebStreamr, GStreamer và LampaWeb/StremioSub**):
+Dùng khi release Lampac vẫn giữ nguyên nhưng bạn muốn lấy lại các thay đổi tuỳ biến (**KKPhim, K20, VsMov, WebStreamr, Open Directory, GStreamer và LampaWeb/StremioSub**):
 
 ```bash
 bash setup-termux.sh --sync
