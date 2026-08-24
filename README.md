@@ -17,7 +17,7 @@ Mở Termux, tải script rồi chạy:
 
 ```bash
 pkg update -y && pkg install -y curl
-curl -fLO https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a028cf-lampac/setup-termux.sh
+curl -fLO https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a033a2-lampac/setup-termux.sh
 bash setup-termux.sh
 ```
 
@@ -160,7 +160,7 @@ curl -s http://127.0.0.1:9118/lampainit.js | grep -oE 'StremioSub[^" ]*|stremios
 Nếu lệnh không in ra `stremiosub.js`, đồng bộ và khởi động lại:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a028cf-lampac/setup-termux.sh | bash -s -- --sync
+curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a033a2-lampac/setup-termux.sh | bash -s -- --sync
 lampac stop
 lampac start
 ```
