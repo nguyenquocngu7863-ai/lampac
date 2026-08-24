@@ -12,7 +12,10 @@ public sealed class ModuleConf : BaseSettings, ICloneable
         displayindex = 1070;
         enable = true;
         directoryHost = "https://a.111477.xyz";
-        streamproxy = true;
+        // Phát thẳng từ host: tiết kiệm CPU/RAM của máy chạy Lampac so với
+        // proxy byte qua /proxy/. Nếu Cloudflare chặn UA của player (403:
+        // thấy link mà không phát được) thì bật lại streamproxy.
+        streamproxy = false;
         timeoutSeconds = 20;
         maxFiles = 40;
         maxDirectoryEntries = 2500;

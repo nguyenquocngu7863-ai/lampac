@@ -22,12 +22,12 @@ trên URL Lampac. MKV/AVI có thể đi qua `gst.js` khi `gst.enable: true`; HLS
 MP4 giữ route direct bình thường. Episode có nhiều release mở link picker để
 chọn từng file.
 
-**Bắt buộc:** bật `serverproxy.enable` trong `init.conf`/`base.conf`. Host
-mặc định nằm sau Cloudflare; triệu chứng kinh điển khi tắt là "thấy link ngon
-nhưng không phát được" — trang listing tải được vì Lampac fetch bằng UA Chrome,
-nhưng player tự fetch bằng UA riêng (Exo/WebView/GStreamer) và bị 403. Qua
-`/proxy/`, Lampac fetch bằng UA Chrome và forward Range header nên phát và tua
-đều ổn. `streamproxy: true` của module đã là mặc định; hai cờ phải cùng bật.
+`streamproxy: false` (mặc định) phát **trực tiếp từ host** — endpoint Lampac
+chỉ 302 sang URL gốc, byte stream không chạy qua `/proxy/` nên nhẹ CPU/RAM cho
+máy chạy Lampac. Nếu gặp triệu chứng "thấy link ngon mà không phát được"
+(Cloudflare trả 403 cho UA của player), bật lại `streamproxy: true`; chế độ đó
+cần cả `serverproxy.enable` trong `base.conf` (mặc định repo đã bật) để Lampac
+fetch bằng UA Chrome và forward Range header.
 
 Module không transcode. Với file lớn, kiểm tra origin có trả HTTP Range ổn
 định trước khi bật dùng thường xuyên.
@@ -38,7 +38,7 @@ Module không transcode. Với file lớn, kiểm tra origin có trả HTTP Rang
 "OpenDirectory": {
   "enable": true,
   "directoryHost": "https://a.111477.xyz",
-  "streamproxy": true,
+  "streamproxy": false,
   "timeoutSeconds": 20,
   "maxFiles": 40,
   "maxDirectoryEntries": 2500
