@@ -257,6 +257,7 @@ install_lampac_in_ubuntu() {
   \"rch\":      { \"enable\": false },
   \"WAF\":      { \"enable\": false },
   \"accsdb\":   { \"enable\": false },
+  \"serverproxy\": { \"enable\": true, \"verifyip\": false },
   \"serilog\":  false,
   \"LampaWeb\": {
     \"widgets\": { \"samsung\": false, \"lg\": false }
@@ -333,6 +334,20 @@ ensure_runtime_config() {
                 sed -i "s#^[[:space:]]*\"executablePath\".*#    \"executablePath\": \"$browser\",#" "$file"
             else
                 sed -i "/^[[:space:]]*\"Headless\"[[:space:]]*:/a\\    \"executablePath\": \"$browser\"," "$file"
+            fi
+        fi
+
+
+        # Route streams through Lampac so upstream hosts see Lampac Chrome
+        # UA plus a forwarded Range header. Cloudflare-fronted open
+        # directories 403 the player own UA: links appear but never play.
+        if ! grep -q "serverproxy" "$file"; then
+            lastline=$(awk "END{print NR}" "$file")
+            if [ "$(sed -n "${lastline}p" "$file" | tr -d "[:space:]")" = "}" ]; then
+                sed -i "${lastline}d" "$file"
+                printf "  ,\n  \"serverproxy\": { \"enable\": true, \"verifyip\": false }\n}\n" >> "$file"
+            else
+                echo "  warning: init.conf tail unexpected; add serverproxy manually"
             fi
         fi
 
