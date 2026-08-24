@@ -204,6 +204,26 @@ Lampac có module **AIOStreams** tùy chọn. Module này chỉ gọi manifest v
 
 Manifest URL có thể chứa UUID, password, API key hoặc token; không đưa nó vào Git, log hoặc chat. Các nguồn cũ như **HDVB, KKPhim, K20, WebStreamr, Open Directory và Sootio** vẫn giữ nguyên làm fallback. AIOStreams chỉ là nguồn riêng thêm vào, không thay thế chúng.
 
+### Local host AIOStreams trên Ubuntu proot
+
+Sau khi chạy `bash setup-termux.sh --sync`, cài AIOStreams chính chủ bằng:
+
+```bash
+aio install
+aio info
+```
+
+Bản cài này clone repo chính chủ ở tag ổn định, cài Node/pnpm và build trong `/root/aiostreams`. AIO dùng port nội bộ `3002`; Lampac tự khởi động AIO nếu đã cài. Mở dashboard theo URL `aio info`, cấu hình addon/subtitle trong AIO, rồi dán manifest URL local vào section **AIOStreams** trong AdminPanel Lampac. Các lệnh quản lý:
+
+```bash
+aio start
+aio stop
+aio status
+aio logs
+```
+
+AIOStreams chạy Node.js riêng, không được nhúng vào Lampac. Bản local dùng SQLite và cần thêm dung lượng/RAM khi build; nếu build source lỗi do native `yencode`, xem log bằng `aio logs`.
+
 ## Thêm/sửa plugin LampaWeb vào bản Lampac trong `/root`
 
 Bản Termux chạy release ở `/root/lampac`; LampaWeb là **dynamic module**. Vì vậy chỉ thêm file `.js` vào repository là chưa đủ: release đang chạy còn dùng controller/model cũ để tạo `/lampainit.js`.

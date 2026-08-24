@@ -78,7 +78,11 @@ show_help() {
     printf "  ${DIM}# Apply KKPhim + Chromium setup without replacing the current release${RESET}\n"
     printf "  bash setup-termux.sh --sync\n\n"
 
-    printf "  ${DIM}# Update${RESET}\n"
+    printf "  ${DIM}# Install AIOStreams locally (optional)${RESET}\n"
+    printf "  aio install\n"
+    printf "  aio info\n\n"
+
+    printf "  ${DIM}# Update Lampac${RESET}\n"
     printf "  bash setup-termux.sh --update\n\n"
 }
 
@@ -399,6 +403,9 @@ install_custom_modules() {
             curl -fSL --retry 3 \"\$aiobase/\$file\" -o \"\$aiotarget/\$file\"
         done
 
+        curl -fSL --retry 3 \"${CUSTOM_SOURCE_BASE}/aioctl.sh\" -o /root/aioctl.sh
+        chmod +x /root/aioctl.sh
+
         gstbase=\"${CUSTOM_SOURCE_BASE}/Modules/GStreamer\"
         gsttarget=/root/lampac/module/GStreamer
         mkdir -p \"\$gsttarget/Services\" \"\$gsttarget/plugins\"
@@ -491,13 +498,24 @@ chmod +x /root/lampac-run.sh'
 case "${1:-}" in
     start)
         echo "Starting Lampac... (press Ctrl+C to stop)"
-        proot-distro login ubuntu -- bash /root/lampac-run.sh
+        proot-distro login ubuntu -- bash -c '
+            if [ -x /root/aioctl.sh ] && [ -f /root/aiostreams/.env ]; then
+                /root/aioctl.sh start || true
+            fi
+            exec bash /root/lampac-run.sh
+        '
         ;;
     stop)
         pkill -f 'proot.*Core.dll' 2>/dev/null && echo "Lampac stopped" || echo "Lampac not running"
+        if proot-distro login ubuntu -- test -d /root/aiostreams 2>/dev/null; then
+            proot-distro login ubuntu -- bash /root/aioctl.sh stop 2>/dev/null || true
+        fi
         ;;
     status)
         pgrep -f 'proot.*Core.dll' > /dev/null 2>&1 && echo "Lampac is running" || echo "Lampac not running"
+        if proot-distro login ubuntu -- test -d /root/aiostreams 2>/dev/null; then
+            proot-distro login ubuntu -- bash /root/aioctl.sh status 2>/dev/null || true
+        fi
         ;;
     config)
         proot-distro login ubuntu -- bash -c 'nano /root/lampac/init.conf'
@@ -613,6 +631,8 @@ case "${1:-}" in
             for file in Controller.cs Model.cs ModInit.cs manifest.json; do
                 curl -fSL --retry 3 "$aiobase/$file" -o "$aiotarget/$file"
             done
+            curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a028cf-lampac/aioctl.sh" -o /root/aioctl.sh
+            chmod +x /root/aioctl.sh
 
             # Keep the dynamic LampaWeb subtitle/plugin selector in sync after
             # replacing a release archive.
@@ -655,6 +675,25 @@ esac
 SHORTCUT
     chmod +x "$PREFIX/bin/lampac"
     ok "Shortcut 'lampac' command ready"
+
+    cat > "$PREFIX/bin/aio" <<'AIO_SHORTCUT'
+#!/usr/bin/env bash
+if ! proot-distro login ubuntu -- test -x /root/aioctl.sh 2>/dev/null; then
+    echo "AIO controller is not installed yet. Run: bash setup-termux.sh --sync"
+    exit 1
+fi
+case "${1:-info}" in
+    install|update|start|stop|restart|status|info|config|logs|log)
+        proot-distro login ubuntu -- bash /root/aioctl.sh "$@"
+        ;;
+    *)
+        echo "Usage: aio {install|update|start|stop|restart|status|info|config|logs}"
+        exit 2
+        ;;
+esac
+AIO_SHORTCUT
+    chmod +x "$PREFIX/bin/aio"
+    ok "Shortcut 'aio' command ready"
 }
 
 # ─── Run Lampac ──────────────────────────────────────────────────────────────
@@ -748,6 +787,9 @@ main() {
             info "  lampac config  — Edit config"
             info "  lampac info    — Show URL & port"
             info "  lampac update  — Update to latest"
+            info "  aio install    — Install AIOStreams locally"
+            info "  aio start      — Start local AIOStreams"
+            info "  aio info       — Show AIO dashboard URL"
             echo ""
 
             read -rp "  Start Lampac now? [Y/n]: " answer
