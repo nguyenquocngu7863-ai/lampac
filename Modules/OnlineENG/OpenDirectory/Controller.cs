@@ -603,11 +603,27 @@ public sealed class OpenDirectoryController : BaseOnlineController<ModuleConf>
 
             string clean = Regex.Replace(value.Trim(), @"\s+", " ");
             clean = Regex.Replace(clean, @"\s*\(\d{4}\)\s*$", string.Empty).Trim();
-            if (!result.Contains(clean, StringComparer.OrdinalIgnoreCase))
-                result.Add(clean);
+            AddCandidate(clean, result);
+
+            // Open Directory names are often sanitized for filesystem
+            // compatibility: `Mad Max: Fury Road` is stored as
+            // `Mad Max Fury Road`. Try that deterministic variant, but do not
+            // do a broad partial-title search that could select another film.
+            string filesystemSafe = Regex.Replace(clean, "[<>:\"/\\\\|?*]+", " ");
+            filesystemSafe = Regex.Replace(filesystemSafe, @"\s+", " ").Trim();
+            AddCandidate(filesystemSafe, result);
         }
 
         return result;
+
+        static void AddCandidate(string value, List<string> values)
+        {
+            if (!string.IsNullOrWhiteSpace(value) &&
+                !values.Contains(value, StringComparer.OrdinalIgnoreCase))
+            {
+                values.Add(value);
+            }
+        }
     }
 
     static IEnumerable<string> FolderNameCandidates(string title, short year, bool isSeries)
