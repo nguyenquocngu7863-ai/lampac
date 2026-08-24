@@ -335,6 +335,9 @@ ensure_runtime_config() {
             else
                 sed -i "/^[[:space:]]*\"Headless\"[[:space:]]*:/a\\    \"executablePath\": \"$browser\"," "$file"
             fi
+            if ! sed -n "/^[[:space:]]*\"chromium\"[[:space:]]*:/,/^[[:space:]]*},[[:space:]]*$/p" "$file" | grep -q \""Args"\"; then
+                sed -i "/^[[:space:]]*\"executablePath\"[[:space:]]*:/a\\    \"Args\": [\"--no-sandbox\", \"--disable-setuid-sandbox\", \"--disable-dev-shm-usage\", \"--disable-gpu\"]," "$file"
+            fi
         fi
 
 
@@ -598,6 +601,9 @@ case "${1:-}" in
                     sed -i "/^[[:space:]]*\"chromium\"[[:space:]]*:/,/^[[:space:]]*},[[:space:]]*$/ s/\"enable\"[[:space:]]*:[[:space:]]*false/\"enable\": true/" "$file"
                     if grep -q "^[[:space:]]*\"executablePath\"[[:space:]]*:" "$file"; then
                         sed -i "s#^[[:space:]]*\"executablePath\".*#    \"executablePath\": \"$browser\",#" "$file"
+                    fi
+                    if ! sed -n "/^[[:space:]]*\"chromium\"[[:space:]]*:/,/^[[:space:]]*},[[:space:]]*$/p" "$file" | grep -q \""Args"\"; then
+                        sed -i "/^[[:space:]]*\"executablePath\"[[:space:]]*:/a\\    \"Args\": [\"--no-sandbox\", \"--disable-setuid-sandbox\", \"--disable-dev-shm-usage\", \"--disable-gpu\"]," "$file"
                     fi
                 fi
             fi
