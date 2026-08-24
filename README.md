@@ -48,7 +48,7 @@ Khi chạy lần đầu, `setup-termux.sh` thực hiện tuần tự các bướ
 4. Tải bản phát hành Lampac NextGen mới nhất, giải nén vào `/root/lampac` trong Ubuntu.
 5. Tạo `init.conf` tối ưu cho Termux: `lowMemoryMode`, GStreamer, Chromium headless và các module nặng được tắt bớt.
 6. Cài Chrome/Chromium tương thích `arm64` hoặc `amd64` để các nguồn dùng Playwright hoạt động.
-7. Xoá nguồn đã ngừng dùng/lỗi **NguonC**, rồi đồng bộ module tuỳ biến: **KKPhim, K20, VsMov, WebStreamr, Open Directory, Sootio, GStreamer** và **LampaWeb/StremioSub**; AdminPanel cũng được cập nhật giao diện tiếng Việt nếu module đã có sẵn.
+7. Xoá nguồn đã ngừng dùng/lỗi **NguonC**, rồi đồng bộ module tuỳ biến: **KKPhim, K20, VsMov, WebStreamr, Open Directory, Sootio, AIOStreams, GStreamer** và **LampaWeb/StremioSub**; AdminPanel cũng được cập nhật giao diện tiếng Việt nếu module đã có sẵn.
 8. Tạo lệnh `lampac` để quản lý server từ Termux.
 
 Lần cài đầu có thể mất vài phút vì phải tải Ubuntu, runtime .NET, Chrome và bản phát hành Lampac. Không đóng Termux khi đang chạy script.
@@ -90,7 +90,7 @@ Cập nhật sẽ tải release mới, giữ lại `init.conf` và `passwd`, r�
 
 ### Chỉ đồng bộ module tuỳ biến
 
-Dùng khi release Lampac vẫn giữ nguyên nhưng bạn muốn lấy lại các thay đổi tuỳ biến (**KKPhim, K20, VsMov, WebStreamr, Open Directory, Sootio, GStreamer và LampaWeb/StremioSub**):
+Dùng khi release Lampac vẫn giữ nguyên nhưng bạn muốn lấy lại các thay đổi tuỳ biến (**KKPhim, K20, VsMov, WebStreamr, Open Directory, Sootio, AIOStreams, GStreamer và LampaWeb/StremioSub**):
 
 ```bash
 bash setup-termux.sh --sync
@@ -149,7 +149,7 @@ Lampac có SubSense Auto, SubSense, SubFinder và StremioSub. Vì các plugin t�
 
 ## StremioSub — plugin phụ đề built-in
 
-`StremioSub` tìm phụ đề qua Stremio SubDL và SubSource. Nó là plugin built-in của Lampac: **không cài bằng URL jsDelivr trong mục Extensions**. Sau một lần `--sync` và restart Lampac, Lampa nhận plugin nội bộ với tên **StremioSub — SubDL + SubSource**.
+`StremioSub` là plugin built-in của Lampac: **không cài bằng URL jsDelivr trong mục Extensions**. Nếu module AIOStreams đã bật, plugin ưu tiên subtitle resource từ AIO; nếu chưa thì dùng fallback SubDL + SubSource. Sau một lần `--sync` và restart Lampac, Lampa nhận plugin nội bộ với tên **StremioSub — SubDL + SubSource/AIOStreams**.
 
 Kiểm tra Lampac đã đưa plugin vào init chưa:
 
@@ -184,6 +184,25 @@ Không thêm cùng lúc URL này vào `customPlugins`. Bật nó trong danh sác
 ```
 
 Lampac sẽ phục vụ script tại `/subsense-auto.js` và đăng ký nó cùng danh sách với `/ts.js`. Nếu đang dùng SubSense Auto thì phải tắt `subsense`, `subfinder` và `stremiosub`; nếu không, các addon đều có thể gọi phụ đề cho cùng một lần phát. Trong lúc host SubSense trả 502, nên để `subsenseAuto: false` và dùng `stremiosub: true`.
+
+## AIOStreams — cầu nối Stremio tổng quát
+
+Lampac có module **AIOStreams** tùy chọn. Module này chỉ gọi manifest và API Stremio chuẩn qua HTTP; không cần chạy Node.js trong Lampac hoặc Lampa WebView. Ní tạo/cấu hình AIOStreams ở trang của AIO, sau đó nhập manifest URL cá nhân vào AdminPanel:
+
+```json
+"AIOStreams": {
+  "enable": true,
+  "manifest": "https://your-aiostreams-instance/stremio/.../manifest.json",
+  "streams": true,
+  "subtitles": true,
+  "streamproxy": true,
+  "timeoutSeconds": 30,
+  "maxStreams": 100,
+  "cacheSeconds": 120
+}
+```
+
+Manifest URL có thể chứa UUID, password, API key hoặc token; không đưa nó vào Git, log hoặc chat. Các nguồn cũ như **HDVB, KKPhim, K20, WebStreamr, Open Directory và Sootio** vẫn giữ nguyên làm fallback. AIOStreams chỉ là nguồn riêng thêm vào, không thay thế chúng.
 
 ## Thêm/sửa plugin LampaWeb vào bản Lampac trong `/root`
 

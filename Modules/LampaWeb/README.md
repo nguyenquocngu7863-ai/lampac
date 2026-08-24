@@ -23,7 +23,7 @@ Phân phối **web-client Lampa** từ **`wwwroot`**, build **`lampainit.js`** v
 | `/dorama.js`, `/dorama/js/{token}` | Lampa plugin riêng cho mục **«Doramas»** và nguồn `lampac_dorama`. |
 | `/subsense-auto.js` | Plugin **SubSense Auto** (opt-in), được đăng ký giống `ts.js` và tự gắn phụ đề từ addon SubSense. |
 | `/subsense.js` | Plugin **SubSense** (legacy opt-in) — tự động gắn phụ đề tiếng Việt cho player (nguồn SubSense, chuyển đổi srt/zip → VTT). |
-| `/stremiosub.js` | Plugin **StremioSub** — tự động tìm phụ đề qua Stremio SubDL và SubSource. |
+| `/stremiosub.js` | Plugin **StremioSub** — ưu tiên subtitle resource của AIOStreams, fallback về SubDL và SubSource. |
 | `/privateinit.js` | Khởi tạo bổ sung. |
 | `/telegram_auth_gate.js` | Plugin kịch bản xác thực Telegram (xem module Community). |
 
@@ -40,7 +40,7 @@ Các field quan trọng với giá trị mặc định trong code:
 - **`git`**, **`tree`** — nguồn cập nhật;
 - **`intervalupdate`** — chu kỳ cron (phút);
 - **`initPlugins.dorama`** — nối Lampa plugin riêng **`/dorama.js`** vào `/lampainit.js` và `/on.js`;
-- **`initPlugins.stremiosub`** — nối plugin **`/stremiosub.js`** vào `/lampainit.js` và `/on.js`; dùng Stremio SubDL + SubSource, bật mặc định.
+- **`initPlugins.stremiosub`** — nối plugin **`/stremiosub.js`** vào `/lampainit.js` và `/on.js`; ưu tiên AIOStreams nếu module AIO đã bật, nếu không dùng Stremio SubDL + SubSource, bật mặc định.
 - **`initPlugins.subsenseAuto`** — nối plugin gốc **`/subsense-auto.js`** vào cùng danh sách với **`ts.js`**; mặc định tắt. Bật nó **thay cho** `stremiosub` nếu muốn dùng addon SubSense.
 - **`initPlugins.subsense`** — plugin **`/subsense.js`** legacy, mặc định tắt; chỉ bật thay cho `stremiosub`.
 - **`initPlugins.subfinder`** — plugin **`/subfinder.js`**, mặc định tắt; chỉ bật thay cho `stremiosub`.

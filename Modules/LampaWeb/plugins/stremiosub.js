@@ -255,10 +255,48 @@
     return result;
   }
 
+  /* ── Search AIOStreams' standard subtitle resource ── */
+  function searchAio(info, callback) {
+    if (!serverOrigin) {
+      callback(false, [], null);
+      return;
+    }
+
+    var query =
+      '?stremio_id=' + encodeURIComponent(stremioId(info)) +
+      '&serial=' + (info.type === 'series' ? '1' : '0');
+
+    if (info.season) query += '&s=' + info.season;
+    if (info.episode) query += '&e=' + info.episode;
+
+    $.ajax({
+      url: serverOrigin + '/lite/aiostreams/subtitles' + query,
+      type: 'GET',
+      dataType: 'json',
+      timeout: 20000,
+      success: function(data) {
+        var subs = data && data.subtitles;
+        if (!Array.isArray(subs)) {
+          callback(false, [], { status: 0, reason: 'invalid AIOStreams subtitle response' });
+          return;
+        }
+        callback(true, subs, null);
+      },
+      error: function(xhr, status, error) {
+        // A disabled/unconfigured AIOStreams module falls back to the two
+        // legacy providers. A successful empty JSON response is different: it
+        // means AIO is enabled and configured but found no subtitle.
+        callback(false, [], errorInfo(xhr, status, error));
+      }
+    });
+  }
+
   /*
    * One search per title/episode at a time. GStreamer may call Player.play
    * once for the aborted native player and again for the real HLS player; both
    * calls join this entry instead of producing four identical API requests.
+   * When AIOStreams is configured, it is the single subtitle source. The
+   * direct SubDL + SubSource path remains a backwards-compatible fallback.
    */
   function searchBoth(info, callback) {
     var now = Date.now();
@@ -288,24 +326,14 @@
     };
     searchCache[info.key] = entry;
 
-    var pending = 2;
-    var allSubs = [];
-    var errors = [];
-
-    function finish(sourceName, subs, error) {
-      if (error) errors.push({ source: sourceName, info: error });
-      log(sourceName + ':', subs.length, 'subs', error ? '(' + error.reason + ')' : '');
-      allSubs = allSubs.concat(subs || []);
-      pending--;
-      if (pending > 0) return;
-
+    function publish(allSubs, errors) {
       var merged = uniqueSubtitles(allSubs);
-      var hadRateLimit = errors.some(function(item) {
+      var hadRateLimit = (errors || []).some(function(item) {
         return item.info && (item.info.status === 429 || item.info.status === 403);
       });
 
       entry.subs = merged;
-      entry.errors = errors;
+      entry.errors = errors || [];
       entry.state = merged.length ? 'ready' : 'empty';
       entry.expiresAt = now + (
         merged.length
@@ -316,15 +344,39 @@
       var waiters = entry.waiters.slice();
       entry.waiters.length = 0;
       waiters.forEach(function(waiter) {
-        waiter(merged.slice(), errors);
+        waiter(merged.slice(), entry.errors);
       });
 
       if (!merged.length)
         log('no subs found for', info.imdbId, formatEpisode(info));
     }
 
-    searchAddon('SubDL', SUBDL_BASE, info, finish.bind(null, 'SubDL'));
-    searchAddon('SubSource', SUBSOURCE_BASE, info, finish.bind(null, 'SubSource'));
+    function searchLegacy() {
+      var pending = 2;
+      var allSubs = [];
+      var errors = [];
+
+      function finish(sourceName, subs, error) {
+        if (error) errors.push({ source: sourceName, info: error });
+        log(sourceName + ':', subs.length, 'subs', error ? '(' + error.reason + ')' : '');
+        allSubs = allSubs.concat(subs || []);
+        pending--;
+        if (pending === 0) publish(allSubs, errors);
+      }
+
+      searchAddon('SubDL', SUBDL_BASE, info, finish.bind(null, 'SubDL'));
+      searchAddon('SubSource', SUBSOURCE_BASE, info, finish.bind(null, 'SubSource'));
+    }
+
+    searchAio(info, function(used, subs, error) {
+      if (used) {
+        log('AIOStreams:', subs.length, 'subs');
+        publish(subs, error ? [{ source: 'AIOStreams', info: error }] : []);
+        return;
+      }
+
+      searchLegacy();
+    });
   }
 
   function fetchSubtitleText(url, requestUrl, callback) {

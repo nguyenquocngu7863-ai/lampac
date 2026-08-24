@@ -7,7 +7,7 @@
 #   bash setup-termux.sh            # install & run
 #   bash setup-termux.sh --install  # install only
 #   bash setup-termux.sh --run      # run only (skip install)
-#   bash setup-termux.sh --sync     # apply KKPhim/Chromium setup without replacing Lampac
+#   bash setup-termux.sh --sync     # apply custom modules/Chromium setup without replacing Lampac
 #   bash setup-termux.sh --update   # update to latest release
 #
 set -euo pipefail
@@ -61,7 +61,7 @@ show_help() {
     printf "${BOLD}Options:${RESET}\n"
     printf "  ${GREEN}--install${RESET}    Install proot-distro + Ubuntu + .NET + Lampac\n"
     printf "  ${GREEN}--run${RESET}        Run Lampac (skip install)\n"
-    printf "  ${GREEN}--sync${RESET}       Apply KKPhim + ARM64 Chromium setup without replacing Lampac\n"
+    printf "  ${GREEN}--sync${RESET}       Apply custom modules + ARM64 Chromium setup without replacing Lampac\n"
     printf "  ${GREEN}--update${RESET}     Update Lampac to latest release\n"
     printf "  ${GREEN}--help${RESET}       Show this help\n\n"
     printf "${BOLD}Environment:${RESET}\n"
@@ -341,7 +341,7 @@ ensure_runtime_config() {
 }
 
 install_custom_modules() {
-    info "Installing custom KKPhim/K20/VsMov/WebStreamr/Open Directory/Sootio/GStreamer module files..."
+    info "Installing custom KKPhim/K20/VsMov/WebStreamr/Open Directory/Sootio/AIOStreams/GStreamer module files..."
 
     proot-distro login ubuntu -- bash -c "
         set -euo pipefail
@@ -392,6 +392,13 @@ install_custom_modules() {
             curl -fSL --retry 3 \"\$sootiobase/\$file\" -o \"\$sootiotarget/\$file\"
         done
 
+        aiobase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineENG/AIOStreams\"
+        aiotarget=/root/lampac/module/OnlineENG/AIOStreams
+        mkdir -p \"\$aiotarget\"
+        for file in Controller.cs Model.cs ModInit.cs manifest.json; do
+            curl -fSL --retry 3 \"\$aiobase/\$file\" -o \"\$aiotarget/\$file\"
+        done
+
         gstbase=\"${CUSTOM_SOURCE_BASE}/Modules/GStreamer\"
         gsttarget=/root/lampac/module/GStreamer
         mkdir -p \"\$gsttarget/Services\" \"\$gsttarget/plugins\"
@@ -434,7 +441,7 @@ install_custom_modules() {
         fi
     "
 
-    ok "KKPhim, K20, VsMov, WebStreamr, Open Directory, Sootio, GStreamer and LampaWeb files installed; removed retired NguonC"
+    ok "KKPhim, K20, VsMov, WebStreamr, Open Directory, Sootio, AIOStreams, GStreamer and LampaWeb files installed; removed retired NguonC"
 }
 
 # ─── Step 4: Create launcher scripts (inside Ubuntu!) ────────────────────────
@@ -600,6 +607,13 @@ case "${1:-}" in
                 curl -fSL --retry 3 "$sootiobase/$file" -o "$sootiotarget/$file"
             done
 
+            aiobase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a028cf-lampac/Modules/OnlineENG/AIOStreams"
+            aiotarget=/root/lampac/module/OnlineENG/AIOStreams
+            mkdir -p "$aiotarget"
+            for file in Controller.cs Model.cs ModInit.cs manifest.json; do
+                curl -fSL --retry 3 "$aiobase/$file" -o "$aiotarget/$file"
+            done
+
             # Keep the dynamic LampaWeb subtitle/plugin selector in sync after
             # replacing a release archive.
             webbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a028cf-lampac/Modules/LampaWeb"
@@ -679,7 +693,7 @@ main() {
             ensure_runtime_config
             install_custom_modules
             create_launcher
-            ok "KKPhim + ARM64 Chromium setup applied"
+            ok "Custom modules + ARM64 Chromium setup applied"
             ;;
         "update")
             info "Updating Lampac inside Ubuntu..."

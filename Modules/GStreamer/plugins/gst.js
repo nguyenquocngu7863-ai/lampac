@@ -442,13 +442,13 @@
 
     function withoutAddonSelect(url) {
         return String(url || '')
-            .replace(/([?&])(?:webstreamr|k20|opendirectory|sootio)_select=1&?/i, '$1');
+            .replace(/([?&])(?:webstreamr|k20|opendirectory|sootio|aiostreams)_select=1&?/i, '$1');
     }
 
     function isAddonSelection(e) {
         return !!(e && e.data &&
             typeof e.data.url === 'string' &&
-            /(?:webstreamr|k20|opendirectory|sootio)_select=1/i.test(e.data.url) &&
+            /(?:webstreamr|k20|opendirectory|sootio|aiostreams)_select=1/i.test(e.data.url) &&
             !e.data.__addonSelected);
     }
 
@@ -484,9 +484,11 @@
                 ? 'Chọn link K20'
                 : /opendirectory_select/i.test(e.data.url)
                     ? 'Chọn file Open Directory'
-                    : /sootio_select/i.test(e.data.url)
-                        ? 'Chọn link Sootio'
-                        : 'Chọn link WebStreamr',
+                    : /aiostreams_select/i.test(e.data.url)
+                        ? 'Chọn link AIOStreams'
+                        : /sootio_select/i.test(e.data.url)
+                            ? 'Chọn link Sootio'
+                            : 'Chọn link WebStreamr',
             items: items,
             onSelect: function (item) {
                 Lampa.Select.close();
