@@ -6,6 +6,12 @@
 #
 set -euo pipefail
 
+# proot-distro inherits Termux's PATH. Put Ubuntu's Linux binaries first;
+# otherwise /data/data/com.termux/.../node (Android) is used inside Ubuntu.
+# That Android Node build adds -llog to native addons and breaks bcrypt on
+# glibc/aarch64. AIOStreams needs the Linux Node installed below.
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
+
 AIO_DIR="${AIO_DIR:-/root/aiostreams}"
 AIO_VERSION="${AIO_VERSION:-v2.33.2}"
 AIO_DEFAULT_PORT="${AIO_DEFAULT_PORT:-3002}"
@@ -75,11 +81,19 @@ ensure_env() {
 
 node_is_new_enough() {
     command -v node >/dev/null 2>&1 || return 1
-    node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 24 ? 0 : 1)' >/dev/null 2>&1
+    node -e '
+        const major = Number(process.versions.node.split(".")[0]);
+        const linux = process.platform === "linux";
+        const termux = process.execPath.startsWith("/data/data/com.termux/");
+        process.exit(linux && !termux && major >= 24 ? 0 : 1);
+    ' >/dev/null 2>&1
 }
 
 pnpm_is_new_enough() {
     command -v pnpm >/dev/null 2>&1 || return 1
+    local pnpm_path
+    pnpm_path="$(readlink -f "$(command -v pnpm)" 2>/dev/null || command -v pnpm)"
+    [[ "$pnpm_path" != /data/data/com.termux/* ]] || return 1
     pnpm --version 2>/dev/null | awk -F. '{ exit !($1 >= 11) }'
 }
 
@@ -307,7 +321,10 @@ diagnose_aio() {
     echo "AIOStreams diagnostics"
     echo "  architecture: $(uname -m 2>/dev/null || echo unknown)"
     echo "  node:         $(node --version 2>/dev/null || echo missing)"
+    echo "  node path:    $(command -v node 2>/dev/null || echo missing)"
+    echo "  node platform:$(node -p 'process.platform' 2>/dev/null || echo unknown)"
     echo "  pnpm:         $(pnpm --version 2>/dev/null || echo missing)"
+    echo "  pnpm path:    $(command -v pnpm 2>/dev/null || echo missing)"
     echo "  source:       $AIO_DIR"
     echo "  env file:     $ENV_FILE"
     echo ""
