@@ -683,11 +683,11 @@ if ! proot-distro login ubuntu -- test -x /root/aioctl.sh 2>/dev/null; then
     exit 1
 fi
 case "${1:-info}" in
-    install|update|start|stop|restart|status|info|config|logs|log)
+    install|update|start|stop|restart|status|info|config|logs|log|build-log|install-log|diagnose)
         proot-distro login ubuntu -- bash /root/aioctl.sh "$@"
         ;;
     *)
-        echo "Usage: aio {install|update|start|stop|restart|status|info|config|logs}"
+        echo "Usage: aio {install|update|start|stop|restart|status|info|config|logs|build-log|diagnose}"
         exit 2
         ;;
 esac

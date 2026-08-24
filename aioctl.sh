@@ -12,6 +12,7 @@ AIO_DEFAULT_PORT="${AIO_DEFAULT_PORT:-3002}"
 ENV_FILE="$AIO_DIR/.env"
 PID_FILE="$AIO_DIR/.aio.pid"
 LOG_FILE="$AIO_DIR/aio.log"
+INSTALL_LOG_FILE="$AIO_DIR/aio-install.log"
 
 info() { printf '  → %s\n' "$*"; }
 ok() { printf '  ✓ %s\n' "$*"; }
@@ -117,14 +118,27 @@ checkout_source() {
     fi
 }
 
+run_logged() {
+    local label="$1"
+    shift
+    info "$label"
+
+    if ! "$@" 2>&1 | tee -a "$INSTALL_LOG_FILE"; then
+        err "$label failed"
+        echo ""
+        echo "Last lines from $INSTALL_LOG_FILE:"
+        tail -n 100 "$INSTALL_LOG_FILE" 2>/dev/null || true
+        return 1
+    fi
+}
+
 build_source() {
     ensure_env
     cd "$AIO_DIR"
-    info "Installing AIOStreams dependencies..."
-    pnpm install --frozen-lockfile
-    info "Building AIOStreams..."
-    pnpm run build
-    pnpm run metadata --channel=stable
+    : > "$INSTALL_LOG_FILE"
+    run_logged "Installing AIOStreams dependencies" pnpm install --frozen-lockfile --reporter=append-only
+    run_logged "Building AIOStreams" pnpm run build
+    run_logged "Generating AIOStreams metadata" pnpm run metadata --channel=stable
     mkdir -p "$AIO_DIR/data"
     ok "AIOStreams build complete"
 }
@@ -275,10 +289,29 @@ config_aio() {
 
 logs_aio() {
     if [[ ! -f "$LOG_FILE" ]]; then
-        info "No AIOStreams log yet"
+        info "No AIOStreams runtime log yet"
         return 0
     fi
     tail -n "${AIO_LOG_LINES:-80}" "$LOG_FILE"
+}
+
+build_log_aio() {
+    if [[ ! -f "$INSTALL_LOG_FILE" ]]; then
+        info "No AIOStreams install/build log yet"
+        return 0
+    fi
+    tail -n "${AIO_LOG_LINES:-120}" "$INSTALL_LOG_FILE"
+}
+
+diagnose_aio() {
+    echo "AIOStreams diagnostics"
+    echo "  architecture: $(uname -m 2>/dev/null || echo unknown)"
+    echo "  node:         $(node --version 2>/dev/null || echo missing)"
+    echo "  pnpm:         $(pnpm --version 2>/dev/null || echo missing)"
+    echo "  source:       $AIO_DIR"
+    echo "  env file:     $ENV_FILE"
+    echo ""
+    build_log_aio
 }
 
 case "${1:-info}" in
@@ -310,8 +343,15 @@ case "${1:-info}" in
     logs|log)
         logs_aio
         ;;
+    build-log|install-log|diagnose)
+        if [[ "$1" == "diagnose" ]]; then
+            diagnose_aio
+        else
+            build_log_aio
+        fi
+        ;;
     *)
-        echo "Usage: aio {install|update|start|stop|restart|status|info|config|logs}"
+        echo "Usage: aio {install|update|start|stop|restart|status|info|config|logs|build-log|diagnose}"
         exit 2
         ;;
 esac
