@@ -360,7 +360,7 @@ ensure_runtime_config() {
 }
 
 install_custom_modules() {
-    info "Installing custom KKPhim/K20/VsMov/WebStreamr/Open Directory/Sootio/AIOStreams/GStreamer module files..."
+    info "Installing custom KKPhim/K20/VsMov/WebStreamr/Open Directory/Sootio/AIOStreams/CineWave/GStreamer module files..."
 
     proot-distro login ubuntu -- bash -c "
         set -euo pipefail
@@ -418,6 +418,13 @@ install_custom_modules() {
             curl -fSL --retry 3 \"\$aiobase/\$file\" -o \"\$aiotarget/\$file\"
         done
 
+        cwbase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineENG/CineWave\"
+        cwtarget=/root/lampac/module/OnlineENG/CineWave
+        mkdir -p \"\$cwtarget\"
+        for file in Controller.cs Model.cs ModInit.cs manifest.json; do
+            curl -fSL --retry 3 \"\$cwbase/\$file\" -o \"\$cwtarget/\$file\"
+        done
+
         curl -fSL --retry 3 \"${CUSTOM_SOURCE_BASE}/aioctl.sh\" -o /root/aioctl.sh
         chmod +x /root/aioctl.sh
 
@@ -463,7 +470,7 @@ install_custom_modules() {
         fi
     "
 
-    ok "KKPhim, K20, VsMov, WebStreamr, Open Directory, Sootio, AIOStreams, GStreamer and LampaWeb files installed; removed retired NguonC"
+    ok "KKPhim, K20, VsMov, WebStreamr, Open Directory, Sootio, AIOStreams, CineWave, GStreamer and LampaWeb files installed; removed retired NguonC"
 }
 
 # ─── Step 4: Create launcher scripts (inside Ubuntu!) ────────────────────────
@@ -645,6 +652,13 @@ case "${1:-}" in
             mkdir -p "$aiotarget"
             for file in Controller.cs Model.cs ModInit.cs manifest.json; do
                 curl -fSL --retry 3 "$aiobase/$file" -o "$aiotarget/$file"
+            done
+
+            cwbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a033a2-lampac/Modules/OnlineENG/CineWave"
+            cwtarget=/root/lampac/module/OnlineENG/CineWave
+            mkdir -p "$cwtarget"
+            for file in Controller.cs Model.cs ModInit.cs manifest.json; do
+                curl -fSL --retry 3 "$cwbase/$file" -o "$cwtarget/$file"
             done
             curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a033a2-lampac/aioctl.sh" -o /root/aioctl.sh
             chmod +x /root/aioctl.sh
