@@ -344,6 +344,19 @@ ensure_runtime_config() {
             sed -i "s#https://player[.]videasy[.]net#https://player.videasy.to#g" "$file"
             sed -i "s#https://vidfast[.]pro#https://vidfast.vc#g" "$file"
             sed -i "s#https://vidsrc[.]cc#https://vidsrc.to#g" "$file"
+            # Headless render self-test: proot may launch Chrome while the
+            # renderer silently dies. Retry once with the classic Termux flags
+            # and persist them into chromium.Args when they fix rendering.
+            if [ -x "$browser" ]; then
+                if timeout 60 "$browser" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --dump-dom https://example.com 2>/dev/null | grep -q "Example Domain"; then
+                    echo "  [chromium] self-test OK: headless render works"
+                elif timeout 60 "$browser" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --no-zygote --single-process --dump-dom https://example.com 2>/dev/null | grep -q "Example Domain"; then
+                    sed -i "/^[[:space:]]*\"chromium\"[[:space:]]*:/,/^[[:space:]]*},[[:space:]]*$/s#\"Args\"[[:space:]]*:[^]]*]#\"Args\": [\"--no-sandbox\", \"--disable-setuid-sandbox\", \"--disable-dev-shm-usage\", \"--disable-gpu\", \"--no-zygote\", \"--single-process\"]#" "$file"
+                    echo "  [chromium] self-test FIXED: renderer needs --no-zygote --single-process (persisted to init.conf)"
+                else
+                    echo "  [chromium] WARNING: headless render fails on both flag sets; ENG embed sources will stay broken"
+                fi
+            fi
         fi
 
 
@@ -617,6 +630,19 @@ case "${1:-}" in
                     sed -i "s#https://player[.]videasy[.]net#https://player.videasy.to#g" "$file"
                     sed -i "s#https://vidfast[.]pro#https://vidfast.vc#g" "$file"
                     sed -i "s#https://vidsrc[.]cc#https://vidsrc.to#g" "$file"
+                    # Headless render self-test: proot may launch Chrome while the
+                    # renderer silently dies. Retry once with the classic Termux flags
+                    # and persist them into chromium.Args when they fix rendering.
+                    if [ -x "$browser" ]; then
+                        if timeout 60 "$browser" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --dump-dom https://example.com 2>/dev/null | grep -q "Example Domain"; then
+                            echo "  [chromium] self-test OK: headless render works"
+                        elif timeout 60 "$browser" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --no-zygote --single-process --dump-dom https://example.com 2>/dev/null | grep -q "Example Domain"; then
+                            sed -i "/^[[:space:]]*\"chromium\"[[:space:]]*:/,/^[[:space:]]*},[[:space:]]*$/s#\"Args\"[[:space:]]*:[^]]*]#\"Args\": [\"--no-sandbox\", \"--disable-setuid-sandbox\", \"--disable-dev-shm-usage\", \"--disable-gpu\", \"--no-zygote\", \"--single-process\"]#" "$file"
+                            echo "  [chromium] self-test FIXED: renderer needs --no-zygote --single-process (persisted to init.conf)"
+                        else
+                            echo "  [chromium] WARNING: headless render fails on both flag sets; ENG embed sources will stay broken"
+                        fi
+                    fi
                 fi
             fi
 
