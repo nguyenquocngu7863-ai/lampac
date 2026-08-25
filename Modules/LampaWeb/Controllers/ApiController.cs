@@ -1013,7 +1013,13 @@ public class ApiController : BaseController
         return ContentTo(plugin, "application/javascript; charset=utf-8");
     }
 
-    private static readonly System.Net.Http.HttpClient LocalJackettHttpClient = new()
+    private static readonly System.Net.Http.HttpClient LocalJackettHttpClient = new(
+        new System.Net.Http.SocketsHttpHandler
+        {
+            // Jackett intentionally redirects some /dl/ results to magnet:.
+            // HttpClient cannot follow non-HTTP schemes, so inspect Location ourselves.
+            AllowAutoRedirect = false
+        })
     {
         Timeout = TimeSpan.FromSeconds(45)
     };
@@ -1066,10 +1072,30 @@ public class ApiController : BaseController
             string target = $"http://127.0.0.1:{port}{link.AbsolutePath}?{query}";
 
             using var response = await LocalJackettHttpClient.GetAsync(target, HttpContext.RequestAborted);
+
+            if ((int)response.StatusCode is >= 300 and < 400 &&
+                response.Headers.Location is Uri location &&
+                location.Scheme.Equals("magnet", StringComparison.OrdinalIgnoreCase))
+            {
+                string redirectedMagnet = location.OriginalString;
+                JackettMagnetCache.TryAdd(cacheKey, redirectedMagnet);
+                return redirectedMagnet;
+            }
+
             if (!response.IsSuccessStatusCode)
                 return null;
 
             byte[] torrent = await response.Content.ReadAsByteArrayAsync(HttpContext.RequestAborted);
+
+            // Older/custom Jackett builds can return the magnet as a plain body
+            // instead of a redirect.
+            if (torrent.AsSpan().StartsWith("magnet:"u8))
+            {
+                string bodyMagnet = Encoding.UTF8.GetString(torrent).Trim();
+                JackettMagnetCache.TryAdd(cacheKey, bodyMagnet);
+                return bodyMagnet;
+            }
+
             string magnet = TorrentToMagnet(torrent);
             if (!string.IsNullOrEmpty(magnet))
                 JackettMagnetCache.TryAdd(cacheKey, magnet);
@@ -1290,6 +1316,7 @@ public class ApiController : BaseController
                     if (string.IsNullOrWhiteSpace(link))
                         continue;
 
+                    link = link.Replace("&amp;", "&", StringComparison.OrdinalIgnoreCase);
                     if (!Uri.TryCreate(link, UriKind.Absolute, out var linkUri) &&
                         !Uri.TryCreate($"http://127.0.0.1:{config.port}/{link.TrimStart('/')}", UriKind.Absolute, out linkUri))
                     {
