@@ -18,7 +18,7 @@ LAMPAC_DIR="$HOME/lampac"
 LISTEN_PORT="${LAMPAC_PORT:-9118}"
 ROOT_PASSWORD="${LAMPAC_PASSWD:-lampac}"
 # Custom modules maintained in this repository. Override when using a private fork.
-CUSTOM_SOURCE_BASE="${LAMPAC_CUSTOM_SOURCE_BASE:-https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a033a2-lampac}"
+CUSTOM_SOURCE_BASE="${LAMPAC_CUSTOM_SOURCE_BASE:-https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a036c7-lampac}"
 
 MODE=""
 [[ "${1:-}" == "--install" ]] && MODE="install"
@@ -555,76 +555,76 @@ case "${1:-}" in
             # NguonC is retired; VsMov is synced below.
             rm -rf /root/lampac/module/OnlineVN/NguonC
 
-            base="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a033a2-lampac/Modules/OnlineVN/KKPhim"
+            base="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a036c7-lampac/Modules/OnlineVN/KKPhim"
             target=/root/lampac/module/OnlineVN/KKPhim
             mkdir -p "$target"
             for file in Controller.cs Model.cs ModInit.cs manifest.json; do
                 curl -fSL --retry 3 "$base/$file" -o "$target/$file"
             done
 
-            k20base="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a033a2-lampac/Modules/OnlineVN/K20"
+            k20base="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a036c7-lampac/Modules/OnlineVN/K20"
             k20target=/root/lampac/module/OnlineVN/K20
             mkdir -p "$k20target"
             for file in Controller.cs Model.cs ModInit.cs manifest.json; do
                 curl -fSL --retry 3 "$k20base/$file" -o "$k20target/$file"
             done
 
-            vsmovbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a033a2-lampac/Modules/OnlineVN/VsMov"
+            vsmovbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a036c7-lampac/Modules/OnlineVN/VsMov"
             vsmovtarget=/root/lampac/module/OnlineVN/VsMov
             mkdir -p "$vsmovtarget"
             for file in Controller.cs Model.cs ModInit.cs manifest.json; do
                 curl -fSL --retry 3 "$vsmovbase/$file" -o "$vsmovtarget/$file"
             done
 
-            webbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a033a2-lampac/Modules/OnlineENG/WebStreamr"
+            webbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a036c7-lampac/Modules/OnlineENG/WebStreamr"
             webtarget=/root/lampac/module/OnlineENG/WebStreamr
             mkdir -p "$webtarget"
             for file in Controller.cs Model.cs ModInit.cs manifest.json; do
                 curl -fSL --retry 3 "$webbase/$file" -o "$webtarget/$file"
             done
 
-            opendirectorybase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a033a2-lampac/Modules/OnlineENG/OpenDirectory"
+            opendirectorybase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a036c7-lampac/Modules/OnlineENG/OpenDirectory"
             opendirectorytarget=/root/lampac/module/OnlineENG/OpenDirectory
             mkdir -p "$opendirectorytarget"
             for file in Controller.cs Model.cs ModInit.cs manifest.json; do
                 curl -fSL --retry 3 "$opendirectorybase/$file" -o "$opendirectorytarget/$file"
             done
 
-            sootiobase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a033a2-lampac/Modules/OnlineENG/Sootio"
+            sootiobase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a036c7-lampac/Modules/OnlineENG/Sootio"
             sootiotarget=/root/lampac/module/OnlineENG/Sootio
             mkdir -p "$sootiotarget"
             for file in Controller.cs Model.cs ModInit.cs manifest.json; do
                 curl -fSL --retry 3 "$sootiobase/$file" -o "$sootiotarget/$file"
             done
 
-            aiobase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a033a2-lampac/Modules/OnlineENG/AIOStreams"
+            aiobase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a036c7-lampac/Modules/OnlineENG/AIOStreams"
             aiotarget=/root/lampac/module/OnlineENG/AIOStreams
             mkdir -p "$aiotarget"
             for file in Controller.cs Model.cs ModInit.cs manifest.json; do
                 curl -fSL --retry 3 "$aiobase/$file" -o "$aiotarget/$file"
             done
 
-            cwbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a033a2-lampac/Modules/OnlineENG/CineWave"
+            cwbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a036c7-lampac/Modules/OnlineENG/CineWave"
             cwtarget=/root/lampac/module/OnlineENG/CineWave
             mkdir -p "$cwtarget"
             for file in Controller.cs Model.cs ModInit.cs manifest.json; do
                 curl -fSL --retry 3 "$cwbase/$file" -o "$cwtarget/$file"
             done
-            curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a033a2-lampac/aioctl.sh" -o /root/aioctl.sh
-            curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a033a2-lampac/jackettctl.sh" -o /root/jackettctl.sh
+            curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a036c7-lampac/aioctl.sh" -o /root/aioctl.sh
+            curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a036c7-lampac/jackettctl.sh" -o /root/jackettctl.sh
             chmod +x /root/aioctl.sh /root/jackettctl.sh
 
             # Keep the dynamic LampaWeb subtitle/plugin selector in sync after
             # replacing a release archive.
-            webbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a033a2-lampac/Modules/LampaWeb"
+            webbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a036c7-lampac/Modules/LampaWeb"
             webtarget=/root/lampac/module/LampaWeb
             mkdir -p "$webtarget/Controllers" "$webtarget/Models" "$webtarget/plugins"
             for file in Controllers/ApiController.cs ModInit.cs Models/InitPlugins.cs plugins/lampainit.js plugins/subsense-auto.js plugins/subsense.js plugins/subfinder.js plugins/stremiosub.js plugins/adminpanel.js; do
                 curl -fSL --retry 3 "$webbase/$file" -o "$webtarget/$file"
             done
-            curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a033a2-lampac/config/base.conf" -o /root/lampac/base.conf
+            curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a036c7-lampac/config/base.conf" -o /root/lampac/base.conf
 
-            gstbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a033a2-lampac/Modules/GStreamer"
+            gstbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a036c7-lampac/Modules/GStreamer"
             gsttarget=/root/lampac/module/GStreamer
             mkdir -p "$gsttarget/Services" "$gsttarget/plugins"
             for file in Controller.cs Services/GService.cs Services/GStask.cs Services/HdrToneMappingBackend.cs Services/GStask.Pipeline.cs Services/GStask.Producer.cs plugins/gst.js; do
@@ -633,7 +633,7 @@ case "${1:-}" in
 
             admintarget=/root/lampac/module/AdminPanel
             if [ -d "$admintarget" ]; then
-                adminbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a033a2-lampac/Modules/AdminPanel"
+                adminbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a036c7-lampac/Modules/AdminPanel"
                 for file in AdminPanelController.cs ConfigSectionGroups.cs ModInit.cs manifest.json auth.html index.html; do
                     curl -fSL --retry 3 "$adminbase/$file" -o "$admintarget/$file"
                 done
