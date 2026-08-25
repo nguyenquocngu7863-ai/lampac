@@ -5,6 +5,10 @@ set -euo pipefail
 JACKETT_DIR="${JACKETT_DIR:-/root/jackett}"
 JACKETT_DATA_DIR="${JACKETT_DATA_DIR:-/root/.config/Jackett}"
 JACKETT_PORT="${JACKETT_PORT:-9117}"
+# CoreCLR can attempt an enormous virtual GC reservation on Android/proot ARM64
+# and fail with 0x8007000E despite available physical memory. The value is
+# hexadecimal bytes; 0x40000000 caps Jackett's managed heap at 1 GiB.
+JACKETT_GC_HEAP_HARD_LIMIT="${JACKETT_GC_HEAP_HARD_LIMIT:-40000000}"
 PID_FILE="$JACKETT_DATA_DIR/jackett.pid"
 LOG_FILE="$JACKETT_DATA_DIR/jackett.log"
 
@@ -85,7 +89,11 @@ start_jackett() {
     fi
 
     rm -f "$PID_FILE"
-    info "Starting Jackett on port $JACKETT_PORT..."
+    info "Starting Jackett on port $JACKETT_PORT (GC limit 0x$JACKETT_GC_HEAP_HARD_LIMIT)..."
+    DOTNET_GCHeapHardLimit="$JACKETT_GC_HEAP_HARD_LIMIT" \
+    DOTNET_GCConserveMemory=9 \
+    DOTNET_gcServer=0 \
+    COMPlus_gcServer=0 \
     nohup "$binary" --NoRestart --ListenPublic --Port "$JACKETT_PORT" \
         --DataFolder "$JACKETT_DATA_DIR" >>"$LOG_FILE" 2>&1 </dev/null &
     local pid=$!
@@ -95,6 +103,10 @@ start_jackett() {
         if ! kill -0 "$pid" 2>/dev/null; then
             err "Jackett stopped during startup"
             tail -n 50 "$LOG_FILE" 2>/dev/null || true
+            if tail -n 50 "$LOG_FILE" 2>/dev/null | grep -q 'GC heap initialization failed'; then
+                warn "CoreCLR GC reservation failed; retry with a lower hexadecimal limit, for example:"
+                warn "JACKETT_GC_HEAP_HARD_LIMIT=20000000 jackett start"
+            fi
             rm -f "$PID_FILE"
             return 1
         fi

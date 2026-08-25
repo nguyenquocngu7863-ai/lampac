@@ -299,6 +299,21 @@ Lệnh `reset` xoá Ubuntu proot hiện tại, vì vậy cần cài lại Lampac
 
 Đây là trạng thái tạm thời có chủ đích: profile Termux đặt `disableEng: true` và `chromium.enable: false`. Hiện nên dùng nguồn Việt, AIOStreams hoặc luồng torrent Jackett. Chỉ bật lại ENG/Chromium khi tiếp tục kiểm thử embed.
 
+### Jackett báo `GC heap initialization failed ... 0x8007000E`
+
+Đây là giới hạn reserve bộ nhớ ảo của CoreCLR trên Android/proot ARM64, không nhất thiết là điện thoại đã hết RAM. Controller mặc định đặt `DOTNET_GCHeapHardLimit=40000000` (hex, tương đương 1 GiB) và tắt Server GC riêng cho Jackett. Đồng bộ controller mới rồi khởi động lại:
+
+```bash
+bash setup-termux.sh --sync
+jackett restart
+```
+
+Nếu thiết bị vẫn lỗi, thử giới hạn 512 MiB:
+
+```bash
+JACKETT_GC_HEAP_HARD_LIMIT=20000000 jackett start
+```
+
 ### Android tự dừng server
 
 Giữ Termux ở foreground khi cần độ ổn định cao, tắt battery optimization cho Termux và tránh để hệ thống đóng ứng dụng khi thiếu RAM.
