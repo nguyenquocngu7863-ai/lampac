@@ -46,12 +46,12 @@ Khi chạy lần đầu, `setup-termux.sh` thực hiện tuần tự các bướ
 2. Cài Ubuntu trong `proot-distro` (hoặc sửa/cài lại Ubuntu nếu môi trường đang hỏng).
 3. Trong Ubuntu, cài các thư viện cần thiết, GStreamer và **ASP.NET Core Runtime .NET 10** tại `/opt/dotnet`.
 4. Tải bản phát hành Lampac NextGen mới nhất, giải nén vào `/root/lampac` trong Ubuntu.
-5. Tạo `init.conf` tối ưu cho Termux: `lowMemoryMode`, GStreamer, Chromium headless và các module nặng được tắt bớt.
-6. Cài Chrome/Chromium tương thích `arm64` hoặc `amd64` để các nguồn dùng Playwright hoạt động.
-7. Xoá nguồn đã ngừng dùng/lỗi **NguonC**, rồi đồng bộ module tuỳ biến: **KKPhim, K20, VsMov, WebStreamr, Open Directory, Sootio, AIOStreams, GStreamer** và **LampaWeb/StremioSub**; AdminPanel cũng được cập nhật giao diện tiếng Việt nếu module đã có sẵn.
-8. Tạo lệnh `lampac` để quản lý server từ Termux.
+5. Tạo `init.conf` tối ưu cho Termux: `lowMemoryMode`, GStreamer; tạm đặt `disableEng: true` và tắt Chromium trong lúc luồng ENG embed được sửa.
+6. Xoá nguồn đã ngừng dùng/lỗi **NguonC**, rồi đồng bộ module tuỳ biến: **KKPhim, K20, VsMov, AIOStreams, GStreamer** và **LampaWeb/StremioSub**; mã các nguồn ENG vẫn được giữ để phát triển nhưng không xuất hiện khi `disableEng` đang bật.
+7. Cài controller tùy chọn cho **AIOStreams** (port `3002`) và **Jackett** (port `9117`).
+8. Tạo các lệnh `lampac`, `aio` và `jackett` để quản lý từ Termux.
 
-Lần cài đầu có thể mất vài phút vì phải tải Ubuntu, runtime .NET, Chrome và bản phát hành Lampac. Không đóng Termux khi đang chạy script.
+Lần cài đầu có thể mất vài phút vì phải tải Ubuntu, runtime .NET và bản phát hành Lampac. AIOStreams/Jackett chỉ được tải khi bạn chạy lệnh cài riêng. Không đóng Termux trong lúc cài.
 
 ## Quản lý Lampac sau khi cài
 
@@ -86,7 +86,7 @@ lampac update
 bash setup-termux.sh --update
 ```
 
-Cập nhật sẽ tải release mới, giữ lại `init.conf` và `passwd`, rồi cài lại Chrome/Chromium, cấu hình Termux và các module tuỳ biến. Thư mục nguồn lỗi cũ `NguonC` cũng bị xoá; `VsMov` được đồng bộ lại.
+Cập nhật sẽ tải release mới, giữ lại `init.conf` và `passwd`, áp dụng lại cấu hình Termux (`disableEng: true`, Chromium tắt) và đồng bộ các module tuỳ biến. Thư mục nguồn lỗi cũ `NguonC` cũng bị xoá; `VsMov` được đồng bộ lại.
 
 ### Chỉ đồng bộ module tuỳ biến
 
@@ -128,20 +128,17 @@ Cấu hình mặc định của script đã bao gồm:
     "scheme": "http"
   },
   "lowMemoryMode": true,
+  "disableEng": true,
   "gst": {
     "enable": true,
     "useGpu": false,
     "hardwareAcceleration": false
   },
-  "chromium": {
-    "enable": true,
-    "Headless": true,
-    "context": { "keepopen": false, "min": 0, "max": 1 }
-  }
+  "chromium": { "enable": false }
 }
 ```
 
-Thiết lập này ưu tiên ổn định và tiết kiệm RAM. Nếu máy yếu, không nên bật cùng lúc nhiều module nặng, nhiều Chromium context hoặc transcoding.
+Thiết lập này ưu tiên ổn định và tiết kiệm RAM. Nếu máy yếu, không nên bật đồng thời AIOStreams, Jackett, nhiều module nặng hoặc transcoding.
 
 ## Plugin phụ đề
 
@@ -224,6 +221,38 @@ aio logs
 
 AIOStreams chạy Node.js riêng, không được nhúng vào Lampac. Bản local dùng SQLite và cần thêm dung lượng/RAM khi build; nếu build source lỗi do native `yencode`, xem log bằng `aio logs`.
 
+## Jackett local — port 9117
+
+Sau `bash setup-termux.sh --sync`, cài gói Jackett chính chủ phù hợp với kiến trúc Ubuntu proot:
+
+```bash
+jackett install
+jackett info
+```
+
+Controller tải binary `LinuxARM64`, `LinuxAMDx64` hoặc `LinuxARM32` từ GitHub Releases, giữ dữ liệu tại `/root/.config/Jackett` và chạy dashboard trên:
+
+```text
+http://127.0.0.1:9117/UI/Dashboard
+```
+
+Các lệnh quản lý:
+
+```bash
+jackett start
+jackett stop
+jackett restart
+jackett status
+jackett logs
+jackett update
+```
+
+Khi AIOStreams hoặc Jackett đã được cài, `lampac start` tự khởi động chúng trước Lampac. `lampac stop` dừng cả ba; `lampac status` hiển thị trạng thái từng dịch vụ. AIOStreams có thể dùng URL/API key của Jackett theo cấu hình addon riêng trong dashboard AIO. Jackett lắng nghe mạng LAN để thiết bị khác mở dashboard; không đưa port `9117` ra Internet, đồng thời không commit hoặc chia sẻ API key.
+
+## Trạng thái nguồn ENG
+
+Các nguồn ENG embed đang tạm ẩn bằng `disableEng: true`; Chromium cũng bị tắt để giảm RAM và tránh flow headless chưa ổn định. AIOStreams vẫn hoạt động độc lập khi section `AIOStreams` có `enable: true` và manifest hợp lệ. Khi muốn thử lại nguồn ENG, đổi `disableEng` thành `false` và tự cấu hình Chromium trước khi restart Lampac.
+
 ## Thêm/sửa plugin LampaWeb vào bản Lampac trong `/root`
 
 Bản Termux chạy release ở `/root/lampac`; LampaWeb là **dynamic module**. Vì vậy chỉ thêm file `.js` vào repository là chưa đủ: release đang chạy còn dùng controller/model cũ để tạo `/lampainit.js`.
@@ -266,13 +295,9 @@ Lệnh `reset` xoá Ubuntu proot hiện tại, vì vậy cần cài lại Lampac
 - Đảm bảo cả hai thiết bị cùng mạng Wi-Fi và router không chặn client-to-client.
 - Kiểm tra port trong `lampac info` hoặc `init.conf`.
 
-### Nguồn Playwright không hoạt động
+### Không thấy nguồn ENG/Playwright
 
-Chạy đồng bộ lại để cài Chrome/Chromium và cập nhật đường dẫn browser:
-
-```bash
-bash setup-termux.sh --sync
-```
+Đây là trạng thái tạm thời có chủ đích: profile Termux đặt `disableEng: true` và `chromium.enable: false`. Hiện nên dùng nguồn Việt, AIOStreams hoặc luồng torrent Jackett. Chỉ bật lại ENG/Chromium khi tiếp tục kiểm thử embed.
 
 ### Android tự dừng server
 

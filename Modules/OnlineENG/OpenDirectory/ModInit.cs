@@ -21,7 +21,7 @@ public sealed class ModInit : IModuleLoaded, IModuleOnline
         OnlineEventsModel args
     )
     {
-        if (conf == null || !conf.enable || args == null)
+        if (CoreInit.conf?.disableEng != false || conf == null || !conf.enable || args == null)
             return null;
 
         if (string.IsNullOrWhiteSpace(args.title) &&

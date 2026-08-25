@@ -7,7 +7,7 @@
 #   bash setup-termux.sh            # install & run
 #   bash setup-termux.sh --install  # install only
 #   bash setup-termux.sh --run      # run only (skip install)
-#   bash setup-termux.sh --sync     # apply custom modules/Chromium setup without replacing Lampac
+#   bash setup-termux.sh --sync     # apply custom modules and runtime settings without replacing Lampac
 #   bash setup-termux.sh --update   # update to latest release
 #
 set -euo pipefail
@@ -61,7 +61,7 @@ show_help() {
     printf "${BOLD}Options:${RESET}\n"
     printf "  ${GREEN}--install${RESET}    Install proot-distro + Ubuntu + .NET + Lampac\n"
     printf "  ${GREEN}--run${RESET}        Run Lampac (skip install)\n"
-    printf "  ${GREEN}--sync${RESET}       Apply custom modules + ARM64 Chromium setup without replacing Lampac\n"
+    printf "  ${GREEN}--sync${RESET}       Apply custom modules + Termux runtime settings without replacing Lampac\n"
     printf "  ${GREEN}--update${RESET}     Update Lampac to latest release\n"
     printf "  ${GREEN}--help${RESET}       Show this help\n\n"
     printf "${BOLD}Environment:${RESET}\n"
@@ -75,12 +75,13 @@ show_help() {
     printf "  bash setup-termux.sh\n\n"
     printf "  ${DIM}# Custom port${RESET}\n"
     printf "  LAMPAC_PORT=8080 bash setup-termux.sh\n\n"
-    printf "  ${DIM}# Apply KKPhim + Chromium setup without replacing the current release${RESET}\n"
+    printf "  ${DIM}# Apply custom modules without replacing the current release${RESET}\n"
     printf "  bash setup-termux.sh --sync\n\n"
 
-    printf "  ${DIM}# Install AIOStreams locally (optional)${RESET}\n"
+    printf "  ${DIM}# Install optional local services${RESET}\n"
     printf "  aio install\n"
-    printf "  aio info\n\n"
+    printf "  jackett install\n"
+    printf "  lampac start\n\n"
 
     printf "  ${DIM}# Update Lampac${RESET}\n"
     printf "  bash setup-termux.sh --update\n\n"
@@ -241,18 +242,8 @@ install_lampac_in_ubuntu() {
     \"useGpu\": false,
     \"hardwareAcceleration\": false
   },
-  \"chromium\": {
-    \"enable\": true,
-    \"Headless\": true,
-    \"executablePath\": \"/usr/bin/google-chrome-stable\",
-    \"Args\": [
-      \"--no-sandbox\",
-      \"--disable-setuid-sandbox\",
-      \"--disable-dev-shm-usage\",
-      \"--disable-gpu\"
-    ],
-    \"context\": { \"keepopen\": false, \"min\": 0, \"max\": 1 }
-  },
+  \"disableEng\": true,
+  \"chromium\": { \"enable\": false },
   \"firefox\":  { \"enable\": false },
   \"rch\":      { \"enable\": false },
   \"WAF\":      { \"enable\": false },
@@ -272,105 +263,34 @@ CONF
     ok "Config ready"
 }
 
-# ─── Optional ARM64 Chromium + custom modules ────────────────────────────────
-
-install_chromium_in_ubuntu() {
-    info "Checking Chromium/Chrome for Playwright..."
-
-    if proot-distro login ubuntu -- bash -c 'test -x /usr/bin/google-chrome-stable || test -x /usr/bin/chromium'; then
-        ok "ARM64-compatible Chromium executable found"
-        return 0
-    fi
-
-    if proot-distro login ubuntu -- bash -c '
-        set -euo pipefail
-        export DEBIAN_FRONTEND=noninteractive
-        arch=$(dpkg --print-architecture)
-
-        case "$arch" in
-            arm64) url="https://dl.google.com/linux/direct/google-chrome-stable_current_arm64.deb" ;;
-            amd64) url="https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb" ;;
-            *) echo "Unsupported Debian architecture: $arch" >&2; exit 2 ;;
-        esac
-
-        apt-get update -qq
-        apt-get install -y -qq ca-certificates curl
-        curl -fL --retry 3 "$url" -o /tmp/google-chrome.deb
-        apt-get install -y /tmp/google-chrome.deb
-        rm -f /tmp/google-chrome.deb
-    '; then
-        ok "Chrome installed for Playwright"
-    else
-        warn "Could not install Chrome automatically; English Playwright sources may remain disabled"
-        return 0
-    fi
-}
+# ─── Termux runtime profile + custom modules ─────────────────────────────────
 
 ensure_runtime_config() {
-    info "Applying Termux runtime configuration..."
+    info "Applying Termux runtime configuration (ENG sources disabled)..."
 
     proot-distro login ubuntu -- bash -c '
         set -euo pipefail
         file=/root/lampac/init.conf
         [ -f "$file" ] || exit 0
 
-        # Repair the typo produced by some nano edits: `}:,` is not valid JSON.
+        # Repair a common manual-edit typo and keep GStreamer available.
         sed -i "s/^[[:space:]]*}:,/  },/" "$file"
-
-        # The Termux profile should keep the GStreamer module available.
         sed -i "s/\"GStreamer\",[[:space:]]*//g; s/,[[:space:]]*\"GStreamer\"//g" "$file"
 
-        if [ -x /usr/bin/google-chrome-stable ]; then
-            browser=/usr/bin/google-chrome-stable
-        elif [ -x /usr/bin/chromium ]; then
-            browser=/usr/bin/chromium
+        # Temporarily hide conventional ENG providers while the embed flow is
+        # under repair. AIOStreams remains independently controlled by its own
+        # enable/manifest settings.
+        if grep -q "^[[:space:]]*\"disableEng\"[[:space:]]*:" "$file"; then
+            sed -i "s/^[[:space:]]*\"disableEng\"[[:space:]]*:[[:space:]]*false/  \"disableEng\": true/" "$file"
+        elif grep -q "^[[:space:]]*\"listen\"[[:space:]]*:" "$file"; then
+            sed -i "/^[[:space:]]*\"listen\"[[:space:]]*:/i\  \"disableEng\": true," "$file"
         else
-            browser=/usr/bin/google-chrome-stable
+            echo "  warning: could not add disableEng automatically"
         fi
 
+        # Do not launch Playwright/Chromium while ENG embed sources are paused.
         if grep -q "^[[:space:]]*\"chromium\"[[:space:]]*:" "$file"; then
-            sed -i "/^[[:space:]]*\"chromium\"[[:space:]]*:/,/^[[:space:]]*},[[:space:]]*$/ s/\"enable\"[[:space:]]*:[[:space:]]*false/\"enable\": true/" "$file"
-            if grep -q "^[[:space:]]*\"executablePath\"[[:space:]]*:" "$file"; then
-                sed -i "s#^[[:space:]]*\"executablePath\".*#    \"executablePath\": \"$browser\",#" "$file"
-            else
-                sed -i "/^[[:space:]]*\"Headless\"[[:space:]]*:/a\\    \"executablePath\": \"$browser\"," "$file"
-            fi
-            if ! sed -n "/^[[:space:]]*\"chromium\"[[:space:]]*:/,/^[[:space:]]*},[[:space:]]*$/p" "$file" | grep -q \""Args"\"; then
-                sed -i "/^[[:space:]]*\"executablePath\"[[:space:]]*:/a\\    \"Args\": [\"--no-sandbox\", \"--disable-setuid-sandbox\", \"--disable-dev-shm-usage\", \"--disable-gpu\"]," "$file"
-            fi
-            # Retired provider mirrors: point saved init.conf hosts at the live
-            # domains (verified 2026-08): videasy.net -> .to, vidfast.pro -> .vc,
-            # vidsrc.cc -> vidsrc.to (module drops the /v2 embed path).
-            sed -i "s#https://player[.]videasy[.]net#https://player.videasy.to#g" "$file"
-            sed -i "s#https://vidfast[.]pro#https://vidfast.vc#g" "$file"
-            sed -i "s#https://vidsrc[.]cc#https://vidsrc.to#g" "$file"
-            # Headless render self-test: proot may launch Chrome while the
-            # renderer silently dies. Retry once with the classic Termux flags
-            # and persist them into chromium.Args when they fix rendering.
-            if [ -x "$browser" ]; then
-                if timeout 60 "$browser" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --dump-dom https://example.com 2>/dev/null | grep -q "Example Domain"; then
-                    echo "  [chromium] self-test OK: headless render works"
-                elif timeout 60 "$browser" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --no-zygote --single-process --dump-dom https://example.com 2>/dev/null | grep -q "Example Domain"; then
-                    sed -i "/^[[:space:]]*\"chromium\"[[:space:]]*:/,/^[[:space:]]*},[[:space:]]*$/s#\"Args\"[[:space:]]*:[^]]*]#\"Args\": [\"--no-sandbox\", \"--disable-setuid-sandbox\", \"--disable-dev-shm-usage\", \"--disable-gpu\", \"--no-zygote\", \"--single-process\"]#" "$file"
-                    echo "  [chromium] self-test FIXED: renderer needs --no-zygote --single-process (persisted to init.conf)"
-                else
-                    echo "  [chromium] WARNING: headless render fails on both flag sets; ENG embed sources will stay broken"
-                fi
-            fi
-        fi
-
-
-        # Route streams through Lampac so upstream hosts see Lampac Chrome
-        # UA plus a forwarded Range header. Cloudflare-fronted open
-        # directories 403 the player own UA: links appear but never play.
-        if ! grep -q "serverproxy" "$file"; then
-            lastline=$(awk "END{print NR}" "$file")
-            if [ "$(sed -n "${lastline}p" "$file" | tr -d "[:space:]")" = "}" ]; then
-                sed -i "${lastline}d" "$file"
-                printf "  ,\n  \"serverproxy\": { \"enable\": true, \"verifyip\": false }\n}\n" >> "$file"
-            else
-                echo "  warning: init.conf tail unexpected; add serverproxy manually"
-            fi
+            sed -i "/^[[:space:]]*\"chromium\"[[:space:]]*:/,/^[[:space:]]*},[[:space:]]*$/ s/\"enable\"[[:space:]]*:[[:space:]]*true/\"enable\": false/" "$file"
         fi
 
         if [ -f /root/lampac/init.yaml ]; then
@@ -378,7 +298,7 @@ ensure_runtime_config() {
         fi
     '
 
-    ok "Runtime configuration applied"
+    ok "Runtime configuration applied; ENG sources and Chromium are disabled"
 }
 
 install_custom_modules() {
@@ -448,7 +368,8 @@ install_custom_modules() {
         done
 
         curl -fSL --retry 3 \"${CUSTOM_SOURCE_BASE}/aioctl.sh\" -o /root/aioctl.sh
-        chmod +x /root/aioctl.sh
+        curl -fSL --retry 3 \"${CUSTOM_SOURCE_BASE}/jackettctl.sh\" -o /root/jackettctl.sh
+        chmod +x /root/aioctl.sh /root/jackettctl.sh
 
         gstbase=\"${CUSTOM_SOURCE_BASE}/Modules/GStreamer\"
         gsttarget=/root/lampac/module/GStreamer
@@ -530,6 +451,14 @@ if [[ -n "$GST_SCANNER" ]]; then
     export GST_PLUGIN_SCANNER="$GST_SCANNER"
 fi
 
+# Keep the optional local services in the same lifecycle as Lampac.
+if [[ -x /root/aioctl.sh && -f /root/aiostreams/.env ]]; then
+    /root/aioctl.sh start || true
+fi
+if [[ -x /root/jackettctl.sh && -x /root/jackett/jackett ]]; then
+    /root/jackettctl.sh start || true
+fi
+
 cd "$LAMPAC_DIR"
 exec dotnet Core.dll
 LAUNCHER
@@ -542,23 +471,24 @@ chmod +x /root/lampac-run.sh'
 case "${1:-}" in
     start)
         echo "Starting Lampac... (press Ctrl+C to stop)"
-        proot-distro login ubuntu -- bash -c '
-            if [ -x /root/aioctl.sh ] && [ -f /root/aiostreams/.env ]; then
-                /root/aioctl.sh start || true
-            fi
-            exec bash /root/lampac-run.sh
-        '
+        proot-distro login ubuntu -- bash /root/lampac-run.sh
         ;;
     stop)
         pkill -f 'proot.*Core.dll' 2>/dev/null && echo "Lampac stopped" || echo "Lampac not running"
         if proot-distro login ubuntu -- test -d /root/aiostreams 2>/dev/null; then
             proot-distro login ubuntu -- bash /root/aioctl.sh stop 2>/dev/null || true
         fi
+        if proot-distro login ubuntu -- test -x /root/jackett/jackett 2>/dev/null; then
+            proot-distro login ubuntu -- bash /root/jackettctl.sh stop 2>/dev/null || true
+        fi
         ;;
     status)
         pgrep -f 'proot.*Core.dll' > /dev/null 2>&1 && echo "Lampac is running" || echo "Lampac not running"
         if proot-distro login ubuntu -- test -d /root/aiostreams 2>/dev/null; then
             proot-distro login ubuntu -- bash /root/aioctl.sh status 2>/dev/null || true
+        fi
+        if proot-distro login ubuntu -- test -x /root/jackett/jackett 2>/dev/null; then
+            proot-distro login ubuntu -- bash /root/jackettctl.sh status 2>/dev/null || true
         fi
         ;;
     config)
@@ -571,6 +501,8 @@ case "${1:-}" in
             echo "  Lampac NextGen"
             echo "  ─────────────────────────────────"
             echo "  Local:    http://localhost:$PORT"
+            echo "  Jackett:  http://localhost:9117/UI/Dashboard"
+            echo "  AIO:      http://localhost:3002/stremio/configure"
             echo "  Config:   /root/lampac/init.conf (inside Ubuntu)"
             echo "  Start:    lampac start"
             echo "  Stop:     lampac stop"
@@ -604,45 +536,19 @@ case "${1:-}" in
             cp /tmp/passwd.bak /root/lampac/ 2>/dev/null || true
             rm -f /tmp/*.bak
 
-            # Re-apply the custom ARM64/KKPhim/GStreamer setup after replacing the release.
+            # Re-apply the lightweight Termux profile. ENG providers remain
+            # paused; AIOStreams and Jackett have independent lifecycles.
             file=/root/lampac/init.conf
             if [ -f "$file" ]; then
                 sed -i "s/^[[:space:]]*}:,/  },/" "$file"
                 sed -i "s/\"GStreamer\",[[:space:]]*//g; s/,[[:space:]]*\"GStreamer\"//g" "$file"
-                if [ -x /usr/bin/google-chrome-stable ]; then
-                    browser=/usr/bin/google-chrome-stable
-                elif [ -x /usr/bin/chromium ]; then
-                    browser=/usr/bin/chromium
-                else
-                    browser=/usr/bin/google-chrome-stable
+                if grep -q "^[[:space:]]*\"disableEng\"[[:space:]]*:" "$file"; then
+                    sed -i "s/^[[:space:]]*\"disableEng\"[[:space:]]*:[[:space:]]*false/  \"disableEng\": true/" "$file"
+                elif grep -q "^[[:space:]]*\"listen\"[[:space:]]*:" "$file"; then
+                    sed -i "/^[[:space:]]*\"listen\"[[:space:]]*:/i\  \"disableEng\": true," "$file"
                 fi
                 if grep -q "^[[:space:]]*\"chromium\"[[:space:]]*:" "$file"; then
-                    sed -i "/^[[:space:]]*\"chromium\"[[:space:]]*:/,/^[[:space:]]*},[[:space:]]*$/ s/\"enable\"[[:space:]]*:[[:space:]]*false/\"enable\": true/" "$file"
-                    if grep -q "^[[:space:]]*\"executablePath\"[[:space:]]*:" "$file"; then
-                        sed -i "s#^[[:space:]]*\"executablePath\".*#    \"executablePath\": \"$browser\",#" "$file"
-                    fi
-                    if ! sed -n "/^[[:space:]]*\"chromium\"[[:space:]]*:/,/^[[:space:]]*},[[:space:]]*$/p" "$file" | grep -q \""Args"\"; then
-                        sed -i "/^[[:space:]]*\"executablePath\"[[:space:]]*:/a\\    \"Args\": [\"--no-sandbox\", \"--disable-setuid-sandbox\", \"--disable-dev-shm-usage\", \"--disable-gpu\"]," "$file"
-                    fi
-                    # Retired provider mirrors: point saved init.conf hosts at the live
-                    # domains (verified 2026-08): videasy.net -> .to, vidfast.pro -> .vc,
-                    # vidsrc.cc -> vidsrc.to (module drops the /v2 embed path).
-                    sed -i "s#https://player[.]videasy[.]net#https://player.videasy.to#g" "$file"
-                    sed -i "s#https://vidfast[.]pro#https://vidfast.vc#g" "$file"
-                    sed -i "s#https://vidsrc[.]cc#https://vidsrc.to#g" "$file"
-                    # Headless render self-test: proot may launch Chrome while the
-                    # renderer silently dies. Retry once with the classic Termux flags
-                    # and persist them into chromium.Args when they fix rendering.
-                    if [ -x "$browser" ]; then
-                        if timeout 60 "$browser" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --dump-dom https://example.com 2>/dev/null | grep -q "Example Domain"; then
-                            echo "  [chromium] self-test OK: headless render works"
-                        elif timeout 60 "$browser" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --no-zygote --single-process --dump-dom https://example.com 2>/dev/null | grep -q "Example Domain"; then
-                            sed -i "/^[[:space:]]*\"chromium\"[[:space:]]*:/,/^[[:space:]]*},[[:space:]]*$/s#\"Args\"[[:space:]]*:[^]]*]#\"Args\": [\"--no-sandbox\", \"--disable-setuid-sandbox\", \"--disable-dev-shm-usage\", \"--disable-gpu\", \"--no-zygote\", \"--single-process\"]#" "$file"
-                            echo "  [chromium] self-test FIXED: renderer needs --no-zygote --single-process (persisted to init.conf)"
-                        else
-                            echo "  [chromium] WARNING: headless render fails on both flag sets; ENG embed sources will stay broken"
-                        fi
-                    fi
+                    sed -i "/^[[:space:]]*\"chromium\"[[:space:]]*:/,/^[[:space:]]*},[[:space:]]*$/ s/\"enable\"[[:space:]]*:[[:space:]]*true/\"enable\": false/" "$file"
                 fi
             fi
 
@@ -705,7 +611,8 @@ case "${1:-}" in
                 curl -fSL --retry 3 "$cwbase/$file" -o "$cwtarget/$file"
             done
             curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a033a2-lampac/aioctl.sh" -o /root/aioctl.sh
-            chmod +x /root/aioctl.sh
+            curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a033a2-lampac/jackettctl.sh" -o /root/jackettctl.sh
+            chmod +x /root/aioctl.sh /root/jackettctl.sh
 
             # Keep the dynamic LampaWeb subtitle/plugin selector in sync after
             # replacing a release archive.
@@ -742,7 +649,7 @@ case "${1:-}" in
         echo "  status  — Check if running"
         echo "  config  — Edit config (init.conf)"
         echo "  info    — Show URL and port"
-        echo "  update  — Update to latest release (also restores KKPhim/Chromium setup)"
+        echo "  update  — Update release and restore custom modules"
         ;;
 esac
 SHORTCUT
@@ -767,6 +674,25 @@ esac
 AIO_SHORTCUT
     chmod +x "$PREFIX/bin/aio"
     ok "Shortcut 'aio' command ready"
+
+    cat > "$PREFIX/bin/jackett" <<'JACKETT_SHORTCUT'
+#!/usr/bin/env bash
+if ! proot-distro login ubuntu -- test -x /root/jackettctl.sh 2>/dev/null; then
+    echo "Jackett controller is not installed yet. Run: bash setup-termux.sh --sync"
+    exit 1
+fi
+case "${1:-info}" in
+    install|update|start|stop|restart|status|info|logs|log)
+        proot-distro login ubuntu -- bash /root/jackettctl.sh "$@"
+        ;;
+    *)
+        echo "Usage: jackett {install|update|start|stop|restart|status|info|logs}"
+        exit 2
+        ;;
+esac
+JACKETT_SHORTCUT
+    chmod +x "$PREFIX/bin/jackett"
+    ok "Shortcut 'jackett' command ready"
 }
 
 # ─── Run Lampac ──────────────────────────────────────────────────────────────
@@ -801,11 +727,10 @@ main() {
                 exit 1
             fi
 
-            install_chromium_in_ubuntu
             ensure_runtime_config
             install_custom_modules
             create_launcher
-            ok "Custom modules + ARM64 Chromium setup applied"
+            ok "Custom modules + runtime settings applied"
             ;;
         "update")
             info "Updating Lampac inside Ubuntu..."
@@ -835,7 +760,6 @@ main() {
                 rm -f /tmp/*.bak
                 echo "Update complete!"
             '
-            install_chromium_in_ubuntu
             ensure_runtime_config
             install_custom_modules
             create_launcher
@@ -845,7 +769,6 @@ main() {
             install_termux_deps
             install_ubuntu
             install_lampac_in_ubuntu
-            install_chromium_in_ubuntu
             ensure_runtime_config
             install_custom_modules
             create_launcher
@@ -860,9 +783,9 @@ main() {
             info "  lampac config  — Edit config"
             info "  lampac info    — Show URL & port"
             info "  lampac update  — Update to latest"
-            info "  aio install    — Install AIOStreams locally"
-            info "  aio start      — Start local AIOStreams"
-            info "  aio info       — Show AIO dashboard URL"
+            info "  aio install      — Install AIOStreams locally (port 3002)"
+            info "  jackett install  — Install Jackett locally (port 9117)"
+            info "  lampac start     — Start Lampac + installed local services"
             echo ""
 
             read -rp "  Start Lampac now? [Y/n]: " answer
