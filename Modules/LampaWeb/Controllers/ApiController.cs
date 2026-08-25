@@ -1229,14 +1229,35 @@ public class ApiController : BaseController
         return position < data.Length && data[position++] == (byte)'e';
     }
 
-    private async Task ResolveJackettResultMagnet(JObject result, Uri link, string apiKey, int port)
+    [HttpGet, AllowAnonymous]
+    [Route("jackett/resolve")]
+    public async Task<IActionResult> JackettResolve(string token)
     {
-        if (!string.IsNullOrWhiteSpace(result.Value<string>("MagnetUri")))
-            return;
+        SetHeadersNoCache();
 
-        string magnet = await ResolveJackettMagnet(link, apiKey, port);
-        if (!string.IsNullOrWhiteSpace(magnet))
-            result["MagnetUri"] = magnet;
+        try
+        {
+            var config = GetJackettConfig();
+            if (!config.enabled || string.IsNullOrEmpty(config.apiKey))
+                return StatusCode(503, new { error = "Jackett is disabled or api_key is empty" });
+
+            string path = DecodeJackettPath(token);
+            if (string.IsNullOrWhiteSpace(path) || !path.StartsWith("/dl/", StringComparison.OrdinalIgnoreCase) ||
+                !Uri.TryCreate($"http://127.0.0.1:{config.port}{path}", UriKind.Absolute, out var source))
+            {
+                return BadRequest(new { error = "Invalid Jackett download token" });
+            }
+
+            string magnet = await ResolveJackettMagnet(source, config.apiKey, config.port);
+            if (string.IsNullOrWhiteSpace(magnet))
+                return StatusCode(502, new { error = "Jackett could not resolve this torrent to a magnet" });
+
+            return Ok(new { magnet });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(502, new { error = ex.Message });
+        }
     }
 
     [HttpGet, AllowAnonymous]
@@ -1263,8 +1284,6 @@ public class ApiController : BaseController
             var payload = JObject.Parse(body);
             if (config.proxyDownloads && payload["Results"] is JArray results)
             {
-                var resolveTasks = new List<Task>();
-
                 foreach (JObject result in results.OfType<JObject>())
                 {
                     string link = result.Value<string>("Link");
@@ -1279,8 +1298,6 @@ public class ApiController : BaseController
 
                     if (linkUri.AbsolutePath.StartsWith("/dl/", StringComparison.OrdinalIgnoreCase))
                     {
-                        resolveTasks.Add(ResolveJackettResultMagnet(result, linkUri, config.apiKey, config.port));
-
                         var linkQuery = HttpUtility.ParseQueryString(linkUri.Query);
                         linkQuery.Remove("apikey");
                         linkQuery.Remove("jackett_apikey");
@@ -1288,8 +1305,6 @@ public class ApiController : BaseController
                         result["Link"] = $"{host}/jackett/download?token={EncodeJackettPath(path)}";
                     }
                 }
-
-                await Task.WhenAll(resolveTasks);
             }
 
             return Content(payload.ToString(Formatting.None), "application/json; charset=utf-8");
