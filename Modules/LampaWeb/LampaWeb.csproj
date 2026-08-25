@@ -23,6 +23,9 @@
     <None Update="plugins\dorama.js">
       <CopyToPublishDirectory>Always</CopyToPublishDirectory>
     </None>
+    <None Update="plugins\jackett.js">
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+    </None>
     <None Update="plugins\lampainit-invc.js">
       <CopyToPublishDirectory>Always</CopyToPublishDirectory>
     </None>

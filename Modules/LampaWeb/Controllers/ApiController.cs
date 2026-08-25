@@ -659,6 +659,9 @@ public class ApiController : BaseController
             if (ModInit.conf.initPlugins.adminpanel)
                 plugins.Add(new("{localhost}/adminpanel.js", 1, "Admin Panel", "lampac"));
 
+            if (ModInit.conf.initPlugins.jackett)
+                plugins.Add(new("{localhost}/jackett.js", 1, "Jackett local", "lampac"));
+
             if (ModInit.conf.initPlugins.gst)
                 plugins.Add(new("{localhost}/gst.js", 1, "GStreamer", "lampac"));
 
@@ -858,6 +861,9 @@ public class ApiController : BaseController
             if (ModInit.conf.initPlugins.adminpanel)
                 send("adminpanel", false);
 
+            if (ModInit.conf.initPlugins.jackett)
+                send("jackett", false);
+
             if (ModInit.conf.initPlugins.gst)
                 send("gst", true);
 
@@ -1005,6 +1011,42 @@ public class ApiController : BaseController
         SetHeadersNoCache();
         string plugin = FileCache.ReadAllText($"{ModInit.modpath}/plugins/adminpanel.js", "adminpanel.js");
         return ContentTo(plugin, "application/javascript; charset=utf-8");
+    }
+
+    [HttpGet, AllowAnonymous]
+    [Route("jackett.js")]
+    public ActionResult JackettJs()
+    {
+        SetHeadersNoCache();
+
+        try
+        {
+            var root = JObject.Parse(ReadInitConfRaw());
+            var section = root["Jackett"] as JObject;
+            bool enabled = section?.Value<bool?>("enable") ?? false;
+            string apiKey = section?.Value<string>("api_key")?.Trim() ?? string.Empty;
+
+            if (!enabled || string.IsNullOrEmpty(apiKey))
+                return Content("// Jackett integration is disabled or api_key is empty.\n", "application/javascript; charset=utf-8");
+
+            int port = section?.Value<int?>("port") ?? 9117;
+            if (port < 1 || port > 65535)
+                port = 9117;
+
+            string url = section?.Value<string>("url")?.Trim();
+            if (string.IsNullOrEmpty(url))
+                url = new UriBuilder("http", HttpContext.Request.Host.Host, port).Uri.GetLeftPart(UriPartial.Authority);
+
+            string plugin = FileCache.ReadAllText($"{ModInit.modpath}/plugins/jackett.js", "jackett.js")
+                .Replace("__JACKETT_URL__", JsonConvert.SerializeObject(url))
+                .Replace("__JACKETT_API_KEY__", JsonConvert.SerializeObject(apiKey));
+
+            return ContentTo(plugin, "application/javascript; charset=utf-8");
+        }
+        catch (Exception ex)
+        {
+            return Content($"// Invalid Jackett configuration: {ex.Message.Replace("\n", " ").Replace("\r", " ")}\n", "application/javascript; charset=utf-8");
+        }
     }
 
     [HttpGet, AllowAnonymous]

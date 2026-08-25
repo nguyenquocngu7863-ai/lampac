@@ -37,6 +37,8 @@ public static class ConfigSectionGroups
         new("app", "Ứng dụng và giao diện", "online, cub, sisi, quảng cáo, mặc định, omdb.",
             new[] { "online", "cub", "sisi", "vast", "disableEng", "defaultOn", "omdbapi_key", "overrideResponse" }),
         new("client", "Client Lampa và API", "Giao diện Lampa, cookie, PidTor, TMDB, phụ đề tự động.", new[] { "tmdb", "LampaWeb", "SubFinder", "Cookie", "PidTor", "gst" }),
+        new("local-services", "Dịch vụ cục bộ", "Kết nối Lampac/Lampa với dịch vụ chạy cùng Ubuntu proot.",
+            new[] { "Jackett" }),
         new("modules", "Module mở rộng", "Các section module ở cấp cao nhất của config.",
             new[] { "Catalog", "DLNA", "JacRed", "Sync", "TimeCode", "TorrServer", "Tracks", "transcoding", "TmdbProxy", "CubProxy", "WebLog" }),
 

@@ -6,6 +6,9 @@ public class InitPlugins
 
     public bool jacred { get; set; }
 
+    /// <summary>Syncs the local Jackett URL and API key into Lampa parser settings.</summary>
+    public bool jackett { get; set; } = true;
+
     public bool dlna { get; set; }
 
     public bool tracks { get; set; }

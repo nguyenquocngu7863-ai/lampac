@@ -236,6 +236,19 @@ Controller tải binary `LinuxARM64`, `LinuxAMDx64` hoặc `LinuxARM32` từ Git
 http://127.0.0.1:9117/UI/Dashboard
 ```
 
+Trong Admin Panel của Lampac (`http://IP_ANDROID:9118`), mở **Dịch vụ cục bộ → Jackett** rồi nhập:
+
+```json
+"Jackett": {
+  "enable": true,
+  "url": "",
+  "port": 9117,
+  "api_key": "API_KEY_TỪ_DASHBOARD_JACKETT"
+}
+```
+
+Để `url` trống thì `/jackett.js` tự dùng IP/hostname mà thiết bị đang mở Lampac cùng port `9117`. Plugin này đồng bộ `jackett_url`, `jackett_key` và parser type vào Lampa. API key được gửi tới client Lampa để client gọi Jackett, vì vậy chỉ dùng Lampac/Jackett trong mạng LAN tin cậy.
+
 Các lệnh quản lý:
 
 ```bash
