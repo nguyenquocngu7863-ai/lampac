@@ -1048,6 +1048,197 @@ public class ApiController : BaseController
         return Encoding.UTF8.GetString(Convert.FromBase64String(base64));
     }
 
+    private static readonly System.Threading.SemaphoreSlim JackettResolveSlots = new(6, 6);
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> JackettMagnetCache = new();
+
+    private async Task<string> ResolveJackettMagnet(Uri link, string apiKey, int port)
+    {
+        string cacheKey = link.PathAndQuery;
+        if (JackettMagnetCache.TryGetValue(cacheKey, out string cached))
+            return cached;
+
+        await JackettResolveSlots.WaitAsync(HttpContext.RequestAborted);
+        try
+        {
+            var query = HttpUtility.ParseQueryString(link.Query);
+            query.Remove("apikey");
+            query["jackett_apikey"] = apiKey;
+            string target = $"http://127.0.0.1:{port}{link.AbsolutePath}?{query}";
+
+            using var response = await LocalJackettHttpClient.GetAsync(target, HttpContext.RequestAborted);
+            if (!response.IsSuccessStatusCode)
+                return null;
+
+            byte[] torrent = await response.Content.ReadAsByteArrayAsync(HttpContext.RequestAborted);
+            string magnet = TorrentToMagnet(torrent);
+            if (!string.IsNullOrEmpty(magnet))
+                JackettMagnetCache.TryAdd(cacheKey, magnet);
+
+            return magnet;
+        }
+        catch
+        {
+            return null;
+        }
+        finally
+        {
+            JackettResolveSlots.Release();
+        }
+    }
+
+    private static string TorrentToMagnet(byte[] torrent)
+    {
+        if (torrent == null || torrent.Length < 16 || torrent[0] != (byte)'d')
+            return null;
+
+        int position = 1;
+        int infoStart = -1;
+        int infoEnd = -1;
+        var trackers = new HashSet<string>(StringComparer.Ordinal);
+
+        while (position < torrent.Length && torrent[position] != (byte)'e')
+        {
+            if (!TryReadBencodeString(torrent, ref position, out int keyStart, out int keyLength))
+                return null;
+
+            string key = Encoding.UTF8.GetString(torrent, keyStart, keyLength);
+            int valueStart = position;
+
+            if (key == "announce")
+            {
+                if (!TryReadBencodeString(torrent, ref position, out int trackerStart, out int trackerLength))
+                    return null;
+
+                string tracker = Encoding.UTF8.GetString(torrent, trackerStart, trackerLength);
+                if (Uri.TryCreate(tracker, UriKind.Absolute, out _))
+                    trackers.Add(tracker);
+            }
+            else if (key == "announce-list")
+            {
+                if (!CollectBencodeStrings(torrent, ref position, trackers, 0))
+                    return null;
+            }
+            else
+            {
+                if (!SkipBencodeValue(torrent, ref position, 0))
+                    return null;
+
+                if (key == "info")
+                {
+                    infoStart = valueStart;
+                    infoEnd = position;
+                }
+            }
+        }
+
+        if (infoStart < 0 || infoEnd <= infoStart)
+            return null;
+
+        byte[] hash = System.Security.Cryptography.SHA1.HashData(torrent.AsSpan(infoStart, infoEnd - infoStart));
+        var magnet = new StringBuilder("magnet:?xt=urn:btih:").Append(Convert.ToHexString(hash).ToLowerInvariant());
+        foreach (string tracker in trackers)
+            magnet.Append("&tr=").Append(HttpUtility.UrlEncode(tracker));
+
+        return magnet.ToString();
+    }
+
+    private static bool TryReadBencodeString(byte[] data, ref int position, out int start, out int length)
+    {
+        start = 0;
+        length = 0;
+        if (position >= data.Length || data[position] < (byte)'0' || data[position] > (byte)'9')
+            return false;
+
+        long value = 0;
+        while (position < data.Length && data[position] >= (byte)'0' && data[position] <= (byte)'9')
+        {
+            value = value * 10 + data[position++] - (byte)'0';
+            if (value > int.MaxValue)
+                return false;
+        }
+
+        if (position >= data.Length || data[position++] != (byte)':')
+            return false;
+
+        if (value < 0 || position + value > data.Length)
+            return false;
+
+        start = position;
+        length = (int)value;
+        position += length;
+        return true;
+    }
+
+    private static bool SkipBencodeValue(byte[] data, ref int position, int depth)
+    {
+        if (depth > 128 || position >= data.Length)
+            return false;
+
+        byte token = data[position];
+        if (token >= (byte)'0' && token <= (byte)'9')
+            return TryReadBencodeString(data, ref position, out _, out _);
+
+        if (token == (byte)'i')
+        {
+            position++;
+            while (position < data.Length && data[position] != (byte)'e')
+                position++;
+            return position < data.Length && data[position++] == (byte)'e';
+        }
+
+        if (token != (byte)'l' && token != (byte)'d')
+            return false;
+
+        bool dictionary = token == (byte)'d';
+        position++;
+        while (position < data.Length && data[position] != (byte)'e')
+        {
+            if (dictionary && !TryReadBencodeString(data, ref position, out _, out _))
+                return false;
+            if (!SkipBencodeValue(data, ref position, depth + 1))
+                return false;
+        }
+
+        return position < data.Length && data[position++] == (byte)'e';
+    }
+
+    private static bool CollectBencodeStrings(byte[] data, ref int position, HashSet<string> values, int depth)
+    {
+        if (depth > 16 || position >= data.Length)
+            return false;
+
+        if (data[position] >= (byte)'0' && data[position] <= (byte)'9')
+        {
+            if (!TryReadBencodeString(data, ref position, out int start, out int length))
+                return false;
+            string value = Encoding.UTF8.GetString(data, start, length);
+            if (Uri.TryCreate(value, UriKind.Absolute, out _))
+                values.Add(value);
+            return true;
+        }
+
+        if (data[position] != (byte)'l')
+            return SkipBencodeValue(data, ref position, depth);
+
+        position++;
+        while (position < data.Length && data[position] != (byte)'e')
+        {
+            if (!CollectBencodeStrings(data, ref position, values, depth + 1))
+                return false;
+        }
+        return position < data.Length && data[position++] == (byte)'e';
+    }
+
+    private async Task ResolveJackettResultMagnet(JObject result, Uri link, string apiKey, int port)
+    {
+        if (!string.IsNullOrWhiteSpace(result.Value<string>("MagnetUri")))
+            return;
+
+        string magnet = await ResolveJackettMagnet(link, apiKey, port);
+        if (!string.IsNullOrWhiteSpace(magnet))
+            result["MagnetUri"] = magnet;
+    }
+
     [HttpGet, AllowAnonymous]
     [Route("jackett/api/v2.0/indexers/all/results")]
     public async Task<IActionResult> JackettResults()
@@ -1072,6 +1263,8 @@ public class ApiController : BaseController
             var payload = JObject.Parse(body);
             if (config.proxyDownloads && payload["Results"] is JArray results)
             {
+                var resolveTasks = new List<Task>();
+
                 foreach (JObject result in results.OfType<JObject>())
                 {
                     string link = result.Value<string>("Link");
@@ -1086,6 +1279,8 @@ public class ApiController : BaseController
 
                     if (linkUri.AbsolutePath.StartsWith("/dl/", StringComparison.OrdinalIgnoreCase))
                     {
+                        resolveTasks.Add(ResolveJackettResultMagnet(result, linkUri, config.apiKey, config.port));
+
                         var linkQuery = HttpUtility.ParseQueryString(linkUri.Query);
                         linkQuery.Remove("apikey");
                         linkQuery.Remove("jackett_apikey");
@@ -1093,6 +1288,8 @@ public class ApiController : BaseController
                         result["Link"] = $"{host}/jackett/download?token={EncodeJackettPath(path)}";
                     }
                 }
+
+                await Task.WhenAll(resolveTasks);
             }
 
             return Content(payload.ToString(Formatting.None), "application/json; charset=utf-8");

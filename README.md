@@ -248,7 +248,7 @@ Trong Admin Panel của Lampac (`http://IP_ANDROID:9118`), mở **Dịch vụ c�
 }
 ```
 
-Mặc định `proxy_downloads: true`: `/jackett.js` cho Lampa gọi API proxy cùng origin trên Lampac. Lampac tự chèn API key ở server, đổi các link `/dl/` thành `/jackett/download`, tải và kiểm tra bencode torrent thật trước khi TorrServer tính hash. Cách này tránh lỗi “Không lấy được HASH” ở các tracker mà URL Jackett trả redirect hoặc nội dung trung gian. API key không được nhúng vào link tải gửi xuống client. Đặt `proxy_downloads: false` chỉ khi muốn Lampa gọi trực tiếp URL Jackett trong `url`.
+Mặc định `proxy_downloads: true`: `/jackett.js` cho Lampa gọi API proxy cùng origin trên Lampac. Với kết quả chỉ có link `/dl/`, Lampac tải torrent thật qua Jackett, tính info-hash SHA-1 và thêm `MagnetUri` kèm tracker trước khi trả cho Lampa. Vì vậy cả TorrServer local lẫn TorrServer remote đều nhận magnet thay vì URL nội bộ của điện thoại. Link tải dự phòng vẫn đi qua `/jackett/download` và được kiểm tra bencode. API key được chèn server-side, không nằm trong URL gửi xuống client. Đặt `proxy_downloads: false` chỉ khi muốn Lampa gọi trực tiếp URL Jackett trong `url`.
 
 Các lệnh quản lý:
 
