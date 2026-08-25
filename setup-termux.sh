@@ -242,6 +242,12 @@ install_lampac_in_ubuntu() {
     \"useGpu\": false,
     \"hardwareAcceleration\": false
   },
+  \"Jackett\": {
+    \"enable\": true,
+    \"url\": \"\",
+    \"port\": 9117,
+    \"api_key\": \"\"
+  },
   \"disableEng\": true,
   \"chromium\": { \"enable\": false },
   \"firefox\":  { \"enable\": false },
@@ -286,6 +292,17 @@ ensure_runtime_config() {
             sed -i "/^[[:space:]]*\"listen\"[[:space:]]*:/i\  \"disableEng\": true," "$file"
         else
             echo "  warning: could not add disableEng automatically"
+        fi
+
+        # Materialize the local Jackett section in init.conf so AdminPanel can
+        # edit it. Catalog-only keys are displayed as "missing" until they
+        # exist in either init.conf or current.conf.
+        if ! grep -q "^[[:space:]]*\"Jackett\"[[:space:]]*:" "$file"; then
+            if grep -q "^[[:space:]]*\"listen\"[[:space:]]*:" "$file"; then
+                sed -i "/^[[:space:]]*\"listen\"[[:space:]]*:/i\\  \"Jackett\": { \"enable\": true, \"url\": \"\", \"port\": 9117, \"api_key\": \"\" }," "$file"
+            else
+                echo "  warning: could not add Jackett section automatically"
+            fi
         fi
 
         # Do not launch Playwright/Chromium while ENG embed sources are paused.
@@ -546,6 +563,9 @@ case "${1:-}" in
                     sed -i "s/^[[:space:]]*\"disableEng\"[[:space:]]*:[[:space:]]*false/  \"disableEng\": true/" "$file"
                 elif grep -q "^[[:space:]]*\"listen\"[[:space:]]*:" "$file"; then
                     sed -i "/^[[:space:]]*\"listen\"[[:space:]]*:/i\  \"disableEng\": true," "$file"
+                fi
+                if ! grep -q "^[[:space:]]*\"Jackett\"[[:space:]]*:" "$file" && grep -q "^[[:space:]]*\"listen\"[[:space:]]*:" "$file"; then
+                    sed -i "/^[[:space:]]*\"listen\"[[:space:]]*:/i\  \"Jackett\": { \"enable\": true, \"url\": \"\", \"port\": 9117, \"api_key\": \"\" }," "$file"
                 fi
                 if grep -q "^[[:space:]]*\"chromium\"[[:space:]]*:" "$file"; then
                     sed -i "/^[[:space:]]*\"chromium\"[[:space:]]*:/,/^[[:space:]]*},[[:space:]]*$/ s/\"enable\"[[:space:]]*:[[:space:]]*true/\"enable\": false/" "$file"
