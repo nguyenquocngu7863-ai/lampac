@@ -261,7 +261,7 @@ jackett logs
 jackett update
 ```
 
-Khi AIOStreams hoặc Jackett đã được cài, `lampac start` tự khởi động chúng trước Lampac. `lampac stop` dừng cả ba; `lampac status` hiển thị trạng thái từng dịch vụ. AIOStreams có thể dùng URL/API key của Jackett theo cấu hình addon riêng trong dashboard AIO. Jackett lắng nghe mạng LAN để thiết bị khác mở dashboard; không đưa port `9117` ra Internet, đồng thời không commit hoặc chia sẻ API key.
+`lampac start` chỉ tự khởi động AIOStreams rồi chạy Lampac. Jackett có lifecycle độc lập để dễ đo hiệu năng: chạy `jackett start` khi cần dùng và `jackett stop` khi muốn giải phóng tài nguyên; `lampac stop` không dừng Jackett. AIOStreams có thể dùng URL/API key của Jackett theo cấu hình addon riêng trong dashboard AIO. Jackett lắng nghe mạng LAN để thiết bị khác mở dashboard; không đưa port `9117` ra Internet, đồng thời không commit hoặc chia sẻ API key.
 
 ## Trạng thái nguồn ENG
 

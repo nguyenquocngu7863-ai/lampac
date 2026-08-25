@@ -469,12 +469,10 @@ if [[ -n "$GST_SCANNER" ]]; then
     export GST_PLUGIN_SCANNER="$GST_SCANNER"
 fi
 
-# Keep the optional local services in the same lifecycle as Lampac.
+# AIOStreams remains in the Lampac lifecycle. Jackett is intentionally managed
+# separately with `jackett start|stop` so its performance impact is measurable.
 if [[ -x /root/aioctl.sh && -f /root/aiostreams/.env ]]; then
     /root/aioctl.sh start || true
-fi
-if [[ -x /root/jackettctl.sh && -x /root/jackett/jackett ]]; then
-    /root/jackettctl.sh start || true
 fi
 
 cd "$LAMPAC_DIR"
@@ -496,17 +494,11 @@ case "${1:-}" in
         if proot-distro login ubuntu -- test -d /root/aiostreams 2>/dev/null; then
             proot-distro login ubuntu -- bash /root/aioctl.sh stop 2>/dev/null || true
         fi
-        if proot-distro login ubuntu -- test -x /root/jackett/jackett 2>/dev/null; then
-            proot-distro login ubuntu -- bash /root/jackettctl.sh stop 2>/dev/null || true
-        fi
         ;;
     status)
         pgrep -f 'proot.*Core.dll' > /dev/null 2>&1 && echo "Lampac is running" || echo "Lampac not running"
         if proot-distro login ubuntu -- test -d /root/aiostreams 2>/dev/null; then
             proot-distro login ubuntu -- bash /root/aioctl.sh status 2>/dev/null || true
-        fi
-        if proot-distro login ubuntu -- test -x /root/jackett/jackett 2>/dev/null; then
-            proot-distro login ubuntu -- bash /root/jackettctl.sh status 2>/dev/null || true
         fi
         ;;
     config)
@@ -842,7 +834,8 @@ main() {
             info "  lampac update  — Update to latest"
             info "  aio install      — Install AIOStreams locally (port 3002)"
             info "  jackett install  — Install Jackett locally (port 9117)"
-            info "  lampac start     — Start Lampac + installed local services"
+            info "  lampac start     — Start Lampac + AIOStreams"
+            info "  jackett start    — Start Jackett separately when needed"
             echo ""
 
             read -rp "  Start Lampac now? [Y/n]: " answer
