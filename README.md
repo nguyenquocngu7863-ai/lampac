@@ -243,11 +243,12 @@ Trong Admin Panel của Lampac (`http://IP_ANDROID:9118`), mở **Dịch vụ c�
   "enable": true,
   "url": "",
   "port": 9117,
-  "api_key": "API_KEY_TỪ_DASHBOARD_JACKETT"
+  "api_key": "API_KEY_TỪ_DASHBOARD_JACKETT",
+  "proxy_downloads": true
 }
 ```
 
-Để `url` trống thì `/jackett.js` tự dùng IP/hostname mà thiết bị đang mở Lampac cùng port `9117`. Plugin này đồng bộ `jackett_url`, `jackett_key` và parser type vào Lampa. API key được gửi tới client Lampa để client gọi Jackett, vì vậy chỉ dùng Lampac/Jackett trong mạng LAN tin cậy.
+Mặc định `proxy_downloads: true`: `/jackett.js` cho Lampa gọi API proxy cùng origin trên Lampac. Lampac tự chèn API key ở server, đổi các link `/dl/` thành `/jackett/download`, tải và kiểm tra bencode torrent thật trước khi TorrServer tính hash. Cách này tránh lỗi “Không lấy được HASH” ở các tracker mà URL Jackett trả redirect hoặc nội dung trung gian. API key không được nhúng vào link tải gửi xuống client. Đặt `proxy_downloads: false` chỉ khi muốn Lampa gọi trực tiếp URL Jackett trong `url`.
 
 Các lệnh quản lý:
 

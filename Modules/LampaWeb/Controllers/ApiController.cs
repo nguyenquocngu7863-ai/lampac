@@ -1013,6 +1013,145 @@ public class ApiController : BaseController
         return ContentTo(plugin, "application/javascript; charset=utf-8");
     }
 
+    private static readonly System.Net.Http.HttpClient LocalJackettHttpClient = new()
+    {
+        Timeout = TimeSpan.FromSeconds(45)
+    };
+
+    private (bool enabled, string apiKey, int port, bool proxyDownloads, string publicUrl) GetJackettConfig()
+    {
+        var root = JObject.Parse(ReadInitConfRaw());
+        var section = root["Jackett"] as JObject;
+        int port = section?.Value<int?>("port") ?? 9117;
+        if (port < 1 || port > 65535)
+            port = 9117;
+
+        return (
+            section?.Value<bool?>("enable") ?? false,
+            section?.Value<string>("api_key")?.Trim() ?? string.Empty,
+            port,
+            section?.Value<bool?>("proxy_downloads") ?? true,
+            section?.Value<string>("url")?.Trim() ?? string.Empty
+        );
+    }
+
+    private static string EncodeJackettPath(string value)
+        => Convert.ToBase64String(Encoding.UTF8.GetBytes(value))
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
+
+    private static string DecodeJackettPath(string value)
+    {
+        string base64 = (value ?? string.Empty).Replace('-', '+').Replace('_', '/');
+        base64 = base64.PadRight(base64.Length + ((4 - base64.Length % 4) % 4), '=');
+        return Encoding.UTF8.GetString(Convert.FromBase64String(base64));
+    }
+
+    [HttpGet, AllowAnonymous]
+    [Route("jackett/api/v2.0/indexers/all/results")]
+    public async Task<IActionResult> JackettResults()
+    {
+        SetHeadersNoCache();
+
+        try
+        {
+            var config = GetJackettConfig();
+            if (!config.enabled || string.IsNullOrEmpty(config.apiKey))
+                return StatusCode(503, new { error = "Jackett is disabled or api_key is empty" });
+
+            var query = HttpUtility.ParseQueryString(HttpContext.Request.QueryString.Value ?? string.Empty);
+            query["apikey"] = config.apiKey;
+            string target = $"http://127.0.0.1:{config.port}/api/v2.0/indexers/all/results?{query}";
+
+            using var upstream = await LocalJackettHttpClient.GetAsync(target, HttpContext.RequestAborted);
+            string body = await upstream.Content.ReadAsStringAsync(HttpContext.RequestAborted);
+            if (!upstream.IsSuccessStatusCode)
+                return StatusCode((int)upstream.StatusCode, body);
+
+            var payload = JObject.Parse(body);
+            if (config.proxyDownloads && payload["Results"] is JArray results)
+            {
+                foreach (JObject result in results.OfType<JObject>())
+                {
+                    string link = result.Value<string>("Link");
+                    if (string.IsNullOrWhiteSpace(link))
+                        continue;
+
+                    if (!Uri.TryCreate(link, UriKind.Absolute, out var linkUri) &&
+                        !Uri.TryCreate($"http://127.0.0.1:{config.port}/{link.TrimStart('/')}", UriKind.Absolute, out linkUri))
+                    {
+                        continue;
+                    }
+
+                    if (linkUri.AbsolutePath.StartsWith("/dl/", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var linkQuery = HttpUtility.ParseQueryString(linkUri.Query);
+                        linkQuery.Remove("apikey");
+                        linkQuery.Remove("jackett_apikey");
+                        string path = linkUri.AbsolutePath + (linkQuery.Count > 0 ? $"?{linkQuery}" : string.Empty);
+                        result["Link"] = $"{host}/jackett/download?token={EncodeJackettPath(path)}";
+                    }
+                }
+            }
+
+            return Content(payload.ToString(Formatting.None), "application/json; charset=utf-8");
+        }
+        catch (TaskCanceledException) when (HttpContext.RequestAborted.IsCancellationRequested == false)
+        {
+            return StatusCode(504, new { error = "Jackett search timeout" });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(502, new { error = ex.Message });
+        }
+    }
+
+    [HttpGet, AllowAnonymous]
+    [Route("jackett/download")]
+    public async Task<IActionResult> JackettDownload(string token)
+    {
+        SetHeadersNoCache();
+
+        try
+        {
+            var config = GetJackettConfig();
+            if (!config.enabled || string.IsNullOrEmpty(config.apiKey))
+                return StatusCode(503, "Jackett is disabled or api_key is empty");
+
+            string path = DecodeJackettPath(token);
+            if (string.IsNullOrWhiteSpace(path) || !path.StartsWith("/dl/", StringComparison.OrdinalIgnoreCase) ||
+                !Uri.TryCreate($"http://localhost{path}", UriKind.Absolute, out var source))
+            {
+                return BadRequest("Only Jackett /dl/ paths are accepted");
+            }
+
+            // Never fetch a client-supplied authority. Rebuild the URL on local
+            // Jackett and inject the private API key server-side.
+            var downloadQuery = HttpUtility.ParseQueryString(source.Query);
+            downloadQuery["jackett_apikey"] = config.apiKey;
+            string target = $"http://127.0.0.1:{config.port}{source.AbsolutePath}?{downloadQuery}";
+            using var upstream = await LocalJackettHttpClient.GetAsync(target, HttpContext.RequestAborted);
+            byte[] torrent = await upstream.Content.ReadAsByteArrayAsync(HttpContext.RequestAborted);
+
+            if (!upstream.IsSuccessStatusCode)
+                return StatusCode((int)upstream.StatusCode, "Jackett could not download this torrent");
+
+            if (torrent.Length < 16 || torrent[0] != (byte)'d' || torrent.AsSpan().IndexOf("4:info"u8) < 0)
+                return StatusCode(502, "Jackett returned a non-torrent response");
+
+            return File(torrent, "application/x-bittorrent", "jackett.torrent");
+        }
+        catch (TaskCanceledException) when (HttpContext.RequestAborted.IsCancellationRequested == false)
+        {
+            return StatusCode(504, "Jackett torrent download timeout");
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(502, ex.Message);
+        }
+    }
+
     [HttpGet, AllowAnonymous]
     [Route("jackett.js")]
     public ActionResult JackettJs()
@@ -1021,25 +1160,17 @@ public class ApiController : BaseController
 
         try
         {
-            var root = JObject.Parse(ReadInitConfRaw());
-            var section = root["Jackett"] as JObject;
-            bool enabled = section?.Value<bool?>("enable") ?? false;
-            string apiKey = section?.Value<string>("api_key")?.Trim() ?? string.Empty;
-
-            if (!enabled || string.IsNullOrEmpty(apiKey))
+            var config = GetJackettConfig();
+            if (!config.enabled || string.IsNullOrEmpty(config.apiKey))
                 return Content("// Jackett integration is disabled or api_key is empty.\n", "application/javascript; charset=utf-8");
 
-            int port = section?.Value<int?>("port") ?? 9117;
-            if (port < 1 || port > 65535)
-                port = 9117;
-
-            string url = section?.Value<string>("url")?.Trim();
+            string url = config.proxyDownloads ? $"{host}/jackett" : config.publicUrl;
             if (string.IsNullOrEmpty(url))
-                url = new UriBuilder("http", HttpContext.Request.Host.Host, port).Uri.GetLeftPart(UriPartial.Authority);
+                url = new UriBuilder("http", HttpContext.Request.Host.Host, config.port).Uri.GetLeftPart(UriPartial.Authority);
 
             string plugin = FileCache.ReadAllText($"{ModInit.modpath}/plugins/jackett.js", "jackett.js")
                 .Replace("__JACKETT_URL__", JsonConvert.SerializeObject(url))
-                .Replace("__JACKETT_API_KEY__", JsonConvert.SerializeObject(apiKey));
+                .Replace("__JACKETT_API_KEY__", JsonConvert.SerializeObject(config.proxyDownloads ? "lampac-proxy" : config.apiKey));
 
             return ContentTo(plugin, "application/javascript; charset=utf-8");
         }

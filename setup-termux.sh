@@ -246,7 +246,8 @@ install_lampac_in_ubuntu() {
     \"enable\": true,
     \"url\": \"\",
     \"port\": 9117,
-    \"api_key\": \"\"
+    \"api_key\": \"\",
+    \"proxy_downloads\": true
   },
   \"disableEng\": true,
   \"chromium\": { \"enable\": false },
@@ -299,7 +300,7 @@ ensure_runtime_config() {
         # exist in either init.conf or current.conf.
         if ! grep -q "^[[:space:]]*\"Jackett\"[[:space:]]*:" "$file"; then
             if grep -q "^[[:space:]]*\"listen\"[[:space:]]*:" "$file"; then
-                sed -i "/^[[:space:]]*\"listen\"[[:space:]]*:/i\\  \"Jackett\": { \"enable\": true, \"url\": \"\", \"port\": 9117, \"api_key\": \"\" }," "$file"
+                sed -i "/^[[:space:]]*\"listen\"[[:space:]]*:/i\\  \"Jackett\": { \"enable\": true, \"url\": \"\", \"port\": 9117, \"api_key\": \"\", \"proxy_downloads\": true }," "$file"
             else
                 echo "  warning: could not add Jackett section automatically"
             fi
@@ -565,7 +566,7 @@ case "${1:-}" in
                     sed -i "/^[[:space:]]*\"listen\"[[:space:]]*:/i\  \"disableEng\": true," "$file"
                 fi
                 if ! grep -q "^[[:space:]]*\"Jackett\"[[:space:]]*:" "$file" && grep -q "^[[:space:]]*\"listen\"[[:space:]]*:" "$file"; then
-                    sed -i "/^[[:space:]]*\"listen\"[[:space:]]*:/i\  \"Jackett\": { \"enable\": true, \"url\": \"\", \"port\": 9117, \"api_key\": \"\" }," "$file"
+                    sed -i "/^[[:space:]]*\"listen\"[[:space:]]*:/i\  \"Jackett\": { \"enable\": true, \"url\": \"\", \"port\": 9117, \"api_key\": \"\", \"proxy_downloads\": true }," "$file"
                 fi
                 if grep -q "^[[:space:]]*\"chromium\"[[:space:]]*:" "$file"; then
                     sed -i "/^[[:space:]]*\"chromium\"[[:space:]]*:/,/^[[:space:]]*},[[:space:]]*$/ s/\"enable\"[[:space:]]*:[[:space:]]*true/\"enable\": false/" "$file"
