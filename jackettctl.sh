@@ -80,8 +80,10 @@ install_jackett() {
     chmod +x "$JACKETT_DIR/jackett"
     rm -rf "$staging"
     ok "Jackett installed in $JACKETT_DIR"
-    start_jackett
-    info_jackett
+    if [[ "${JACKETT_AUTOSTART:-1}" != "0" ]]; then
+        start_jackett
+        info_jackett
+    fi
 }
 
 start_jackett() {

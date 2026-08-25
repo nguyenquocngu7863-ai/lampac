@@ -681,9 +681,45 @@ if ! proot-distro login ubuntu -- test -x /root/jackettctl.sh 2>/dev/null; then
     echo "Jackett controller is not installed yet. Run: bash setup-termux.sh --sync"
     exit 1
 fi
+guest() {
+    proot-distro login ubuntu -- bash /root/jackettctl.sh "$@"
+}
+
+start_detached() {
+    # A normal transient proot login kills background children when it exits.
+    # Keep a detached host-side proot supervisor alive for standalone Jackett.
+    nohup proot-distro login --no-kill-on-exit ubuntu -- \
+        bash /root/jackettctl.sh start \
+        >"$HOME/.jackett-proot.log" 2>&1 </dev/null &
+
+    for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do
+        sleep 1
+        if guest status >/dev/null 2>&1; then
+            guest status
+            return 0
+        fi
+    done
+
+    echo "Jackett did not stay online; recent logs:"
+    guest logs || cat "$HOME/.jackett-proot.log" 2>/dev/null || true
+    return 1
+}
+
 case "${1:-info}" in
-    install|update|start|stop|restart|status|info|logs|log)
-        proot-distro login ubuntu -- bash /root/jackettctl.sh "$@"
+    start)
+        start_detached
+        ;;
+    restart)
+        guest stop || true
+        start_detached
+        ;;
+    install|update)
+        proot-distro login ubuntu -- env JACKETT_AUTOSTART=0 \
+            bash /root/jackettctl.sh "$@"
+        start_detached
+        ;;
+    stop|status|info|logs|log)
+        guest "$@"
         ;;
     *)
         echo "Usage: jackett {install|update|start|stop|restart|status|info|logs}"
