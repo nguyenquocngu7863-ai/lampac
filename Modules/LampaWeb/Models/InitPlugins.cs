@@ -21,6 +21,9 @@ public class InitPlugins
 
     public bool online { get; set; }
 
+    /// <summary>Loads compact responsive styles for Online result cards.</summary>
+    public bool onlineCompact { get; set; } = true;
+
     public bool catalog { get; set; }
 
     public bool dorama { get; set; }

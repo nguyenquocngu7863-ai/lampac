@@ -35,6 +35,9 @@
     <None Update="plugins\on.js">
       <CopyToPublishDirectory>Always</CopyToPublishDirectory>
     </None>
+    <None Update="plugins\online-compact.js">
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+    </None>
     <None Update="plugins\pirate_store.js">
       <CopyToPublishDirectory>Always</CopyToPublishDirectory>
     </None>

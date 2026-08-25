@@ -140,6 +140,10 @@ Cấu hình mặc định của script đã bao gồm:
 
 Thiết lập này ưu tiên ổn định và tiết kiệm RAM. Nếu máy yếu, không nên bật đồng thời AIOStreams, Jackett, nhiều module nặng hoặc transcoding.
 
+## Giao diện Online gọn trên điện thoại
+
+Plugin built-in `/online-compact.js` được bật mặc định qua `LampaWeb.initPlugins.onlineCompact`. Trên màn hình tối đa 720px, plugin thu nhỏ poster, padding, khoảng cách card, title và metadata nhưng không thay đổi model hoặc link phát. Có thể bật/tắt trực tiếp trong **Settings → Interface → Danh sách Online gọn**.
+
 ## Plugin phụ đề
 
 Lampac có SubSense Auto, SubSense, SubFinder và StremioSub. Vì các plugin tự động đều bọc `Lampa.Player.play`, chỉ nên bật **một** provider. Mặc định dùng `stremiosub`; `subsenseAuto`, `subsense` và `subfinder` là opt-in. Server sẽ ưu tiên đúng một provider nếu lỡ bật nhiều cờ, đồng thời client có khóa chung để raw URL cũ không bọc player lần nữa.
