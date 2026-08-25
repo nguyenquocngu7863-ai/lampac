@@ -38,11 +38,21 @@ jackett_binary() {
     fi
 }
 
-is_running() {
+saved_pid() {
     [[ -f "$PID_FILE" ]] || return 1
     local pid
     pid="$(cat "$PID_FILE" 2>/dev/null || true)"
-    [[ "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null
+    [[ "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null || return 1
+    printf '%s' "$pid"
+}
+
+dashboard_ready() {
+    curl -fsS --max-time 2 \
+        "http://127.0.0.1:$JACKETT_PORT/UI/Dashboard" >/dev/null 2>&1
+}
+
+is_running() {
+    saved_pid >/dev/null 2>&1 || dashboard_ready
 }
 
 install_jackett() {
@@ -84,7 +94,13 @@ start_jackett() {
 
     mkdir -p "$JACKETT_DATA_DIR"
     if is_running; then
-        ok "Jackett is already running (PID $(cat "$PID_FILE"))"
+        local current_pid
+        current_pid="$(saved_pid 2>/dev/null || true)"
+        if [[ -n "$current_pid" ]]; then
+            ok "Jackett is already running (PID $current_pid)"
+        else
+            ok "Jackett is already running on port $JACKETT_PORT"
+        fi
         return 0
     fi
 
@@ -100,6 +116,16 @@ start_jackett() {
     printf '%s\n' "$pid" > "$PID_FILE"
 
     for _ in 1 2 3 4 5 6 7 8 9 10; do
+        if dashboard_ready; then
+            # Jackett can replace its bootstrap process. Require the dashboard
+            # to remain available before reporting a successful start.
+            sleep 2
+            if dashboard_ready; then
+                ok "Jackett started"
+                return 0
+            fi
+        fi
+
         if ! kill -0 "$pid" 2>/dev/null; then
             err "Jackett stopped during startup"
             tail -n 50 "$LOG_FILE" 2>/dev/null || true
@@ -109,10 +135,6 @@ start_jackett() {
             fi
             rm -f "$PID_FILE"
             return 1
-        fi
-        if curl -fsS --max-time 2 "http://127.0.0.1:$JACKETT_PORT/UI/Dashboard" >/dev/null 2>&1; then
-            ok "Jackett started"
-            return 0
         fi
         sleep 1
     done
@@ -134,13 +156,26 @@ stop_jackett() {
             done
         fi
     fi
+    # The self-contained launcher may replace its bootstrap PID. Limit the
+    # fallback match to this installation instead of killing arbitrary .NET apps.
+    if dashboard_ready; then
+        pkill -f "^${JACKETT_DIR}/(Jackett/)?jackett( |$)" 2>/dev/null || true
+        stopped=1
+    fi
+
     rm -f "$PID_FILE"
     if [[ "$stopped" -eq 1 ]]; then ok "Jackett stopped"; else info "Jackett is not running"; fi
 }
 
 status_jackett() {
     if is_running; then
-        echo "Jackett is running (PID $(cat "$PID_FILE"), port $JACKETT_PORT)"
+        local pid
+        pid="$(saved_pid 2>/dev/null || true)"
+        if [[ -n "$pid" ]]; then
+            echo "Jackett is running (PID $pid, port $JACKETT_PORT)"
+        else
+            echo "Jackett is running (dashboard responds on port $JACKETT_PORT; bootstrap PID changed)"
+        fi
     else
         echo "Jackett is not running"
         return 1
