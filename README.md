@@ -142,7 +142,7 @@ Thiết lập này ưu tiên ổn định và tiết kiệm RAM. Nếu máy yế
 
 ## Giao diện Online gọn trên điện thoại
 
-Plugin built-in `/online-compact.js` được bật mặc định qua `LampaWeb.initPlugins.onlineCompact`. Trên màn hình tối đa 720px, plugin thu nhỏ poster, padding, khoảng cách card, title và metadata nhưng không thay đổi model hoặc link phát. Có thể bật/tắt trực tiếp trong **Settings → Interface → Danh sách Online gọn**.
+Plugin built-in `/online-compact.js` được bật mặc định qua `LampaWeb.initPlugins.onlineCompact`. Trên màn hình tối đa 720px, plugin dành thêm chiều ngang cho nội dung, cho title/metadata xuống dòng và tăng khoảng cách dọc để card dễ đọc hơn; không thay đổi model hoặc link phát. Có thể bật/tắt trực tiếp trong **Settings → Interface → Danh sách Online thoáng**.
 
 ## Plugin phụ đề
 
