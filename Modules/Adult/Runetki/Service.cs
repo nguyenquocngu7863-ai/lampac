@@ -86,7 +86,7 @@ public static class RunetkiTo
         {
             new MenuItem()
             {
-                title = $"Сортировка: {(string.IsNullOrWhiteSpace(sort) ? "выбрать" : sort)}",
+                title = $"Sắp xếp: {(string.IsNullOrWhiteSpace(sort) ? "chọn" : sort)}",
                 playlist_url = "submenu",
                 submenu = new List<MenuItem>(5)
                 {

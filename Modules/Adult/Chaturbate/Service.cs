@@ -91,7 +91,7 @@ public static class ChaturbateTo
 
         var sortmenu = new List<MenuItem>(5)
         {
-            new("Лучшие", $"{host}/chu"),
+            new("Tốt nhất", $"{host}/chu"),
             new("Девушки", $"{host}/chu?sort=f"),
             new("Пары", $"{host}/chu?sort=c"),
             new("Парни", $"{host}/chu?sort=m"),
@@ -102,7 +102,7 @@ public static class ChaturbateTo
         {
             new MenuItem()
             {
-                title = $"Сортировка: {sortmenu.FirstOrDefault(i => i.playlist_url.EndsWith($"={sort}"))?.title ?? "Лучшие" }",
+                title = $"Sắp xếp: {sortmenu.FirstOrDefault(i => i.playlist_url.EndsWith($"={sort}"))?.title ?? "Tốt nhất" }",
                 playlist_url = "submenu",
                 submenu = sortmenu
             }

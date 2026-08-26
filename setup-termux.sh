@@ -409,6 +409,24 @@ install_custom_modules() {
             done
         fi
 
+        # SISI is maintained as translated source instead of a DOM category
+        # translator, preventing category rules from touching video titles.
+        sisitarget=/root/lampac/module/SISI/plugins
+        if [ -d \"\$sisitarget\" ]; then
+            for file in sisi.js startpage.js; do
+                curl -fSL --retry 3 \"${CUSTOM_SOURCE_BASE}/SISI/plugins/\$file\" -o \"\$sisitarget/\$file.tmp\"
+                mv \"\$sisitarget/\$file.tmp\" \"\$sisitarget/\$file\"
+            done
+        fi
+
+        for adultmodule in BongaCams Chaturbate Ebalovo Eporner HQporner PornHub Porntrex Runetki Spankbang Xhamster Xnxx Xvideos XvideosRED; do
+            adulttarget=\"/root/lampac/module/Adult/\$adultmodule\"
+            if [ -d \"\$adulttarget\" ]; then
+                curl -fSL --retry 3 \"${CUSTOM_SOURCE_BASE}/Modules/Adult/\$adultmodule/Service.cs\" -o \"\$adulttarget/Service.cs.tmp\"
+                mv \"\$adulttarget/Service.cs.tmp\" \"\$adulttarget/Service.cs\"
+            fi
+        done
+
         for proxymodule in CubProxy TmdbProxy; do
             proxytarget=\"/root/lampac/module/Proxy/\$proxymodule\"
             if [ -d \"\$proxytarget\" ]; then
@@ -676,6 +694,22 @@ case "${1:-}" in
                     mv "$epornertarget/$file.tmp" "$epornertarget/$file"
                 done
             fi
+
+            sisitarget=/root/lampac/module/SISI/plugins
+            if [ -d "$sisitarget" ]; then
+                for file in sisi.js startpage.js; do
+                    curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a036c7-lampac/SISI/plugins/$file" -o "$sisitarget/$file.tmp"
+                    mv "$sisitarget/$file.tmp" "$sisitarget/$file"
+                done
+            fi
+
+            for adultmodule in BongaCams Chaturbate Ebalovo Eporner HQporner PornHub Porntrex Runetki Spankbang Xhamster Xnxx Xvideos XvideosRED; do
+                adulttarget="/root/lampac/module/Adult/$adultmodule"
+                if [ -d "$adulttarget" ]; then
+                    curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a036c7-lampac/Modules/Adult/$adultmodule/Service.cs" -o "$adulttarget/Service.cs.tmp"
+                    mv "$adulttarget/Service.cs.tmp" "$adulttarget/Service.cs"
+                fi
+            done
 
             for proxymodule in CubProxy TmdbProxy; do
                 proxytarget="/root/lampac/module/Proxy/$proxymodule"
