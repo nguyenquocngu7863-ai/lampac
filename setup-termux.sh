@@ -414,7 +414,7 @@ install_custom_modules() {
         webtarget=/root/lampac/module/LampaWeb
         mkdir -p "\$webtarget/Controllers" "\$webtarget/Models" "\$webtarget/plugins"
         webbase="${CUSTOM_SOURCE_BASE}/Modules/LampaWeb"
-        for file in Controllers/ApiController.cs ModInit.cs Models/InitPlugins.cs plugins/lampainit.js plugins/jackett.js plugins/online-compact.js plugins/subsense-auto.js plugins/subsense.js plugins/subfinder.js plugins/stremiosub.js plugins/adminpanel.js; do
+        for file in Controllers/ApiController.cs ModInit.cs Models/InitPlugins.cs plugins/lampainit.js plugins/jackett.js plugins/online-compact.js plugins/vietnamese.js plugins/subsense-auto.js plugins/subsense.js plugins/subfinder.js plugins/stremiosub.js plugins/adminpanel.js; do
             curl -fSL --retry 3 "\$webbase/\$file" -o "\$webtarget/\$file"
         done
 
@@ -653,7 +653,7 @@ case "${1:-}" in
             webbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a036c7-lampac/Modules/LampaWeb"
             webtarget=/root/lampac/module/LampaWeb
             mkdir -p "$webtarget/Controllers" "$webtarget/Models" "$webtarget/plugins"
-            for file in Controllers/ApiController.cs ModInit.cs Models/InitPlugins.cs plugins/lampainit.js plugins/jackett.js plugins/online-compact.js plugins/subsense-auto.js plugins/subsense.js plugins/subfinder.js plugins/stremiosub.js plugins/adminpanel.js; do
+            for file in Controllers/ApiController.cs ModInit.cs Models/InitPlugins.cs plugins/lampainit.js plugins/jackett.js plugins/online-compact.js plugins/vietnamese.js plugins/subsense-auto.js plugins/subsense.js plugins/subfinder.js plugins/stremiosub.js plugins/adminpanel.js; do
                 curl -fSL --retry 3 "$webbase/$file" -o "$webtarget/$file"
             done
             curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a036c7-lampac/config/base.conf" -o /root/lampac/base.conf

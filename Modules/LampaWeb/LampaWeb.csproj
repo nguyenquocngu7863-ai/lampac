@@ -59,6 +59,9 @@
     <None Update="plugins\stremiosub.js">
       <CopyToPublishDirectory>Always</CopyToPublishDirectory>
     </None>
+    <None Update="plugins\vietnamese.js">
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+    </None>
   </ItemGroup>
 
 </Project>

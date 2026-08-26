@@ -290,6 +290,14 @@ Cấu hình mặc định của script đã bao gồm:
 
 Thiết lập này ưu tiên ổn định và tiết kiệm RAM. Nếu máy yếu, không nên bật đồng thời AIOStreams, Jackett, nhiều module nặng hoặc transcoding.
 
+## Việt hóa bền vững qua các lần update
+
+Plugin built-in `/vietnamese.js` được bật mặc định bằng `LampaWeb.initPlugins.vietnamese` và được nạp sau các addon khác. Plugin đặt ngôn ngữ Lampa thành `vi`, đăng ký catalog cho các key của Online/SISI/Lampac và dùng `MutationObserver` để dịch những chuỗi Anh/Nga bị addon hardcode sau mỗi lần render.
+
+Không sửa trực tiếp file của addon upstream chỉ để dịch. Khi `--update` thay release, `--sync` sẽ chép lại `vietnamese.js`, controller và model đăng ký từ branch custom; vì vậy lớp Việt hóa không bị mất. Có thể bật/tắt tại **Settings → Interface → Lớp Việt hóa addon**.
+
+Các chuỗi mới chưa được dịch nên được thêm vào catalog `exact`, `prefixes` hoặc `Lampa.Lang.add` trong `Modules/LampaWeb/plugins/vietnamese.js`, thay vì sửa addon gốc. Cách này giữ bản dịch khi addon được update; chỉ cần bổ sung mapping khi addon đổi câu chữ.
+
 ## Giao diện Online gọn trên điện thoại
 
 Plugin built-in `/online-compact.js` được bật mặc định qua `LampaWeb.initPlugins.onlineCompact`. Trên màn hình tối đa 720px, plugin dành thêm chiều ngang cho nội dung, cho title/metadata xuống dòng và tăng khoảng cách dọc để card dễ đọc hơn; không thay đổi model hoặc link phát. Có thể bật/tắt trực tiếp trong **Settings → Interface → Danh sách Online thoáng**.

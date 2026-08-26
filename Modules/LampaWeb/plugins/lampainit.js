@@ -59,7 +59,7 @@
     var resetKey = 'lampac_plugin_reset_20260823_v2';
     if (Lampa.Storage.get(resetKey, 'false') !== 'true') {
       Lampa.Storage.set('lampac_plugins_backup_20260823', plugins);
-      var lampacPluginPath = /\/(?:dlna|tracks|transcoding|tmdbproxy|cubproxy|online|watchtogether|catalog|dorama|subsense-auto|subsense|subfinder|stremiosub|adminpanel|gst|sisi|startpage|sync|timecode|bookmark|ts|backup)\.js(?:[?#]|$)/i;
+      var lampacPluginPath = /\/(?:dlna|tracks|transcoding|tmdbproxy|cubproxy|online|online-compact|vietnamese|jackett|watchtogether|catalog|dorama|subsense-auto|subsense|subfinder|stremiosub|adminpanel|gst|sisi|startpage|sync|timecode|bookmark|ts|backup)\.js(?:[?#]|$)/i;
       var subtitlePluginPath = /\/(?:subsense-auto|subsense|subfinder|stremiosub)\.js(?:[?#]|$)/i;
       plugins.forEach(function (plugin) {
         var url = plugin && plugin.url || '';
@@ -112,10 +112,9 @@
     if (typeof Lampa !== 'undefined') {
       clearInterval(timer);
 
-      // Keep the Lampac client in English across Lampa/CUB frontend refreshes.
-      // This runs before the app-ready event on normal launches, so the core,
-      // CUB and Online UI all read the same persisted language choice.
-      Lampa.Storage.set('language', 'en');
+      // Keep the Lampac client in Vietnamese across frontend refreshes. The
+      // built-in vietnamese.js overlay fills addon strings missing from Lampa.
+      Lampa.Storage.set('language', 'vi');
 	  
       if (lampainit_invc)
         lampainit_invc.appload();

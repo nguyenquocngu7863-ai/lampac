@@ -698,6 +698,10 @@ public class ApiController : BaseController
                 }
             }
 
+            // Load localization last so it can overlay built-in and third-party addons.
+            if (ModInit.conf.initPlugins.vietnamese)
+                plugins.Add(new("{localhost}/vietnamese.js", 1, "Tiếng Việt cho Lampac", "lampac"));
+
             sb = sb.Replace("{initiale}", JsonConvert.SerializeObject(plugins));
             #endregion
 
@@ -908,6 +912,9 @@ public class ApiController : BaseController
                         plugins.Add($"\"{p.url}\"");
                 }
             }
+
+            if (ModInit.conf.initPlugins.vietnamese)
+                send("vietnamese", false);
             #endregion
 
             string onjs = FileCache.ReadAllText($"{ModInit.modpath}/plugins/on.js", "on.js");
@@ -1025,6 +1032,15 @@ public class ApiController : BaseController
     {
         SetHeadersNoCache();
         string plugin = FileCache.ReadAllText($"{ModInit.modpath}/plugins/online-compact.js", "online-compact.js");
+        return ContentTo(plugin, "application/javascript; charset=utf-8");
+    }
+
+    [HttpGet, AllowAnonymous]
+    [Route("vietnamese.js")]
+    public ActionResult VietnameseJs()
+    {
+        SetHeadersNoCache();
+        string plugin = FileCache.ReadAllText($"{ModInit.modpath}/plugins/vietnamese.js", "vietnamese.js");
         return ContentTo(plugin, "application/javascript; charset=utf-8");
     }
 

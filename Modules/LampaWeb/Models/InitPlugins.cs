@@ -24,6 +24,9 @@ public class InitPlugins
     /// <summary>Loads compact responsive styles for Online result cards.</summary>
     public bool onlineCompact { get; set; } = true;
 
+    /// <summary>Loads the persistent Vietnamese localization overlay after addons.</summary>
+    public bool vietnamese { get; set; } = true;
+
     public bool catalog { get; set; }
 
     public bool dorama { get; set; }
