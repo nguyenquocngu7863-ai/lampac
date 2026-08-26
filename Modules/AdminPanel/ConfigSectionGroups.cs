@@ -79,7 +79,7 @@ public static class ConfigSectionGroups
             }),
     };
 
-    public static List<GroupDto> Build(JObject currentRoot)
+    public static List<GroupDto> Build(JObject currentRoot, IEnumerable<string> nextHubSiteKeys = null)
     {
         if (currentRoot == null)
             currentRoot = new JObject();
@@ -103,6 +103,24 @@ public static class ConfigSectionGroups
             result.Add(new GroupDto(g.Id, g.Title, g.Hint, keys));
         }
 
+        var nextHubKeys = (nextHubSiteKeys ?? Array.Empty<string>())
+            .Where(inFile.Contains)
+            .Where(k => !assigned.Contains(k))
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(k => k, StringComparer.Ordinal)
+            .ToArray();
+        if (nextHubKeys.Length > 0)
+        {
+            foreach (var k in nextHubKeys)
+                assigned.Add(k);
+
+            result.Add(new GroupDto(
+                "src-adult-nexthub",
+                "Nguồn · NextHUB / 18+",
+                "Mỗi YAML NextHUB là một nguồn riêng. Chỉnh tại đây sẽ tạo override theo slug nguồn trong init.conf.",
+                nextHubKeys));
+        }
+
         var orphans = inFile.Where(k => !assigned.Contains(k)).OrderBy(k => k, StringComparer.Ordinal).ToArray();
         if (orphans.Length > 0)
             result.Add(new GroupDto("other", "Khác", "Các khóa từ current.conf chưa có trong danh mục (module mới).", orphans));
@@ -110,11 +128,25 @@ public static class ConfigSectionGroups
         return result;
     }
 
-    public static List<GroupDto> BuildCatalog()
+    public static List<GroupDto> BuildCatalog(IEnumerable<string> nextHubSiteKeys = null)
     {
-        var list = new List<GroupDto>(Catalog.Length);
+        var list = new List<GroupDto>(Catalog.Length + 1);
         foreach (var g in Catalog)
             list.Add(new GroupDto(g.Id, g.Title, g.Hint, g.Keys.ToArray()));
+
+        var nextHubKeys = (nextHubSiteKeys ?? Array.Empty<string>())
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(k => k, StringComparer.Ordinal)
+            .ToArray();
+        if (nextHubKeys.Length > 0)
+        {
+            list.Add(new GroupDto(
+                "src-adult-nexthub",
+                "Nguồn · NextHUB / 18+",
+                "Mỗi YAML NextHUB là một nguồn riêng. Có thể bật/tắt hoặc ghi đè cấu hình từng nguồn.",
+                nextHubKeys));
+        }
+
         return list;
     }
 
