@@ -1,10 +1,8 @@
 using Microsoft.AspNetCore.Mvc;
-using Newtonsoft.Json.Linq;
 using Shared;
 using Shared.Attributes;
 using Shared.Models.SISI.Base;
 using Shared.Services;
-using System;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Threading.Tasks;
@@ -73,37 +71,10 @@ public class ChaturbateController : BaseSisiController
 
             Dictionary<string, string> stream_links = null;
 
-            // The room page now often exposes a low-latency `llhls.m3u8`
-            // master with a separate audio rendition. Android hls.js can play
-            // a few seconds, then fail with audioTrackLoadError. Chaturbate's
-            // own edge endpoint returns its compatibility HLS URL and is also
-            // the extraction path used by current yt-dlp.
-            var edge = await httpHydra.Post<JObject>(
-                $"{init.host}/get_edge_hls_url_ajax/",
-                $"room_slug={Uri.EscapeDataString(baba)}",
-                addheaders: HeadersModel.Init(
-                    ("X-Requested-With", "XMLHttpRequest"),
-                    ("Accept", "application/json"),
-                    ("Referer", $"{init.host}/{baba}/")
-                )
-            );
-
-            string edgeUrl = edge?.Value<string>("url");
-            if (!string.IsNullOrWhiteSpace(edgeUrl))
+            await httpHydra.GetSpan(url, span =>
             {
-                stream_links = new Dictionary<string, string>
-                {
-                    ["auto"] = edgeUrl
-                };
-            }
-            else
-            {
-                // Keep the page parser as fallback for mirrors/older servers.
-                await httpHydra.GetSpan(url, span =>
-                {
-                    stream_links = ChaturbateTo.StreamLinks(span);
-                });
-            }
+                stream_links = ChaturbateTo.StreamLinks(span);
+            });
 
             if (stream_links == null || stream_links.Count == 0)
                 return e.Fail("stream_links", refresh_proxy: true);

@@ -511,10 +511,8 @@ install_custom_modules() {
         chaturbatebase=\"${CUSTOM_SOURCE_BASE}/Modules/Adult/Chaturbate\"
         chaturbatetarget=/root/lampac/module/Adult/Chaturbate
         if [ -d \"\$chaturbatetarget\" ]; then
-            for file in Controller.cs ModInit.cs; do
-                curl -fSL --retry 3 \"\$chaturbatebase/\$file?cb=\$syncstamp\" -o \"\$chaturbatetarget/\$file.tmp\"
-                mv \"\$chaturbatetarget/\$file.tmp\" \"\$chaturbatetarget/\$file\"
-            done
+            curl -fSL --retry 3 \"\$chaturbatebase/ModInit.cs?cb=\$syncstamp\" -o \"\$chaturbatetarget/ModInit.cs.tmp\"
+            mv \"\$chaturbatetarget/ModInit.cs.tmp\" \"\$chaturbatetarget/ModInit.cs\"
         fi
 
         for proxymodule in CubProxy TmdbProxy; do
@@ -819,10 +817,8 @@ case "${1:-}" in
             chaturbatebase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a036c7-lampac/Modules/Adult/Chaturbate"
             chaturbatetarget=/root/lampac/module/Adult/Chaturbate
             if [ -d "$chaturbatetarget" ]; then
-                for file in Controller.cs ModInit.cs; do
-                    curl -fSL --retry 3 "$chaturbatebase/$file?cb=$syncstamp" -o "$chaturbatetarget/$file.tmp"
-                    mv "$chaturbatetarget/$file.tmp" "$chaturbatetarget/$file"
-                done
+                curl -fSL --retry 3 "$chaturbatebase/ModInit.cs?cb=$syncstamp" -o "$chaturbatetarget/ModInit.cs.tmp"
+                mv "$chaturbatetarget/ModInit.cs.tmp" "$chaturbatetarget/ModInit.cs"
             fi
 
             for proxymodule in CubProxy TmdbProxy; do
