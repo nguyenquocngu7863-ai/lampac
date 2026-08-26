@@ -11,6 +11,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Content Update="lang\vi.js">
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+    </Content>
     <Content Update="plugins\extensions.json">
       <CopyToPublishDirectory>Always</CopyToPublishDirectory>
     </Content>

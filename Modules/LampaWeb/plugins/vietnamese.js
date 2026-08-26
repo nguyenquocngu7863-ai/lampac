@@ -170,6 +170,12 @@
 
   function addLangCatalog() {
     if (!window.Lampa || !Lampa.Lang || !Lampa.Lang.add) return;
+
+    // Expose Vietnamese in the language selector even on Lampa builds whose
+    // bundled meta.js predates our deployed vi.js module.
+    if (Lampa.Params && Lampa.Params.values && Lampa.Params.values.language)
+      Lampa.Params.values.language.vi = 'Tiếng Việt';
+
     Lampa.Lang.add({
       lampac_watch: { vi: 'Xem trực tuyến' },
       lampac_video: { vi: 'Video' },

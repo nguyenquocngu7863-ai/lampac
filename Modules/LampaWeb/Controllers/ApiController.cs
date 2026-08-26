@@ -1044,6 +1044,16 @@ public class ApiController : BaseController
         return ContentTo(plugin, "application/javascript; charset=utf-8");
     }
 
+    [HttpGet, AllowAnonymous]
+    [Route("lang/vi.js")]
+    [Route("lampa-main/lang/vi.js")]
+    public ActionResult VietnameseLang()
+    {
+        SetHeadersNoCache();
+        string lang = FileCache.ReadAllText($"{ModInit.modpath}/lang/vi.js", "lang-vi.js");
+        return ContentTo(lang, "application/javascript; charset=utf-8");
+    }
+
     private static readonly System.Net.Http.HttpClient LocalJackettHttpClient = new(
         new System.Net.Http.SocketsHttpHandler
         {
