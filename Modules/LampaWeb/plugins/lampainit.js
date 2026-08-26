@@ -112,9 +112,8 @@
     if (typeof Lampa !== 'undefined') {
       clearInterval(timer);
 
-      // Keep the Lampac client in Vietnamese across frontend refreshes. The
-      // built-in vietnamese.js overlay fills addon strings missing from Lampa.
-      Lampa.Storage.set('language', 'vi');
+      // Language selection is user-controlled in Settings → Interface.
+      // Do not force `vi`: Lampa must load the complete standalone vi.js first.
 	  
       if (lampainit_invc)
         lampainit_invc.appload();

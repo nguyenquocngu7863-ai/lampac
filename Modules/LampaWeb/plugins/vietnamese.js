@@ -220,8 +220,7 @@
 
     addLangCatalog();
     installSetting();
-    Lampa.Storage.set('language', 'vi');
-    Lampa.Storage.set('tmdb_lang', 'vi');
+    // Core language and TMDB language are selected manually by the user.
     schedule(document.body);
 
     var observer = new MutationObserver(function (mutations) {
