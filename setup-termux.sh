@@ -7,7 +7,7 @@
 #   bash setup-termux.sh            # install & run
 #   bash setup-termux.sh --install  # install only
 #   bash setup-termux.sh --run      # run only (skip install)
-#   bash setup-termux.sh --sync     # apply custom modules and runtime settings without replacing Lampac
+#   bash setup-termux.sh --sync     # repair browser runtime + apply custom modules without replacing Lampac
 #   bash setup-termux.sh --update   # update to latest release
 #
 set -euo pipefail
@@ -61,7 +61,7 @@ show_help() {
     printf "${BOLD}Options:${RESET}\n"
     printf "  ${GREEN}--install${RESET}    Install proot-distro + Ubuntu + .NET + Lampac\n"
     printf "  ${GREEN}--run${RESET}        Run Lampac (skip install)\n"
-    printf "  ${GREEN}--sync${RESET}       Apply custom modules + Termux runtime settings without replacing Lampac\n"
+    printf "  ${GREEN}--sync${RESET}       Repair browser runtime + apply custom modules without replacing Lampac\n"
     printf "  ${GREEN}--update${RESET}     Update Lampac to latest release\n"
     printf "  ${GREEN}--help${RESET}       Show this help\n\n"
     printf "${BOLD}Environment:${RESET}\n"
@@ -250,7 +250,18 @@ install_lampac_in_ubuntu() {
     \"proxy_downloads\": true
   },
   \"disableEng\": true,
-  \"chromium\": { \"enable\": false },
+  \"chromium\": {
+    \"enable\": true,
+    \"Headless\": true,
+    \"executablePath\": \"/usr/bin/google-chrome-stable\",
+    \"Args\": [
+      \"--no-sandbox\",
+      \"--disable-setuid-sandbox\",
+      \"--disable-dev-shm-usage\",
+      \"--disable-gpu\"
+    ],
+    \"context\": { \"keepopen\": false, \"min\": 0, \"max\": 1 }
+  },
   \"firefox\":  { \"enable\": false },
   \"rch\":      { \"enable\": false },
   \"WAF\":      { \"enable\": false },
@@ -270,7 +281,37 @@ CONF
     ok "Config ready"
 }
 
-# ─── Termux runtime profile + custom modules ─────────────────────────────────
+# ─── Browser runtime, Termux profile + custom modules ────────────────────────
+
+install_chromium_in_ubuntu() {
+    info "Checking Chrome/Chromium for browser-backed sources..."
+
+    if proot-distro login ubuntu -- bash -c 'test -x /usr/bin/google-chrome-stable || test -x /usr/bin/chromium'; then
+        ok "Chrome/Chromium executable found"
+        return 0
+    fi
+
+    if proot-distro login ubuntu -- bash -c '
+        set -euo pipefail
+        export DEBIAN_FRONTEND=noninteractive
+        arch=$(dpkg --print-architecture)
+        case "$arch" in
+            arm64) url="https://dl.google.com/linux/direct/google-chrome-stable_current_arm64.deb" ;;
+            amd64) url="https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb" ;;
+            *) echo "Unsupported Debian architecture: $arch" >&2; exit 2 ;;
+        esac
+        apt-get update -qq
+        apt-get install -y -qq ca-certificates curl
+        curl -fL --retry 3 "$url" -o /tmp/google-chrome.deb
+        apt-get install -y /tmp/google-chrome.deb
+        rm -f /tmp/google-chrome.deb
+    '; then
+        ok "Chrome installed for Mirage/Phantom/Spectre"
+    else
+        warn "Could not install Chrome automatically; browser-backed sources remain unavailable"
+        return 0
+    fi
+}
 
 ensure_runtime_config() {
     info "Applying Termux runtime configuration (ENG sources disabled)..."
@@ -305,8 +346,40 @@ ensure_runtime_config() {
             fi
         fi
 
-        # Chromium is disabled only in the new-install template. Do not turn it
-        # off again here: modules such as Mirage require configured Chrome.
+        # Repair only the exact one-line Chromium setting written by older
+        # versions of this Termux script. It accidentally disabled Mirage,
+        # Phantom and Spectre together with ENG sources. A normal/detailed
+        # user-managed Chromium section is left untouched.
+        if [ -x /usr/bin/google-chrome-stable ]; then
+            browser=/usr/bin/google-chrome-stable
+        elif [ -x /usr/bin/chromium ]; then
+            browser=/usr/bin/chromium
+        else
+            browser=""
+        fi
+
+        if grep -q "^[[:space:]]*\"chromium\"[[:space:]]*:[[:space:]]*{[[:space:]]*\"enable\"[[:space:]]*:[[:space:]]*false[[:space:]]*}[[:space:]]*,[[:space:]]*$" "$file"; then
+            if [ -n "$browser" ]; then
+                sed -i "/^[[:space:]]*\"chromium\"[[:space:]]*:[[:space:]]*{[[:space:]]*\"enable\"[[:space:]]*:[[:space:]]*false[[:space:]]*}[[:space:]]*,[[:space:]]*$/c\\  \"chromium\": {\n    \"enable\": true,\n    \"Headless\": true,\n    \"executablePath\": \"$browser\",\n    \"Args\": [\"--no-sandbox\", \"--disable-setuid-sandbox\", \"--disable-dev-shm-usage\", \"--disable-gpu\"],\n    \"context\": { \"keepopen\": false, \"min\": 0, \"max\": 1 }\n  }," "$file"
+                echo "  [chromium] repaired legacy disable; Mirage/Phantom/Spectre enabled"
+            else
+                echo "  [chromium] warning: legacy disable found but no Chrome/Chromium executable exists"
+            fi
+        fi
+
+        # Validate only when Chromium is enabled. disableEng is intentionally
+        # independent and does not disable browser-backed Russian sources.
+        chromium_block=$(sed -n "/^[[:space:]]*\"chromium\"[[:space:]]*:/,/^[[:space:]]*},[[:space:]]*$/p" "$file")
+        if [ -n "$browser" ] && printf "%s\n" "$chromium_block" | grep -q "\"enable\"[[:space:]]*:[[:space:]]*true"; then
+            if timeout 60 "$browser" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --dump-dom https://example.com 2>/dev/null | grep -q "Example Domain"; then
+                echo "  [chromium] self-test OK"
+            elif timeout 60 "$browser" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --no-zygote --single-process --dump-dom https://example.com 2>/dev/null | grep -q "Example Domain"; then
+                sed -i "/^[[:space:]]*\"chromium\"[[:space:]]*:/,/^[[:space:]]*},[[:space:]]*$/s#\"Args\"[[:space:]]*:[^]]*]#\"Args\": [\"--no-sandbox\", \"--disable-setuid-sandbox\", \"--disable-dev-shm-usage\", \"--disable-gpu\", \"--no-zygote\", \"--single-process\"]#" "$file"
+                echo "  [chromium] self-test fixed with proot renderer flags"
+            else
+                echo "  [chromium] WARNING: executable exists but headless rendering failed"
+            fi
+        fi
 
         if [ -f /root/lampac/init.yaml ]; then
             echo "  warning: init.yaml also exists and may override init.conf"
@@ -891,10 +964,11 @@ main() {
                 exit 1
             fi
 
+            install_chromium_in_ubuntu
             ensure_runtime_config
             install_custom_modules
             create_launcher
-            ok "Custom modules + runtime settings applied"
+            ok "Custom modules + browser/runtime settings applied"
             ;;
         "update")
             info "Updating Lampac inside Ubuntu..."
@@ -924,6 +998,7 @@ main() {
                 rm -f /tmp/*.bak
                 echo "Update complete!"
             '
+            install_chromium_in_ubuntu
             ensure_runtime_config
             install_custom_modules
             create_launcher
@@ -933,6 +1008,7 @@ main() {
             install_termux_deps
             install_ubuntu
             install_lampac_in_ubuntu
+            install_chromium_in_ubuntu
             ensure_runtime_config
             install_custom_modules
             create_launcher
