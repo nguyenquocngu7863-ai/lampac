@@ -437,8 +437,8 @@ install_custom_modules() {
         if [ -d "\$langdir" ]; then
             cp "\$webtarget/lang/vi.js" "\$langdir/vi.js"
             meta="\$langdir/meta.js"
-            if [ -f "\$meta" ] && ! grep -q "^[[:space:]]*vi:" "\$meta"; then
-                sed -i '/^[[:space:]]*languages[[:space:]]*:[[:space:]]*{/a\        vi: { code: "vi", name: "Tiếng Việt", lang_choice_title: "Chào mừng", lang_choice_subtitle: "Chọn ngôn ngữ của bạn" },' "\$meta"
+            if [ -f "\$meta" ] && ! grep -qE '(^|[,{])[[:space:]]*vi[[:space:]]*:' "\$meta"; then
+                sed -i -E '0,/languages[[:space:]]*:[[:space:]]*\{/{s/languages[[:space:]]*:[[:space:]]*\{/languages: { vi: { code: "vi", name: "Tiếng Việt", lang_choice_title: "Chào mừng", lang_choice_subtitle: "Chọn ngôn ngữ của bạn" },/}' "\$meta"
             fi
         fi
 
@@ -671,8 +671,8 @@ case "${1:-}" in
             if [ -d "$langdir" ]; then
                 cp "$webtarget/lang/vi.js" "$langdir/vi.js"
                 meta="$langdir/meta.js"
-                if [ -f "$meta" ] && ! grep -q "^[[:space:]]*vi:" "$meta"; then
-                    sed -i '/^[[:space:]]*languages[[:space:]]*:[[:space:]]*{/a\        vi: { code: "vi", name: "Tiếng Việt", lang_choice_title: "Chào mừng", lang_choice_subtitle: "Chọn ngôn ngữ của bạn" },' "$meta"
+                if [ -f "$meta" ] && ! grep -qE '(^|[,{])[[:space:]]*vi[[:space:]]*:' "$meta"; then
+                    sed -i -E '0,/languages[[:space:]]*:[[:space:]]*\{/{s/languages[[:space:]]*:[[:space:]]*\{/languages: { vi: { code: "vi", name: "Tiếng Việt", lang_choice_title: "Chào mừng", lang_choice_subtitle: "Chọn ngôn ngữ của bạn" },/}' "$meta"
                 fi
             fi
 
