@@ -558,13 +558,18 @@ install_custom_modules() {
         # The AdminPanel is protected by the Lampac root password. If it is
         # already installed/enabled, keep its Vietnamese UI in sync too.
         adminbase=\"${CUSTOM_SOURCE_BASE}/Modules/AdminPanel\"
+        adminstamp=\$(date +%s)
         for admintarget in /root/lampac/module/AdminPanel /root/lampac/mods/AdminPanel; do
             [ -d \"\$admintarget\" ] || continue
             for file in AdminPanelController.cs ConfigSectionGroups.cs ModInit.cs manifest.json auth.html index.html; do
-                curl -fSL --retry 3 \"\$adminbase/\$file\" -o \"\$admintarget/\$file.tmp\"
+                curl -fSL --retry 3 \"\$adminbase/\$file?cb=\$adminstamp\" -o \"\$admintarget/\$file.tmp\"
                 mv \"\$admintarget/\$file.tmp\" \"\$admintarget/\$file\"
             done
-            echo \"  [admin] synced active candidate: \$admintarget\"
+            if ! grep -q 'src-adult-nexthub' \"\$admintarget/ConfigSectionGroups.cs\"; then
+                echo \"  [admin] ERROR: downloaded grouping is stale: \$admintarget\" >&2
+                exit 1
+            fi
+            echo \"  [admin] synced and verified: \$admintarget\"
         done
     "
 
@@ -835,13 +840,18 @@ case "${1:-}" in
             done
 
             adminbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a036c7-lampac/Modules/AdminPanel"
+            adminstamp=$(date +%s)
             for admintarget in /root/lampac/module/AdminPanel /root/lampac/mods/AdminPanel; do
                 [ -d "$admintarget" ] || continue
                 for file in AdminPanelController.cs ConfigSectionGroups.cs ModInit.cs manifest.json auth.html index.html; do
-                    curl -fSL --retry 3 "$adminbase/$file" -o "$admintarget/$file.tmp"
+                    curl -fSL --retry 3 "$adminbase/$file?cb=$adminstamp" -o "$admintarget/$file.tmp"
                     mv "$admintarget/$file.tmp" "$admintarget/$file"
                 done
-                echo "  [admin] synced active candidate: $admintarget"
+                if ! grep -q 'src-adult-nexthub' "$admintarget/ConfigSectionGroups.cs"; then
+                    echo "  [admin] ERROR: downloaded grouping is stale: $admintarget" >&2
+                    exit 1
+                fi
+                echo "  [admin] synced and verified: $admintarget"
             done
             echo "Update complete!"
         '
