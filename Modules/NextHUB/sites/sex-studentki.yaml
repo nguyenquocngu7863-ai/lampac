@@ -1,4 +1,9 @@
 enable: true
+# Always use the local NextHUB definition. Account/device Kit profiles can
+# otherwise replace this channel with api.xsena.red, whose copy may still point
+# at the retired sex-studentki.live domain.
+kit: false
+rhub: false
 displayindex: 109
 displayname: SEX Studentki
 rch_access: apk
