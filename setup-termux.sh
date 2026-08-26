@@ -258,9 +258,7 @@ install_lampac_in_ubuntu() {
       \"--no-sandbox\",
       \"--disable-setuid-sandbox\",
       \"--disable-dev-shm-usage\",
-      \"--disable-gpu\",
-      \"--no-zygote\",
-      \"--single-process\"
+      \"--disable-gpu\"
     ],
     \"context\": { \"keepopen\": false, \"min\": 0, \"max\": 1 }
   },
@@ -362,17 +360,12 @@ ensure_runtime_config() {
 
         if grep -q "^[[:space:]]*\"chromium\"[[:space:]]*:[[:space:]]*{[[:space:]]*\"enable\"[[:space:]]*:[[:space:]]*false[[:space:]]*}[[:space:]]*,[[:space:]]*$" "$file"; then
             if [ -n "$browser" ]; then
-                sed -i "/^[[:space:]]*\"chromium\"[[:space:]]*:[[:space:]]*{[[:space:]]*\"enable\"[[:space:]]*:[[:space:]]*false[[:space:]]*}[[:space:]]*,[[:space:]]*$/c\\  \"chromium\": {\n    \"enable\": true,\n    \"Headless\": true,\n    \"executablePath\": \"$browser\",\n    \"Args\": [\"--no-sandbox\", \"--disable-setuid-sandbox\", \"--disable-dev-shm-usage\", \"--disable-gpu\", \"--no-zygote\", \"--single-process\"],\n    \"context\": { \"keepopen\": false, \"min\": 0, \"max\": 1 }\n  }," "$file"
+                sed -i "/^[[:space:]]*\"chromium\"[[:space:]]*:[[:space:]]*{[[:space:]]*\"enable\"[[:space:]]*:[[:space:]]*false[[:space:]]*}[[:space:]]*,[[:space:]]*$/c\\  \"chromium\": {\n    \"enable\": true,\n    \"Headless\": true,\n    \"executablePath\": \"$browser\",\n    \"Args\": [\"--no-sandbox\", \"--disable-setuid-sandbox\", \"--disable-dev-shm-usage\", \"--disable-gpu\"],\n    \"context\": { \"keepopen\": false, \"min\": 0, \"max\": 1 }\n  }," "$file"
                 echo "  [chromium] repaired legacy disable; Mirage/Phantom/Spectre enabled"
             else
                 echo "  [chromium] warning: legacy disable found but no Chrome/Chromium executable exists"
             fi
         fi
-
-        # The accidental compact-disable migration also discarded the two
-        # renderer flags previously learned by the Termux self-test. Repair
-        # only that exact generated Args list; preserve custom user Args.
-        sed -i "/^[[:space:]]*\"chromium\"[[:space:]]*:/,/^[[:space:]]*},[[:space:]]*$/s#\"Args\": \[\"--no-sandbox\", \"--disable-setuid-sandbox\", \"--disable-dev-shm-usage\", \"--disable-gpu\"\]#\"Args\": [\"--no-sandbox\", \"--disable-setuid-sandbox\", \"--disable-dev-shm-usage\", \"--disable-gpu\", \"--no-zygote\", \"--single-process\"]#" "$file"
 
         # Validate only when Chromium is enabled. disableEng is intentionally
         # independent and does not disable browser-backed Russian sources.
