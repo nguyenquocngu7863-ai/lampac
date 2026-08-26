@@ -425,9 +425,26 @@ jackett update
 
 `lampac start` chỉ tự khởi động AIOStreams rồi chạy Lampac. Jackett có lifecycle độc lập để dễ đo hiệu năng: chạy `jackett start` khi cần dùng và `jackett stop` khi muốn giải phóng tài nguyên; `lampac stop` không dừng Jackett. AIOStreams có thể dùng URL/API key của Jackett theo cấu hình addon riêng trong dashboard AIO. Jackett lắng nghe mạng LAN để thiết bị khác mở dashboard; không đưa port `9117` ra Internet, đồng thời không commit hoặc chia sẻ API key.
 
-## Trạng thái nguồn ENG
+## Trạng thái nguồn ENG và Mirage
 
-Các nguồn ENG embed đang tạm ẩn bằng `disableEng: true`; Chromium cũng bị tắt để giảm RAM và tránh flow headless chưa ổn định. AIOStreams vẫn hoạt động độc lập khi section `AIOStreams` có `enable: true` và manifest hợp lệ. Khi muốn thử lại nguồn ENG, đổi `disableEng` thành `false` và tự cấu hình Chromium trước khi restart Lampac.
+Bản cài mới mặc định dùng `disableEng: true` và `chromium.enable: false` để giảm RAM. `--sync`/`--update` không còn ép lại hai giá trị này, nên lựa chọn bật nguồn của người dùng được giữ nguyên. AIOStreams vẫn hoạt động độc lập khi section `AIOStreams` có `enable: true` và manifest hợp lệ.
+
+Mirage không bị xóa: module mặc định `enable: false` và tự ẩn khi Chromium/Playwright bị tắt. Nguồn này cần Google Chrome/Edge và khoảng 1 GB RAM. Muốn bật, cấu hình đường dẫn Chrome thật rồi restart:
+
+```jsonc
+"disableEng": false,
+"chromium": {
+  "enable": true,
+  "executablePath": "/usr/bin/google-chrome-stable",
+  "context": { "keepopen": false, "min": 0, "max": 1 }
+},
+"Mirage": {
+  "enable": true,
+  "m4s": false
+}
+```
+
+Không dùng đường dẫn trên nếu file không tồn tại; kiểm tra bằng `command -v google-chrome-stable || command -v microsoft-edge` trong Ubuntu proot. Chromium thường của distro không đáp ứng yêu cầu Mirage.
 
 ## Thêm/sửa plugin LampaWeb vào bản Lampac trong `/root`
 

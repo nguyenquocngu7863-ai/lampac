@@ -284,15 +284,14 @@ ensure_runtime_config() {
         sed -i "s/^[[:space:]]*}:,/  },/" "$file"
         sed -i "s/\"GStreamer\",[[:space:]]*//g; s/,[[:space:]]*\"GStreamer\"//g" "$file"
 
-        # Temporarily hide conventional ENG providers while the embed flow is
-        # under repair. AIOStreams remains independently controlled by its own
-        # enable/manifest settings.
-        if grep -q "^[[:space:]]*\"disableEng\"[[:space:]]*:" "$file"; then
-            sed -i "s/^[[:space:]]*\"disableEng\"[[:space:]]*:[[:space:]]*false/  \"disableEng\": true/" "$file"
-        elif grep -q "^[[:space:]]*\"listen\"[[:space:]]*:" "$file"; then
-            sed -i "/^[[:space:]]*\"listen\"[[:space:]]*:/i\  \"disableEng\": true," "$file"
-        else
-            echo "  warning: could not add disableEng automatically"
+        # New installs default to disabled ENG sources, but preserve an
+        # explicit user choice on existing installations.
+        if ! grep -q "^[[:space:]]*\"disableEng\"[[:space:]]*:" "$file"; then
+            if grep -q "^[[:space:]]*\"listen\"[[:space:]]*:" "$file"; then
+                sed -i "/^[[:space:]]*\"listen\"[[:space:]]*:/i\  \"disableEng\": true," "$file"
+            else
+                echo "  warning: could not add disableEng automatically"
+            fi
         fi
 
         # Materialize the local Jackett section in init.conf so AdminPanel can
@@ -306,17 +305,15 @@ ensure_runtime_config() {
             fi
         fi
 
-        # Do not launch Playwright/Chromium while ENG embed sources are paused.
-        if grep -q "^[[:space:]]*\"chromium\"[[:space:]]*:" "$file"; then
-            sed -i "/^[[:space:]]*\"chromium\"[[:space:]]*:/,/^[[:space:]]*},[[:space:]]*$/ s/\"enable\"[[:space:]]*:[[:space:]]*true/\"enable\": false/" "$file"
-        fi
+        # Chromium is disabled only in the new-install template. Do not turn it
+        # off again here: modules such as Mirage require configured Chrome.
 
         if [ -f /root/lampac/init.yaml ]; then
             echo "  warning: init.yaml also exists and may override init.conf"
         fi
     '
 
-    ok "Runtime configuration applied; ENG sources and Chromium are disabled"
+    ok "Runtime configuration applied; existing ENG/Chromium choices preserved"
 }
 
 install_custom_modules() {
@@ -592,16 +589,11 @@ case "${1:-}" in
             if [ -f "$file" ]; then
                 sed -i "s/^[[:space:]]*}:,/  },/" "$file"
                 sed -i "s/\"GStreamer\",[[:space:]]*//g; s/,[[:space:]]*\"GStreamer\"//g" "$file"
-                if grep -q "^[[:space:]]*\"disableEng\"[[:space:]]*:" "$file"; then
-                    sed -i "s/^[[:space:]]*\"disableEng\"[[:space:]]*:[[:space:]]*false/  \"disableEng\": true/" "$file"
-                elif grep -q "^[[:space:]]*\"listen\"[[:space:]]*:" "$file"; then
+                if ! grep -q "^[[:space:]]*\"disableEng\"[[:space:]]*:" "$file" && grep -q "^[[:space:]]*\"listen\"[[:space:]]*:" "$file"; then
                     sed -i "/^[[:space:]]*\"listen\"[[:space:]]*:/i\  \"disableEng\": true," "$file"
                 fi
                 if ! grep -q "^[[:space:]]*\"Jackett\"[[:space:]]*:" "$file" && grep -q "^[[:space:]]*\"listen\"[[:space:]]*:" "$file"; then
                     sed -i "/^[[:space:]]*\"listen\"[[:space:]]*:/i\  \"Jackett\": { \"enable\": true, \"url\": \"\", \"port\": 9117, \"api_key\": \"\", \"proxy_downloads\": true }," "$file"
-                fi
-                if grep -q "^[[:space:]]*\"chromium\"[[:space:]]*:" "$file"; then
-                    sed -i "/^[[:space:]]*\"chromium\"[[:space:]]*:/,/^[[:space:]]*},[[:space:]]*$/ s/\"enable\"[[:space:]]*:[[:space:]]*true/\"enable\": false/" "$file"
                 fi
             fi
 
