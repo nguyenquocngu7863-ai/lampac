@@ -4,7 +4,13 @@ displayname: PornOne
 rch_access: apk,cors
 stream_access: apk,cors
 rchstreamproxy: web
+streamproxy: true
 host: https://pornone.com
+headers_stream:
+  referer: "{host}/"
+  origin: "{host}"
+  user-agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+  accept: "video/webm,video/mp4,video/*;q=0.9,*/*;q=0.5"
 ignore_no_picture: false
 priorityBrowser: http
 
