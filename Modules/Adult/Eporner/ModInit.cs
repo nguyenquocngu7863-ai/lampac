@@ -43,6 +43,13 @@ public class ModInit : IModuleLoaded, IModuleSisi
             rch_access = "apk,cors",
             stream_access = "apk,cors",
 
+            // Do not let account/device Kit profiles replace the local proxy
+            // policy with direct CDN playback.
+            kit = false,
+            rhub = false,
+            qualitys_proxy = false,
+            url_reserve = false,
+
             // Eporner's CDN rejects naked app/player requests and asks the user
             // to watch on the website. Fetch streams through Lampac with the
             // same origin context as the Eporner web player.
