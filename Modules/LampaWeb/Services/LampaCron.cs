@@ -122,9 +122,10 @@ public static class LampaCron
             }
 
             // The frontend archive can be installed after setup-termux --sync,
-            // or replace lang/meta.js during a later automatic update. Reapply
-            // the custom language every cron pass after the frontend is ready.
+            // or replace custom files during a later automatic update. Reapply
+            // the maintained language and HLS runtime every cron pass.
             InstallVietnameseLanguage();
+            InstallHlsRuntime();
         }
         catch (Exception ex)
         {
@@ -168,5 +169,27 @@ public static class LampaCron
 
         if (!ReferenceEquals(patched, meta) && patched != meta)
             File.WriteAllText(metaPath, patched);
+    }
+
+    static void InstallHlsRuntime()
+    {
+        string source = Path.Combine(ModInit.modpath, "vendor", "hls", "hls.js");
+        string frontendRoot = "wwwroot/lampa-main";
+        if (!File.Exists(source) || !File.Exists(Path.Combine(frontendRoot, "app.min.js")))
+            return;
+
+        // Lampa intentionally spells this directory `vender`.
+        string targetDirectory = Path.Combine(frontendRoot, "vender", "hls");
+        Directory.CreateDirectory(targetDirectory);
+
+        string target = Path.Combine(targetDirectory, "hls.js");
+        if (File.Exists(target) && CrypTo.md5File(source) == CrypTo.md5File(target))
+            return;
+
+        // Replace atomically so a browser cannot receive half of the 600 KB
+        // bundle while LampaCron is refreshing the frontend.
+        string temporary = target + ".tmp";
+        File.Copy(source, temporary, true);
+        File.Move(temporary, target, true);
     }
 }

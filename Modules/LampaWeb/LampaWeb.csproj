@@ -14,6 +14,12 @@
     <Content Update="lang\vi.js">
       <CopyToPublishDirectory>Always</CopyToPublishDirectory>
     </Content>
+    <Content Update="vendor\hls\hls.js">
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+    </Content>
+    <Content Update="vendor\hls\LICENSE">
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+    </Content>
     <Content Update="plugins\extensions.json">
       <CopyToPublishDirectory>Always</CopyToPublishDirectory>
     </Content>

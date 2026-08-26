@@ -545,6 +545,17 @@ install_custom_modules() {
             curl -fSL --retry 3 "\$webbase/\$file" -o "\$webtarget/\$file"
         done
 
+        mkdir -p "\$webtarget/vendor/hls"
+        for file in hls.js LICENSE; do
+            curl -fSL --retry 3 "\$webbase/vendor/hls/\$file?cb=\$syncstamp" -o "\$webtarget/vendor/hls/\$file.tmp"
+            mv "\$webtarget/vendor/hls/\$file.tmp" "\$webtarget/vendor/hls/\$file"
+        done
+        if [ -f /root/lampac/wwwroot/lampa-main/app.min.js ]; then
+            mkdir -p /root/lampac/wwwroot/lampa-main/vender/hls
+            cp "\$webtarget/vendor/hls/hls.js" /root/lampac/wwwroot/lampa-main/vender/hls/hls.js.tmp
+            mv /root/lampac/wwwroot/lampa-main/vender/hls/hls.js.tmp /root/lampac/wwwroot/lampa-main/vender/hls/hls.js
+        fi
+
         # base.conf is part of the published app, not the dynamic module.
         # Sync it too so default LampaWeb subtitle flags match the controller
         # and do not remain stuck at an older release's defaults.
@@ -844,6 +855,17 @@ case "${1:-}" in
             for file in Controllers/ApiController.cs ModInit.cs Models/InitPlugins.cs Services/LampaCron.cs lang/vi.js plugins/lampainit.js plugins/jackett.js plugins/online-compact.js plugins/vietnamese.js plugins/subsense-auto.js plugins/subsense.js plugins/subfinder.js plugins/stremiosub.js plugins/adminpanel.js; do
                 curl -fSL --retry 3 "$webbase/$file" -o "$webtarget/$file"
             done
+
+            mkdir -p "$webtarget/vendor/hls"
+            for file in hls.js LICENSE; do
+                curl -fSL --retry 3 "$webbase/vendor/hls/$file?cb=$syncstamp" -o "$webtarget/vendor/hls/$file.tmp"
+                mv "$webtarget/vendor/hls/$file.tmp" "$webtarget/vendor/hls/$file"
+            done
+            if [ -f /root/lampac/wwwroot/lampa-main/app.min.js ]; then
+                mkdir -p /root/lampac/wwwroot/lampa-main/vender/hls
+                cp "$webtarget/vendor/hls/hls.js" /root/lampac/wwwroot/lampa-main/vender/hls/hls.js.tmp
+                mv /root/lampac/wwwroot/lampa-main/vender/hls/hls.js.tmp /root/lampac/wwwroot/lampa-main/vender/hls/hls.js
+            fi
 
             langdir=/root/lampac/wwwroot/lampa-main/lang
             mkdir -p "$langdir"
