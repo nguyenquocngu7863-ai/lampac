@@ -462,12 +462,13 @@ install_custom_modules() {
         # NextHUB site definitions change more often than release binaries.
         # Keep the known fixed definitions in sync so an update cannot leave
         # the retired sex-studentki.live domain in the runtime tree.
+        syncstamp=\$(date +%s)
         nexthubrootbase=\"${CUSTOM_SOURCE_BASE}/Modules/NextHUB\"
         nexthubroottarget=/root/lampac/module/NextHUB
         nexthubtarget=\"\$nexthubroottarget/sites\"
         if [ -d \"\$nexthubtarget\" ]; then
             for file in sex-studentki.yaml noodlemagazine.yaml pornone.yaml cam4.yaml trahkino.yaml rusvideos.yaml; do
-                curl -fSL --retry 3 \"\$nexthubrootbase/sites/\$file\" -o \"\$nexthubtarget/\$file.tmp\"
+                curl -fSL --retry 3 \"\$nexthubrootbase/sites/\$file?cb=\$syncstamp\" -o \"\$nexthubtarget/\$file.tmp\"
                 mv \"\$nexthubtarget/\$file.tmp\" \"\$nexthubtarget/\$file\"
             done
             for file in CategoryVi.cs manifest.json; do
@@ -502,7 +503,7 @@ install_custom_modules() {
         for adultmodule in BongaCams Chaturbate Ebalovo Eporner HQporner PornHub Porntrex Runetki Spankbang Xhamster Xnxx Xvideos XvideosRED; do
             adulttarget=\"/root/lampac/module/Adult/\$adultmodule\"
             if [ -d \"\$adulttarget\" ]; then
-                curl -fSL --retry 3 \"${CUSTOM_SOURCE_BASE}/Modules/Adult/\$adultmodule/Service.cs\" -o \"\$adulttarget/Service.cs.tmp\"
+                curl -fSL --retry 3 \"${CUSTOM_SOURCE_BASE}/Modules/Adult/\$adultmodule/Service.cs?cb=\$syncstamp\" -o \"\$adulttarget/Service.cs.tmp\"
                 mv \"\$adulttarget/Service.cs.tmp\" \"\$adulttarget/Service.cs\"
             fi
         done
@@ -764,12 +765,13 @@ case "${1:-}" in
             curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a036c7-lampac/jackettctl.sh" -o /root/jackettctl.sh
             chmod +x /root/aioctl.sh /root/jackettctl.sh
 
+            syncstamp=$(date +%s)
             nexthubrootbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a036c7-lampac/Modules/NextHUB"
             nexthubroottarget=/root/lampac/module/NextHUB
             nexthubtarget="$nexthubroottarget/sites"
             if [ -d "$nexthubtarget" ]; then
                 for file in sex-studentki.yaml noodlemagazine.yaml pornone.yaml cam4.yaml trahkino.yaml rusvideos.yaml; do
-                    curl -fSL --retry 3 "$nexthubrootbase/sites/$file" -o "$nexthubtarget/$file.tmp"
+                    curl -fSL --retry 3 "$nexthubrootbase/sites/$file?cb=$syncstamp" -o "$nexthubtarget/$file.tmp"
                     mv "$nexthubtarget/$file.tmp" "$nexthubtarget/$file"
                 done
                 for file in CategoryVi.cs manifest.json; do
@@ -800,7 +802,7 @@ case "${1:-}" in
             for adultmodule in BongaCams Chaturbate Ebalovo Eporner HQporner PornHub Porntrex Runetki Spankbang Xhamster Xnxx Xvideos XvideosRED; do
                 adulttarget="/root/lampac/module/Adult/$adultmodule"
                 if [ -d "$adulttarget" ]; then
-                    curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a036c7-lampac/Modules/Adult/$adultmodule/Service.cs" -o "$adulttarget/Service.cs.tmp"
+                    curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a036c7-lampac/Modules/Adult/$adultmodule/Service.cs?cb=$syncstamp" -o "$adulttarget/Service.cs.tmp"
                     mv "$adulttarget/Service.cs.tmp" "$adulttarget/Service.cs"
                 fi
             done
