@@ -90,11 +90,11 @@ public static class RunetkiTo
                 playlist_url = "submenu",
                 submenu = new List<MenuItem>(5)
                 {
-                    new("Новые", $"{host}/runetki?sort=new"),
-                    new("Пары", $"{host}/runetki?sort=couples"),
-                    new("Девушки", $"{host}/runetki?sort=female"),
-                    new("Парни", $"{host}/runetki?sort=male"),
-                    new("Транссексуалы", $"{host}/runetki?sort=transsexual")
+                    new("Mới nhất", $"{host}/runetki?sort=new"),
+                    new("Cặp đôi", $"{host}/runetki?sort=couples"),
+                    new("Nữ", $"{host}/runetki?sort=female"),
+                    new("Nam", $"{host}/runetki?sort=male"),
+                    new("Chuyển giới", $"{host}/runetki?sort=transsexual")
                 }
             }
         };

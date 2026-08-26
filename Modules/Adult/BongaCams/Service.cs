@@ -88,12 +88,12 @@ public static class BongaCamsTo
                 playlist_url = "submenu",
                 submenu = new List<MenuItem>(6)
                 {
-                    new("Новые", $"{host}/bgs?sort=new"),
-                    new("Пары", $"{host}/bgs?sort=couples"),
-                    new("Девушки", $"{host}/bgs?sort=female"),
-                    new("Русские модели", $"{host}/bgs?sort=female/tags/russian"),
-                    new("Парни", $"{host}/bgs?sort=male"),
-                    new("Транссексуалы", $"{host}/bgs?sort=transsexual")
+                    new("Mới nhất", $"{host}/bgs?sort=new"),
+                    new("Cặp đôi", $"{host}/bgs?sort=couples"),
+                    new("Nữ", $"{host}/bgs?sort=female"),
+                    new("Người mẫu Nga", $"{host}/bgs?sort=female/tags/russian"),
+                    new("Nam", $"{host}/bgs?sort=male"),
+                    new("Chuyển giới", $"{host}/bgs?sort=transsexual")
                 }
             }
         };

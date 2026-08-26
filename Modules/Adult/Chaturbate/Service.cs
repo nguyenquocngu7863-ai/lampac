@@ -92,10 +92,10 @@ public static class ChaturbateTo
         var sortmenu = new List<MenuItem>(5)
         {
             new("Tốt nhất", $"{host}/chu"),
-            new("Девушки", $"{host}/chu?sort=f"),
-            new("Пары", $"{host}/chu?sort=c"),
-            new("Парни", $"{host}/chu?sort=m"),
-            new("Транссексуалы", $"{host}/chu?sort=t")
+            new("Nữ", $"{host}/chu?sort=f"),
+            new("Cặp đôi", $"{host}/chu?sort=c"),
+            new("Nam", $"{host}/chu?sort=m"),
+            new("Chuyển giới", $"{host}/chu?sort=t")
         };
 
         menu = new List<MenuItem>(1)
