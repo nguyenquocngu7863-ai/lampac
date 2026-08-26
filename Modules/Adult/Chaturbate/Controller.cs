@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json.Linq;
 using Shared;
 using Shared.Attributes;
+using Shared.Models.Base;
 using Shared.Models.SISI.Base;
 using Shared.Services;
 using System;
