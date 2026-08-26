@@ -217,6 +217,50 @@
     });
   }
 
+  function useVietnameseTmdb() {
+    if (!window.Lampa || !Lampa.Storage) return false;
+    return Lampa.Storage.get('language', 'ru') === 'vi' || Lampa.Storage.get('tmdb_lang', 'ru') === 'vi';
+  }
+
+  function originalLogoUrl(url) {
+    if (!useVietnameseTmdb() || typeof url !== 'string' || url.indexOf('include_image_language=') < 0) return url;
+
+    // Keep metadata requests in Vietnamese, but request only English and
+    // language-neutral images so Lampa never selects a missing/broken vi logo.
+    return url.replace(/([?&]include_image_language=)[^&]*/i, '$1en%2Cnull');
+  }
+
+  function installTmdbLogoPolicy() {
+    if (window.lampac_vietnamese_tmdb_policy) return;
+    window.lampac_vietnamese_tmdb_policy = true;
+
+    if (window.$ && $.ajax) {
+      var originalAjax = $.ajax;
+      $.ajax = function (options) {
+        if (options && typeof options === 'object' && options.url)
+          options.url = originalLogoUrl(String(options.url));
+        else if (typeof options === 'string')
+          arguments[0] = originalLogoUrl(options);
+
+        return originalAjax.apply(this, arguments);
+      };
+    }
+
+    if (window.XMLHttpRequest && XMLHttpRequest.prototype) {
+      var originalOpen = XMLHttpRequest.prototype.open;
+      XMLHttpRequest.prototype.open = function (method, url) {
+        arguments[1] = originalLogoUrl(String(url || ''));
+        return originalOpen.apply(this, arguments);
+      };
+    }
+  }
+
+  function syncTmdbLanguage() {
+    if (!window.Lampa || !Lampa.Storage) return;
+    if (Lampa.Storage.get('language', 'ru') === 'vi' && Lampa.Storage.get('tmdb_lang', 'ru') !== 'vi')
+      Lampa.Storage.set('tmdb_lang', 'vi');
+  }
+
   function installSetting() {
     if (!window.Lampa || !Lampa.SettingsApi || window.lampac_vietnamese_setting) return;
     window.lampac_vietnamese_setting = true;
@@ -240,8 +284,15 @@
     installCoreLanguage();
     addLangCatalog();
     installSetting();
-    // Core language and TMDB language are selected manually by the user.
+    installTmdbLogoPolicy();
+    syncTmdbLanguage();
     schedule(document.body);
+
+    if (Lampa.Storage.listener) {
+      Lampa.Storage.listener.follow('change', function (event) {
+        if (event.name === 'language') syncTmdbLanguage();
+      });
+    }
 
     var observer = new MutationObserver(function (mutations) {
       if (!enabled()) return;
