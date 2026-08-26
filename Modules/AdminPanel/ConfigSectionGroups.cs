@@ -29,8 +29,8 @@ public static class ConfigSectionGroups
 
         new("realtime", "WebSocket và RCH", "Socket native và hub từ xa.",
             new[] { "WebSocket", "rch" }),
-        new("browser", "Trình duyệt (Playwright)", "Chromium / Firefox dùng cho tự động hóa.",
-            new[] { "chromium", "firefox" }),
+        new("browser", "Trình duyệt và nguồn Playwright", "Bật nguồn chưa đủ: Mirage/Phantom chỉ xuất hiện khi Chromium runtime khởi động thành công và executablePath trỏ tới Google Chrome/Edge hợp lệ.",
+            new[] { "chromium", "firefox", "Mirage", "Phantom" }),
         new("diagnostics", "Log và chẩn đoán", "Serilog, xử lý exception, openstat.",
             new[] { "serilog", "useDeveloperExceptionPage", "exceptionHandlerLogTarget", "exceptionHandlerLogFile", "watcherInit", "openstat" }),
 
@@ -51,7 +51,7 @@ public static class ConfigSectionGroups
             {
                 "Alloha", "Ashdi", "AsiaGe", "BamBoo", "CDNvideohub", "Collaps", "Eneyida", "FanCDN", "Filmix", "FilmixPartner", "FilmixTV", "FlixCDN",
                 "Geosaitebi", "GetsTV", "HDVB", "HdvbUA", "IptvOnline", "iRemux", "Kinobase", "Kinoflix", "Kinogo", "Kinotochka", "Kinoukr", "KinoPub",
-                "LeProduction", "Mirage", "Rezka", "RezkaPrem", "RutubeMovie", "Tortuga", "UaKino", "VideoDB", "Videoseed", "VeoVeo", "Vibix", "VkMovie", "VoKino",
+                "LeProduction", "Rezka", "RezkaPrem", "RutubeMovie", "Tortuga", "UaKino", "VideoDB", "Videoseed", "VeoVeo", "Vibix", "VkMovie", "VoKino",
                 "WebStreamr", "K20", "OpenDirectory", "Sootio", "AIOStreams", "CineWave"
             }),
         new("src-adult", "Nguồn · 18+", "SISI / trang người lớn.",
