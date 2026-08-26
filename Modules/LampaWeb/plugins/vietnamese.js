@@ -70,6 +70,7 @@
     'Изменить балансер': 'Đổi nguồn',
     'По умолчанию': 'Mặc định',
     'Неизвестно': 'Không xác định',
+    'Дубляж': 'Lồng tiếng',
 
     'Сейчас смотрят': 'Đang được xem',
     'Новые серии': 'Tập mới',
@@ -230,6 +231,18 @@
     return url.replace(/([?&]include_image_language=)[^&]*/i, '$1en%2Cnull');
   }
 
+  function sanitizeTmdbLogos(data) {
+    if (!useVietnameseTmdb() || !data || typeof data !== 'object' || !data.images || !Array.isArray(data.images.logos)) return data;
+
+    // Cached CUB/TMDB responses may still contain vi logos even after the URL
+    // policy changes. Remove them at the response boundary as well.
+    data.images.logos = data.images.logos.filter(function (logo) {
+      var code = String(logo && logo.iso_639_1 || '').toLowerCase().split(/[-_]/)[0];
+      return !code || code === 'en';
+    });
+    return data;
+  }
+
   function installTmdbLogoPolicy() {
     if (window.lampac_vietnamese_tmdb_policy) return;
     window.lampac_vietnamese_tmdb_policy = true;
@@ -237,10 +250,18 @@
     if (window.$ && $.ajax) {
       var originalAjax = $.ajax;
       $.ajax = function (options) {
-        if (options && typeof options === 'object' && options.url)
-          options.url = originalLogoUrl(String(options.url));
-        else if (typeof options === 'string')
-          arguments[0] = originalLogoUrl(options);
+        if (options && typeof options === 'object') {
+          if (options.url) options.url = originalLogoUrl(String(options.url));
+
+          var originalSuccess = options.success;
+          if (typeof originalSuccess === 'function') {
+            options.success = function (data) {
+              arguments[0] = sanitizeTmdbLogos(data);
+              return originalSuccess.apply(this, arguments);
+            };
+          }
+        }
+        else if (typeof options === 'string') arguments[0] = originalLogoUrl(options);
 
         return originalAjax.apply(this, arguments);
       };
