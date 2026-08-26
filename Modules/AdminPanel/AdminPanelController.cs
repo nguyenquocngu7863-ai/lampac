@@ -85,10 +85,19 @@ public class AdminPanelController : BaseController
         var result = new Dictionary<string, bool>(StringComparer.Ordinal);
         try
         {
-            var sitesDir = Path.GetFullPath(Path.Combine(ModInit.modpath, "..", "NextHUB", "sites"));
-            if (!Directory.Exists(sitesDir))
-                return result;
+            // AdminPanel itself may be loaded from mods/ while NextHUB still
+            // lives in module/. Search both loader roots instead of assuming
+            // both modules are siblings.
+            var sitesDirs = new[]
+            {
+                Path.GetFullPath(Path.Combine(ModInit.modpath, "..", "NextHUB", "sites")),
+                Path.GetFullPath(Path.Combine(ModInit.modpath, "..", "..", "module", "NextHUB", "sites")),
+                Path.GetFullPath(Path.Combine(ModInit.modpath, "..", "..", "mods", "NextHUB", "sites"))
+            }
+            .Distinct(StringComparer.Ordinal)
+            .Where(Directory.Exists);
 
+            foreach (var sitesDir in sitesDirs)
             foreach (var path in Directory.GetFiles(sitesDir, "*.yaml"))
             {
                 var slug = Path.GetFileNameWithoutExtension(path);

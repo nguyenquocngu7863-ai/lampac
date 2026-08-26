@@ -557,13 +557,15 @@ install_custom_modules() {
 
         # The AdminPanel is protected by the Lampac root password. If it is
         # already installed/enabled, keep its Vietnamese UI in sync too.
-        admintarget=/root/lampac/module/AdminPanel
-        if [ -d \"\$admintarget\" ]; then
-            adminbase=\"${CUSTOM_SOURCE_BASE}/Modules/AdminPanel\"
+        adminbase=\"${CUSTOM_SOURCE_BASE}/Modules/AdminPanel\"
+        for admintarget in /root/lampac/module/AdminPanel /root/lampac/mods/AdminPanel; do
+            [ -d \"\$admintarget\" ] || continue
             for file in AdminPanelController.cs ConfigSectionGroups.cs ModInit.cs manifest.json auth.html index.html; do
-                curl -fSL --retry 3 \"\$adminbase/\$file\" -o \"\$admintarget/\$file\"
+                curl -fSL --retry 3 \"\$adminbase/\$file\" -o \"\$admintarget/\$file.tmp\"
+                mv \"\$admintarget/\$file.tmp\" \"\$admintarget/\$file\"
             done
-        fi
+            echo \"  [admin] synced active candidate: \$admintarget\"
+        done
     "
 
     ok "Custom Online, NextHUB, AIOStreams, GStreamer and LampaWeb files installed; removed retired NguonC"
@@ -832,13 +834,15 @@ case "${1:-}" in
                 curl -fSL --retry 3 "$gstbase/$file" -o "$gsttarget/$file"
             done
 
-            admintarget=/root/lampac/module/AdminPanel
-            if [ -d "$admintarget" ]; then
-                adminbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a036c7-lampac/Modules/AdminPanel"
+            adminbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a036c7-lampac/Modules/AdminPanel"
+            for admintarget in /root/lampac/module/AdminPanel /root/lampac/mods/AdminPanel; do
+                [ -d "$admintarget" ] || continue
                 for file in AdminPanelController.cs ConfigSectionGroups.cs ModInit.cs manifest.json auth.html index.html; do
-                    curl -fSL --retry 3 "$adminbase/$file" -o "$admintarget/$file"
+                    curl -fSL --retry 3 "$adminbase/$file" -o "$admintarget/$file.tmp"
+                    mv "$admintarget/$file.tmp" "$admintarget/$file"
                 done
-            fi
+                echo "  [admin] synced active candidate: $admintarget"
+            done
             echo "Update complete!"
         '
         ;;
