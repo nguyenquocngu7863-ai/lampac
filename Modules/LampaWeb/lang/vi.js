@@ -1082,7 +1082,7 @@ export default {
     tv_status_canceled: 'Canceled',
     tv_status_pilot: 'Pilot',
 
-    tv_status_released:'Released',
+    tv_status_released: 'Đã phát hành',
     tv_status_rumored:'Rumored',
     tv_status_post_production:'Post Production',
 
