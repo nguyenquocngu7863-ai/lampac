@@ -290,6 +290,212 @@ Cấu hình mặc định của script đã bao gồm:
 
 Thiết lập này ưu tiên ổn định và tiết kiệm RAM. Nếu máy yếu, không nên bật đồng thời AIOStreams, Jackett, nhiều module nặng hoặc transcoding.
 
+## Sổ tay cấu hình proxy cho từng nguồn
+
+Lampac có hai lớp thường bị gọi chung là “proxy”, nhưng mục đích khác nhau:
+
+- `streamproxy: true`: điện thoại/Lampac tải video rồi chuyển tiếp cho player. Dùng để gắn `Referer`, `Origin`, User-Agent, xử lý CORS/hotlink. **Không đổi IP ra Internet**.
+- `useproxy` / `useproxystream`: request đi ra Internet qua một HTTP/SOCKS proxy bên ngoài. Dùng khi domain/CDN chặn IP hoặc giới hạn vùng.
+
+### Chọn cấu hình theo lỗi
+
+| Triệu chứng | Cấu hình nên dùng |
+|---|---|
+| Danh sách mở được, video 403/không hỗ trợ | `streamproxy` + `headers_stream` |
+| Trang nguồn/search bị 403 hoặc chặn vùng | `useproxy` |
+| Cả trang nguồn và CDN video đều chặn IP | `useproxy` + `useproxystream` + `streamproxy` |
+| Chỉ ảnh/poster bị chặn | `headers_image`, hoặc image proxy của server |
+| Cloudflare yêu cầu JS/cookie | Playwright/FlareSolverr; proxy IP đơn thuần có thể chưa đủ |
+
+### 1. Chỉ proxy stream qua Lampac
+
+Đây là cấu hình nhẹ nhất và nên thử đầu tiên. Ví dụ cho một section nguồn:
+
+```jsonc
+"TenNguon": {
+  "enable": true,
+  "streamproxy": true,
+  "headers_stream": {
+    "Referer": "https://website.example/",
+    "Origin": "https://website.example",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Accept": "video/webm,video/mp4,video/*;q=0.9,*/*;q=0.5"
+  }
+}
+```
+
+Sau khi áp dụng, URL player phải đi qua:
+
+```text
+http://IP_LAMPAC:9118/proxy/...
+```
+
+Nếu player vẫn nhận URL CDN trực tiếp, kiểm tra `Kit` có ghi đè `streamproxy` hay không. Với nguồn tự quản lý có thể cần:
+
+```jsonc
+"kit": false,
+"rhub": false,
+"qualitys_proxy": false,
+"url_reserve": false
+```
+
+### 2. Khai báo proxy Internet dùng chung
+
+Trong root của `init.conf`:
+
+```jsonc
+"globalproxy": [
+  {
+    "name": "proxy-eu",
+    "BypassOnLocal": true,
+    "maxRequestError": 2,
+    "list": [
+      "http://username:password@proxy.example:3128"
+    ]
+  }
+]
+```
+
+Có thể khai báo nhiều endpoint để Lampac chọn và đổi sau lỗi:
+
+```jsonc
+"list": [
+  "http://user:pass@host-1:3128",
+  "http://user:pass@host-2:3128",
+  "socks5://user:pass@host-3:1080"
+]
+```
+
+Nếu username/password chứa `@`, `:`, `/` hoặc ký tự đặc biệt, phải URL-encode chúng. Không commit hoặc gửi proxy credential vào Git/chat/log.
+
+### 3. Gắn proxy dùng chung vào một nguồn
+
+```jsonc
+"TenNguon": {
+  "enable": true,
+  "useproxy": true,
+  "globalnameproxy": "proxy-eu"
+}
+```
+
+`useproxy` áp dụng cho request trang, API, search và resolver của nguồn. Stream chưa chắc đi qua proxy ngoài.
+
+### 4. Cho cả stream đi qua proxy Internet
+
+Chỉ dùng khi CDN cũng chặn IP server:
+
+```jsonc
+"TenNguon": {
+  "enable": true,
+  "useproxy": true,
+  "useproxystream": true,
+  "streamproxy": true,
+  "globalnameproxy": "proxy-eu",
+  "headers_stream": {
+    "Referer": "https://website.example/",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+  }
+}
+```
+
+Flow lúc này:
+
+```text
+Player → Lampac /proxy → external proxy → CDN
+```
+
+Cách này tốn băng thông, tăng độ trễ và tải CPU/RAM; không bật hàng loạt cho mọi nguồn.
+
+### 5. Proxy riêng, không cần `globalproxy`
+
+```jsonc
+"TenNguon": {
+  "enable": true,
+  "useproxy": true,
+  "proxy": {
+    "BypassOnLocal": true,
+    "list": [
+      "http://user:pass@proxy.example:3128"
+    ]
+  }
+}
+```
+
+Hoặc credentials tách riêng:
+
+```jsonc
+"proxy": {
+  "useAuth": true,
+  "username": "user",
+  "password": "pass",
+  "list": ["http://proxy.example:3128"]
+}
+```
+
+Nếu nguồn có `proxy.list`, nó được ưu tiên trước `globalnameproxy` và root `proxy`.
+
+### 6. Root proxy mặc định
+
+Có thể khai báo:
+
+```jsonc
+"proxy": {
+  "list": ["http://user:pass@proxy.example:3128"]
+}
+```
+
+Nguồn có `useproxy: true` nhưng không có `proxy.list` hoặc `globalnameproxy` sẽ dùng root proxy này. Chỉ nên dùng khi nhiều nguồn thật sự cần cùng một tuyến proxy.
+
+### 7. Kiểm tra proxy trước khi nhập Admin Panel
+
+HTTP proxy:
+
+```bash
+proot-distro login ubuntu -- curl -fsS --max-time 15 \
+  -x 'http://user:pass@proxy.example:3128' \
+  https://api.ipify.org
+```
+
+SOCKS5, có DNS qua proxy:
+
+```bash
+proot-distro login ubuntu -- curl -fsS --max-time 15 \
+  --proxy 'socks5h://user:pass@proxy.example:1080' \
+  https://api.ipify.org
+```
+
+Lệnh phải in ra IP của proxy, không phải IP mạng điện thoại.
+
+### 8. Áp dụng và kiểm tra cấu hình hiệu lực
+
+Sau khi lưu Admin Panel, restart để loại trừ cache/module state:
+
+```bash
+lampac stop
+lampac start
+```
+
+Kiểm tra section đã merge vào `current.conf`:
+
+```bash
+proot-distro login ubuntu -- python3 -c '
+import json, pprint
+with open("/root/lampac/current.conf", encoding="utf-8") as f:
+    data = json.load(f)
+pprint.pp(data.get("TenNguon"))
+'
+```
+
+Thay `TenNguon` bằng đúng tên section trong Admin Panel, phân biệt hoa/thường theo catalog. Nếu `init.yaml` cũng tồn tại, nó có thể ghi đè `init.conf`; script sẽ cảnh báo khi sync.
+
+### Lưu ý an toàn và hiệu năng
+
+- Không dùng proxy công cộng miễn phí cho token/cookie/tài khoản.
+- `streamproxy` khiến dữ liệu video đi qua điện thoại; tốc độ tối đa phụ thuộc cả download lẫn upload nội bộ.
+- `useproxystream` có thể tiêu tốn rất nhiều traffic của proxy trả phí.
+- Không bật proxy cho nguồn đang chạy bình thường.
+- Test từng nguồn và từng lỗi; chỉ nâng từ `streamproxy` lên external proxy khi thật sự cần đổi IP.
+
 ## Việt hóa bền vững qua các lần update
 
 Bản Việt hóa gồm hai lớp. File ngôn ngữ lõi độc lập `Modules/LampaWeb/lang/vi.js` có cùng toàn bộ key với `en.js`, không import/spread/fallback runtime; file được deploy thành `wwwroot/lampa-main/lang/vi.js` và đăng ký vào `lang/meta.js`. Người dùng tự chọn **Tiếng Việt** trong Interface, hệ thống không tự đổi ngôn ngữ. Plugin `/vietnamese.js` chỉ bổ sung một số cụm quan trọng của addon như tìm kiếm, bộ lọc, phân loại và nguồn.
