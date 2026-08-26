@@ -78,15 +78,103 @@ ip addr show wlan0
 
 ## Cập nhật và đồng bộ module
 
-### Cập nhật đầy đủ
+### Cập nhật đầy đủ, không mất dữ liệu
+
+`--update` thay toàn bộ release trong `/root/lampac`; updater tự giữ `init.conf` và `passwd`, nhưng các dữ liệu như `database/`, `users.json`, bookmark, `mods/` và dữ liệu TorrServer phải được backup riêng. Flow an toàn:
+
+#### 1. Dừng dịch vụ
 
 ```bash
-lampac update
-# hoặc
-bash setup-termux.sh --update
+lampac stop
+aio stop
+jackett stop
 ```
 
-Cập nhật sẽ tải release mới, giữ lại `init.conf` và `passwd`, áp dụng lại cấu hình Termux (`disableEng: true`, Chromium tắt) và đồng bộ các module tuỳ biến. Thư mục nguồn lỗi cũ `NguonC` cũng bị xoá; `VsMov` được đồng bộ lại.
+Jackett có lifecycle độc lập nên cần dừng bằng lệnh riêng.
+
+#### 2. Tạo backup ngoài thư mục Lampac
+
+```bash
+proot-distro login ubuntu -- bash -lc '
+  set -euo pipefail
+  mkdir -p /root/lampac-backups
+
+  stamp=$(date +%Y%m%d-%H%M%S)
+  backup="/root/lampac-backups/pre-update-${stamp}.tar.gz"
+
+  cd /root/lampac
+  items=()
+  for path in \
+    init.conf init.yaml passwd users.json \
+    database mods plugins data/ts wwwroot/bookmarks
+  do
+    [ -e "$path" ] && items+=("$path")
+  done
+
+  [ "${#items[@]}" -gt 0 ] || {
+    echo "Không tìm thấy dữ liệu để backup"
+    exit 1
+  }
+
+  tar -czf "$backup" "${items[@]}"
+  printf "%s\n" "$backup" > /root/lampac-backups/LATEST
+
+  echo "Backup: $backup"
+  du -h "$backup"
+  tar -tzf "$backup" | sed -n "1,30p"
+'
+```
+
+Backup này giữ cấu hình, user, bookmark/timecode, dữ liệu Storage, TorrServer, plugin/mod tự thêm và keystore ký Lampac APK. Không backup `cache/`, `module/` hoặc `wwwroot/lampa-main`: cache có thể tạo lại, còn code/module/client phải lấy bản mới.
+
+#### 3. Tải release mới và áp dụng lại phần tùy biến
+
+Không cần clone Git:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a036c7-lampac/setup-termux.sh \
+  | bash -s -- --update
+```
+
+Script tải `lampac-nextgen.zip` mới nhất, thay Core/module chính thức rồi đồng bộ lại các module tùy biến của branch này.
+
+#### 4. Khôi phục dữ liệu
+
+```bash
+proot-distro login ubuntu -- bash -lc '
+  set -euo pipefail
+  backup=$(cat /root/lampac-backups/LATEST)
+  [ -f "$backup" ] || {
+    echo "Không tìm thấy backup: $backup"
+    exit 1
+  }
+
+  echo "Restore: $backup"
+  tar -xzf "$backup" -C /root/lampac
+'
+```
+
+#### 5. Khởi động và kiểm tra
+
+```bash
+lampac start
+```
+
+Trong session Termux khác:
+
+```bash
+lampac status
+aio status
+jackett status
+```
+
+Nếu cần Jackett:
+
+```bash
+jackett start
+```
+
+Không xóa `/root/lampac-backups/` cho tới khi đã kiểm tra bookmark, user, TorrServer và APK hoạt động bình thường. Có thể restore lại bất kỳ lúc nào bằng archive được ghi trong `/root/lampac-backups/LATEST`.
 
 ### Chỉ đồng bộ module tuỳ biến
 
