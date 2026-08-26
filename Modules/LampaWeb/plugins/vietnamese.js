@@ -145,6 +145,124 @@
     [/^Similar\s*-\s*/i, 'Tương tự - ']
   ];
 
+  // Category labels come from many independent Adult modules and NextHUB YAML
+  // files. Translate reusable terms only inside filter/select/menu controls so
+  // movie and video titles are never modified.
+  var categoryRules = [
+    [/double penetration|двойное проникновение|двойной анал/gi, 'thâm nhập kép'],
+    [/ass to mouth|atm/gi, 'từ hậu môn vào miệng'],
+    [/big black cock|большой ч[её]рный член/gi, 'dương vật da đen lớn'],
+    [/old and young|старые с молодыми|взрослые с молодыми/gi, 'lớn tuổi và trẻ'],
+    [/female domination|женское доминирование|женская доминация/gi, 'nữ thống trị'],
+    [/group sex|групповой секс|групповое порно|групповуха/gi, 'quan hệ nhóm'],
+    [/hidden cam|скрыт(?:ая камера|ые камеры)/gi, 'camera ẩn'],
+    [/first time|первый раз|девственность/gi, 'lần đầu'],
+    [/role play|ролевые игры/gi, 'nhập vai'],
+    [/public sex|на публике|публичное порно/gi, 'nơi công cộng'],
+    [/rough sex|грубый секс|жесткий секс|ж[её]сткое/gi, 'quan hệ mạnh'],
+    [/big ass|big booty|большие попы|большие жопы|большие задницы/gi, 'mông lớn'],
+    [/big tits|big boobs|большие сиськи|большая грудь/gi, 'ngực lớn'],
+    [/small tits|маленькие сиськи|маленькая грудь/gi, 'ngực nhỏ'],
+    [/hairy pussy|волосатая пизда|волосатые киски|небритые лобки/gi, 'không cạo'],
+    [/shaved pussy|бритые письки|гладкие киски/gi, 'đã cạo'],
+    [/deep ?throat|глубокий минет|глубоко заглатывают|горловой минет/gi, 'khẩu giao sâu'],
+    [/pussy licking|cunnilingus|куни(?:лингус)?|лизать киску/gi, 'khẩu giao nữ'],
+    [/foot ?fetish|фут[- ]?фетиш|футфетиш/gi, 'tôn sùng bàn chân'],
+    [/footjob|дрочат ножками|дрочка ступнями/gi, 'kích thích bằng chân'],
+    [/handjob|дрочит парню|дрочка члена/gi, 'kích thích bằng tay'],
+    [/blowjob|минет/gi, 'khẩu giao'],
+    [/creampie|кремпай|кончают внутрь|кончает внутрь/gi, 'xuất tinh bên trong'],
+    [/cumshot|камшот|выстрелы спермы/gi, 'xuất tinh'],
+    [/facial|сперма на лице|кончают на лицо/gi, 'xuất tinh lên mặt'],
+    [/swallow(?:ing)?|глотает сперму|глотают сперму/gi, 'nuốt tinh'],
+    [/squirting?|сквирт(?:инг)?|сквиртят и текут/gi, 'squirt'],
+    [/masturbation|мастурбация|дрочка/gi, 'thủ dâm'],
+    [/interracial|межрасов(?:ый|ое|ые)(?: секс| порно)?/gi, 'khác chủng tộc'],
+    [/threesome|секс втроем|втроем/gi, 'quan hệ ba người'],
+    [/gangbang|г[эе]нгб[эе]нг|ебут толпой/gi, 'quan hệ tập thể'],
+    [/lesbians?|лесби(?:янки|янка|сбухи)?/gi, 'đồng tính nữ'],
+    [/gay porn|гей порно|геи/gi, 'đồng tính nam'],
+    [/transsexuals?|shemales?|транссексуалы|трансвеститы|трансы/gi, 'chuyển giới'],
+    [/milfs?|милфы?|мамочки|зрелые мамы/gi, 'phụ nữ trưởng thành'],
+    [/mature|зрелые|зрелая|в возрасте/gi, 'trưởng thành'],
+    [/teen(?:s| porn)?|тинейджеры|подростки 18\+/gi, 'tuổi 18+'],
+    [/amateurs?|любительское(?: порно)?/gi, 'nghiệp dư'],
+    [/homemade|домашнее(?: порно)?/gi, 'tự quay'],
+    [/webcams?|веб[- ]?камеры?|вебкам(?:ера)?/gi, 'webcam'],
+    [/casting|кастинги?/gi, 'thử vai'],
+    [/cosplay|косплей/gi, 'hóa trang'],
+    [/massage|массаж/gi, 'mát-xa'],
+    [/office|офис|секс в офисе/gi, 'văn phòng'],
+    [/school ?girl|school|школа|в школе|студентки?/gi, 'trường học'],
+    [/teacher|учительница?|училки и студенты|с преподами/gi, 'giáo viên'],
+    [/nurses?|медсестры?/gi, 'y tá'],
+    [/doctor|доктор|врачи/gi, 'bác sĩ'],
+    [/secretary|секретарш[аи]/gi, 'thư ký'],
+    [/maid|горничн(?:ая|ые)|служанки/gi, 'người hầu'],
+    [/outdoor|на природе|на улице/gi, 'ngoài trời'],
+    [/beach|на пляже|пляж/gi, 'bãi biển'],
+    [/bathroom|в ванной|в душе|в туалете/gi, 'phòng tắm'],
+    [/bedroom|в спальне/gi, 'phòng ngủ'],
+    [/kitchen|на кухне|секс на кухне/gi, 'nhà bếp'],
+    [/car|в машине|в авто/gi, 'trong xe'],
+    [/hotel|в отеле/gi, 'khách sạn'],
+    [/gym|спортзал|в спортзале|тренажерный зал/gi, 'phòng tập'],
+    [/lingerie|нижнее бель[её]|красивое белье/gi, 'đồ lót'],
+    [/stockings|чулки|колготки/gi, 'vớ dài'],
+    [/uniforms?|униформа|в униформе/gi, 'đồng phục'],
+    [/latex|латекс/gi, 'latex'],
+    [/tattooed|tattoos?|татуированные|татуировки/gi, 'hình xăm'],
+    [/red ?head|рыжие|рыжеволосые/gi, 'tóc đỏ'],
+    [/blondes?|блондинки/gi, 'tóc vàng'],
+    [/brunettes?|брюнетки|темноволосые/gi, 'tóc nâu'],
+    [/asian|азиатки|азиаты|азиатское/gi, 'châu Á'],
+    [/japanese|японки|японское|японцы/gi, 'Nhật Bản'],
+    [/korean|корейское|кореянки/gi, 'Hàn Quốc'],
+    [/russian|русские|русское(?: порно)?/gi, 'Nga'],
+    [/vietnamese|вьетнамское/gi, 'Việt Nam'],
+    [/latina|latinas|латинки|латино/gi, 'Mỹ Latin'],
+    [/ebony|black(?:ed)?|негритянки|чернокожие/gi, 'da đen'],
+    [/bbw|chubby|толстушки|полненькие/gi, 'đầy đặn'],
+    [/petite|миниатюрные/gi, 'nhỏ nhắn'],
+    [/skinny|худые|худенькие/gi, 'mảnh mai'],
+    [/pregnant|беременные/gi, 'mang thai'],
+    [/redhead|рыжие/gi, 'tóc đỏ'],
+    [/bondage|бондаж|связывание/gi, 'trói buộc'],
+    [/bdsm|бдсм/gi, 'BDSM'],
+    [/fisting|фистинг/gi, 'fisting'],
+    [/fetish|фетиш/gi, 'tôn sùng'],
+    [/hentai|хентай/gi, 'hentai'],
+    [/anime|аниме/gi, 'anime'],
+    [/vintage|винтаж|ретро/gi, 'cổ điển'],
+    [/romantic|романтическое/gi, 'lãng mạn'],
+    [/funny|приколы|смешные/gi, 'hài hước'],
+    [/compilation|подборки|сборник/gi, 'tổng hợp'],
+    [/pov|от первого лица/gi, 'góc nhìn thứ nhất'],
+    [/solo|соло/gi, 'đơn'],
+    [/anal|анальный секс|анал/gi, 'hậu môn'],
+    [/oral|оральный секс/gi, 'đường miệng'],
+    [/toys?|sex toys?|игрушки|секс-игрушки/gi, 'đồ chơi'],
+    [/uncategorized|без категории|общее/gi, 'chưa phân loại'],
+    [/all|все|любое/gi, 'tất cả']
+  ];
+
+  function isCategoryControl(node) {
+    var element = node && (node.nodeType === 1 ? node : node.parentElement);
+    for (var depth = 0; element && depth < 7; depth++, element = element.parentElement) {
+      var marker = String(element.className || '') + ' ' + String(element.getAttribute && (element.getAttribute('data-name') || '') || '');
+      if (/(select|filter|setting|menu|category|catalog|submenu)/i.test(marker)) return true;
+    }
+    return false;
+  }
+
+  function translateCategoryValue(value) {
+    var translated = String(value || '').trim();
+    if (!translated) return null;
+    var original = translated;
+    for (var i = 0; i < categoryRules.length; i++) translated = translated.replace(categoryRules[i][0], categoryRules[i][1]);
+    return translated !== original ? translated : null;
+  }
+
   function enabled() {
     if (!window.Lampa || !Lampa.Storage) return true;
     var value = Lampa.Storage.get(settingName, 'true');
@@ -168,6 +286,7 @@
     if (tag === 'script' || tag === 'style' || tag === 'textarea' || tag === 'code') return;
 
     var translated = translateValue(node.nodeValue);
+    if (!translated && isCategoryControl(node)) translated = translateCategoryValue(node.nodeValue);
     if (!translated) return;
 
     var leading = (node.nodeValue.match(/^\s*/) || [''])[0];
