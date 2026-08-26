@@ -40,13 +40,41 @@ public class ModInit : IModuleLoaded, IModuleSisi
 
     void updateConf()
     {
-        conf = ModuleInvoke.Init("Chaturbate", new SisiSettings("Chaturbate", "https://ru.chaturbate.com")
+        const string site = "https://ru.chaturbate.com";
+
+        conf = ModuleInvoke.Init("Chaturbate", new SisiSettings("Chaturbate", site)
         {
             spider = false,
             httpversion = 2,
             displayindex = 24,
             rch_access = "apk,cors",
-            stream_access = "apk,cors,web"
+            stream_access = "apk,cors,web",
+
+            // Resolve and fetch the signed HLS manifest from the same local
+            // Lampac session. Direct Android playback often loads the first
+            // segment, then loses an audio/variant playlist at the CDN.
+            kit = false,
+            rhub = false,
+            streamproxy = true,
+            headers_stream = HeadersModel.Init(
+                ("User-Agent", Http.UserAgent),
+                ("Referer", site + "/"),
+                ("Origin", site),
+                ("Accept", "application/vnd.apple.mpegurl,application/x-mpegURL,video/*,*/*;q=0.8"),
+                ("Accept-Language", "en-US,en;q=0.9")
+            ).ToDictionary()
         });
+
+        // Do not let an older init/Kit section restore naked CDN playback.
+        conf.kit = false;
+        conf.rhub = false;
+        conf.streamproxy = true;
+        conf.headers_stream = HeadersModel.Init(
+            ("User-Agent", Http.UserAgent),
+            ("Referer", site + "/"),
+            ("Origin", site),
+            ("Accept", "application/vnd.apple.mpegurl,application/x-mpegURL,video/*,*/*;q=0.8"),
+            ("Accept-Language", "en-US,en;q=0.9")
+        ).ToDictionary();
     }
 }
