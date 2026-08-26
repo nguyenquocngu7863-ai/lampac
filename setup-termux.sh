@@ -389,6 +389,18 @@ install_custom_modules() {
         curl -fSL --retry 3 \"${CUSTOM_SOURCE_BASE}/jackettctl.sh\" -o /root/jackettctl.sh
         chmod +x /root/aioctl.sh /root/jackettctl.sh
 
+        # NextHUB site definitions change more often than release binaries.
+        # Keep the known fixed definitions in sync so an update cannot leave
+        # the retired sex-studentki.live domain in the runtime tree.
+        nexthubbase=\"${CUSTOM_SOURCE_BASE}/Modules/NextHUB/sites\"
+        nexthubtarget=/root/lampac/module/NextHUB/sites
+        if [ -d \"\$nexthubtarget\" ]; then
+            for file in sex-studentki.yaml noodlemagazine.yaml; do
+                curl -fSL --retry 3 \"\$nexthubbase/\$file\" -o \"\$nexthubtarget/\$file.tmp\"
+                mv \"\$nexthubtarget/\$file.tmp\" \"\$nexthubtarget/\$file\"
+            done
+        fi
+
         gstbase=\"${CUSTOM_SOURCE_BASE}/Modules/GStreamer\"
         gsttarget=/root/lampac/module/GStreamer
         mkdir -p \"\$gsttarget/Services\" \"\$gsttarget/plugins\"
@@ -431,7 +443,7 @@ install_custom_modules() {
         fi
     "
 
-    ok "KKPhim, K20, VsMov, WebStreamr, Open Directory, Sootio, AIOStreams, CineWave, GStreamer and LampaWeb files installed; removed retired NguonC"
+    ok "Custom Online, NextHUB, AIOStreams, GStreamer and LampaWeb files installed; removed retired NguonC"
 }
 
 # ─── Step 4: Create launcher scripts (inside Ubuntu!) ────────────────────────
@@ -626,6 +638,15 @@ case "${1:-}" in
             curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a036c7-lampac/aioctl.sh" -o /root/aioctl.sh
             curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a036c7-lampac/jackettctl.sh" -o /root/jackettctl.sh
             chmod +x /root/aioctl.sh /root/jackettctl.sh
+
+            nexthubbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a036c7-lampac/Modules/NextHUB/sites"
+            nexthubtarget=/root/lampac/module/NextHUB/sites
+            if [ -d "$nexthubtarget" ]; then
+                for file in sex-studentki.yaml noodlemagazine.yaml; do
+                    curl -fSL --retry 3 "$nexthubbase/$file" -o "$nexthubtarget/$file.tmp"
+                    mv "$nexthubtarget/$file.tmp" "$nexthubtarget/$file"
+                done
+            fi
 
             # Keep the dynamic LampaWeb subtitle/plugin selector in sync after
             # replacing a release archive.
