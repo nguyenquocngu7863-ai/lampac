@@ -412,6 +412,14 @@ install_custom_modules() {
             done
         fi
 
+        for proxymodule in CubProxy TmdbProxy; do
+            proxytarget=\"/root/lampac/module/Proxy/\$proxymodule\"
+            if [ -d \"\$proxytarget\" ]; then
+                curl -fSL --retry 3 \"${CUSTOM_SOURCE_BASE}/Modules/Proxy/\$proxymodule/Controller.cs\" -o \"\$proxytarget/Controller.cs.tmp\"
+                mv \"\$proxytarget/Controller.cs.tmp\" \"\$proxytarget/Controller.cs\"
+            fi
+        done
+
         gstbase=\"${CUSTOM_SOURCE_BASE}/Modules/GStreamer\"
         gsttarget=/root/lampac/module/GStreamer
         mkdir -p \"\$gsttarget/Services\" \"\$gsttarget/plugins\"
@@ -676,6 +684,14 @@ case "${1:-}" in
                     mv "$epornertarget/$file.tmp" "$epornertarget/$file"
                 done
             fi
+
+            for proxymodule in CubProxy TmdbProxy; do
+                proxytarget="/root/lampac/module/Proxy/$proxymodule"
+                if [ -d "$proxytarget" ]; then
+                    curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a036c7-lampac/Modules/Proxy/$proxymodule/Controller.cs" -o "$proxytarget/Controller.cs.tmp"
+                    mv "$proxytarget/Controller.cs.tmp" "$proxytarget/Controller.cs"
+                fi
+            done
 
             # Keep the dynamic LampaWeb subtitle/plugin selector in sync after
             # replacing a release archive.
