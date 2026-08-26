@@ -520,6 +520,17 @@ install_custom_modules() {
             done
         fi
 
+        # Videasy is the first ENG resolver under isolated repair. Sync only
+        # this provider; `disableEng` remains globally enabled.
+        videasybase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineENG/Videasy\"
+        videasytarget=/root/lampac/module/OnlineENG/Videasy
+        if [ -d \"\$videasytarget\" ]; then
+            for file in Controller.cs ModInit.cs; do
+                curl -fSL --retry 3 \"\$videasybase/\$file?cb=\$syncstamp\" -o \"\$videasytarget/\$file.tmp\"
+                mv \"\$videasytarget/\$file.tmp\" \"\$videasytarget/\$file\"
+            done
+        fi
+
         for proxymodule in CubProxy TmdbProxy; do
             proxytarget=\"/root/lampac/module/Proxy/\$proxymodule\"
             if [ -d \"\$proxytarget\" ]; then
@@ -836,6 +847,15 @@ case "${1:-}" in
                 for file in Controller.cs ModInit.cs; do
                     curl -fSL --retry 3 "$chaturbatebase/$file?cb=$syncstamp" -o "$chaturbatetarget/$file.tmp"
                     mv "$chaturbatetarget/$file.tmp" "$chaturbatetarget/$file"
+                done
+            fi
+
+            videasybase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a036c7-lampac/Modules/OnlineENG/Videasy"
+            videasytarget=/root/lampac/module/OnlineENG/Videasy
+            if [ -d "$videasytarget" ]; then
+                for file in Controller.cs ModInit.cs; do
+                    curl -fSL --retry 3 "$videasybase/$file?cb=$syncstamp" -o "$videasytarget/$file.tmp"
+                    mv "$videasytarget/$file.tmp" "$videasytarget/$file"
                 done
             fi
 

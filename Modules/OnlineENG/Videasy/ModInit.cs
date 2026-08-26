@@ -19,7 +19,12 @@ public class ModInit : IModuleLoaded, IModuleOnline
     {
         var online = new List<ModuleOnlineItem>();
 
-        if ((args.original_language == null || args.original_language == "en") && CoreInit.conf.disableEng == false)
+        // Keep the broken ENG group globally hidden, but allow Videasy to be
+        // tested independently with `Videasy.enabled: true` in init.conf.
+        // `enabled` defaults to false, unlike the normal module `enable` flag.
+        bool allowWhenEngDisabled = conf?.enabled == true;
+        if ((args.original_language == null || args.original_language == "en") &&
+            (CoreInit.conf.disableEng == false || allowWhenEngDisabled))
         {
             if (args.source != null && (args.source is "tmdb" or "cub") && long.TryParse(args.id, out long id) && id > 0)
             {

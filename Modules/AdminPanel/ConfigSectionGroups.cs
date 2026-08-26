@@ -29,7 +29,7 @@ public static class ConfigSectionGroups
 
         new("realtime", "WebSocket và RCH", "Socket native và hub từ xa.",
             new[] { "WebSocket", "rch" }),
-        new("browser", "Nguồn cần trình duyệt", "Mirage/Phantom và phần lớn embed cần Chromium; HydraFlix/TwoEmbed cần Firefox. Bật source chưa đủ nếu browser runtime hoặc executablePath không hoạt động.",
+        new("browser", "Nguồn cần trình duyệt", "Mirage/Phantom và phần lớn embed cần Chromium; HydraFlix/TwoEmbed cần Firefox. Khi disableEng=true, có thể thử riêng Videasy bằng enabled=true mà không mở cả nhóm ENG.",
             new[]
             {
                 "chromium", "firefox", "Mirage", "Phantom",
