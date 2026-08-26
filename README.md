@@ -294,7 +294,7 @@ Thiết lập này ưu tiên ổn định và tiết kiệm RAM. Nếu máy yế
 
 Bản Việt hóa gồm hai lớp. File ngôn ngữ lõi thật `Modules/LampaWeb/lang/vi.js` được deploy thành `wwwroot/lampa-main/lang/vi.js` và đăng ký vào `lang/meta.js`; file kế thừa toàn bộ `en.js` để key mới từ upstream vẫn có tiếng Anh thay vì làm lỗi giao diện, rồi ghi đè các key đã dịch. Plugin built-in `/vietnamese.js` được nạp sau các addon, bổ sung catalog Online/SISI/Lampac và dùng `MutationObserver` cho chuỗi Anh/Nga bị addon hardcode.
 
-Không sửa trực tiếp file addon upstream chỉ để dịch. Khi `--update` thay release, `--sync` sẽ cài lại `vi.js`, vá registry `meta.js`, rồi chép overlay `vietnamese.js`; vì vậy Việt hóa không bị mất. Có thể bật/tắt lớp addon tại **Settings → Interface → Lớp Việt hóa addon**.
+Không sửa trực tiếp file addon upstream chỉ để dịch. Khi `--update` thay release, `--sync` sẽ cài lại `vi.js`, vá registry `meta.js`, rồi chép overlay `vietnamese.js`. `LampaCron` cũng tự kiểm tra và cài lại language sau mỗi lần frontend được tải/cập nhật, tránh race khi thư mục `lampa-main/lang` xuất hiện sau lúc sync. Có thể bật/tắt lớp addon tại **Settings → Interface → Lớp Việt hóa addon**.
 
 Các chuỗi mới chưa được dịch nên được thêm vào catalog `exact`, `prefixes` hoặc `Lampa.Lang.add` trong `Modules/LampaWeb/plugins/vietnamese.js`, thay vì sửa addon gốc. Cách này giữ bản dịch khi addon được update; chỉ cần bổ sung mapping khi addon đổi câu chữ.
 

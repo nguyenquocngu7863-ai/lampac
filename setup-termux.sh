@@ -412,9 +412,9 @@ install_custom_modules() {
         # subtitle assets, otherwise a release can serve an old plugin list or
         # miss the selected built-in subtitle provider.
         webtarget=/root/lampac/module/LampaWeb
-        mkdir -p "\$webtarget/Controllers" "\$webtarget/Models" "\$webtarget/plugins" "\$webtarget/lang"
+        mkdir -p "\$webtarget/Controllers" "\$webtarget/Models" "\$webtarget/Services" "\$webtarget/plugins" "\$webtarget/lang"
         webbase="${CUSTOM_SOURCE_BASE}/Modules/LampaWeb"
-        for file in Controllers/ApiController.cs ModInit.cs Models/InitPlugins.cs lang/vi.js plugins/lampainit.js plugins/jackett.js plugins/online-compact.js plugins/vietnamese.js plugins/subsense-auto.js plugins/subsense.js plugins/subfinder.js plugins/stremiosub.js plugins/adminpanel.js; do
+        for file in Controllers/ApiController.cs ModInit.cs Models/InitPlugins.cs Services/LampaCron.cs lang/vi.js plugins/lampainit.js plugins/jackett.js plugins/online-compact.js plugins/vietnamese.js plugins/subsense-auto.js plugins/subsense.js plugins/subfinder.js plugins/stremiosub.js plugins/adminpanel.js; do
             curl -fSL --retry 3 "\$webbase/\$file" -o "\$webtarget/\$file"
         done
 
@@ -434,12 +434,11 @@ install_custom_modules() {
 
         # Install a real Lampa language module, not only the addon overlay.
         langdir=/root/lampac/wwwroot/lampa-main/lang
-        if [ -d "\$langdir" ]; then
-            cp "\$webtarget/lang/vi.js" "\$langdir/vi.js"
-            meta="\$langdir/meta.js"
-            if [ -f "\$meta" ] && ! grep -qE '(^|[,{])[[:space:]]*vi[[:space:]]*:' "\$meta"; then
-                sed -i -E '0,/languages[[:space:]]*:[[:space:]]*\{/{s/languages[[:space:]]*:[[:space:]]*\{/languages: { vi: { code: "vi", name: "Tiếng Việt", lang_choice_title: "Chào mừng", lang_choice_subtitle: "Chọn ngôn ngữ của bạn" },/}' "\$meta"
-            fi
+        mkdir -p "\$langdir"
+        cp "\$webtarget/lang/vi.js" "\$langdir/vi.js"
+        meta="\$langdir/meta.js"
+        if [ -f "\$meta" ] && ! grep -qE '(^|[,{])[[:space:]]*vi[[:space:]]*:' "\$meta"; then
+            sed -i -E '0,/languages[[:space:]]*:[[:space:]]*\{/{s/languages[[:space:]]*:[[:space:]]*\{/languages: { vi: { code: "vi", name: "Tiếng Việt", lang_choice_title: "Chào mừng", lang_choice_subtitle: "Chọn ngôn ngữ của bạn" },/}' "\$meta"
         fi
 
         # The AdminPanel is protected by the Lampac root password. If it is
@@ -662,18 +661,17 @@ case "${1:-}" in
             # replacing a release archive.
             webbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a036c7-lampac/Modules/LampaWeb"
             webtarget=/root/lampac/module/LampaWeb
-            mkdir -p "$webtarget/Controllers" "$webtarget/Models" "$webtarget/plugins" "$webtarget/lang"
-            for file in Controllers/ApiController.cs ModInit.cs Models/InitPlugins.cs lang/vi.js plugins/lampainit.js plugins/jackett.js plugins/online-compact.js plugins/vietnamese.js plugins/subsense-auto.js plugins/subsense.js plugins/subfinder.js plugins/stremiosub.js plugins/adminpanel.js; do
+            mkdir -p "$webtarget/Controllers" "$webtarget/Models" "$webtarget/Services" "$webtarget/plugins" "$webtarget/lang"
+            for file in Controllers/ApiController.cs ModInit.cs Models/InitPlugins.cs Services/LampaCron.cs lang/vi.js plugins/lampainit.js plugins/jackett.js plugins/online-compact.js plugins/vietnamese.js plugins/subsense-auto.js plugins/subsense.js plugins/subfinder.js plugins/stremiosub.js plugins/adminpanel.js; do
                 curl -fSL --retry 3 "$webbase/$file" -o "$webtarget/$file"
             done
 
             langdir=/root/lampac/wwwroot/lampa-main/lang
-            if [ -d "$langdir" ]; then
-                cp "$webtarget/lang/vi.js" "$langdir/vi.js"
-                meta="$langdir/meta.js"
-                if [ -f "$meta" ] && ! grep -qE '(^|[,{])[[:space:]]*vi[[:space:]]*:' "$meta"; then
-                    sed -i -E '0,/languages[[:space:]]*:[[:space:]]*\{/{s/languages[[:space:]]*:[[:space:]]*\{/languages: { vi: { code: "vi", name: "Tiếng Việt", lang_choice_title: "Chào mừng", lang_choice_subtitle: "Chọn ngôn ngữ của bạn" },/}' "$meta"
-                fi
+            mkdir -p "$langdir"
+            cp "$webtarget/lang/vi.js" "$langdir/vi.js"
+            meta="$langdir/meta.js"
+            if [ -f "$meta" ] && ! grep -qE '(^|[,{])[[:space:]]*vi[[:space:]]*:' "$meta"; then
+                sed -i -E '0,/languages[[:space:]]*:[[:space:]]*\{/{s/languages[[:space:]]*:[[:space:]]*\{/languages: { vi: { code: "vi", name: "Tiếng Việt", lang_choice_title: "Chào mừng", lang_choice_subtitle: "Chọn ngôn ngữ của bạn" },/}' "$meta"
             fi
 
             curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a036c7-lampac/config/base.conf" -o /root/lampac/base.conf

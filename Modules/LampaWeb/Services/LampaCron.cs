@@ -2,6 +2,7 @@ using Shared.Services;
 using System;
 using System.IO;
 using System.IO.Compression;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Shared.Services.Utilities;
@@ -119,6 +120,11 @@ public static class LampaCron
                         Directory.Delete($"wwwroot/{targetDirectory}", true);
                 }
             }
+
+            // The frontend archive can be installed after setup-termux --sync,
+            // or replace lang/meta.js during a later automatic update. Reapply
+            // the custom language every cron pass after the frontend is ready.
+            InstallVietnameseLanguage();
         }
         catch (Exception ex)
         {
@@ -128,5 +134,39 @@ public static class LampaCron
         {
             Volatile.Write(ref _updatingDb, 0);
         }
+    }
+
+    static void InstallVietnameseLanguage()
+    {
+        string source = Path.Combine(ModInit.modpath, "lang", "vi.js");
+        if (!File.Exists(source) || !File.Exists("wwwroot/lampa-main/app.min.js"))
+            return;
+
+        string langDirectory = "wwwroot/lampa-main/lang";
+        Directory.CreateDirectory(langDirectory);
+
+        string target = Path.Combine(langDirectory, "vi.js");
+        if (!File.Exists(target) || CrypTo.md5File(source) != CrypTo.md5File(target))
+            File.Copy(source, target, true);
+
+        string metaPath = Path.Combine(langDirectory, "meta.js");
+        if (!File.Exists(metaPath))
+            return;
+
+        string meta = File.ReadAllText(metaPath);
+        if (Regex.IsMatch(meta, @"(^|[,\{])\s*vi\s*:", RegexOptions.Multiline))
+            return;
+
+        const string entry = "vi: { code: \"vi\", name: \"Tiếng Việt\", lang_choice_title: \"Chào mừng\", lang_choice_subtitle: \"Chọn ngôn ngữ của bạn\" },";
+        string patched = Regex.Replace(
+            meta,
+            @"languages\s*:\s*\{",
+            match => match.Value + " " + entry,
+            RegexOptions.IgnoreCase,
+            TimeSpan.FromSeconds(1)
+        );
+
+        if (!ReferenceEquals(patched, meta) && patched != meta)
+            File.WriteAllText(metaPath, patched);
     }
 }
