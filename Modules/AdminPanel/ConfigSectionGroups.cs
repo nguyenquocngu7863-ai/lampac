@@ -117,7 +117,7 @@ public static class ConfigSectionGroups
             result.Add(new GroupDto(
                 "src-adult-nexthub",
                 "Nguồn · NextHUB / 18+",
-                "Mỗi YAML NextHUB là một nguồn riêng. Chỉnh tại đây sẽ tạo override theo slug nguồn trong init.conf.",
+                "Thông thường chỉ cần đổi enable. streamproxy đi qua Lampac nhưng không đổi IP; useproxy/useproxystream cần proxy ngoài; rhub/rch và các trường còn lại nên giữ nguyên.",
                 nextHubKeys));
         }
 
@@ -143,7 +143,7 @@ public static class ConfigSectionGroups
             list.Add(new GroupDto(
                 "src-adult-nexthub",
                 "Nguồn · NextHUB / 18+",
-                "Mỗi YAML NextHUB là một nguồn riêng. Có thể bật/tắt hoặc ghi đè cấu hình từng nguồn.",
+                "Thông thường chỉ cần đổi enable. streamproxy đi qua Lampac nhưng không đổi IP; useproxy/useproxystream cần proxy ngoài; rhub/rch và các trường còn lại nên giữ nguyên.",
                 nextHubKeys));
         }
 
