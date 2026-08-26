@@ -508,6 +508,18 @@ install_custom_modules() {
             fi
         done
 
+        # Keep Chaturbate resolver files synchronized as well as its translated
+        # Service.cs. This also restores the stable direct-HLS implementation
+        # after experimental resolver changes.
+        chaturbatebase=\"${CUSTOM_SOURCE_BASE}/Modules/Adult/Chaturbate\"
+        chaturbatetarget=/root/lampac/module/Adult/Chaturbate
+        if [ -d \"\$chaturbatetarget\" ]; then
+            for file in Controller.cs ModInit.cs; do
+                curl -fSL --retry 3 \"\$chaturbatebase/\$file?cb=\$syncstamp\" -o \"\$chaturbatetarget/\$file.tmp\"
+                mv \"\$chaturbatetarget/\$file.tmp\" \"\$chaturbatetarget/\$file\"
+            done
+        fi
+
         for proxymodule in CubProxy TmdbProxy; do
             proxytarget=\"/root/lampac/module/Proxy/\$proxymodule\"
             if [ -d \"\$proxytarget\" ]; then
@@ -806,6 +818,15 @@ case "${1:-}" in
                     mv "$adulttarget/Service.cs.tmp" "$adulttarget/Service.cs"
                 fi
             done
+
+            chaturbatebase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a036c7-lampac/Modules/Adult/Chaturbate"
+            chaturbatetarget=/root/lampac/module/Adult/Chaturbate
+            if [ -d "$chaturbatetarget" ]; then
+                for file in Controller.cs ModInit.cs; do
+                    curl -fSL --retry 3 "$chaturbatebase/$file?cb=$syncstamp" -o "$chaturbatetarget/$file.tmp"
+                    mv "$chaturbatetarget/$file.tmp" "$chaturbatetarget/$file"
+                done
+            fi
 
             for proxymodule in CubProxy TmdbProxy; do
                 proxytarget="/root/lampac/module/Proxy/$proxymodule"
