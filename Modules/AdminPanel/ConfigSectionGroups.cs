@@ -29,8 +29,12 @@ public static class ConfigSectionGroups
 
         new("realtime", "WebSocket và RCH", "Socket native và hub từ xa.",
             new[] { "WebSocket", "rch" }),
-        new("browser", "Trình duyệt và nguồn Playwright", "Bật nguồn chưa đủ: Mirage/Phantom chỉ xuất hiện khi Chromium runtime khởi động thành công và executablePath trỏ tới Google Chrome/Edge hợp lệ.",
-            new[] { "chromium", "firefox", "Mirage", "Phantom" }),
+        new("browser", "Nguồn cần trình duyệt", "Mirage/Phantom và phần lớn embed cần Chromium; HydraFlix/TwoEmbed cần Firefox. Bật source chưa đủ nếu browser runtime hoặc executablePath không hoạt động.",
+            new[]
+            {
+                "chromium", "firefox", "Mirage", "Phantom",
+                "Autoembed", "Hydraflix", "MovPI", "Playembed", "Rgshows", "Smashystream", "Twoembed", "VidLink", "Videasy", "Vidsrc"
+            }),
         new("diagnostics", "Log và chẩn đoán", "Serilog, xử lý exception, openstat.",
             new[] { "serilog", "useDeveloperExceptionPage", "exceptionHandlerLogTarget", "exceptionHandlerLogFile", "watcherInit", "openstat" }),
 
@@ -42,22 +46,35 @@ public static class ConfigSectionGroups
         new("modules", "Module mở rộng", "Các section module ở cấp cao nhất của config.",
             new[] { "Catalog", "DLNA", "JacRed", "Sync", "TimeCode", "TorrServer", "Tracks", "transcoding", "TmdbProxy", "CubProxy", "WebLog" }),
 
-        new("src-anime", "Nguồn · anime", "Nguồn anime online và liên quan (gồm Kodik).",
-            new[] { "AniLiberty", "AniLibria", "Animebesst", "AnimeGo", "AnimeLib", "AnimeON", "Animevost", "AniMedia", "Dreamerscast", "Kodik", "Mikai", "MoonAnime" }),
-        new("src-embed", "Nguồn · player nhúng", "Embed và aggregator player bên thứ ba.",
-            new[] { "Autoembed", "Hydraflix", "MovPI", "Playembed", "Rgshows", "Smashystream", "Twoembed", "VidLink", "Videasy", "Vidsrc" }),
-        new("src-vod", "Nguồn · VOD và CDN", "Phim, series, nguồn khu vực và CDN.",
+        new("src-vn", "Nguồn · Việt Nam", "Các nguồn phim Việt tùy biến, không cần Playwright.",
+            new[] { "KKPhim", "K20", "VsMov" }),
+
+        new("src-http-bridge", "Nguồn · HTTP và Stremio", "Bridge HTTP/Stremio độc lập với nhóm embed Playwright.",
+            new[] { "AIOStreams", "CineWave", "OpenDirectory", "Sootio", "WebStreamr" }),
+
+        new("src-rus", "Nguồn · Nga và CIS", "Nguồn VOD/CDN Nga; Mirage và Phantom nằm ở nhóm cần trình duyệt.",
             new[]
             {
-                "Alloha", "Ashdi", "AsiaGe", "BamBoo", "CDNvideohub", "Collaps", "Eneyida", "FanCDN", "Filmix", "FilmixPartner", "FilmixTV", "FlixCDN",
-                "Geosaitebi", "GetsTV", "HDVB", "HdvbUA", "IptvOnline", "iRemux", "Kinobase", "Kinoflix", "Kinogo", "Kinotochka", "Kinoukr", "KinoPub",
-                "LeProduction", "Rezka", "RezkaPrem", "RutubeMovie", "Tortuga", "UaKino", "VideoDB", "Videoseed", "VeoVeo", "Vibix", "VkMovie", "VoKino",
-                "WebStreamr", "K20", "OpenDirectory", "Sootio", "AIOStreams", "CineWave"
+                "CDNvideohub", "Collaps", "FanCDN", "FlixCDN", "HDVB", "Kinobase", "Kinogo", "Kinotochka", "LeProduction",
+                "PizdatoeHD", "RutubeMovie", "Spectre", "VeoVeo", "Vibix", "VideoDB", "Videoseed", "VkMovie", "Zetflix", "ZetflixDB"
             }),
-        new("src-adult", "Nguồn · 18+", "SISI / trang người lớn.",
+
+        new("src-paid", "Nguồn · cần tài khoản hoặc token", "Các nguồn thường cần token, cookie hoặc tài khoản riêng.",
+            new[] { "Alloha", "Filmix", "FilmixPartner", "FilmixTV", "GetsTV", "IptvOnline", "iRemux", "KinoPub", "Rezka", "RezkaPrem", "SakhTV", "VoKino" }),
+
+        new("src-ukr", "Nguồn · Ukraine", "Nguồn phim Ukraine và mirror liên quan.",
+            new[] { "Ashdi", "BamBoo", "Eneyida", "HdvbUA", "Kinoukr", "Tortuga", "UAFilm", "UaKino" }),
+
+        new("src-geo", "Nguồn · Georgia và châu Á", "Nguồn theo khu vực Georgia/Asia.",
+            new[] { "AsiaGe", "Geosaitebi", "Kinoflix" }),
+
+        new("src-anime", "Nguồn · anime", "Nguồn anime online và liên quan, bao gồm Kodik.",
+            new[] { "AiLiberty", "AniLiberty", "AniLibria", "AniMedia", "Animebesst", "AnimeGo", "AnimeLib", "AnimeON", "Animevost", "Dreamerscast", "Kodik", "Mikai", "MoonAnime" }),
+
+        new("src-adult", "Nguồn · SISI / 18+", "Module Adult viết bằng C# và engine NextHUB YAML.",
             new[]
             {
-                "BongaCams", "Chaturbate", "Ebalovo", "Eporner", "HQporner", "PornHub", "PornHubPremium", "Porntrex", "Runetki", "Spankbang", "Tizam",
+                "NextHUB", "BongaCams", "Chaturbate", "Ebalovo", "Eporner", "HQporner", "PornHub", "PornHubPremium", "Porntrex", "Runetki", "Spankbang", "Tizam",
                 "Xhamster", "Xnxx", "Xvideos", "XvideosRED"
             }),
     };
