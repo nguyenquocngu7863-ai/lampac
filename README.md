@@ -80,7 +80,10 @@ ip addr show wlan0
 
 ### Cập nhật đầy đủ, không mất dữ liệu
 
-`--update` thay toàn bộ release trong `/root/lampac`; updater tự giữ `init.conf` và `passwd`, nhưng các dữ liệu như `database/`, `users.json`, bookmark, `mods/` và dữ liệu TorrServer phải được backup riêng. Flow an toàn:
+`--update` thay toàn bộ release trong `/root/lampac`. Không backup/restore thư mục `module/`, `Core.dll`, `Shared.dll` hoặc `wwwroot/lampa-main`, vì đây là code phải lấy từ bản mới. Tách backup thành hai nhóm:
+
+- **Dữ liệu an toàn:** cấu hình, user, database, bookmark, TorrServer và keystore APK — tự restore sau update.
+- **Override cần review:** `mods/` và `plugins/` — chỉ giải nén để kiểm tra, không chép đè tự động. Module cùng tên trong `mods/` được load trước `module/`, nên restore mù có thể vô hiệu hóa bản update.
 
 #### 1. Dừng dịch vụ
 
@@ -100,32 +103,46 @@ proot-distro login ubuntu -- bash -lc '
   mkdir -p /root/lampac-backups
 
   stamp=$(date +%Y%m%d-%H%M%S)
-  backup="/root/lampac-backups/pre-update-${stamp}.tar.gz"
+  data_backup="/root/lampac-backups/data-${stamp}.tar.gz"
+  override_backup="/root/lampac-backups/overrides-${stamp}.tar.gz"
 
   cd /root/lampac
-  items=()
+
+  data_items=()
   for path in \
     init.conf init.yaml passwd users.json \
-    database mods plugins data/ts wwwroot/bookmarks
+    database data/ts wwwroot/bookmarks
   do
-    [ -e "$path" ] && items+=("$path")
+    [ -e "$path" ] && data_items+=("$path")
   done
 
-  [ "${#items[@]}" -gt 0 ] || {
+  [ "${#data_items[@]}" -gt 0 ] || {
     echo "Không tìm thấy dữ liệu để backup"
     exit 1
   }
 
-  tar -czf "$backup" "${items[@]}"
-  printf "%s\n" "$backup" > /root/lampac-backups/LATEST
+  tar -czf "$data_backup" "${data_items[@]}"
+  printf "%s\n" "$data_backup" > /root/lampac-backups/LATEST_DATA
 
-  echo "Backup: $backup"
-  du -h "$backup"
-  tar -tzf "$backup" | sed -n "1,30p"
+  override_items=()
+  for path in mods plugins; do
+    [ -e "$path" ] && override_items+=("$path")
+  done
+
+  if [ "${#override_items[@]}" -gt 0 ]; then
+    tar -czf "$override_backup" "${override_items[@]}"
+    printf "%s\n" "$override_backup" > /root/lampac-backups/LATEST_OVERRIDES
+    echo "Override backup: $override_backup"
+    du -h "$override_backup"
+  fi
+
+  echo "Data backup: $data_backup"
+  du -h "$data_backup"
+  tar -tzf "$data_backup" | sed -n "1,30p"
 '
 ```
 
-Backup này giữ cấu hình, user, bookmark/timecode, dữ liệu Storage, TorrServer, plugin/mod tự thêm và keystore ký Lampac APK. Không backup `cache/`, `module/` hoặc `wwwroot/lampa-main`: cache có thể tạo lại, còn code/module/client phải lấy bản mới.
+`database/` chứa bookmark/timecode, Storage và keystore ký Lampac APK. Không backup `cache/`: cache có thể tạo lại và cache module cũ không nên quay lại sau update.
 
 #### 3. Tải release mới và áp dụng lại phần tùy biến
 
@@ -136,25 +153,61 @@ curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/0
   | bash -s -- --update
 ```
 
-Script tải `lampac-nextgen.zip` mới nhất, thay Core/module chính thức rồi đồng bộ lại các module tùy biến của branch này.
+Script tải `lampac-nextgen.zip` mới nhất, thay Core/module chính thức rồi đồng bộ lại các module tùy biến của branch này, bao gồm các site definition NextHUB đã vá.
 
-#### 4. Khôi phục dữ liệu
+#### 4. Chỉ khôi phục dữ liệu an toàn
 
 ```bash
 proot-distro login ubuntu -- bash -lc '
   set -euo pipefail
-  backup=$(cat /root/lampac-backups/LATEST)
+  backup=$(cat /root/lampac-backups/LATEST_DATA)
   [ -f "$backup" ] || {
     echo "Không tìm thấy backup: $backup"
     exit 1
   }
 
-  echo "Restore: $backup"
+  echo "Restore data: $backup"
   tar -xzf "$backup" -C /root/lampac
 '
 ```
 
-#### 5. Khởi động và kiểm tra
+`init.conf` được giữ vì chứa cấu hình người dùng, nhưng section riêng của module vẫn có thể override default mới. Sau update, tìm domain/setting cũ nếu hành vi không thay đổi:
+
+```bash
+proot-distro login ubuntu -- grep -niE \
+  "sex-studentki|overridehost|host" /root/lampac/init.conf
+```
+
+#### 5. Review `mods/` và `plugins/`, không restore mù
+
+```bash
+proot-distro login ubuntu -- bash -lc '
+  set -euo pipefail
+  rm -rf /root/lampac-override-review
+  mkdir -p /root/lampac-override-review
+
+  if [ -f /root/lampac-backups/LATEST_OVERRIDES ]; then
+    backup=$(cat /root/lampac-backups/LATEST_OVERRIDES)
+    tar -xzf "$backup" -C /root/lampac-override-review
+    find /root/lampac-override-review -maxdepth 3 -type f | sed -n "1,80p"
+  else
+    echo "Không có mods/plugins cũ"
+  fi
+'
+```
+
+Chỉ copy từng mod/plugin thật sự tự viết sau khi đã kiểm tra nó không trùng module mới. Ví dụ kiểm tra NextHUB có bị mod cũ che không:
+
+```bash
+proot-distro login ubuntu -- bash -lc '
+  find /root/lampac/mods /root/lampac/module \
+    -path "*/NextHUB/manifest.json" -print 2>/dev/null
+'
+```
+
+Nếu có cả `mods/NextHUB` và `module/NextHUB`, bản trong `mods/` có thể được load trước; nên di chuyển bản cũ ra thư mục review thay vì giữ hai bản.
+
+#### 6. Khởi động và xác minh code mới
 
 ```bash
 lampac start
@@ -166,6 +219,15 @@ Trong session Termux khác:
 lampac status
 aio status
 jackett status
+
+proot-distro login ubuntu -- grep "^host:" \
+  /root/lampac/module/NextHUB/sites/sex-studentki.yaml
+```
+
+Kết quả NextHUB mới phải là:
+
+```text
+host: https://sex-studentki.one
 ```
 
 Nếu cần Jackett:
@@ -174,7 +236,7 @@ Nếu cần Jackett:
 jackett start
 ```
 
-Không xóa `/root/lampac-backups/` cho tới khi đã kiểm tra bookmark, user, TorrServer và APK hoạt động bình thường. Có thể restore lại bất kỳ lúc nào bằng archive được ghi trong `/root/lampac-backups/LATEST`.
+Không xóa `/root/lampac-backups/` cho tới khi đã kiểm tra bookmark, user, TorrServer và APK. Backup override vẫn còn nguyên để lấy lại từng file khi cần, nhưng không tự động đè code mới.
 
 ### Chỉ đồng bộ module tuỳ biến
 
