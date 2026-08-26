@@ -296,7 +296,9 @@ Bản Việt hóa gồm hai lớp. File ngôn ngữ lõi độc lập `Modules/L
 
 Không sửa trực tiếp file addon upstream chỉ để dịch. Khi `--update` thay release, `--sync` sẽ cài lại `vi.js`, vá registry `meta.js`, rồi chép overlay `vietnamese.js`. `LampaCron` cũng tự kiểm tra và cài lại language sau mỗi lần frontend được tải/cập nhật, tránh race khi thư mục `lampa-main/lang` xuất hiện sau lúc sync. Có thể bật/tắt lớp addon tại **Settings → Interface → Lớp Việt hóa addon**.
 
-Khi người dùng tự chọn `vi`, overlay đồng bộ `tmdb_lang=vi` để tiêu đề, mô tả và thể loại lấy từ TMDB bằng tiếng Việt. Riêng request ảnh dùng `include_image_language=en,null`, ưu tiên logo English/ngôn ngữ trung lập vì TMDB thường không có logo `vi`. Các chuỗi addon mới được thêm vào catalog `exact`, `prefixes` hoặc `Lampa.Lang.add` trong `Modules/LampaWeb/plugins/vietnamese.js`, không sửa addon gốc.
+Khi người dùng tự chọn `vi`, overlay đồng bộ `tmdb_lang=vi` để tiêu đề, mô tả và thể loại lấy từ TMDB bằng tiếng Việt. Riêng request ảnh dùng `include_image_language=en,null`, ưu tiên logo English/ngôn ngữ trung lập vì TMDB thường không có logo `vi`.
+
+Online và addon thông thường tiếp tục dùng catalog overlay. Riêng SISI được Việt hóa trực tiếp trong `SISI/plugins/*.js` và menu `Modules/Adult/*/Service.cs` để không dịch nhầm tiêu đề video. NextHUB dịch category tại `Modules/NextHUB/CategoryVi.cs` theo slug ngay lúc server dựng menu; tên playlist/video không đi qua bộ dịch này. Khi upstream update SISI/NextHUB, merge source và giữ catalog Việt tương ứng.
 
 ## Giao diện Online gọn trên điện thoại
 

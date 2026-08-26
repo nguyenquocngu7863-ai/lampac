@@ -389,13 +389,20 @@ install_custom_modules() {
         # NextHUB site definitions change more often than release binaries.
         # Keep the known fixed definitions in sync so an update cannot leave
         # the retired sex-studentki.live domain in the runtime tree.
-        nexthubbase=\"${CUSTOM_SOURCE_BASE}/Modules/NextHUB/sites\"
-        nexthubtarget=/root/lampac/module/NextHUB/sites
+        nexthubrootbase=\"${CUSTOM_SOURCE_BASE}/Modules/NextHUB\"
+        nexthubroottarget=/root/lampac/module/NextHUB
+        nexthubtarget=\"\$nexthubroottarget/sites\"
         if [ -d \"\$nexthubtarget\" ]; then
             for file in sex-studentki.yaml noodlemagazine.yaml; do
-                curl -fSL --retry 3 \"\$nexthubbase/\$file\" -o \"\$nexthubtarget/\$file.tmp\"
+                curl -fSL --retry 3 \"\$nexthubrootbase/sites/\$file\" -o \"\$nexthubtarget/\$file.tmp\"
                 mv \"\$nexthubtarget/\$file.tmp\" \"\$nexthubtarget/\$file\"
             done
+            for file in CategoryVi.cs manifest.json; do
+                curl -fSL --retry 3 \"\$nexthubrootbase/\$file\" -o \"\$nexthubroottarget/\$file.tmp\"
+                mv \"\$nexthubroottarget/\$file.tmp\" \"\$nexthubroottarget/\$file\"
+            done
+            curl -fSL --retry 3 \"\$nexthubrootbase/Controllers/ListController.cs\" -o \"\$nexthubroottarget/Controllers/ListController.cs.tmp\"
+            mv \"\$nexthubroottarget/Controllers/ListController.cs.tmp\" \"\$nexthubroottarget/Controllers/ListController.cs\"
         fi
 
         # Keep Eporner playback behind Lampac's proxy so its CDN receives the
@@ -677,13 +684,20 @@ case "${1:-}" in
             curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a036c7-lampac/jackettctl.sh" -o /root/jackettctl.sh
             chmod +x /root/aioctl.sh /root/jackettctl.sh
 
-            nexthubbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a036c7-lampac/Modules/NextHUB/sites"
-            nexthubtarget=/root/lampac/module/NextHUB/sites
+            nexthubrootbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a036c7-lampac/Modules/NextHUB"
+            nexthubroottarget=/root/lampac/module/NextHUB
+            nexthubtarget="$nexthubroottarget/sites"
             if [ -d "$nexthubtarget" ]; then
                 for file in sex-studentki.yaml noodlemagazine.yaml; do
-                    curl -fSL --retry 3 "$nexthubbase/$file" -o "$nexthubtarget/$file.tmp"
+                    curl -fSL --retry 3 "$nexthubrootbase/sites/$file" -o "$nexthubtarget/$file.tmp"
                     mv "$nexthubtarget/$file.tmp" "$nexthubtarget/$file"
                 done
+                for file in CategoryVi.cs manifest.json; do
+                    curl -fSL --retry 3 "$nexthubrootbase/$file" -o "$nexthubroottarget/$file.tmp"
+                    mv "$nexthubroottarget/$file.tmp" "$nexthubroottarget/$file"
+                done
+                curl -fSL --retry 3 "$nexthubrootbase/Controllers/ListController.cs" -o "$nexthubroottarget/Controllers/ListController.cs.tmp"
+                mv "$nexthubroottarget/Controllers/ListController.cs.tmp" "$nexthubroottarget/Controllers/ListController.cs"
             fi
 
             epornerbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a036c7-lampac/Modules/Adult/Eporner"
