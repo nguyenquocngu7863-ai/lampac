@@ -401,6 +401,17 @@ install_custom_modules() {
             done
         fi
 
+        # Keep Eporner playback behind Lampac's proxy so its CDN receives the
+        # web Referer/Origin headers instead of rejecting the Android player.
+        epornerbase=\"${CUSTOM_SOURCE_BASE}/Modules/Adult/Eporner\"
+        epornertarget=/root/lampac/module/Adult/Eporner
+        if [ -d \"\$epornertarget\" ]; then
+            for file in Controller.cs ModInit.cs Service.cs; do
+                curl -fSL --retry 3 \"\$epornerbase/\$file\" -o \"\$epornertarget/\$file.tmp\"
+                mv \"\$epornertarget/\$file.tmp\" \"\$epornertarget/\$file\"
+            done
+        fi
+
         gstbase=\"${CUSTOM_SOURCE_BASE}/Modules/GStreamer\"
         gsttarget=/root/lampac/module/GStreamer
         mkdir -p \"\$gsttarget/Services\" \"\$gsttarget/plugins\"
@@ -654,6 +665,15 @@ case "${1:-}" in
                 for file in sex-studentki.yaml noodlemagazine.yaml; do
                     curl -fSL --retry 3 "$nexthubbase/$file" -o "$nexthubtarget/$file.tmp"
                     mv "$nexthubtarget/$file.tmp" "$nexthubtarget/$file"
+                done
+            fi
+
+            epornerbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a036c7-lampac/Modules/Adult/Eporner"
+            epornertarget=/root/lampac/module/Adult/Eporner
+            if [ -d "$epornertarget" ]; then
+                for file in Controller.cs ModInit.cs Service.cs; do
+                    curl -fSL --retry 3 "$epornerbase/$file" -o "$epornertarget/$file.tmp"
+                    mv "$epornertarget/$file.tmp" "$epornertarget/$file"
                 done
             fi
 

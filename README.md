@@ -240,7 +240,7 @@ Không xóa `/root/lampac-backups/` cho tới khi đã kiểm tra bookmark, user
 
 ### Chỉ đồng bộ module tuỳ biến
 
-Dùng khi release Lampac vẫn giữ nguyên nhưng bạn muốn lấy lại các thay đổi tuỳ biến (**KKPhim, K20, VsMov, WebStreamr, Open Directory, Sootio, AIOStreams, GStreamer, các site definition NextHUB đã sửa và LampaWeb/StremioSub**):
+Dùng khi release Lampac vẫn giữ nguyên nhưng bạn muốn lấy lại các thay đổi tuỳ biến (**KKPhim, K20, VsMov, WebStreamr, Open Directory, Sootio, AIOStreams, GStreamer, Eporner stream-proxy, các site definition NextHUB đã sửa và LampaWeb/StremioSub**):
 
 ```bash
 bash setup-termux.sh --sync
