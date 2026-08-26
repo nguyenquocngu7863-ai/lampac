@@ -5,6 +5,7 @@
   window.lampac_vietnamese_plugin = true;
 
   var settingName = 'lampac_vietnamese_overlay';
+  var scriptSource = document.currentScript && document.currentScript.src || '';
   var scheduled = false;
   var pendingRoots = [];
 
@@ -168,13 +169,31 @@
     else window.setTimeout(flush, 0);
   }
 
+  function languageUrl() {
+    var match = /^(https?:\/\/[^/]+)/i.exec(scriptSource);
+    var origin = match ? match[1] : window.location.protocol + '//' + window.location.host;
+    return origin + '/lampa-main/lang/vi.js?v=' + Date.now();
+  }
+
+  function installCoreLanguage() {
+    if (!window.Lampa || !Lampa.Lang || !Lampa.Lang.addCodes || !Lampa.Lang.AddTranslation) return;
+
+    // meta.js is bundled into app.min.js, so patching the static meta file is
+    // not enough. Register the language through Lampa's public runtime API.
+    Lampa.Lang.addCodes({ vi: 'Tiếng Việt' });
+
+    import(languageUrl()).then(function (module) {
+      if (module && module.default) {
+        Lampa.Lang.AddTranslation('vi', module.default);
+        schedule(document.body);
+      }
+    }).catch(function (error) {
+      if (window.console) console.error('Vietnamese', 'Không tải được vi.js', error);
+    });
+  }
+
   function addLangCatalog() {
     if (!window.Lampa || !Lampa.Lang || !Lampa.Lang.add) return;
-
-    // Expose Vietnamese in the language selector even on Lampa builds whose
-    // bundled meta.js predates our deployed vi.js module.
-    if (Lampa.Params && Lampa.Params.values && Lampa.Params.values.language)
-      Lampa.Params.values.language.vi = 'Tiếng Việt';
 
     Lampa.Lang.add({
       lampac_watch: { vi: 'Xem trực tuyến' },
@@ -218,6 +237,7 @@
       return;
     }
 
+    installCoreLanguage();
     addLangCatalog();
     installSetting();
     // Core language and TMDB language are selected manually by the user.
