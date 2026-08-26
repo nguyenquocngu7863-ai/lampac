@@ -6,6 +6,8 @@ stream_access: apk,cors
 rchstreamproxy: web
 host: https://trahkino.me
 priorityBrowser: http
+kit: false
+rhub: false
 streamproxy_preview: true
 
 menu:
