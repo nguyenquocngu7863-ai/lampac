@@ -29,11 +29,26 @@ public sealed class Mapple4KController : BaseENGController
         ("s10", "Chimp")
     ];
 
+    // Backup domains advertised by mapple.uk itself (footer "Bookmark our
+    // backup sites", checked 2026-08-28). mapple.vip is gone from that list, so
+    // it is no longer probed.
     static readonly string[] Mirrors =
     [
-        "https://mapple.uk", "https://mapple.rip", "https://mapplee.com",
-        "https://mapple.cc", "https://mappl.tv", "https://mapple.vip", "https://mapple.bid"
+        "https://mapple.uk", "https://mapple.tv", "https://mapple.rip", "https://mapple.bid",
+        "https://mappl.tv", "https://mapplee.com", "https://mapple.cc", "https://lightflix.app"
     ];
+
+    // /api/stream answers {"success":false,"error":"This playback endpoint has
+    // been retired. Refresh the watch page."}, so the playlist is taken from the
+    // watch page when it is rendered there.
+    static readonly Regex EmbeddedStreamRegex = new(
+        "https?://[^\"'<>\\s]+?\\.(?:m3u8|mp4)(?:\\?[^\"'<>\\s]*)?",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant
+    );
+
+    // First upstream reason seen for this request; reported instead of the
+    // generic "no stream" message. Controllers are per-request instances.
+    string lastFailure;
 
     static readonly Regex RequestTokenRegex = new(
         "window\\.__REQUEST_TOKEN__\\s*=\\s*\"([^\"]+)\"",
@@ -69,9 +84,14 @@ public sealed class Mapple4KController : BaseENGController
         if (id <= 0)
             return OnError();
 
+        lastFailure = null;
         List<Candidate> candidates = await ResolveAll(id, s, e);
         if (candidates.Count == 0)
-            return OnError("Mapple không trả stream", 502);
+        {
+            return OnError(string.IsNullOrWhiteSpace(lastFailure)
+                ? "Mapple không trả stream"
+                : $"Mapple: {lastFailure}", 502);
+        }
 
         var qualities = new StreamQualityTpl(candidates.Count);
         foreach (Candidate candidate in candidates)
@@ -139,10 +159,6 @@ public sealed class Mapple4KController : BaseENGController
 
     async Task<List<Candidate>> ResolveMirror(string baseUrl, long tmdbId, string mediaType, short season, short episode)
     {
-        string tvSlug = mediaType == "tv" ? $"{season}-{episode}" : string.Empty;
-        string pageUrl = mediaType == "tv"
-            ? $"{baseUrl}/watch/tv/{tmdbId}/{tvSlug}"
-            : $"{baseUrl}/watch/movie/{tmdbId}";
         var headers = HeadersModel.Init(
             ("User-Agent", Http.UserAgent),
             ("Referer", baseUrl + "/"),
@@ -150,21 +166,81 @@ public sealed class Mapple4KController : BaseENGController
             ("Accept", "*/*")
         );
 
-        string html = await httpHydra.Get(pageUrl, addheaders: headers, statusCodeOK: false);
-        if (string.IsNullOrWhiteSpace(html))
-            return [];
+        // The player docs (mappletv.uk/docs/getting-started/endpoints) use one
+        // dash-joined segment for TV: /watch/tv/{id}-{season}-{episode}. The
+        // older slash form is kept as a fallback for mirrors still routing it.
+        string slug = $"{season}-{episode}";
+        string[] pageUrls = mediaType == "tv"
+            ? [$"{baseUrl}/watch/tv/{tmdbId}-{slug}", $"{baseUrl}/watch/tv/{tmdbId}/{slug}"]
+            : [$"{baseUrl}/watch/movie/{tmdbId}"];
+
+        foreach (string pageUrl in pageUrls)
+        {
+            string html = await httpHydra.Get(pageUrl, addheaders: headers, statusCodeOK: false);
+            if (string.IsNullOrWhiteSpace(html))
+            {
+                lastFailure ??= $"{new Uri(pageUrl).Host}: trang watch trống";
+                continue;
+            }
+
+            // /api/stream is retired, so the watch page is scanned first: when
+            // Mapple renders the playlist server-side this is the only step
+            // that yields anything, and it needs no Chromium.
+            List<Candidate> embedded = EmbeddedCandidates(html, headers);
+            if (embedded.Count > 0)
+                return embedded;
+
+            List<Candidate> viaApi = await ResolveViaApi(baseUrl, html, headers, tmdbId, mediaType, slug);
+            if (viaApi.Count > 0)
+                return viaApi;
+        }
+
+        return [];
+    }
+
+    static List<Candidate> EmbeddedCandidates(string html, List<HeadersModel> headers)
+    {
+        var result = new List<Candidate>();
+
+        // Next.js RSC payloads escape slashes ("https:\/\/host\/x.m3u8").
+        string normalized = html.Replace("\\/", "/");
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (Match match in EmbeddedStreamRegex.Matches(normalized).Cast<Match>().Take(12))
+        {
+            string media = match.Value.TrimEnd(')', ']', '}', ',', ';');
+            if (!Uri.TryCreate(media, UriKind.Absolute, out _))
+                continue;
+            if (media.Contains("nocach", StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (media.Contains("omena-puu", StringComparison.OrdinalIgnoreCase))
+                media += media.Contains('?') ? "&format=.m3u8" : "?format=.m3u8";
+            if (!seen.Add(media))
+                continue;
+
+            result.Add(new Candidate(media, $"{result.Count + 1:00}. Mapple [Web]", headers));
+        }
+
+        return result;
+    }
+
+    async Task<List<Candidate>> ResolveViaApi(string baseUrl, string html, List<HeadersModel> headers, long tmdbId, string mediaType, string tvSlug)
+    {
+        string host = new Uri(baseUrl).Host;
 
         string requestToken = RequestTokenRegex.Match(html).Groups[1].Value;
         if (string.IsNullOrWhiteSpace(requestToken))
         {
-            Console.WriteLine($"Mapple4K: {new Uri(baseUrl).Host} request token missing");
+            lastFailure ??= $"{host}: thiếu request token";
+            Console.WriteLine($"Mapple4K: {host} request token missing");
             return [];
         }
 
         string clientKey = await FindClientKey(baseUrl, html, headers);
         if (string.IsNullOrWhiteSpace(clientKey))
         {
-            Console.WriteLine($"Mapple4K: {new Uri(baseUrl).Host} client key missing");
+            lastFailure ??= $"{host}: thiếu client key";
+            Console.WriteLine($"Mapple4K: {host} client key missing");
             return [];
         }
 
@@ -177,7 +253,8 @@ public sealed class Mapple4KController : BaseENGController
         JObject initialization = await PostJson($"{baseUrl}/api/playback-init", initRequest, headers);
         if (initialization == null)
         {
-            Console.WriteLine($"Mapple4K: {new Uri(baseUrl).Host} playback init failed");
+            lastFailure ??= $"{host}: playback-init thất bại";
+            Console.WriteLine($"Mapple4K: {host} playback init failed");
             return [];
         }
 
@@ -190,7 +267,8 @@ public sealed class Mapple4KController : BaseENGController
             string nonce = SolvePow(challenge, difficulty);
             if (string.IsNullOrWhiteSpace(challengeId) || nonce == null)
             {
-                Console.WriteLine($"Mapple4K: {new Uri(baseUrl).Host} proof-of-work failed");
+                lastFailure ??= $"{host}: proof-of-work thất bại";
+                Console.WriteLine($"Mapple4K: {host} proof-of-work failed");
                 return [];
             }
 
@@ -205,7 +283,8 @@ public sealed class Mapple4KController : BaseENGController
         string playbackToken = initialization?.Value<string>("token");
         if (string.IsNullOrWhiteSpace(playbackToken))
         {
-            Console.WriteLine($"Mapple4K: {new Uri(baseUrl).Host} playback token missing");
+            lastFailure ??= $"{host}: thiếu playback token";
+            Console.WriteLine($"Mapple4K: {host} playback token missing");
             return [];
         }
 
@@ -224,7 +303,13 @@ public sealed class Mapple4KController : BaseENGController
 
             JObject response = await GetJsonNoLog(streamUrl, headers);
             if (response?.Value<bool?>("success") != true)
+            {
+                // Today this is {"success":false,"error":"This playback endpoint
+                // has been retired. Refresh the watch page."} — keep the server's
+                // own wording so the log says why nothing came back.
+                lastFailure ??= response?.Value<string>("error") ?? $"{host}: /api/stream không trả success";
                 continue;
+            }
 
             string media = response["data"]?.Value<string>("stream_url") ?? response.Value<string>("stream_url");
             if (string.IsNullOrWhiteSpace(media) || !Uri.TryCreate(media, UriKind.Absolute, out _) || !seen.Add(media))
