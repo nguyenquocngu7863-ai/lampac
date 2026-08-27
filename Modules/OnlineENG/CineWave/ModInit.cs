@@ -24,8 +24,10 @@ public sealed class ModInit : IModuleLoaded, IModuleOnline
         if (conf == null || !conf.enable || args == null)
             return null;
 
-        // CineWave tổng hợp server tiếng Anh, chỉ gợi ý cho phim ENG.
-        if (CoreInit.conf?.disableEng != false ||
+        // Keep the rest of the ENG embed group hidden. `CineWave.enabled: true`
+        // is an explicit per-source opt-in while global disableEng stays true.
+        bool allowWhenEngDisabled = conf.enabled;
+        if ((CoreInit.conf?.disableEng != false && !allowWhenEngDisabled) ||
             (args.original_language != null && args.original_language != "en"))
             return null;
 

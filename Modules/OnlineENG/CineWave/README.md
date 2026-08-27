@@ -19,6 +19,19 @@ CineWave không dùng TMDB id trần trong URL play mà encode như sau:
 mẫu id 7 chữ số còn mask thêm ký tự tập ở index 10). Ví dụ:
 `movie:24428` → `DgYYDBJMRFFXW1Y` → `watch.cinewave.qzz.io/play/DgYYDBJMRFFXW1Y`.
 
+## Bật riêng khi ENG đang ẩn
+
+Giữ `"disableEng": true` và chỉ opt-in CineWave:
+
+```json
+"CineWave": {
+  "enable": true,
+  "enabled": true
+}
+```
+
+Các nguồn ENG khác vẫn không xuất hiện.
+
 ## Resolve stream
 
 Backend `api.cinewave.qzz.io` không expose endpoint GET công khai nào, nên
