@@ -1,6 +1,6 @@
 # VidLink
 
-Онлайн-источник **VidLink** (`https://vidlink.pro`) для ENG — фильтры **`disableEng`**, **`tmdb`/`cub`**, Playwright (как **MovPI**).
+Онлайн-источник **VidLink** (`https://vidlink.pro`) для ENG. Основной resolver использует зашифрованный endpoint `/api/b` самого web-player и получает поле `stream.playlist` напрямую; Playwright оставлен только как fallback.
 
 ## Интерфейс
 

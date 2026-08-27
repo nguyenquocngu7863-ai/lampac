@@ -5,7 +5,6 @@ using Shared.Models.Events;
 using Shared.Models.Module;
 using Shared.Models.Module.Interfaces;
 using Shared.Models.Online.Settings;
-using Shared.PlaywrightCore;
 using Shared.Services;
 using System.Collections.Generic;
 
@@ -25,10 +24,7 @@ public class ModInit : IModuleLoaded, IModuleOnline
             (CoreInit.conf.disableEng == false || allowWhenEngDisabled))
         {
             if (args.source != null && (args.source is "tmdb" or "cub") && long.TryParse(args.id, out long id) && id > 0)
-            {
-                if (PlaywrightBrowser.Status != PlaywrightStatus.disabled)
-                    online.Add(new(conf, "vidlink", "VidLink", " (ENG)"));
-            }
+                online.Add(new(conf, "vidlink", "VidLink", " (ENG)"));
         }
 
         return online;

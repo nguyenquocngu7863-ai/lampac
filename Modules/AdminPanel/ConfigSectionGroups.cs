@@ -29,11 +29,11 @@ public static class ConfigSectionGroups
 
         new("realtime", "WebSocket và RCH", "Socket native và hub từ xa.",
             new[] { "WebSocket", "rch" }),
-        new("browser", "Nguồn cần trình duyệt", "Mirage/Phantom và phần lớn embed cần Chromium; HydraFlix/TwoEmbed cần Firefox. CineWave quét nhiều iframe, đang thử nghiệm và nên tắt trên Android; Videasy direct API nằm ở nhóm HTTP.",
+        new("browser", "Nguồn cần trình duyệt", "Mirage/Phantom và phần lớn embed cần Chromium; HydraFlix/TwoEmbed cần Firefox. CineWave quét nhiều iframe, đang thử nghiệm và nên tắt trên Android; Videasy/VidLink direct API nằm ở nhóm HTTP.",
             new[]
             {
                 "chromium", "firefox", "Mirage", "Phantom", "CineWave",
-                "Autoembed", "Hydraflix", "MovPI", "Playembed", "Rgshows", "Smashystream", "Twoembed", "VidLink", "Vidsrc"
+                "Autoembed", "Hydraflix", "MovPI", "Playembed", "Rgshows", "Smashystream", "Twoembed", "Vidsrc"
             }),
         new("diagnostics", "Log và chẩn đoán", "Serilog, xử lý exception, openstat.",
             new[] { "serilog", "useDeveloperExceptionPage", "exceptionHandlerLogTarget", "exceptionHandlerLogFile", "watcherInit", "openstat" }),
@@ -49,8 +49,8 @@ public static class ConfigSectionGroups
         new("src-vn", "Nguồn · Việt Nam", "Các nguồn phim Việt tùy biến, không cần Playwright.",
             new[] { "KKPhim", "K20", "VsMov" }),
 
-        new("src-http-bridge", "Nguồn · HTTP và Stremio", "Bridge HTTP/Stremio và Videasy direct API, độc lập với nhóm embed Playwright.",
-            new[] { "AIOStreams", "OpenDirectory", "Sootio", "Videasy", "WebStreamr" }),
+        new("src-http-bridge", "Nguồn · HTTP và Stremio", "Bridge HTTP/Stremio cùng Videasy/VidLink direct API, độc lập với nhóm embed Playwright.",
+            new[] { "AIOStreams", "OpenDirectory", "Sootio", "Videasy", "VidLink", "WebStreamr" }),
 
         new("src-rus", "Nguồn · Nga và CIS", "Nguồn VOD/CDN Nga; Mirage và Phantom nằm ở nhóm cần trình duyệt.",
             new[]
