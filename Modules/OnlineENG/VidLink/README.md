@@ -1,6 +1,6 @@
 # VidLink
 
-Онлайн-источник **VidLink** (`https://vidlink.pro`) для ENG. Основной resolver использует зашифрованный endpoint `/api/b` самого web-player и получает поле `stream.playlist` напрямую; Playwright оставлен только как fallback.
+Онлайн-источник **VidLink** (`https://vidlink.pro`) для ENG. Resolver получает актуальный id через `enc-dec.app`, запрашивает `/api/b` с playback environment `webkit` и передаёт `stream.playlist` вместе с `playlistHeaders`/signed cookies. Без `webkit` API возвращает progressive HEVC на HakunaMatata, который Android WebView не воспроизводит. Playwright оставлен только как fallback.
 
 ## Интерфейс
 

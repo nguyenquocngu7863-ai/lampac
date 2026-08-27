@@ -10,8 +10,6 @@ using Shared.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Security.Cryptography;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace VidLink;
@@ -19,11 +17,7 @@ namespace VidLink;
 public class VidLinkController : BaseENGController
 {
     const string ApiBase = "https://vidlink.pro/api/b";
-    // Public protocol cipher embedded by VidLink's web player; this is not an
-    // account credential and grants no API authorization.
-    const string CipherKeyHex = "2de6e6ea13a9df9503b11a6117fd7e51941e04a0c223dfeacfe8a1dbb6c52783";
-
-    static readonly byte[] CipherKey = Convert.FromHexString(CipherKeyHex);
+    const string EncryptEndpoint = "https://enc-dec.app/api/enc-vidlink";
 
     public VidLinkController() : base(ModInit.conf)
     {
@@ -80,43 +74,77 @@ public class VidLinkController : BaseENGController
     async Task<(string m3u8, List<HeadersModel> headers)> ResolveApi(long id, short season, short episode)
     {
         string mediaType = season > 0 ? "tv" : "movie";
-        string memKey = $"vidlink:api-v1:{mediaType}:{id}:{season}:{episode}";
+        string memKey = $"vidlink:api-webkit-v2:{mediaType}:{id}:{season}:{episode}";
         if (hybridCache.TryGetValue(memKey, out (string m3u8, List<HeadersModel> headers) cached))
             return cached;
 
         try
         {
-            string encryptedId = EncryptId(id.ToString());
-            string endpoint = mediaType == "tv"
-                ? $"{ApiBase}/tv/{Uri.EscapeDataString(encryptedId)}/{season}/{episode}"
-                : $"{ApiBase}/movie/{Uri.EscapeDataString(encryptedId)}";
-
-            string encryptedResponse = await httpHydra.Get(
-                endpoint,
+            // VidLink changed its token protocol: its current player delegates
+            // id encryption to enc-dec.app and returns plain JSON from /api/b.
+            JObject encrypted = await httpHydra.Get<JObject>(
+                $"{EncryptEndpoint}?text={id}",
                 addheaders: HeadersModel.Init(
-                    ("Accept", "text/plain, application/json, */*"),
-                    ("Referer", init.host + "/"),
+                    ("Accept", "application/json"),
                     ("User-Agent", Http.UserAgent)
-                ),
-                statusCodeOK: false
+                )
             );
-            if (string.IsNullOrWhiteSpace(encryptedResponse))
+            string encryptedId = encrypted?.Value<string>("result");
+            if (string.IsNullOrWhiteSpace(encryptedId))
                 return default;
 
-            JObject root = JObject.Parse(DecryptResponse(encryptedResponse.Trim()));
-            string playlist = root["stream"]?.Value<string>("playlist");
+            string endpoint = mediaType == "tv"
+                ? $"{ApiBase}/tv/{Uri.EscapeDataString(encryptedId)}/{season}/{episode}?multiLang=1"
+                : $"{ApiBase}/movie/{Uri.EscapeDataString(encryptedId)}?multiLang=1";
+
+            var requestHeaders = HeadersModel.Init(
+                ("Accept", "*/*"),
+                ("Accept-Language", "en-US,en;q=0.9"),
+                ("Referer", init.host + "/"),
+                ("Origin", init.host),
+                ("User-Agent", Http.UserAgent),
+                // Without this header VidLink returns a progressive HEVC file
+                // that Android WebView rejects. `webkit` selects its adaptive
+                // manifest and returns the required signed-cookie headers.
+                ("X-Playback-Environment", "webkit")
+            );
+            JObject root = await httpHydra.Get<JObject>(endpoint, addheaders: requestHeaders);
+            JToken stream = root?["stream"];
+            if (stream == null)
+                return default;
+
+            JObject streamObject = stream as JObject;
+            string playlist = stream.Type == JTokenType.String
+                ? stream.Value<string>()
+                : streamObject?.Value<string>("playlist") ?? streamObject?.Value<string>("url");
+
+            if (string.IsNullOrWhiteSpace(playlist) && streamObject?["qualities"] is JObject qualities)
+            {
+                playlist = qualities.Properties()
+                    .OrderByDescending(p => ParseQuality(p.Name))
+                    .Select(p => p.Value.Type == JTokenType.String
+                        ? p.Value.Value<string>()
+                        : p.Value.Value<string>("url"))
+                    .FirstOrDefault(url => !string.IsNullOrWhiteSpace(url));
+            }
+
             if (string.IsNullOrWhiteSpace(playlist) ||
                 !Uri.TryCreate(playlist, UriKind.Absolute, out _))
                 return default;
 
-            var streamHeaders = HeadersModel.Init(
-                ("User-Agent", Http.UserAgent),
-                ("Referer", init.host + "/"),
-                ("Origin", init.host)
-            );
-            cached = (playlist, streamHeaders);
+            var merged = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["User-Agent"] = Http.UserAgent,
+                ["Referer"] = init.host + "/",
+                ["Origin"] = init.host
+            };
+            MergeHeaders(merged, streamObject?["playlistHeaders"] as JObject);
+            MergeHeaders(merged, streamObject?["headers"] as JObject);
+
+            cached = (playlist, HeadersModel.Init(merged));
             hybridCache.Set(memKey, cached, cacheTime(20));
-            Console.WriteLine($"VidLink: direct API resolved ({mediaType}:{id})");
+            string delivery = streamObject?.Value<string>("deliveryType") ?? streamObject?.Value<string>("type") ?? "manifest";
+            Console.WriteLine($"VidLink: direct API resolved {delivery} ({mediaType}:{id})");
             return cached;
         }
         catch (Exception ex)
@@ -126,39 +154,23 @@ public class VidLinkController : BaseENGController
         }
     }
 
-    static string EncryptId(string value)
+    static void MergeHeaders(Dictionary<string, string> target, JObject source)
     {
-        byte[] iv = RandomNumberGenerator.GetBytes(16);
-        using Aes aes = Aes.Create();
-        aes.Key = CipherKey;
-        aes.IV = iv;
-        aes.Mode = CipherMode.CBC;
-        aes.Padding = PaddingMode.PKCS7;
+        if (source == null)
+            return;
 
-        using ICryptoTransform encryptor = aes.CreateEncryptor();
-        byte[] plain = Encoding.UTF8.GetBytes(value);
-        byte[] cipher = encryptor.TransformFinalBlock(plain, 0, plain.Length);
-        string payload = $"{Convert.ToHexString(iv).ToLowerInvariant()}:{Convert.ToHexString(cipher).ToLowerInvariant()}";
-        return Convert.ToBase64String(Encoding.UTF8.GetBytes(payload));
+        foreach (JProperty property in source.Properties())
+        {
+            string value = property.Value.Value<string>();
+            if (!string.IsNullOrWhiteSpace(value))
+                target[property.Name] = value;
+        }
     }
 
-    static string DecryptResponse(string value)
+    static int ParseQuality(string value)
     {
-        string[] parts = value.Split(':', 2);
-        if (parts.Length != 2)
-            throw new InvalidOperationException("VidLink encrypted response format");
-
-        byte[] iv = Convert.FromHexString(parts[0]);
-        byte[] cipher = Convert.FromHexString(parts[1]);
-        using Aes aes = Aes.Create();
-        aes.Key = CipherKey;
-        aes.IV = iv;
-        aes.Mode = CipherMode.CBC;
-        aes.Padding = PaddingMode.PKCS7;
-
-        using ICryptoTransform decryptor = aes.CreateDecryptor();
-        byte[] plain = decryptor.TransformFinalBlock(cipher, 0, cipher.Length);
-        return Encoding.UTF8.GetString(plain);
+        string digits = new string((value ?? string.Empty).Where(char.IsDigit).ToArray());
+        return int.TryParse(digits, out int quality) ? quality : 0;
     }
 
     async Task<(string m3u8, List<HeadersModel> headers)> black_magic(string uri)
