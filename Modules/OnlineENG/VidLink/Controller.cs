@@ -77,7 +77,7 @@ public class VidLinkController : BaseENGController
     async Task<(string m3u8, List<HeadersModel> headers)> ResolveApi(long id, short season, short episode)
     {
         string mediaType = season > 0 ? "tv" : "movie";
-        string memKey = $"vidlink:api-webkit-relay-v3:{mediaType}:{id}:{season}:{episode}";
+        string memKey = $"vidlink:api-standard-h264-v4:{mediaType}:{id}:{season}:{episode}";
         if (hybridCache.TryGetValue(memKey, out (string m3u8, List<HeadersModel> headers) cached))
             return cached;
 
@@ -106,10 +106,10 @@ public class VidLinkController : BaseENGController
                 ("Referer", init.host + "/"),
                 ("Origin", init.host),
                 ("User-Agent", Http.UserAgent),
-                // Without this header VidLink returns a progressive HEVC file
-                // that Android WebView rejects. `webkit` selects its adaptive
-                // manifest and returns the required signed-cookie headers.
-                ("X-Playback-Environment", "webkit")
+                // Ask for ordinary browser-compatible H.264 qualities. The
+                // WebKit/DASH lane needs signed-cookie MPD handling that Lampa's
+                // player does not complete reliably on Android.
+                ("X-Playback-Environment", "standard")
             );
             JObject root = await httpHydra.Get<JObject>(endpoint, addheaders: requestHeaders);
             JToken stream = root?["stream"];
@@ -117,19 +117,32 @@ public class VidLinkController : BaseENGController
                 return default;
 
             JObject streamObject = stream as JObject;
-            string playlist = stream.Type == JTokenType.String
+            string playlist = null;
+            JObject selectedQuality = null;
+            string qualityLabel = null;
+
+            // The standard environment exposes progressive H.264 renditions.
+            // Prefer its highest quality over the adaptive HEVC/DASH playlist.
+            if (streamObject?["qualities"] is JObject qualities)
+            {
+                JProperty selected = qualities.Properties()
+                    .OrderByDescending(p => ParseQuality(p.Name))
+                    .FirstOrDefault(p => p.Value.Type == JTokenType.String
+                        ? !string.IsNullOrWhiteSpace(p.Value.Value<string>())
+                        : !string.IsNullOrWhiteSpace(p.Value.Value<string>("url")));
+                if (selected != null)
+                {
+                    qualityLabel = selected.Name;
+                    playlist = selected.Value.Type == JTokenType.String
+                        ? selected.Value.Value<string>()
+                        : selected.Value.Value<string>("url");
+                    selectedQuality = selected.Value as JObject;
+                }
+            }
+
+            playlist ??= stream.Type == JTokenType.String
                 ? stream.Value<string>()
                 : streamObject?.Value<string>("playlist") ?? streamObject?.Value<string>("url");
-
-            if (string.IsNullOrWhiteSpace(playlist) && streamObject?["qualities"] is JObject qualities)
-            {
-                playlist = qualities.Properties()
-                    .OrderByDescending(p => ParseQuality(p.Name))
-                    .Select(p => p.Value.Type == JTokenType.String
-                        ? p.Value.Value<string>()
-                        : p.Value.Value<string>("url"))
-                    .FirstOrDefault(url => !string.IsNullOrWhiteSpace(url));
-            }
 
             if (string.IsNullOrWhiteSpace(playlist) ||
                 !Uri.TryCreate(playlist, UriKind.Absolute, out _))
@@ -143,10 +156,24 @@ public class VidLinkController : BaseENGController
             };
             MergeHeaders(merged, streamObject?["playlistHeaders"] as JObject);
             MergeHeaders(merged, streamObject?["headers"] as JObject);
+            MergeHeaders(merged, selectedQuality?["headers"] as JObject);
 
-            string delivery = streamObject?.Value<string>("deliveryType") ?? streamObject?.Value<string>("type") ?? "manifest";
-            if (delivery.Equals("dash", StringComparison.OrdinalIgnoreCase) ||
-                playlist.Contains(".mpd", StringComparison.OrdinalIgnoreCase))
+            string delivery = selectedQuality?.Value<string>("type")
+                ?? streamObject?.Value<string>("deliveryType")
+                ?? streamObject?.Value<string>("type")
+                ?? "file";
+            bool requiresProxy = selectedQuality?.Value<bool?>("requiresProxy")
+                ?? streamObject?.Value<bool?>("requiresProxy")
+                ?? false;
+
+            if (requiresProxy && playlist.Contains(".mp4", StringComparison.OrdinalIgnoreCase))
+            {
+                string relayed = BuildMp4Relay(playlist, merged);
+                if (!string.IsNullOrEmpty(relayed))
+                    playlist = relayed;
+            }
+            else if (delivery.Equals("dash", StringComparison.OrdinalIgnoreCase) ||
+                     playlist.Contains(".mpd", StringComparison.OrdinalIgnoreCase))
             {
                 string relayed = BuildDashRelay(playlist, merged);
                 if (!string.IsNullOrEmpty(relayed))
@@ -155,7 +182,8 @@ public class VidLinkController : BaseENGController
 
             cached = (playlist, HeadersModel.Init(merged));
             hybridCache.Set(memKey, cached, cacheTime(20));
-            Console.WriteLine($"VidLink: direct API resolved {delivery}{(playlist.Contains("/sacdn", StringComparison.OrdinalIgnoreCase) ? " relay" : "")} ({mediaType}:{id})");
+            bool relayed = playlist.Contains("noon.mooncase.online", StringComparison.OrdinalIgnoreCase);
+            Console.WriteLine($"VidLink: direct API resolved {delivery} {qualityLabel ?? "auto"}{(relayed ? " relay" : "")} ({mediaType}:{id})");
             return cached;
         }
         catch (Exception ex)
@@ -163,6 +191,31 @@ public class VidLinkController : BaseENGController
             Serilog.Log.Warning(ex, "VidLink direct API failed for {MediaType}:{Id}", mediaType, id);
             return default;
         }
+    }
+
+    static string BuildMp4Relay(string mediaUrl, Dictionary<string, string> headers)
+    {
+        if (!Uri.TryCreate(mediaUrl, UriKind.Absolute, out Uri source))
+            return null;
+
+        var signedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "auth", "expires", "hash", "key", "sign", "t", "token"
+        };
+        var query = new List<string>();
+        foreach (string item in source.Query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            string key = item.Split('=', 2)[0];
+            if (signedKeys.Contains(Uri.UnescapeDataString(key)))
+                query.Add(item);
+        }
+
+        string serializedHeaders = Uri.EscapeDataString(
+            JObject.FromObject(headers).ToString(Newtonsoft.Json.Formatting.None));
+        string origin = Uri.EscapeDataString(source.GetLeftPart(UriPartial.Authority));
+        query.Add($"headers={serializedHeaders}");
+        query.Add($"host={origin}");
+        return $"https://noon.mooncase.online/mp{source.AbsolutePath}?{string.Join("&", query)}";
     }
 
     static string BuildDashRelay(string playlist, Dictionary<string, string> headers)

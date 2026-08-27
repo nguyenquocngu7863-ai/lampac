@@ -1,6 +1,6 @@
 # VidLink
 
-Онлайн-источник **VidLink** (`https://vidlink.pro`) для ENG. Resolver получает актуальный id через `enc-dec.app`, запрашивает `/api/b` с playback environment `webkit` и читает `stream.playlist` вместе с `playlistHeaders`/signed cookies. Без `webkit` API возвращает progressive HEVC, который Android WebView не воспроизводит. DASH с CloudFront cookie преобразуется в relay `/sacdn` на `noon.mooncase.online`, чтобы cookie применялся и к manifest, и к segment; generic Lampac `/proxy/` для этого потока недостаточен. Playwright оставлен только как fallback.
+Онлайн-источник **VidLink** (`https://vidlink.pro`) для ENG. Resolver получает актуальный id через `enc-dec.app` и запрашивает `/api/b` с playback environment `standard`, затем выбирает максимальную H.264 rendition из `stream.qualities`. Файлы с `requiresProxy` преобразуются в официальный relay `/mp` на `noon.mooncase.online`. DASH/WebKit со signed cookies остаётся только запасным вариантом: Lampa на Android открывал MPD, но бесконечно ждал сегменты. Playwright оставлен последним fallback.
 
 ## Интерфейс
 
