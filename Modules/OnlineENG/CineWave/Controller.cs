@@ -29,8 +29,12 @@ namespace CineWave;
 /// </summary>
 public sealed class CineWaveController : BaseOnlineController<ModuleConf>
 {
-    const string HdHubHost = "https://hdhub.thevolecitor.qzz.io";
-    const string HdHubConfig = "eyJ0b3Jib3giOiJ1bnNldCIsInF1YWxpdGllcyI6IjIxNjBwLDEwODBwLDcyMHAiLCJzb3J0IjoiZGVzYyJ9";
+    static readonly string[] PlayerLabels =
+    [
+        "videasy", "VidFast", "FilmU", "Vares", "VidGod", "VidKing",
+        "VixSrc", "VidLink", "VidZee", "VidZee V2", "autoembed", "VidRock",
+        "VidSrc", "111movies", "SuperEmbed", "2Embed"
+    ];
 
     sealed record CineWaveCandidate(string Url, string Label, List<HeadersModel> Headers);
 
@@ -94,11 +98,11 @@ public sealed class CineWaveController : BaseOnlineController<ModuleConf>
 
         var tpl = new MovieTpl(title, original_title, 1);
         tpl.Append(
-            "CineWave · tất cả server",
+            "CineWave.su · tất cả player",
             accsArgs($"{host}/lite/cinewave/video?tmdb_id={tmdbId}&imdb_id={HttpUtility.UrlEncode(imdb_id)}"),
             "call",
-            quality: "2160p",
-            details: "4K/1080p/720p • direct + embed fallback"
+            quality: "4K / HLS",
+            details: "Ưu tiên HLS • direct đứng sau"
         );
 
         return ContentTpl(tpl);
@@ -232,127 +236,184 @@ public sealed class CineWaveController : BaseOnlineController<ModuleConf>
         ));
     }
 
-    // ═══════════════════════════ Direct catalog + embed fallback ═══════════════════════════
+    // ═══════════════════════════ cinewave.su multi-player resolver ═══════════════════════════
 
     async Task<List<CineWaveCandidate>> ResolveCandidates(long tmdbId, string imdbId, short season, short episode)
     {
-        imdbId = await ResolveImdbId(tmdbId, imdbId, season > 0);
-        string streamId = season > 0 && episode > 0
-            ? $"{imdbId}:{season}:{episode}"
-            : imdbId;
-        string mediaType = season > 0 ? "series" : "movie";
-        string memKey = $"cinewave:all:{mediaType}:{streamId}";
-
+        string mediaType = season > 0 ? "tv" : "movie";
+        string memKey = $"cinewave-su:all:{mediaType}:{tmdbId}:{season}:{episode}";
         if (hybridCache.TryGetValue(memKey, out List<CineWaveCandidate> cached))
             return cached;
 
-        var candidates = new List<CineWaveCandidate>(40);
+        var candidates = new List<CineWaveCandidate>(PlayerLabels.Length);
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        object sync = new();
+        string activePlayer = "videasy";
+        string pageUrl = season > 0
+            ? $"{SiteHost()}/tv/{tmdbId}"
+            : $"{SiteHost()}/movie/{tmdbId}";
 
-        if (!string.IsNullOrWhiteSpace(imdbId) && imdbId.StartsWith("tt", StringComparison.OrdinalIgnoreCase))
+        try
+        {
+            using var browser = new PlaywrightBrowser(init.priorityBrowser);
+            var page = await browser.NewPageAsync(init.plugin, httpHeaders(init)?.ToDictionary(), proxy_data);
+            if (page == null)
+                return candidates;
+
+            await page.RouteAsync("**/*", async route =>
+            {
+                try
+                {
+                    string url = route.Request.Url;
+                    if (VideoUrlRegex.IsMatch(url) && !AdUrlRegex.IsMatch(url))
+                    {
+                        var headers = new List<HeadersModel>();
+                        foreach (var item in route.Request.Headers)
+                        {
+                            if (!BlockedHeader(item.Key))
+                                headers.Add(new HeadersModel(item.Key, item.Value.ToString()));
+                        }
+
+                        lock (sync)
+                        {
+                            if (seen.Add(url))
+                                candidates.Add(new CineWaveCandidate(url, activePlayer, headers));
+                        }
+
+                        await route.AbortAsync();
+                        return;
+                    }
+
+                    if (AdUrlRegex.IsMatch(url))
+                    {
+                        await route.AbortAsync();
+                        return;
+                    }
+
+                    if (await PlaywrightBase.AbortOrCache(page, route, abortMedia: true, fullCacheJS: true))
+                        return;
+
+                    await route.ContinueAsync();
+                }
+                catch (Exception ex)
+                {
+                    Serilog.Log.Debug(ex, "CineWave route failed");
+                }
+            });
+
+            PlaywrightBase.GotoAsync(page, pageUrl);
+            await Task.Delay(3500);
+
+            if (season > 0)
+            {
+                await ClickPlayerControl(page, $"Season {season}", startsWith: false);
+                await Task.Delay(700);
+                await ClickPlayerControl(page, $"E{episode} ·", startsWith: true);
+                await Task.Delay(1200);
+            }
+
+            int perPlayerDelay = Math.Clamp(init.resolveSeconds * 1000 / PlayerLabels.Length, 1500, 2500);
+            foreach (string playerLabel in PlayerLabels)
+            {
+                activePlayer = playerLabel;
+                bool clicked = await ClickPlayerControl(page, playerLabel, startsWith: false);
+                if (clicked)
+                {
+                    await Task.Delay(350);
+                    await TryStartEmbeddedPlayers(page);
+                    await Task.Delay(perPlayerDelay);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Warning(ex, "CineWave.su multi-player resolve failed for {TmdbId}", tmdbId);
+        }
+
+        List<CineWaveCandidate> ordered;
+        lock (sync)
+        {
+            ordered = candidates
+                .OrderBy(i => StreamPriority(i.Url))
+                .ThenBy(i => Array.FindIndex(PlayerLabels, p => p.Equals(i.Label, StringComparison.OrdinalIgnoreCase)))
+                .Select((item, index) => item with
+                {
+                    Label = $"{index + 1:00}. {(StreamPriority(item.Url) == 0 ? "HLS" : "Direct")} · {item.Label}"
+                })
+                .ToList();
+        }
+
+        if (ordered.Count > 0)
+        {
+            hybridCache.Set(memKey, ordered, TimeSpan.FromSeconds(Math.Clamp(init.cacheSeconds, 60, 3600)));
+            Console.WriteLine($"CineWave.su: {ordered.Count} streams ({mediaType}:{tmdbId})");
+        }
+        else
+        {
+            Console.WriteLine($"CineWave.su: no stream ({mediaType}:{tmdbId})");
+            proxyManager?.Refresh();
+        }
+
+        return ordered;
+    }
+
+    static async Task<bool> ClickPlayerControl(IPage page, string label, bool startsWith)
+    {
+        try
+        {
+            return await page.EvaluateAsync<bool>(
+                @"([label, startsWith]) => {
+                    const norm = value => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+                    const wanted = norm(label);
+                    const nodes = Array.from(document.querySelectorAll('button, [role=""button""], a, label'));
+                    const node = nodes.find(el => {
+                        const text = norm(el.textContent);
+                        return startsWith ? text.startsWith(wanted) : text === wanted;
+                    });
+                    if (!node) return false;
+                    node.click();
+                    return true;
+                }",
+                new object[] { label, startsWith }
+            );
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    static async Task TryStartEmbeddedPlayers(IPage page)
+    {
+        foreach (IFrame frame in page.Frames.Skip(1))
         {
             try
             {
-                string apiUrl = $"{HdHubHost}/{HdHubConfig}/stream/{mediaType}/{HttpUtility.UrlEncode(streamId)}.json";
-                var apiHeaders = HeadersModel.Init(
-                    ("Referer", SiteHost() + "/"),
-                    ("Accept", "application/json"),
-                    ("User-Agent", Http.UserAgent)
+                await frame.EvaluateAsync(
+                    @"() => {
+                        const button = document.querySelector('[aria-label*=""play"" i], .play-button, .vjs-big-play-button, button:has(svg)');
+                        if (button) button.click();
+                        const video = document.querySelector('video');
+                        if (video && video.paused) video.play().catch(() => {});
+                    }"
                 );
-                JObject root = await httpHydra.Get<JObject>(apiUrl, addheaders: apiHeaders);
-
-                if (root?["streams"] is JArray streams)
-                {
-                    int index = 0;
-                    foreach (JToken item in streams)
-                    {
-                        string providerName = item.Value<string>("name") ?? string.Empty;
-                        string description = item.Value<string>("description") ?? item.Value<string>("title") ?? string.Empty;
-                        string combined = providerName + " " + description;
-
-                        if (Regex.IsMatch(combined, "donat|discord", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
-                            continue;
-
-                        string url = item.Value<string>("url") ?? item.Value<string>("externalUrl");
-                        if (!IsHttpUrl(url) || !seen.Add(url))
-                            continue;
-
-                        index++;
-                        string quality = QualityLabel(combined);
-                        string provider = Regex.Replace(providerName, @"\s+", " ").Trim();
-                        if (string.IsNullOrWhiteSpace(provider))
-                            provider = "CineWave";
-                        if (provider.Length > 24)
-                            provider = provider[..24];
-
-                        long size = item["behaviorHints"]?.Value<long?>("videoSize") ?? 0;
-                        string sizeLabel = SizeLabel(size);
-                        string label = $"{index:00}. {quality} · {provider}";
-                        if (sizeLabel != null)
-                            label += $" · {sizeLabel}";
-
-                        var streamHeaders = HeadersModel.Init(
-                            ("Referer", SiteHost() + "/"),
-                            ("User-Agent", Http.UserAgent),
-                            ("Accept", "*/*")
-                        );
-                        candidates.Add(new CineWaveCandidate(url, label, streamHeaders));
-                    }
-                }
             }
-            catch (Exception ex)
+            catch
             {
-                Serilog.Log.Warning(ex, "CineWave direct catalog failed for {StreamId}", streamId);
             }
         }
-
-        // Use the browser-sniffed Server Hub only when the direct catalog has
-        // no usable result; otherwise it adds a 20-second Chromium pass to
-        // every request merely to duplicate one of the available servers.
-        if (candidates.Count == 0)
-        {
-            CineWaveStream embed = await ResolveStream(tmdbId, season, episode);
-            if (embed != null && seen.Add(embed.Url))
-                candidates.Add(new CineWaveCandidate(embed.Url, "01. Embed fallback", embed.Headers));
-        }
-
-        if (candidates.Count > 0)
-        {
-            hybridCache.Set(memKey, candidates, TimeSpan.FromSeconds(Math.Clamp(init.cacheSeconds, 60, 3600)));
-            Console.WriteLine($"CineWave: {candidates.Count} streams ({mediaType}:{streamId})");
-        }
-
-        return candidates;
     }
 
-    async Task<string> ResolveImdbId(long tmdbId, string imdbId, bool series)
+    static int StreamPriority(string url)
     {
-        if (!string.IsNullOrWhiteSpace(imdbId) && imdbId.StartsWith("tt", StringComparison.OrdinalIgnoreCase))
-            return imdbId;
-
-        JObject external = await GetTmdb($"{(series ? "tv" : "movie")}/{tmdbId}/external_ids");
-        return external?.Value<string>("imdb_id");
+        if (url.Contains(".m3u8", StringComparison.OrdinalIgnoreCase))
+            return 0;
+        if (url.Contains(".mp4", StringComparison.OrdinalIgnoreCase))
+            return 1;
+        return 2;
     }
 
-    static string QualityLabel(string value)
-    {
-        Match match = Regex.Match(value ?? string.Empty, @"(?:2160p|4K|1080p|720p|480p)", RegexOptions.IgnoreCase);
-        if (!match.Success)
-            return "Auto";
-
-        return match.Value.Equals("2160p", StringComparison.OrdinalIgnoreCase) ? "4K" : match.Value.ToUpperInvariant();
-    }
-
-    static string SizeLabel(long bytes)
-    {
-        if (bytes <= 0)
-            return null;
-
-        double gb = bytes / 1024d / 1024d / 1024d;
-        return gb >= 1 ? $"{gb:0.##} GB" : $"{bytes / 1024d / 1024d:0} MB";
-    }
-
-    // ═══════════════════════════ Resolver (headless fallback) ═══════════════════════════
+    // ═══════════════════════════ Legacy watch.cinewave fallback helpers ═══════════════════════════
 
     async Task<CineWaveStream> ResolveStream(long tmdbId, short season, short episode)
     {
@@ -600,9 +661,14 @@ public sealed class CineWaveController : BaseOnlineController<ModuleConf>
     }
 
     string SiteHost()
-        => (string.IsNullOrWhiteSpace(init.siteHost)
-            ? "https://watch.cinewave.qzz.io"
-            : init.siteHost).TrimEnd('/');
+    {
+        string configured = init.siteHost;
+        if (string.IsNullOrWhiteSpace(configured) ||
+            configured.Contains("watch.cinewave.qzz.io", StringComparison.OrdinalIgnoreCase))
+            configured = "https://www.cinewave.su";
+
+        return configured.TrimEnd('/');
+    }
 
     static long ResolveTmdbId(long tmdbId, string id, string source)
     {

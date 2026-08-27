@@ -11,10 +11,10 @@ public sealed class ModuleConf : BaseSettings, ICloneable
         displayname = "CineWave";
         displayindex = 1065;
         enable = true;
-        siteHost = "https://watch.cinewave.qzz.io";
+        siteHost = "https://www.cinewave.su";
         streamproxy = false;
         timeoutSeconds = 30;
-        resolveSeconds = 20;
+        resolveSeconds = 32;
         cacheSeconds = 1200;
     }
 

@@ -4,6 +4,7 @@ using Shared.Models.Base;
 using Shared.Models.Events;
 using Shared.Models.Module;
 using Shared.Models.Module.Interfaces;
+using Shared.PlaywrightCore;
 using Shared.Services;
 using System.Collections.Generic;
 
@@ -30,8 +31,10 @@ public sealed class ModInit : IModuleLoaded, IModuleOnline
             (args.original_language != null && args.original_language != "en"))
             return null;
 
-        // Direct HdHub/Stremio catalog does not require a browser. Chromium is
-        // used only as a fallback when the direct catalog has no stream.
+        // cinewave.su switches between its player tabs in a real browser so
+        // the resolver can collect each HLS/direct request.
+        if (PlaywrightBrowser.Status == PlaywrightStatus.disabled)
+            return null;
 
         // Nguồn chỉ key theo TMDB id.
         if (!(args.source is "tmdb" or "cub") ||
