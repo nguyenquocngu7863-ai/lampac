@@ -29,7 +29,7 @@ public static class ConfigSectionGroups
 
         new("realtime", "WebSocket và RCH", "Socket native và hub từ xa.",
             new[] { "WebSocket", "rch" }),
-        new("browser", "Nguồn cần trình duyệt", "Mirage/Phantom/CineWave và phần lớn embed cần Chromium; HydraFlix/TwoEmbed cần Firefox. Videasy direct API nằm ở nhóm HTTP.",
+        new("browser", "Nguồn cần trình duyệt", "Mirage/Phantom và phần lớn embed cần Chromium; HydraFlix/TwoEmbed cần Firefox. CineWave quét nhiều iframe, đang thử nghiệm và nên tắt trên Android; Videasy direct API nằm ở nhóm HTTP.",
             new[]
             {
                 "chromium", "firefox", "Mirage", "Phantom", "CineWave",

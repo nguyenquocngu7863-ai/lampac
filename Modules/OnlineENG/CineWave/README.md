@@ -1,4 +1,6 @@
-# CineWave.su bridge
+# CineWave.su bridge (experimental, disabled by default)
+
+> Trạng thái: không ổn định trên Android/proot. Việc quét 16 iframe có thể làm Chromium mất kết nối; module mặc định `enable = false` và không nằm trong nhóm nguồn khuyến nghị.
 
 Adapter cho `https://www.cinewave.su`. Nguồn dùng Chromium để mở trang phim/TV thật và lần lượt chuyển các tab player mà trang đang công bố:
 

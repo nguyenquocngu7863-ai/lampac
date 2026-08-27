@@ -10,7 +10,9 @@ public sealed class ModuleConf : BaseSettings, ICloneable
         plugin = "cinewave";
         displayname = "CineWave";
         displayindex = 1065;
-        enable = true;
+        // Experimental multi-iframe resolver is intentionally opt-in. Opening
+        // every player tab can destabilize Chromium on Android/proot.
+        enable = false;
         siteHost = "https://www.cinewave.su";
         streamproxy = true;
         timeoutSeconds = 30;
