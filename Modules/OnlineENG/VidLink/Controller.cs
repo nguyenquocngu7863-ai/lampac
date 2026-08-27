@@ -10,6 +10,7 @@ using Shared.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 
 namespace VidLink;
@@ -51,7 +52,8 @@ public class VidLinkController : BaseENGController
             return OnError("stream", 502);
 
         bool directMp4 = result.m3u8.Contains(".mp4", StringComparison.OrdinalIgnoreCase);
-        string media = directMp4
+        bool remoteRelay = result.m3u8.Contains("noon.mooncase.online/sacdn", StringComparison.OrdinalIgnoreCase);
+        string media = directMp4 || remoteRelay
             ? result.m3u8
             : HostStreamProxy(result.m3u8, headers: result.headers);
 
@@ -65,7 +67,8 @@ public class VidLinkController : BaseENGController
             vast: init.vast,
             // VidLink's MP4 CDN failed through generic /proxy/. Let Lampa
             // request it directly with the headers captured by Chromium.
-            headers: directMp4 ? result.headers : (init.streamproxy ? null : result.headers),
+            headers: directMp4 ? result.headers : (remoteRelay ? null : (init.streamproxy ? null : result.headers)),
+            hls_manifest_timeout: 120000,
             httpContext: HttpContext
         ));
     }
@@ -74,7 +77,7 @@ public class VidLinkController : BaseENGController
     async Task<(string m3u8, List<HeadersModel> headers)> ResolveApi(long id, short season, short episode)
     {
         string mediaType = season > 0 ? "tv" : "movie";
-        string memKey = $"vidlink:api-webkit-v2:{mediaType}:{id}:{season}:{episode}";
+        string memKey = $"vidlink:api-webkit-relay-v3:{mediaType}:{id}:{season}:{episode}";
         if (hybridCache.TryGetValue(memKey, out (string m3u8, List<HeadersModel> headers) cached))
             return cached;
 
@@ -141,10 +144,18 @@ public class VidLinkController : BaseENGController
             MergeHeaders(merged, streamObject?["playlistHeaders"] as JObject);
             MergeHeaders(merged, streamObject?["headers"] as JObject);
 
+            string delivery = streamObject?.Value<string>("deliveryType") ?? streamObject?.Value<string>("type") ?? "manifest";
+            if (delivery.Equals("dash", StringComparison.OrdinalIgnoreCase) ||
+                playlist.Contains(".mpd", StringComparison.OrdinalIgnoreCase))
+            {
+                string relayed = BuildDashRelay(playlist, merged);
+                if (!string.IsNullOrEmpty(relayed))
+                    playlist = relayed;
+            }
+
             cached = (playlist, HeadersModel.Init(merged));
             hybridCache.Set(memKey, cached, cacheTime(20));
-            string delivery = streamObject?.Value<string>("deliveryType") ?? streamObject?.Value<string>("type") ?? "manifest";
-            Console.WriteLine($"VidLink: direct API resolved {delivery} ({mediaType}:{id})");
+            Console.WriteLine($"VidLink: direct API resolved {delivery}{(playlist.Contains("/sacdn", StringComparison.OrdinalIgnoreCase) ? " relay" : "")} ({mediaType}:{id})");
             return cached;
         }
         catch (Exception ex)
@@ -152,6 +163,29 @@ public class VidLinkController : BaseENGController
             Serilog.Log.Warning(ex, "VidLink direct API failed for {MediaType}:{Id}", mediaType, id);
             return default;
         }
+    }
+
+    static string BuildDashRelay(string playlist, Dictionary<string, string> headers)
+    {
+        if (!Uri.TryCreate(playlist, UriKind.Absolute, out Uri source))
+            return null;
+
+        string cookie = headers.FirstOrDefault(i =>
+            i.Key.Equals("Cookie", StringComparison.OrdinalIgnoreCase)).Value;
+        if (string.IsNullOrWhiteSpace(cookie))
+            return null;
+
+        string signedCookie = Convert.ToBase64String(Encoding.UTF8.GetBytes(cookie))
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
+        string origin = source.GetLeftPart(UriPartial.Authority);
+        string query = source.Query.TrimStart('?');
+        if (query.Length > 0)
+            query += "&";
+
+        query += $"host={Uri.EscapeDataString(origin)}&sc={Uri.EscapeDataString(signedCookie)}";
+        return $"https://noon.mooncase.online/sacdn{source.AbsolutePath}?{query}";
     }
 
     static void MergeHeaders(Dictionary<string, string> target, JObject source)
