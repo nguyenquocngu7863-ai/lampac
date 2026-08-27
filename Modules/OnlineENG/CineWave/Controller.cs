@@ -281,7 +281,13 @@ public sealed class CineWaveController : BaseOnlineController<ModuleConf>
                                 candidates.Add(new CineWaveCandidate(url, activePlayer, headers));
                         }
 
-                        await route.AbortAsync();
+                        // Let HLS manifests finish so providers can establish
+                        // their session/cookies. Abort direct MP4 bodies to
+                        // avoid downloading the movie in headless Chrome.
+                        if (url.Contains(".m3u8", StringComparison.OrdinalIgnoreCase))
+                            await route.ContinueAsync();
+                        else
+                            await route.AbortAsync();
                         return;
                     }
 
@@ -318,6 +324,7 @@ public sealed class CineWaveController : BaseOnlineController<ModuleConf>
             foreach (string playerLabel in PlayerLabels)
             {
                 activePlayer = playerLabel;
+                await ClearPerformanceEntries(page);
                 bool clicked = await ClickPlayerControl(page, playerLabel, startsWith: false);
                 if (clicked)
                 {
@@ -325,6 +332,7 @@ public sealed class CineWaveController : BaseOnlineController<ModuleConf>
                     await Task.Delay(350);
                     await TryStartEmbeddedPlayers(page);
                     await Task.Delay(perPlayerDelay);
+                    await CollectPerformanceStreams(page, playerLabel, candidates, seen, sync);
                 }
             }
 
@@ -351,7 +359,7 @@ public sealed class CineWaveController : BaseOnlineController<ModuleConf>
         if (ordered.Count > 0)
         {
             hybridCache.Set(memKey, ordered, TimeSpan.FromSeconds(Math.Clamp(init.cacheSeconds, 60, 3600)));
-            Console.WriteLine($"CineWave.su: {ordered.Count} streams ({mediaType}:{tmdbId})");
+            Console.WriteLine($"CineWave.su: {ordered.Count} streams ({mediaType}:{tmdbId}) [{string.Join(", ", ordered.Select(i => i.Label))}]");
         }
         else
         {
@@ -401,6 +409,60 @@ public sealed class CineWaveController : BaseOnlineController<ModuleConf>
         }
     }
 
+    static async Task ClearPerformanceEntries(IPage page)
+    {
+        foreach (IFrame frame in page.Frames)
+        {
+            try { await frame.EvaluateAsync("() => performance.clearResourceTimings()"); }
+            catch { }
+        }
+    }
+
+    static async Task CollectPerformanceStreams(
+        IPage page,
+        string playerLabel,
+        List<CineWaveCandidate> candidates,
+        HashSet<string> seen,
+        object sync)
+    {
+        foreach (IFrame frame in page.Frames)
+        {
+            try
+            {
+                string[] resources = await frame.EvaluateAsync<string[]>(
+                    "() => performance.getEntriesByType('resource').map(item => item.name)"
+                );
+                if (resources == null)
+                    continue;
+
+                string referer = IsHttpUrl(frame.Url) ? frame.Url : "https://www.cinewave.su/";
+                string origin = null;
+                if (Uri.TryCreate(referer, UriKind.Absolute, out Uri refererUri))
+                    origin = refererUri.GetLeftPart(UriPartial.Authority);
+
+                foreach (string url in resources)
+                {
+                    if (!VideoUrlRegex.IsMatch(url) || AdUrlRegex.IsMatch(url))
+                        continue;
+
+                    var headers = HeadersModel.Init(
+                        ("User-Agent", Http.UserAgent),
+                        ("Referer", referer),
+                        ("Origin", origin)
+                    );
+                    lock (sync)
+                    {
+                        if (seen.Add(url))
+                            candidates.Add(new CineWaveCandidate(url, playerLabel, headers));
+                    }
+                }
+            }
+            catch
+            {
+            }
+        }
+    }
+
     static async Task TryStartEmbeddedPlayers(IPage page)
     {
         foreach (IFrame frame in page.Frames.Skip(1))
@@ -409,8 +471,8 @@ public sealed class CineWaveController : BaseOnlineController<ModuleConf>
             {
                 await frame.EvaluateAsync(
                     @"() => {
-                        const button = document.querySelector('[aria-label*=""play"" i], .play-button, .vjs-big-play-button, button:has(svg)');
-                        if (button) button.click();
+                        const selectors = '[aria-label*=""play"" i], .play-button, .vjs-big-play-button, button:has(svg)';
+                        Array.from(document.querySelectorAll(selectors)).slice(0, 4).forEach(button => button.click());
                         const video = document.querySelector('video');
                         if (video && video.paused) video.play().catch(() => {});
                     }"
