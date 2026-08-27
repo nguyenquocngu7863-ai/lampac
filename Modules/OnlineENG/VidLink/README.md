@@ -10,6 +10,16 @@
 
 Плагин **`vidlink`**, имя **`VidLink`**, суффикс **` (ENG)`**.
 
+При глобальном `"disableEng": true` источник включается отдельно:
+
+```json
+"VidLink": {
+  "enable": true,
+  "enabled": true,
+  "streamproxy": true
+}
+```
+
 ## Глобальный поиск
 
 Нет **`with_search.Add`** в **`ModInit`**.

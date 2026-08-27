@@ -19,7 +19,10 @@ public class ModInit : IModuleLoaded, IModuleOnline
     {
         var online = new List<ModuleOnlineItem>();
 
-        if ((args.original_language == null || args.original_language == "en") && CoreInit.conf.disableEng == false)
+        // Isolated opt-in while the rest of the ENG group stays hidden.
+        bool allowWhenEngDisabled = conf?.enabled == true;
+        if ((args.original_language == null || args.original_language == "en") &&
+            (CoreInit.conf.disableEng == false || allowWhenEngDisabled))
         {
             if (args.source != null && (args.source is "tmdb" or "cub") && long.TryParse(args.id, out long id) && id > 0)
             {
@@ -49,8 +52,15 @@ public class ModInit : IModuleLoaded, IModuleOnline
         conf = ModuleInvoke.Init("VidLink", new OnlinesSettings("VidLink", "https://vidlink.pro")
         {
             displayindex = 1015,
+            kit = false,
+            rhub = false,
             streamproxy = true
         });
+
+        conf.host = "https://vidlink.pro";
+        conf.kit = false;
+        conf.rhub = false;
+        conf.streamproxy = true;
     }
 
     private string OnlineApiQuality(EventOnlineApiQuality e)

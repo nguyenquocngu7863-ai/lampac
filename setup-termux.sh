@@ -540,6 +540,15 @@ install_custom_modules() {
             done
         fi
 
+        vidlinkbase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineENG/VidLink\"
+        vidlinktarget=/root/lampac/module/OnlineENG/VidLink
+        if [ -d \"\$vidlinktarget\" ]; then
+            for file in Controller.cs ModInit.cs; do
+                curl -fSL --retry 3 \"\$vidlinkbase/\$file?cb=\$syncstamp\" -o \"\$vidlinktarget/\$file.tmp\"
+                mv \"\$vidlinktarget/\$file.tmp\" \"\$vidlinktarget/\$file\"
+            done
+        fi
+
         for proxymodule in CubProxy TmdbProxy; do
             proxytarget=\"/root/lampac/module/Proxy/\$proxymodule\"
             if [ -d \"\$proxytarget\" ]; then
@@ -874,6 +883,15 @@ case "${1:-}" in
                 for file in Controller.cs ModInit.cs; do
                     curl -fSL --retry 3 "$vidsrcbase/$file?cb=$syncstamp" -o "$vidsrctarget/$file.tmp"
                     mv "$vidsrctarget/$file.tmp" "$vidsrctarget/$file"
+                done
+            fi
+
+            vidlinkbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a036c7-lampac/Modules/OnlineENG/VidLink"
+            vidlinktarget=/root/lampac/module/OnlineENG/VidLink
+            if [ -d "$vidlinktarget" ]; then
+                for file in Controller.cs ModInit.cs; do
+                    curl -fSL --retry 3 "$vidlinkbase/$file?cb=$syncstamp" -o "$vidlinktarget/$file.tmp"
+                    mv "$vidlinktarget/$file.tmp" "$vidlinktarget/$file"
                 done
             fi
 

@@ -1,10 +1,14 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Playwright;
 using Shared;
 using Shared.Attributes;
 using Shared.Models.Base;
 using Shared.Models.Templates;
 using Shared.PlaywrightCore;
+using Shared.Services;
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace VidLink;
@@ -105,8 +109,12 @@ public class VidLinkController : BaseENGController
                                 }
 
                                 PlaywrightBase.ConsoleLog(() => ($"Playwright: SET {route.Request.Url}", cache.headers));
-                                browser.SetPageResult(route.Request.Url);
-                                await route.AbortAsync();
+                                browser.completionSource.TrySetResult(route.Request.Url);
+
+                                if (route.Request.Url.Contains(".m3u", StringComparison.OrdinalIgnoreCase))
+                                    await route.ContinueAsync();
+                                else
+                                    await route.AbortAsync();
                                 return;
                             }
 
@@ -119,7 +127,51 @@ public class VidLinkController : BaseENGController
                     });
 
                     PlaywrightBase.GotoAsync(page, uri);
-                    cache.m3u8 = await browser.WaitPageResult(20);
+                    await Task.Delay(2500);
+
+                    foreach (IFrame frame in page.Frames)
+                    {
+                        try
+                        {
+                            await frame.EvaluateAsync(
+                                @"() => {
+                                    const selectors = '[aria-label*=""play"" i], [data-action*=""play"" i], [class*=""play"" i], .vjs-big-play-button, button:has(svg), video';
+                                    Array.from(document.querySelectorAll(selectors)).slice(0, 5).forEach(node => {
+                                        if (node.tagName === 'VIDEO') node.play().catch(() => {});
+                                        else node.click();
+                                    });
+                                }"
+                            );
+                        }
+                        catch { }
+                    }
+
+                    cache.m3u8 = await browser.WaitPageResult(15);
+                    if (cache.m3u8 == null)
+                    {
+                        foreach (IFrame frame in page.Frames)
+                        {
+                            try
+                            {
+                                string[] resources = await frame.EvaluateAsync<string[]>(
+                                    "() => performance.getEntriesByType('resource').map(item => item.name)"
+                                );
+                                string media = resources?.FirstOrDefault(url =>
+                                    url.Contains(".m3u", StringComparison.OrdinalIgnoreCase) ||
+                                    url.Contains(".mp4", StringComparison.OrdinalIgnoreCase));
+                                if (media == null)
+                                    continue;
+
+                                cache.m3u8 = media;
+                                cache.headers = HeadersModel.Init(
+                                    ("User-Agent", Http.UserAgent),
+                                    ("Referer", frame.Url)
+                                );
+                                break;
+                            }
+                            catch { }
+                        }
+                    }
                 }
 
                 if (cache.m3u8 == null)
