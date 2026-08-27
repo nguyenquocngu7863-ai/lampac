@@ -74,11 +74,16 @@ menu:
     Uniforms: uniforms
     Vibrator: vibrator
 
+# Veporn switched its catalog/category pages to client-side infinite loading.
+# The server currently ignores every page query and returns the first batch
+# again, so advertising fake pages in SISI only duplicates the same videos.
 list:
-  uri: videos?page={page}
+  uri: videos
+  total_pages: 1
 
 search:
-  uri: search?q={search}&page={page}
+  uri: search?q={search}
+  total_pages: 1
 
 contentParse:
   nodes: //a[@class='group block']

@@ -467,7 +467,7 @@ install_custom_modules() {
         nexthubroottarget=/root/lampac/module/NextHUB
         nexthubtarget=\"\$nexthubroottarget/sites\"
         if [ -d \"\$nexthubtarget\" ]; then
-            for file in sex-studentki.yaml noodlemagazine.yaml pornone.yaml cam4.yaml trahkino.yaml rusvideos.yaml; do
+            for file in sex-studentki.yaml noodlemagazine.yaml pornone.yaml cam4.yaml trahkino.yaml rusvideos.yaml veporn.yaml; do
                 curl -fSL --retry 3 \"\$nexthubrootbase/sites/\$file?cb=\$syncstamp\" -o \"\$nexthubtarget/\$file.tmp\"
                 mv \"\$nexthubtarget/\$file.tmp\" \"\$nexthubtarget/\$file\"
             done
@@ -804,7 +804,7 @@ case "${1:-}" in
             nexthubroottarget=/root/lampac/module/NextHUB
             nexthubtarget="$nexthubroottarget/sites"
             if [ -d "$nexthubtarget" ]; then
-                for file in sex-studentki.yaml noodlemagazine.yaml pornone.yaml cam4.yaml trahkino.yaml rusvideos.yaml; do
+                for file in sex-studentki.yaml noodlemagazine.yaml pornone.yaml cam4.yaml trahkino.yaml rusvideos.yaml veporn.yaml; do
                     curl -fSL --retry 3 "$nexthubrootbase/sites/$file?cb=$syncstamp" -o "$nexthubtarget/$file.tmp"
                     mv "$nexthubtarget/$file.tmp" "$nexthubtarget/$file"
                 done
