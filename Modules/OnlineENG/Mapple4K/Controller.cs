@@ -40,9 +40,10 @@ public sealed class Mapple4KController : BaseENGController
 
     // /api/stream answers {"success":false,"error":"This playback endpoint has
     // been retired. Refresh the watch page."}, so the playlist is taken from the
-    // watch page when it is rendered there.
+    // watch page when it is rendered there. The class excludes "\" so a URL at
+    // the end of a JSON string stops before its closing escape.
     static readonly Regex EmbeddedStreamRegex = new(
-        "https?://[^\"'<>\\s]+?\\.(?:m3u8|mp4)(?:\\?[^\"'<>\\s]*)?",
+        "https?://[^\"'<>\\s\\\\]+?\\.(?:m3u8|mp4)(?:\\?[^\"'<>\\s\\\\]*)?",
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant
     );
 
@@ -202,8 +203,12 @@ public sealed class Mapple4KController : BaseENGController
     {
         var result = new List<Candidate>();
 
-        // Next.js RSC payloads escape slashes ("https:\/\/host\/x.m3u8").
-        string normalized = html.Replace("\\/", "/");
+        // Next.js RSC payloads escape slashes ("https:\/\/host\/x.m3u8"), and a
+        // payload nested one level deeper escapes them twice, so unescape until
+        // no "\/" is left.
+        string normalized = html;
+        while (normalized.Contains("\\/", StringComparison.Ordinal))
+            normalized = normalized.Replace("\\/", "/");
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (Match match in EmbeddedStreamRegex.Matches(normalized).Cast<Match>().Take(12))
