@@ -29,7 +29,7 @@ Giữ `"disableEng": true` và chỉ opt-in CineWave:
   "enable": true,
   "enabled": true,
   "siteHost": "https://www.cinewave.su",
-  "streamproxy": false,
+  "streamproxy": true,
   "resolveSeconds": 32,
   "cacheSeconds": 1200
 }

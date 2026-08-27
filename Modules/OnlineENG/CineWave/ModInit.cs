@@ -63,6 +63,12 @@ public sealed class ModInit : IModuleLoaded, IModuleOnline
     static void UpdateConf()
     {
         conf = ModuleInvoke.Init("CineWave", new ModuleConf());
+
+        // Each player sends its own Referer/Origin. Keep HLS behind Lampac so
+        // those captured headers also apply to child manifests and segments.
+        conf.kit = false;
+        conf.rhub = false;
+        conf.streamproxy = true;
     }
 
     static string OnlineApiQuality(EventOnlineApiQuality e)

@@ -12,7 +12,7 @@ public sealed class ModuleConf : BaseSettings, ICloneable
         displayindex = 1065;
         enable = true;
         siteHost = "https://www.cinewave.su";
-        streamproxy = false;
+        streamproxy = true;
         timeoutSeconds = 30;
         resolveSeconds = 32;
         cacheSeconds = 1200;
