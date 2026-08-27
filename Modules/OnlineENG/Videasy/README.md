@@ -28,7 +28,7 @@
 
 Секция в `init.conf`: **`Videasy`** (`OnlinesSettings`).
 
-По умолчанию: **`displayindex = 1020`**, **`streamproxy = true`**. Resolver опрашивает `cdn`, `neon2`, `m4uhd`, `meine`, `lamovie`, удаляет дубликаты и возвращает все найденные варианты в меню качества Lampa (Yoru/Neon/Breach/Killjoy/Omen, включая 4K при наличии).
+По умолчанию: **`displayindex = 1020`**, **`streamproxy = true`**. Resolver опрашивает все уникальные активные endpoint'ы `cdn`, `neon2`, `ym`, `jett`, `m4uhd`, `hdmovie`, `meine`, `lamovie`, `superflix`, `downloader2`, удаляет URL-дубликаты и возвращает все варианты в меню качества Lampa (Yoru/Neon/Sage/Jett/Breach/Vyse-Fade/Killjoy/Omen/Raze/Cypher, включая 4K при наличии).
 
 ## Подпись качества
 

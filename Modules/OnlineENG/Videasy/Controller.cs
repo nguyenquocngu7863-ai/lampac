@@ -20,15 +20,27 @@ public class VideasyController : BaseENGController
     const string TmdbProxy = "https://db.speedracelight.com/3";
     const string PlayerOrigin = "https://player.videasy.to";
 
-    static readonly string[] Providers = ["cdn", "neon2", "m4uhd", "meine", "lamovie"];
+    // Unique active endpoints shown by the current Videasy/Cineby server hub.
+    // Vyse/Fade share hdmovie, so query that endpoint once and keep every
+    // returned stream instead of burning the short-lived seed twice.
+    static readonly string[] Providers =
+    [
+        "cdn", "neon2", "ym", "jett", "m4uhd", "hdmovie",
+        "meine", "lamovie", "superflix", "downloader2"
+    ];
 
     static readonly Dictionary<string, string> ProviderLabels = new(StringComparer.Ordinal)
     {
         ["cdn"] = "Yoru",
         ["neon2"] = "Neon",
+        ["ym"] = "Sage",
+        ["jett"] = "Jett",
         ["m4uhd"] = "Breach",
+        ["hdmovie"] = "Vyse/Fade",
         ["meine"] = "Killjoy",
-        ["lamovie"] = "Omen"
+        ["lamovie"] = "Omen",
+        ["superflix"] = "Raze",
+        ["downloader2"] = "Cypher"
     };
 
     sealed record ResolvedStream(string Url, string Label, List<HeadersModel> Headers);
