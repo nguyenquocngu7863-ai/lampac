@@ -156,11 +156,17 @@ public sealed class Mapple4KController : BaseENGController
 
         string requestToken = RequestTokenRegex.Match(html).Groups[1].Value;
         if (string.IsNullOrWhiteSpace(requestToken))
+        {
+            Console.WriteLine($"Mapple4K: {new Uri(baseUrl).Host} request token missing");
             return [];
+        }
 
         string clientKey = await FindClientKey(baseUrl, html, headers);
         if (string.IsNullOrWhiteSpace(clientKey))
+        {
+            Console.WriteLine($"Mapple4K: {new Uri(baseUrl).Host} client key missing");
             return [];
+        }
 
         JObject initRequest = new()
         {
@@ -170,7 +176,10 @@ public sealed class Mapple4KController : BaseENGController
         };
         JObject initialization = await PostJson($"{baseUrl}/api/playback-init", initRequest, headers);
         if (initialization == null)
+        {
+            Console.WriteLine($"Mapple4K: {new Uri(baseUrl).Host} playback init failed");
             return [];
+        }
 
         if (initialization.Value<bool?>("requiresPow") == true)
         {
@@ -180,7 +189,10 @@ public sealed class Mapple4KController : BaseENGController
             int difficulty = pow?.Value<int?>("difficulty") ?? 0;
             string nonce = SolvePow(challenge, difficulty);
             if (string.IsNullOrWhiteSpace(challengeId) || nonce == null)
+            {
+                Console.WriteLine($"Mapple4K: {new Uri(baseUrl).Host} proof-of-work failed");
                 return [];
+            }
 
             initRequest["pow"] = new JObject
             {
@@ -192,7 +204,10 @@ public sealed class Mapple4KController : BaseENGController
 
         string playbackToken = initialization?.Value<string>("token");
         if (string.IsNullOrWhiteSpace(playbackToken))
+        {
+            Console.WriteLine($"Mapple4K: {new Uri(baseUrl).Host} playback token missing");
             return [];
+        }
 
         var result = new List<Candidate>(Sources.Length);
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
