@@ -50,7 +50,7 @@ public static class ConfigSectionGroups
             new[] { "KKPhim", "K20", "VsMov" }),
 
         new("src-http-bridge", "Nguồn · HTTP và Stremio", "Bridge HTTP/Stremio cùng Videasy/VidLink direct API, độc lập với nhóm embed Playwright.",
-            new[] { "AIOStreams", "OpenDirectory", "Sootio", "Videasy", "VidLink", "WebStreamr" }),
+            new[] { "AIOStreams", "Mapple4K", "OpenDirectory", "Sootio", "Videasy", "VidLink", "WebStreamr" }),
 
         new("src-rus", "Nguồn · Nga và CIS", "Nguồn VOD/CDN Nga; Mirage và Phantom nằm ở nhóm cần trình duyệt.",
             new[]

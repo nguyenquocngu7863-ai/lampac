@@ -549,6 +549,14 @@ install_custom_modules() {
             done
         fi
 
+        mapplebase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineENG/Mapple4K\"
+        mappletarget=/root/lampac/module/OnlineENG/Mapple4K
+        mkdir -p \"\$mappletarget\"
+        for file in Controller.cs ModInit.cs manifest.json README.md; do
+            curl -fSL --retry 3 \"\$mapplebase/\$file?cb=\$syncstamp\" -o \"\$mappletarget/\$file.tmp\"
+            mv \"\$mappletarget/\$file.tmp\" \"\$mappletarget/\$file\"
+        done
+
         for proxymodule in CubProxy TmdbProxy; do
             proxytarget=\"/root/lampac/module/Proxy/\$proxymodule\"
             if [ -d \"\$proxytarget\" ]; then
@@ -894,6 +902,14 @@ case "${1:-}" in
                     mv "$vidlinktarget/$file.tmp" "$vidlinktarget/$file"
                 done
             fi
+
+            mapplebase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a036c7-lampac/Modules/OnlineENG/Mapple4K"
+            mappletarget=/root/lampac/module/OnlineENG/Mapple4K
+            mkdir -p "$mappletarget"
+            for file in Controller.cs ModInit.cs manifest.json README.md; do
+                curl -fSL --retry 3 "$mapplebase/$file?cb=$syncstamp" -o "$mappletarget/$file.tmp"
+                mv "$mappletarget/$file.tmp" "$mappletarget/$file"
+            done
 
             for proxymodule in CubProxy TmdbProxy; do
                 proxytarget="/root/lampac/module/Proxy/$proxymodule"
