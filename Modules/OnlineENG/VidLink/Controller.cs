@@ -23,7 +23,7 @@ public class VidLinkController : BaseENGController
     [Route("lite/vidlink")]
     public Task<ActionResult> Index(bool checksearch, long id, long tmdb_id, string imdb_id, string title, string original_title, byte serial, short s = -1, bool rjson = false)
     {
-        return ViewTmdb(checksearch, id, tmdb_id, imdb_id, title, original_title, serial, s, rjson, mp4: true, method: "call");
+        return ViewTmdb(checksearch, id, tmdb_id, imdb_id, title, original_title, serial, s, rjson, method: "call");
     }
 
     [HttpGet, Staticache(manually: true)]
@@ -67,7 +67,7 @@ public class VidLinkController : BaseENGController
 
         try
         {
-            string memKey = $"vidlink:black_magic:{uri}";
+            string memKey = $"vidlink:hls-only-v2:{uri}";
             if (!hybridCache.TryGetValue(memKey, out (string m3u8, List<HeadersModel> headers) cache))
             {
                 using (var browser = new PlaywrightBrowser(init.priorityBrowser))
@@ -97,7 +97,9 @@ public class VidLinkController : BaseENGController
                                 return;
                             }
 
-                            if (route.Request.Url.Contains(".m3u") || route.Request.Url.Contains(".mp4"))
+                            // VidLink loads short MP4 previews/decoys before its
+                            // real stream. Only accept HLS manifests here.
+                            if (route.Request.Url.Contains(".m3u8", StringComparison.OrdinalIgnoreCase))
                             {
                                 cache.headers = new List<HeadersModel>();
                                 foreach (var item in route.Request.Headers)
@@ -111,10 +113,7 @@ public class VidLinkController : BaseENGController
                                 PlaywrightBase.ConsoleLog(() => ($"Playwright: SET {route.Request.Url}", cache.headers));
                                 browser.completionSource.TrySetResult(route.Request.Url);
 
-                                if (route.Request.Url.Contains(".m3u", StringComparison.OrdinalIgnoreCase))
-                                    await route.ContinueAsync();
-                                else
-                                    await route.AbortAsync();
+                                await route.ContinueAsync();
                                 return;
                             }
 
@@ -157,8 +156,7 @@ public class VidLinkController : BaseENGController
                                     "() => performance.getEntriesByType('resource').map(item => item.name)"
                                 );
                                 string media = resources?.FirstOrDefault(url =>
-                                    url.Contains(".m3u", StringComparison.OrdinalIgnoreCase) ||
-                                    url.Contains(".mp4", StringComparison.OrdinalIgnoreCase));
+                                    url.Contains(".m3u8", StringComparison.OrdinalIgnoreCase));
                                 if (media == null)
                                     continue;
 
