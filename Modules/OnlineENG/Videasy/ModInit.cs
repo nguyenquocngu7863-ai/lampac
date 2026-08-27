@@ -67,6 +67,6 @@ public class ModInit : IModuleLoaded, IModuleOnline
 
     private string OnlineApiQuality(EventOnlineApiQuality e)
     {
-        return e.balanser == "videasy" ? " ~ 1080p" : null;
+        return e.balanser == "videasy" ? " ~ 2160p" : null;
     }
 }

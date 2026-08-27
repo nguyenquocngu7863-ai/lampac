@@ -4,7 +4,6 @@ using Shared.Models.Base;
 using Shared.Models.Events;
 using Shared.Models.Module;
 using Shared.Models.Module.Interfaces;
-using Shared.PlaywrightCore;
 using Shared.Services;
 using System.Collections.Generic;
 
@@ -31,9 +30,8 @@ public sealed class ModInit : IModuleLoaded, IModuleOnline
             (args.original_language != null && args.original_language != "en"))
             return null;
 
-        // Resolver cần chromium headless để sniff m3u8 ra khỏi trang /play.
-        if (PlaywrightBrowser.Status == PlaywrightStatus.disabled)
-            return null;
+        // Direct HdHub/Stremio catalog does not require a browser. Chromium is
+        // used only as a fallback when the direct catalog has no stream.
 
         // Nguồn chỉ key theo TMDB id.
         if (!(args.source is "tmdb" or "cub") ||
@@ -66,6 +64,6 @@ public sealed class ModInit : IModuleLoaded, IModuleOnline
 
     static string OnlineApiQuality(EventOnlineApiQuality e)
     {
-        return e.balanser == "cinewave" ? " ~ 1080p" : null;
+        return e.balanser == "cinewave" ? " ~ 2160p" : null;
     }
 }

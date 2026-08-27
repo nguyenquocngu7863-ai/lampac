@@ -29,6 +29,11 @@ namespace CineWave;
 /// </summary>
 public sealed class CineWaveController : BaseOnlineController<ModuleConf>
 {
+    const string HdHubHost = "https://hdhub.thevolecitor.qzz.io";
+    const string HdHubConfig = "eyJ0b3Jib3giOiJ1bnNldCIsInF1YWxpdGllcyI6IjIxNjBwLDEwODBwLDcyMHAiLCJzb3J0IjoiZGVzYyJ9";
+
+    sealed record CineWaveCandidate(string Url, string Label, List<HeadersModel> Headers);
+
     static readonly byte[] XorKey = "cinewvve"u8.ToArray();
 
     static readonly Regex VideoUrlRegex = new(
@@ -75,26 +80,25 @@ public sealed class CineWaveController : BaseOnlineController<ModuleConf>
             return await Episodes(tmdbId, imdb_id, title, original_title, s);
 
         if (isSeries)
-            return await EpisodeResponse(tmdbId, title, original_title, s, e, play);
+            return await EpisodeResponse(tmdbId, imdb_id, title, original_title, s, e, play);
 
         if (play)
         {
-            CineWaveStream direct = await ResolveStream(tmdbId, -1, -1);
-            if (direct == null)
+            List<CineWaveCandidate> candidates = await ResolveCandidates(tmdbId, imdb_id, -1, -1);
+            if (candidates.Count == 0)
                 return OnError("CineWave không tìm thấy stream", 502);
 
-            return RedirectToPlay(HostStreamProxy(direct.Url, direct.Headers));
+            CineWaveCandidate first = candidates[0];
+            return RedirectToPlay(HostStreamProxy(first.Url, first.Headers));
         }
 
-        // Card click dùng method "call": Lampa hiển thị loading trong khi
-        // endpoint /video resolve headless, thay vì timeout ở tầng player.
         var tpl = new MovieTpl(title, original_title, 1);
         tpl.Append(
-            "CineWave",
-            accsArgs($"{host}/lite/cinewave/video?tmdb_id={tmdbId}"),
+            "CineWave · tất cả server",
+            accsArgs($"{host}/lite/cinewave/video?tmdb_id={tmdbId}&imdb_id={HttpUtility.UrlEncode(imdb_id)}"),
             "call",
-            quality: "1080p",
-            details: "HLS • CineWave"
+            quality: "2160p",
+            details: "4K/1080p/720p • direct + embed fallback"
         );
 
         return ContentTpl(tpl);
@@ -104,6 +108,7 @@ public sealed class CineWaveController : BaseOnlineController<ModuleConf>
     [Route("lite/cinewave/video")]
     public async Task<ActionResult> Video(
         long tmdb_id,
+        string imdb_id,
         string title,
         string original_title,
         short s = -1,
@@ -117,19 +122,20 @@ public sealed class CineWaveController : BaseOnlineController<ModuleConf>
         if (tmdb_id <= 0)
             return OnError("CineWave cần TMDB id", 400);
 
-        CineWaveStream stream = await ResolveStream(tmdb_id, s, e);
-        if (stream == null)
-            return OnError("CineWave không resolve được stream (chromium)", 502);
+        List<CineWaveCandidate> candidates = await ResolveCandidates(tmdb_id, imdb_id, s, e);
+        if (candidates.Count == 0)
+            return OnError("CineWave không resolve được stream", 502);
 
-        string file = HostStreamProxy(stream.Url, stream.Headers);
-        if (string.IsNullOrWhiteSpace(file) ||
-            (!IsHttpUrl(file) && !file.Contains("/proxy/", StringComparison.OrdinalIgnoreCase)))
-        {
+        var qualities = new StreamQualityTpl(candidates.Count);
+        foreach (CineWaveCandidate candidate in candidates)
+            qualities.Append(HostStreamProxy(candidate.Url, candidate.Headers), candidate.Label);
+
+        if (qualities.IsEmpty)
             return OnError("CineWave không chuẩn bị được stream", 502);
-        }
 
+        var first = qualities.Firts();
         if (play)
-            return RedirectToPlay(file);
+            return RedirectToPlay(first.link);
 
         string name = title ?? original_title ?? "CineWave";
         if (s > 0 && e > 0)
@@ -137,9 +143,9 @@ public sealed class CineWaveController : BaseOnlineController<ModuleConf>
 
         return ContentTo(VideoTpl.ToJson(
             "play",
-            file,
+            first.link,
             name,
-            headers: init.streamproxy ? null : stream.Headers,
+            streamquality: qualities,
             hls_manifest_timeout: 120000,
             httpContext: HttpContext
         ));
@@ -156,7 +162,7 @@ public sealed class CineWaveController : BaseOnlineController<ModuleConf>
         {
             tpl.Append(
                 $"Season {season.Number}",
-                BuildIndexUrl(tmdbId, title, original_title, serial: 1, s: season.Number),
+                BuildIndexUrl(tmdbId, imdbId, title, original_title, serial: 1, s: season.Number),
                 season.Number
             );
         }
@@ -186,42 +192,167 @@ public sealed class CineWaveController : BaseOnlineController<ModuleConf>
                 title ?? original_title ?? "CineWave",
                 season.ToString(),
                 number.ToString(),
-                BuildIndexUrl(tmdbId, title, original_title, serial: 1, s: season, e: number),
+                BuildIndexUrl(tmdbId, imdbId, title, original_title, serial: 1, s: season, e: number),
                 "call",
-                streamlink: BuildIndexUrl(tmdbId, title, original_title, serial: 1, s: season, e: number, play: true)
+                streamlink: BuildIndexUrl(tmdbId, imdbId, title, original_title, serial: 1, s: season, e: number, play: true)
             );
         }
 
         return ContentTpl(tpl);
     }
 
-    async Task<ActionResult> EpisodeResponse(long tmdbId, string title, string original_title, short season, short episode, bool play)
+    async Task<ActionResult> EpisodeResponse(long tmdbId, string imdbId, string title, string original_title, short season, short episode, bool play)
     {
         if (season <= 0 || episode <= 0)
             return OnError("CineWave episode cần season và episode", 400);
 
-        CineWaveStream stream = await ResolveStream(tmdbId, season, episode);
-        if (stream == null)
-            return OnError("CineWave không resolve được stream (chromium)", 502);
+        List<CineWaveCandidate> candidates = await ResolveCandidates(tmdbId, imdbId, season, episode);
+        if (candidates.Count == 0)
+            return OnError("CineWave không resolve được stream", 502);
 
-        string file = HostStreamProxy(stream.Url, stream.Headers);
+        var qualities = new StreamQualityTpl(candidates.Count);
+        foreach (CineWaveCandidate candidate in candidates)
+            qualities.Append(HostStreamProxy(candidate.Url, candidate.Headers), candidate.Label);
+
+        if (qualities.IsEmpty)
+            return OnError("CineWave không chuẩn bị được stream", 502);
+
+        var first = qualities.Firts();
         if (play)
-            return RedirectToPlay(file);
+            return RedirectToPlay(first.link);
 
-        string name = title ?? original_title ?? "CineWave";
-        name += $" S{season:00}E{episode:00}";
-
+        string name = (title ?? original_title ?? "CineWave") + $" S{season:00}E{episode:00}";
         return ContentTo(VideoTpl.ToJson(
             "play",
-            file,
+            first.link,
             name,
-            headers: init.streamproxy ? null : stream.Headers,
+            streamquality: qualities,
             hls_manifest_timeout: 120000,
             httpContext: HttpContext
         ));
     }
 
-    // ═══════════════════════════ Resolver (headless) ═══════════════════════════
+    // ═══════════════════════════ Direct catalog + embed fallback ═══════════════════════════
+
+    async Task<List<CineWaveCandidate>> ResolveCandidates(long tmdbId, string imdbId, short season, short episode)
+    {
+        imdbId = await ResolveImdbId(tmdbId, imdbId, season > 0);
+        string streamId = season > 0 && episode > 0
+            ? $"{imdbId}:{season}:{episode}"
+            : imdbId;
+        string mediaType = season > 0 ? "series" : "movie";
+        string memKey = $"cinewave:all:{mediaType}:{streamId}";
+
+        if (hybridCache.TryGetValue(memKey, out List<CineWaveCandidate> cached))
+            return cached;
+
+        var candidates = new List<CineWaveCandidate>(40);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        if (!string.IsNullOrWhiteSpace(imdbId) && imdbId.StartsWith("tt", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                string apiUrl = $"{HdHubHost}/{HdHubConfig}/stream/{mediaType}/{HttpUtility.UrlEncode(streamId)}.json";
+                var apiHeaders = HeadersModel.Init(
+                    ("Referer", SiteHost() + "/"),
+                    ("Accept", "application/json"),
+                    ("User-Agent", Http.UserAgent)
+                );
+                JObject root = await httpHydra.Get<JObject>(apiUrl, addheaders: apiHeaders);
+
+                if (root?["streams"] is JArray streams)
+                {
+                    int index = 0;
+                    foreach (JToken item in streams)
+                    {
+                        string providerName = item.Value<string>("name") ?? string.Empty;
+                        string description = item.Value<string>("description") ?? item.Value<string>("title") ?? string.Empty;
+                        string combined = providerName + " " + description;
+
+                        if (Regex.IsMatch(combined, "donat|discord", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+                            continue;
+
+                        string url = item.Value<string>("url") ?? item.Value<string>("externalUrl");
+                        if (!IsHttpUrl(url) || !seen.Add(url))
+                            continue;
+
+                        index++;
+                        string quality = QualityLabel(combined);
+                        string provider = Regex.Replace(providerName, @"\s+", " ").Trim();
+                        if (string.IsNullOrWhiteSpace(provider))
+                            provider = "CineWave";
+                        if (provider.Length > 24)
+                            provider = provider[..24];
+
+                        long size = item["behaviorHints"]?.Value<long?>("videoSize") ?? 0;
+                        string sizeLabel = SizeLabel(size);
+                        string label = $"{index:00}. {quality} · {provider}";
+                        if (sizeLabel != null)
+                            label += $" · {sizeLabel}";
+
+                        var streamHeaders = HeadersModel.Init(
+                            ("Referer", SiteHost() + "/"),
+                            ("User-Agent", Http.UserAgent),
+                            ("Accept", "*/*")
+                        );
+                        candidates.Add(new CineWaveCandidate(url, label, streamHeaders));
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Serilog.Log.Warning(ex, "CineWave direct catalog failed for {StreamId}", streamId);
+            }
+        }
+
+        // Use the browser-sniffed Server Hub only when the direct catalog has
+        // no usable result; otherwise it adds a 20-second Chromium pass to
+        // every request merely to duplicate one of the available servers.
+        if (candidates.Count == 0)
+        {
+            CineWaveStream embed = await ResolveStream(tmdbId, season, episode);
+            if (embed != null && seen.Add(embed.Url))
+                candidates.Add(new CineWaveCandidate(embed.Url, "01. Embed fallback", embed.Headers));
+        }
+
+        if (candidates.Count > 0)
+        {
+            hybridCache.Set(memKey, candidates, TimeSpan.FromSeconds(Math.Clamp(init.cacheSeconds, 60, 3600)));
+            Console.WriteLine($"CineWave: {candidates.Count} streams ({mediaType}:{streamId})");
+        }
+
+        return candidates;
+    }
+
+    async Task<string> ResolveImdbId(long tmdbId, string imdbId, bool series)
+    {
+        if (!string.IsNullOrWhiteSpace(imdbId) && imdbId.StartsWith("tt", StringComparison.OrdinalIgnoreCase))
+            return imdbId;
+
+        JObject external = await GetTmdb($"{(series ? "tv" : "movie")}/{tmdbId}/external_ids");
+        return external?.Value<string>("imdb_id");
+    }
+
+    static string QualityLabel(string value)
+    {
+        Match match = Regex.Match(value ?? string.Empty, @"(?:2160p|4K|1080p|720p|480p)", RegexOptions.IgnoreCase);
+        if (!match.Success)
+            return "Auto";
+
+        return match.Value.Equals("2160p", StringComparison.OrdinalIgnoreCase) ? "4K" : match.Value.ToUpperInvariant();
+    }
+
+    static string SizeLabel(long bytes)
+    {
+        if (bytes <= 0)
+            return null;
+
+        double gb = bytes / 1024d / 1024d / 1024d;
+        return gb >= 1 ? $"{gb:0.##} GB" : $"{bytes / 1024d / 1024d:0} MB";
+    }
+
+    // ═══════════════════════════ Resolver (headless fallback) ═══════════════════════════
 
     async Task<CineWaveStream> ResolveStream(long tmdbId, short season, short episode)
     {
@@ -449,10 +580,11 @@ public sealed class CineWaveController : BaseOnlineController<ModuleConf>
 
     // ═══════════════════════════ Helpers ═══════════════════════════
 
-    string BuildIndexUrl(long tmdbId, string title, string original_title, int serial, int s = -1, int e = -1, bool play = false)
+    string BuildIndexUrl(long tmdbId, string imdbId, string title, string original_title, int serial, int s = -1, int e = -1, bool play = false)
     {
         string query =
             $"tmdb_id={tmdbId}" +
+            $"&imdb_id={HttpUtility.UrlEncode(imdbId)}" +
             $"&title={HttpUtility.UrlEncode(title)}" +
             $"&original_title={HttpUtility.UrlEncode(original_title)}" +
             $"&serial={serial}";

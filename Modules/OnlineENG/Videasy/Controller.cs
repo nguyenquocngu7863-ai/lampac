@@ -22,6 +22,17 @@ public class VideasyController : BaseENGController
 
     static readonly string[] Providers = ["cdn", "neon2", "m4uhd", "meine", "lamovie"];
 
+    static readonly Dictionary<string, string> ProviderLabels = new(StringComparer.Ordinal)
+    {
+        ["cdn"] = "Yoru",
+        ["neon2"] = "Neon",
+        ["m4uhd"] = "Breach",
+        ["meine"] = "Killjoy",
+        ["lamovie"] = "Omen"
+    };
+
+    sealed record ResolvedStream(string Url, string Label, List<HeadersModel> Headers);
+
     static readonly uint[] MixTable =
     [
         1116352408, 1899447441, 3049323471, 3921009573,
@@ -52,30 +63,37 @@ public class VideasyController : BaseENGController
         if (id <= 0)
             return OnError();
 
-        var result = await ResolveDirect(id, s, e);
-        if (result.stream == null)
+        List<ResolvedStream> resolved = await ResolveDirect(id, s, e);
+        if (resolved == null || resolved.Count == 0)
             return OnError("stream", 502);
 
-        string stream = HostStreamProxy(result.stream, headers: result.headers);
+        var qualities = new StreamQualityTpl(resolved.Count);
+        foreach (ResolvedStream item in resolved)
+            qualities.Append(HostStreamProxy(item.Url, headers: item.Headers), item.Label);
 
+        if (qualities.IsEmpty)
+            return OnError("stream", 502);
+
+        var first = qualities.Firts();
         if (play)
-            return RedirectToPlay(stream);
+            return RedirectToPlay(first.link);
 
         return ContentTo(VideoTpl.ToJson(
             "play",
-            stream,
+            first.link,
             "English",
+            streamquality: qualities,
             vast: init.vast,
-            headers: init.streamproxy ? null : result.headers,
+            hls_manifest_timeout: 120000,
             httpContext: HttpContext
         ));
     }
 
-    async Task<(string stream, List<HeadersModel> headers)> ResolveDirect(long tmdbId, short season, short episode)
+    async Task<List<ResolvedStream>> ResolveDirect(long tmdbId, short season, short episode)
     {
         string mediaType = season > 0 ? "tv" : "movie";
-        string memKey = $"videasy:direct:{mediaType}:{tmdbId}:{season}:{episode}";
-        if (hybridCache.TryGetValue(memKey, out (string stream, List<HeadersModel> headers) cached))
+        string memKey = $"videasy:direct:all:{mediaType}:{tmdbId}:{season}:{episode}";
+        if (hybridCache.TryGetValue(memKey, out List<ResolvedStream> cached))
             return cached;
 
         var apiHeaders = HeadersModel.Init(
@@ -150,6 +168,9 @@ public class VideasyController : BaseENGController
             }
 
             string queryString = BuildQuery(query);
+            var resolved = new List<ResolvedStream>(16);
+            var seenUrls = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
             foreach (string provider in Providers)
             {
                 string encrypted = await httpHydra.Get(
@@ -184,10 +205,13 @@ public class VideasyController : BaseENGController
                 if (payload["sources"] is not JArray sources)
                     continue;
 
+                int providerIndex = 0;
                 foreach (var source in sources)
                 {
                     string url = source.Value<string>("url") ?? source.Value<string>("file");
-                    if (string.IsNullOrWhiteSpace(url) || !Uri.TryCreate(url, UriKind.Absolute, out _))
+                    if (string.IsNullOrWhiteSpace(url) ||
+                        !Uri.TryCreate(url, UriKind.Absolute, out _) ||
+                        !seenUrls.Add(url))
                         continue;
 
                     if (!url.Contains(".m3u", StringComparison.OrdinalIgnoreCase) &&
@@ -195,23 +219,39 @@ public class VideasyController : BaseENGController
                         !url.Contains(".mpd", StringComparison.OrdinalIgnoreCase))
                         continue;
 
+                    providerIndex++;
+                    string providerLabel = ProviderLabels.TryGetValue(provider, out string knownLabel)
+                        ? knownLabel
+                        : provider;
+                    string quality = source.Value<string>("quality");
+                    if (string.IsNullOrWhiteSpace(quality))
+                        quality = "Auto";
+
+                    string label = $"{providerLabel} · {quality}";
+                    if (providerIndex > 1)
+                        label += $" #{providerIndex}";
+
                     var streamHeaders = HeadersModel.Init(
                         ("User-Agent", Http.UserAgent),
                         ("Referer", PlayerOrigin + "/"),
                         ("Origin", PlayerOrigin)
                     );
 
-                    cached = (url, streamHeaders);
-                    hybridCache.Set(memKey, cached, cacheTime(15));
-                    proxyManager?.Success();
-                    Console.WriteLine($"Videasy: {provider} resolved ({mediaType}:{tmdbId})");
-                    return cached;
+                    resolved.Add(new ResolvedStream(url, label, streamHeaders));
                 }
             }
 
-            Console.WriteLine($"Videasy: providers returned no stream ({mediaType}:{tmdbId})");
-            proxyManager?.Refresh();
-            return default;
+            if (resolved.Count == 0)
+            {
+                Console.WriteLine($"Videasy: providers returned no stream ({mediaType}:{tmdbId})");
+                proxyManager?.Refresh();
+                return null;
+            }
+
+            hybridCache.Set(memKey, resolved, cacheTime(15));
+            proxyManager?.Success();
+            Console.WriteLine($"Videasy: {resolved.Count} streams resolved ({mediaType}:{tmdbId})");
+            return resolved;
         }
         catch (Exception ex)
         {

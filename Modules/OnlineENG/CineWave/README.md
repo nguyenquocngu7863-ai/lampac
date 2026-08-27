@@ -34,13 +34,14 @@ Các nguồn ENG khác vẫn không xuất hiện.
 
 ## Resolve stream
 
-Backend `api.cinewave.qzz.io` không expose endpoint GET công khai nào, nên
-module resolve bằng **chromium headless** (Shared/PlaywrightCore, giống
-cơ chế `black_magic` của AutoEmbed): mở trang `/play/{encId}`, chặn media/ads
-qua route sniffing, bắt request `.m3u8`/`.mp4` đầu tiên cùng header của nó,
-cache trong `cacheSeconds` giây (mặc định 1200). Yêu cầu Playwright/Chromium
-đang bật — khi `PlaywrightBrowser.Status == disabled` module tự ẩn khỏi danh
-sách nguồn.
+Resolver chính gọi catalog Stremio-compatible `hdhub.thevolecitor.qzz.io`
+bằng IMDb ID và lấy toàn bộ stream 2160p/1080p/720p (HLS, MKV, MP4 và các
+CDN trực tiếp), bỏ mục donation/Discord và loại URL trùng. Kết quả được đưa
+vào menu chất lượng của Lampa; các file MKV có thể đi qua plugin GStreamer.
+
+Trang `/play/{encId}` cùng Chromium route-sniffing được giữ làm fallback chỉ
+khi catalog trực tiếp không trả stream, nên CineWave không còn phụ thuộc
+Chromium trong trường hợp bình thường.
 
 Phim lẻ resolve ngay theo TMDB id. Season/tập phim bộ lấy metadata từ TMDB
 (`cub.api_key`) và fallback Cinemeta theo `imdb_id`; URL play của tập vẫn
