@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Shared;
@@ -15,6 +15,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Web;
@@ -222,6 +223,18 @@ public class CubProxyController : BaseController
 
             var proxy = proxyManager?.Get();
             string requri = $"{init.scheme}://{domain}/{uri}";
+
+            // Keep Vietnamese metadata but never ask TMDB/CUB for vi logos.
+            // English and language-neutral artwork are much more complete.
+            if (subdomain == "tmdb" && Regex.IsMatch(requri, @"[?&]language=vi(?:[-_][^&]+)?(?:&|$)", RegexOptions.IgnoreCase))
+            {
+                requri = Regex.Replace(
+                    requri,
+                    @"([?&]include_image_language=)[^&]*",
+                    "$1en,null",
+                    RegexOptions.IgnoreCase
+                );
+            }
 
             if (HttpContext.Request.Headers.ContainsKey("token") || HttpContext.Request.Headers.ContainsKey("profile"))
             {

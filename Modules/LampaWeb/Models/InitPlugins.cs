@@ -6,6 +6,9 @@ public class InitPlugins
 
     public bool jacred { get; set; }
 
+    /// <summary>Syncs the local Jackett URL and API key into Lampa parser settings.</summary>
+    public bool jackett { get; set; } = true;
+
     public bool dlna { get; set; }
 
     public bool tracks { get; set; }
@@ -17,6 +20,12 @@ public class InitPlugins
     public bool cubProxy { get; set; }
 
     public bool online { get; set; }
+
+    /// <summary>Loads compact responsive styles for Online result cards.</summary>
+    public bool onlineCompact { get; set; } = true;
+
+    /// <summary>Loads the persistent Vietnamese localization overlay after addons.</summary>
+    public bool vietnamese { get; set; } = true;
 
     public bool catalog { get; set; }
 

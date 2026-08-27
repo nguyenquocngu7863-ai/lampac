@@ -17,7 +17,9 @@ Mở Termux, tải script rồi chạy:
 
 ```bash
 pkg update -y && pkg install -y curl
-curl -fLO https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a0337c-lampac/setup-termux.sh
+curl -fLO https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac/setup-termux.sh
+
+curl -fLO https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac/setup-termux.sh
 bash setup-termux.sh
 ```
 
@@ -46,12 +48,12 @@ Khi chạy lần đầu, `setup-termux.sh` thực hiện tuần tự các bướ
 2. Cài Ubuntu trong `proot-distro` (hoặc sửa/cài lại Ubuntu nếu môi trường đang hỏng).
 3. Trong Ubuntu, cài các thư viện cần thiết, GStreamer và **ASP.NET Core Runtime .NET 10** tại `/opt/dotnet`.
 4. Tải bản phát hành Lampac NextGen mới nhất, giải nén vào `/root/lampac` trong Ubuntu.
-5. Tạo `init.conf` tối ưu cho Termux: `lowMemoryMode`, GStreamer, Chromium headless và các module nặng được tắt bớt.
-6. Cài Chrome/Chromium tương thích `arm64` hoặc `amd64` để các nguồn dùng Playwright hoạt động.
-7. Xoá nguồn đã ngừng dùng/lỗi **NguonC**, rồi đồng bộ module tuỳ biến: **KKPhim, K20, VsMov, WebStreamr, Open Directory, Sootio, AIOStreams, GStreamer** và **LampaWeb/StremioSub**; AdminPanel cũng được cập nhật giao diện tiếng Việt nếu module đã có sẵn.
-8. Tạo lệnh `lampac` để quản lý server từ Termux.
+5. Tạo `init.conf` tối ưu cho Termux: `lowMemoryMode`, GStreamer; tạm đặt `disableEng: true` và tắt Chromium trong lúc luồng ENG embed được sửa.
+6. Xoá nguồn đã ngừng dùng/lỗi **NguonC**, rồi đồng bộ module tuỳ biến: **KKPhim, K20, VsMov, AIOStreams, GStreamer** và **LampaWeb/StremioSub**; mã các nguồn ENG vẫn được giữ để phát triển nhưng không xuất hiện khi `disableEng` đang bật.
+7. Cài controller tùy chọn cho **AIOStreams** (port `3002`) và **Jackett** (port `9117`).
+8. Tạo các lệnh `lampac`, `aio` và `jackett` để quản lý từ Termux.
 
-Lần cài đầu có thể mất vài phút vì phải tải Ubuntu, runtime .NET, Chrome và bản phát hành Lampac. Không đóng Termux khi đang chạy script.
+Lần cài đầu có thể mất vài phút vì phải tải Ubuntu, runtime .NET và bản phát hành Lampac. AIOStreams/Jackett chỉ được tải khi bạn chạy lệnh cài riêng. Không đóng Termux trong lúc cài.
 
 ## Quản lý Lampac sau khi cài
 
@@ -78,19 +80,169 @@ ip addr show wlan0
 
 ## Cập nhật và đồng bộ module
 
-### Cập nhật đầy đủ
+### Cập nhật đầy đủ, không mất dữ liệu
+
+`--update` thay toàn bộ release trong `/root/lampac`. Không backup/restore thư mục `module/`, `Core.dll`, `Shared.dll` hoặc `wwwroot/lampa-main`, vì đây là code phải lấy từ bản mới. Tách backup thành hai nhóm:
+
+- **Dữ liệu an toàn:** cấu hình, user, database, bookmark, TorrServer và keystore APK — tự restore sau update.
+- **Override cần review:** `mods/` và `plugins/` — chỉ giải nén để kiểm tra, không chép đè tự động. Module cùng tên trong `mods/` được load trước `module/`, nên restore mù có thể vô hiệu hóa bản update.
+
+#### 1. Dừng dịch vụ
 
 ```bash
-lampac update
-# hoặc
-bash setup-termux.sh --update
+lampac stop
+aio stop
+jackett stop
 ```
 
-Cập nhật sẽ tải release mới, giữ lại `init.conf` và `passwd`, rồi cài lại Chrome/Chromium, cấu hình Termux và các module tuỳ biến. Thư mục nguồn lỗi cũ `NguonC` cũng bị xoá; `VsMov` được đồng bộ lại.
+Jackett có lifecycle độc lập nên cần dừng bằng lệnh riêng.
+
+#### 2. Tạo backup ngoài thư mục Lampac
+
+```bash
+proot-distro login ubuntu -- bash -lc '
+  set -euo pipefail
+  mkdir -p /root/lampac-backups
+
+  stamp=$(date +%Y%m%d-%H%M%S)
+  data_backup="/root/lampac-backups/data-${stamp}.tar.gz"
+  override_backup="/root/lampac-backups/overrides-${stamp}.tar.gz"
+
+  cd /root/lampac
+
+  data_items=()
+  for path in \
+    init.conf init.yaml passwd users.json \
+    database data/ts wwwroot/bookmarks
+  do
+    [ -e "$path" ] && data_items+=("$path")
+  done
+
+  [ "${#data_items[@]}" -gt 0 ] || {
+    echo "Không tìm thấy dữ liệu để backup"
+    exit 1
+  }
+
+  tar -czf "$data_backup" "${data_items[@]}"
+  printf "%s\n" "$data_backup" > /root/lampac-backups/LATEST_DATA
+
+  override_items=()
+  for path in mods plugins; do
+    [ -e "$path" ] && override_items+=("$path")
+  done
+
+  if [ "${#override_items[@]}" -gt 0 ]; then
+    tar -czf "$override_backup" "${override_items[@]}"
+    printf "%s\n" "$override_backup" > /root/lampac-backups/LATEST_OVERRIDES
+    echo "Override backup: $override_backup"
+    du -h "$override_backup"
+  fi
+
+  echo "Data backup: $data_backup"
+  du -h "$data_backup"
+  tar -tzf "$data_backup" | sed -n "1,30p"
+'
+```
+
+`database/` chứa bookmark/timecode, Storage và keystore ký Lampac APK. Không backup `cache/`: cache có thể tạo lại và cache module cũ không nên quay lại sau update.
+
+#### 3. Tải release mới và áp dụng lại phần tùy biến
+
+Không cần clone Git:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac/setup-termux.sh \
+  | bash -s -- --update
+```
+
+Script tải `lampac-nextgen.zip` mới nhất, thay Core/module chính thức rồi đồng bộ lại các module tùy biến của branch này, bao gồm các site definition NextHUB đã vá.
+
+#### 4. Chỉ khôi phục dữ liệu an toàn
+
+```bash
+proot-distro login ubuntu -- bash -lc '
+  set -euo pipefail
+  backup=$(cat /root/lampac-backups/LATEST_DATA)
+  [ -f "$backup" ] || {
+    echo "Không tìm thấy backup: $backup"
+    exit 1
+  }
+
+  echo "Restore data: $backup"
+  tar -xzf "$backup" -C /root/lampac
+'
+```
+
+`init.conf` được giữ vì chứa cấu hình người dùng, nhưng section riêng của module vẫn có thể override default mới. Sau update, tìm domain/setting cũ nếu hành vi không thay đổi:
+
+```bash
+proot-distro login ubuntu -- grep -niE \
+  "sex-studentki|overridehost|host" /root/lampac/init.conf
+```
+
+#### 5. Review `mods/` và `plugins/`, không restore mù
+
+```bash
+proot-distro login ubuntu -- bash -lc '
+  set -euo pipefail
+  rm -rf /root/lampac-override-review
+  mkdir -p /root/lampac-override-review
+
+  if [ -f /root/lampac-backups/LATEST_OVERRIDES ]; then
+    backup=$(cat /root/lampac-backups/LATEST_OVERRIDES)
+    tar -xzf "$backup" -C /root/lampac-override-review
+    find /root/lampac-override-review -maxdepth 3 -type f | sed -n "1,80p"
+  else
+    echo "Không có mods/plugins cũ"
+  fi
+'
+```
+
+Chỉ copy từng mod/plugin thật sự tự viết sau khi đã kiểm tra nó không trùng module mới. Ví dụ kiểm tra NextHUB có bị mod cũ che không:
+
+```bash
+proot-distro login ubuntu -- bash -lc '
+  find /root/lampac/mods /root/lampac/module \
+    -path "*/NextHUB/manifest.json" -print 2>/dev/null
+'
+```
+
+Nếu có cả `mods/NextHUB` và `module/NextHUB`, bản trong `mods/` có thể được load trước; nên di chuyển bản cũ ra thư mục review thay vì giữ hai bản.
+
+#### 6. Khởi động và xác minh code mới
+
+```bash
+lampac start
+```
+
+Trong session Termux khác:
+
+```bash
+lampac status
+aio status
+jackett status
+
+proot-distro login ubuntu -- grep "^host:" \
+  /root/lampac/module/NextHUB/sites/sex-studentki.yaml
+```
+
+Kết quả NextHUB mới phải là:
+
+```text
+host: https://sex-studentki.one
+```
+
+Nếu cần Jackett:
+
+```bash
+jackett start
+```
+
+Không xóa `/root/lampac-backups/` cho tới khi đã kiểm tra bookmark, user, TorrServer và APK. Backup override vẫn còn nguyên để lấy lại từng file khi cần, nhưng không tự động đè code mới.
 
 ### Chỉ đồng bộ module tuỳ biến
 
-Dùng khi release Lampac vẫn giữ nguyên nhưng bạn muốn lấy lại các thay đổi tuỳ biến (**KKPhim, K20, VsMov, WebStreamr, Open Directory, Sootio, AIOStreams, GStreamer và LampaWeb/StremioSub**):
+Dùng khi release Lampac vẫn giữ nguyên nhưng bạn muốn lấy lại các thay đổi tuỳ biến (**KKPhim, K20, VsMov, WebStreamr, Open Directory, Sootio, AIOStreams, GStreamer, Eporner stream-proxy, các site definition NextHUB đã sửa và LampaWeb/StremioSub**):
 
 ```bash
 bash setup-termux.sh --sync
@@ -128,20 +280,237 @@ Cấu hình mặc định của script đã bao gồm:
     "scheme": "http"
   },
   "lowMemoryMode": true,
+  "disableEng": true,
   "gst": {
     "enable": true,
     "useGpu": false,
     "hardwareAcceleration": false
   },
-  "chromium": {
-    "enable": true,
-    "Headless": true,
-    "context": { "keepopen": false, "min": 0, "max": 1 }
+  "chromium": { "enable": false }
+}
+```
+
+Thiết lập này ưu tiên ổn định và tiết kiệm RAM. Nếu máy yếu, không nên bật đồng thời AIOStreams, Jackett, nhiều module nặng hoặc transcoding.
+
+## Sổ tay cấu hình proxy cho từng nguồn
+
+Lampac có hai lớp thường bị gọi chung là “proxy”, nhưng mục đích khác nhau:
+
+- `streamproxy: true`: điện thoại/Lampac tải video rồi chuyển tiếp cho player. Dùng để gắn `Referer`, `Origin`, User-Agent, xử lý CORS/hotlink. **Không đổi IP ra Internet**.
+- `useproxy` / `useproxystream`: request đi ra Internet qua một HTTP/SOCKS proxy bên ngoài. Dùng khi domain/CDN chặn IP hoặc giới hạn vùng.
+
+### Chọn cấu hình theo lỗi
+
+| Triệu chứng | Cấu hình nên dùng |
+|---|---|
+| Danh sách mở được, video 403/không hỗ trợ | `streamproxy` + `headers_stream` |
+| Trang nguồn/search bị 403 hoặc chặn vùng | `useproxy` |
+| Cả trang nguồn và CDN video đều chặn IP | `useproxy` + `useproxystream` + `streamproxy` |
+| Chỉ ảnh/poster bị chặn | `headers_image`, hoặc image proxy của server |
+| Cloudflare yêu cầu JS/cookie | Playwright/FlareSolverr; proxy IP đơn thuần có thể chưa đủ |
+
+### 1. Chỉ proxy stream qua Lampac
+
+Đây là cấu hình nhẹ nhất và nên thử đầu tiên. Ví dụ cho một section nguồn:
+
+```jsonc
+"TenNguon": {
+  "enable": true,
+  "streamproxy": true,
+  "headers_stream": {
+    "Referer": "https://website.example/",
+    "Origin": "https://website.example",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Accept": "video/webm,video/mp4,video/*;q=0.9,*/*;q=0.5"
   }
 }
 ```
 
-Thiết lập này ưu tiên ổn định và tiết kiệm RAM. Nếu máy yếu, không nên bật cùng lúc nhiều module nặng, nhiều Chromium context hoặc transcoding.
+Sau khi áp dụng, URL player phải đi qua:
+
+```text
+http://IP_LAMPAC:9118/proxy/...
+```
+
+Nếu player vẫn nhận URL CDN trực tiếp, kiểm tra `Kit` có ghi đè `streamproxy` hay không. Với nguồn tự quản lý có thể cần:
+
+```jsonc
+"kit": false,
+"rhub": false,
+"qualitys_proxy": false,
+"url_reserve": false
+```
+
+### 2. Khai báo proxy Internet dùng chung
+
+Trong root của `init.conf`:
+
+```jsonc
+"globalproxy": [
+  {
+    "name": "proxy-eu",
+    "BypassOnLocal": true,
+    "maxRequestError": 2,
+    "list": [
+      "http://username:password@proxy.example:3128"
+    ]
+  }
+]
+```
+
+Có thể khai báo nhiều endpoint để Lampac chọn và đổi sau lỗi:
+
+```jsonc
+"list": [
+  "http://user:pass@host-1:3128",
+  "http://user:pass@host-2:3128",
+  "socks5://user:pass@host-3:1080"
+]
+```
+
+Nếu username/password chứa `@`, `:`, `/` hoặc ký tự đặc biệt, phải URL-encode chúng. Không commit hoặc gửi proxy credential vào Git/chat/log.
+
+### 3. Gắn proxy dùng chung vào một nguồn
+
+```jsonc
+"TenNguon": {
+  "enable": true,
+  "useproxy": true,
+  "globalnameproxy": "proxy-eu"
+}
+```
+
+`useproxy` áp dụng cho request trang, API, search và resolver của nguồn. Stream chưa chắc đi qua proxy ngoài.
+
+### 4. Cho cả stream đi qua proxy Internet
+
+Chỉ dùng khi CDN cũng chặn IP server:
+
+```jsonc
+"TenNguon": {
+  "enable": true,
+  "useproxy": true,
+  "useproxystream": true,
+  "streamproxy": true,
+  "globalnameproxy": "proxy-eu",
+  "headers_stream": {
+    "Referer": "https://website.example/",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+  }
+}
+```
+
+Flow lúc này:
+
+```text
+Player → Lampac /proxy → external proxy → CDN
+```
+
+Cách này tốn băng thông, tăng độ trễ và tải CPU/RAM; không bật hàng loạt cho mọi nguồn.
+
+### 5. Proxy riêng, không cần `globalproxy`
+
+```jsonc
+"TenNguon": {
+  "enable": true,
+  "useproxy": true,
+  "proxy": {
+    "BypassOnLocal": true,
+    "list": [
+      "http://user:pass@proxy.example:3128"
+    ]
+  }
+}
+```
+
+Hoặc credentials tách riêng:
+
+```jsonc
+"proxy": {
+  "useAuth": true,
+  "username": "user",
+  "password": "pass",
+  "list": ["http://proxy.example:3128"]
+}
+```
+
+Nếu nguồn có `proxy.list`, nó được ưu tiên trước `globalnameproxy` và root `proxy`.
+
+### 6. Root proxy mặc định
+
+Có thể khai báo:
+
+```jsonc
+"proxy": {
+  "list": ["http://user:pass@proxy.example:3128"]
+}
+```
+
+Nguồn có `useproxy: true` nhưng không có `proxy.list` hoặc `globalnameproxy` sẽ dùng root proxy này. Chỉ nên dùng khi nhiều nguồn thật sự cần cùng một tuyến proxy.
+
+### 7. Kiểm tra proxy trước khi nhập Admin Panel
+
+HTTP proxy:
+
+```bash
+proot-distro login ubuntu -- curl -fsS --max-time 15 \
+  -x 'http://user:pass@proxy.example:3128' \
+  https://api.ipify.org
+```
+
+SOCKS5, có DNS qua proxy:
+
+```bash
+proot-distro login ubuntu -- curl -fsS --max-time 15 \
+  --proxy 'socks5h://user:pass@proxy.example:1080' \
+  https://api.ipify.org
+```
+
+Lệnh phải in ra IP của proxy, không phải IP mạng điện thoại.
+
+### 8. Áp dụng và kiểm tra cấu hình hiệu lực
+
+Sau khi lưu Admin Panel, restart để loại trừ cache/module state:
+
+```bash
+lampac stop
+lampac start
+```
+
+Kiểm tra section đã merge vào `current.conf`:
+
+```bash
+proot-distro login ubuntu -- python3 -c '
+import json, pprint
+with open("/root/lampac/current.conf", encoding="utf-8") as f:
+    data = json.load(f)
+pprint.pp(data.get("TenNguon"))
+'
+```
+
+Thay `TenNguon` bằng đúng tên section trong Admin Panel, phân biệt hoa/thường theo catalog. Nếu `init.yaml` cũng tồn tại, nó có thể ghi đè `init.conf`; script sẽ cảnh báo khi sync.
+
+### Lưu ý an toàn và hiệu năng
+
+- Không dùng proxy công cộng miễn phí cho token/cookie/tài khoản.
+- `streamproxy` khiến dữ liệu video đi qua điện thoại; tốc độ tối đa phụ thuộc cả download lẫn upload nội bộ.
+- `useproxystream` có thể tiêu tốn rất nhiều traffic của proxy trả phí.
+- Không bật proxy cho nguồn đang chạy bình thường.
+- Test từng nguồn và từng lỗi; chỉ nâng từ `streamproxy` lên external proxy khi thật sự cần đổi IP.
+
+## Việt hóa bền vững qua các lần update
+
+Bản Việt hóa gồm hai lớp. File ngôn ngữ lõi độc lập `Modules/LampaWeb/lang/vi.js` có cùng toàn bộ key với `en.js`, không import/spread/fallback runtime; file được deploy thành `wwwroot/lampa-main/lang/vi.js` và đăng ký vào `lang/meta.js`. Người dùng tự chọn **Tiếng Việt** trong Interface, hệ thống không tự đổi ngôn ngữ. Plugin `/vietnamese.js` chỉ bổ sung một số cụm quan trọng của addon như tìm kiếm, bộ lọc, phân loại và nguồn.
+
+Không sửa trực tiếp file addon upstream chỉ để dịch. Khi `--update` thay release, `--sync` sẽ cài lại `vi.js`, vá registry `meta.js`, rồi chép overlay `vietnamese.js`. `LampaCron` cũng tự kiểm tra và cài lại language sau mỗi lần frontend được tải/cập nhật, tránh race khi thư mục `lampa-main/lang` xuất hiện sau lúc sync. Có thể bật/tắt lớp addon tại **Settings → Interface → Lớp Việt hóa addon**.
+
+Khi người dùng tự chọn `vi`, overlay đồng bộ `tmdb_lang=vi` để tiêu đề, mô tả và thể loại lấy từ TMDB bằng tiếng Việt. Riêng request ảnh dùng `include_image_language=en,null`, ưu tiên logo English/ngôn ngữ trung lập vì TMDB thường không có logo `vi`.
+
+Online và addon thông thường tiếp tục dùng catalog overlay. Riêng SISI được Việt hóa trực tiếp trong `SISI/plugins/*.js` và menu `Modules/Adult/*/Service.cs` để không dịch nhầm tiêu đề video. NextHUB dịch category tại `Modules/NextHUB/CategoryVi.cs` theo slug ngay lúc server dựng menu; tên playlist/video không đi qua bộ dịch này. Khi upstream update SISI/NextHUB, merge source và giữ catalog Việt tương ứng.
+
+## Giao diện Online gọn trên điện thoại
+
+Plugin built-in `/online-compact.js` được bật mặc định qua `LampaWeb.initPlugins.onlineCompact`. Trên màn hình tối đa 720px, plugin dành thêm chiều ngang cho nội dung, cho title/metadata xuống dòng và tăng khoảng cách dọc để card dễ đọc hơn; không thay đổi model hoặc link phát. Có thể bật/tắt trực tiếp trong **Settings → Interface → Danh sách Online thoáng**.
 
 ## Plugin phụ đề
 
@@ -160,7 +529,9 @@ curl -s http://127.0.0.1:9118/lampainit.js | grep -oE 'StremioSub[^" ]*|stremios
 Nếu lệnh không in ra `stremiosub.js`, đồng bộ và khởi động lại:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a0337c-lampac/setup-termux.sh | bash -s -- --sync
+curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac/setup-termux.sh | bash -s -- --sync
+
+curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac/setup-termux.sh | bash -s -- --sync
 lampac stop
 lampac start
 ```
@@ -224,6 +595,69 @@ aio logs
 
 AIOStreams chạy Node.js riêng, không được nhúng vào Lampac. Bản local dùng SQLite và cần thêm dung lượng/RAM khi build; nếu build source lỗi do native `yencode`, xem log bằng `aio logs`.
 
+## Jackett local — port 9117
+
+Sau `bash setup-termux.sh --sync`, cài gói Jackett chính chủ phù hợp với kiến trúc Ubuntu proot:
+
+```bash
+jackett install
+jackett info
+```
+
+Controller tải binary `LinuxARM64`, `LinuxAMDx64` hoặc `LinuxARM32` từ GitHub Releases, giữ dữ liệu tại `/root/.config/Jackett` và chạy dashboard trên:
+
+```text
+http://127.0.0.1:9117/UI/Dashboard
+```
+
+Trong Admin Panel của Lampac (`http://IP_ANDROID:9118`), mở **Dịch vụ cục bộ → Jackett** rồi nhập:
+
+```json
+"Jackett": {
+  "enable": true,
+  "url": "",
+  "port": 9117,
+  "api_key": "API_KEY_TỪ_DASHBOARD_JACKETT",
+  "proxy_downloads": true
+}
+```
+
+Mặc định `proxy_downloads: true`: search chỉ proxy JSON nên trả kết quả nhanh. Với kết quả chỉ có link `/dl/`, `jackett.js` đợi đến lúc người dùng bấm phát mới gọi `/jackett/resolve`; Lampac tải đúng torrent đã chọn, tính info-hash SHA-1, giữ tracker và thay link bằng magnet trước khi request `/torrents` được gửi tới TorrServer. Vì vậy TorrServer local lẫn remote đều không phải truy cập ngược URL nội bộ của điện thoại. API key được chèn server-side, không nằm trong URL gửi xuống client. Đặt `proxy_downloads: false` chỉ khi muốn Lampa gọi trực tiếp URL Jackett trong `url`.
+
+Các lệnh quản lý:
+
+```bash
+jackett start
+jackett stop
+jackett restart
+jackett status
+jackett logs
+jackett update
+```
+
+`lampac start` chỉ tự khởi động AIOStreams rồi chạy Lampac. Jackett có lifecycle độc lập để dễ đo hiệu năng: chạy `jackett start` khi cần dùng và `jackett stop` khi muốn giải phóng tài nguyên; `lampac stop` không dừng Jackett. AIOStreams có thể dùng URL/API key của Jackett theo cấu hình addon riêng trong dashboard AIO. Jackett lắng nghe mạng LAN để thiết bị khác mở dashboard; không đưa port `9117` ra Internet, đồng thời không commit hoặc chia sẻ API key.
+
+## Trạng thái nguồn ENG và Mirage
+
+Bản cài mới mặc định dùng `disableEng: true` và `chromium.enable: false` để giảm RAM. `--sync`/`--update` không còn ép lại hai giá trị này, nên lựa chọn bật nguồn của người dùng được giữ nguyên. AIOStreams vẫn hoạt động độc lập khi section `AIOStreams` có `enable: true` và manifest hợp lệ.
+
+Mirage không bị xóa: module mặc định `enable: false` và tự ẩn khi Chromium/Playwright bị tắt. Nguồn này cần Google Chrome/Edge và khoảng 1 GB RAM. Muốn bật, cấu hình đường dẫn Chrome thật rồi restart:
+
+```jsonc
+"disableEng": false,
+"chromium": {
+  "enable": true,
+  "executablePath": "/usr/bin/google-chrome-stable",
+  "context": { "keepopen": false, "min": 0, "max": 1 }
+},
+"Mirage": {
+  "enable": true,
+  "m4s": false
+}
+```
+
+Không dùng đường dẫn trên nếu file không tồn tại; kiểm tra bằng `command -v google-chrome-stable || command -v microsoft-edge` trong Ubuntu proot. Chromium thường của distro không đáp ứng yêu cầu Mirage.
+
 ## Thêm/sửa plugin LampaWeb vào bản Lampac trong `/root`
 
 Bản Termux chạy release ở `/root/lampac`; LampaWeb là **dynamic module**. Vì vậy chỉ thêm file `.js` vào repository là chưa đủ: release đang chạy còn dùng controller/model cũ để tạo `/lampainit.js`.
@@ -266,12 +700,23 @@ Lệnh `reset` xoá Ubuntu proot hiện tại, vì vậy cần cài lại Lampac
 - Đảm bảo cả hai thiết bị cùng mạng Wi-Fi và router không chặn client-to-client.
 - Kiểm tra port trong `lampac info` hoặc `init.conf`.
 
-### Nguồn Playwright không hoạt động
+### Không thấy nguồn ENG/Playwright
 
-Chạy đồng bộ lại để cài Chrome/Chromium và cập nhật đường dẫn browser:
+Đây là trạng thái tạm thời có chủ đích: profile Termux đặt `disableEng: true` và `chromium.enable: false`. Hiện nên dùng nguồn Việt, AIOStreams hoặc luồng torrent Jackett. Chỉ bật lại ENG/Chromium khi tiếp tục kiểm thử embed.
+
+### Jackett báo `GC heap initialization failed ... 0x8007000E`
+
+Đây là giới hạn reserve bộ nhớ ảo của CoreCLR trên Android/proot ARM64, không nhất thiết là điện thoại đã hết RAM. Controller mặc định đặt `DOTNET_GCHeapHardLimit=40000000` (hex, tương đương 1 GiB) và tắt Server GC riêng cho Jackett. Đồng bộ controller mới rồi khởi động lại:
 
 ```bash
 bash setup-termux.sh --sync
+jackett restart
+```
+
+Nếu thiết bị vẫn lỗi, thử giới hạn 512 MiB:
+
+```bash
+JACKETT_GC_HEAP_HARD_LIMIT=20000000 jackett start
 ```
 
 ### Android tự dừng server

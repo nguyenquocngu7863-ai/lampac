@@ -29,38 +29,57 @@ public static class ConfigSectionGroups
 
         new("realtime", "WebSocket và RCH", "Socket native và hub từ xa.",
             new[] { "WebSocket", "rch" }),
-        new("browser", "Trình duyệt (Playwright)", "Chromium / Firefox dùng cho tự động hóa.",
-            new[] { "chromium", "firefox" }),
+        new("browser", "Nguồn cần trình duyệt", "Mirage/Phantom và phần lớn embed cần Chromium; HydraFlix/TwoEmbed cần Firefox. CineWave đang thử nghiệm và nên tắt trên Android; Videasy/VidLink/Mapple4K direct API nằm ở nhóm HTTP.",
+            new[]
+            {
+                "chromium", "firefox", "Mirage", "Phantom", "CineWave",
+                "Autoembed", "Hydraflix", "MovPI", "Playembed", "Rgshows", "Smashystream", "Twoembed", "Vidsrc"
+            }),
         new("diagnostics", "Log và chẩn đoán", "Serilog, xử lý exception, openstat.",
             new[] { "serilog", "useDeveloperExceptionPage", "exceptionHandlerLogTarget", "exceptionHandlerLogFile", "watcherInit", "openstat" }),
 
         new("app", "Ứng dụng và giao diện", "online, cub, sisi, quảng cáo, mặc định, omdb.",
             new[] { "online", "cub", "sisi", "vast", "disableEng", "defaultOn", "omdbapi_key", "overrideResponse" }),
         new("client", "Client Lampa và API", "Giao diện Lampa, cookie, PidTor, TMDB, phụ đề tự động.", new[] { "tmdb", "LampaWeb", "SubFinder", "Cookie", "PidTor", "gst" }),
+        new("local-services", "Dịch vụ cục bộ", "Kết nối Lampac/Lampa với dịch vụ chạy cùng Ubuntu proot.",
+            new[] { "Jackett" }),
         new("modules", "Module mở rộng", "Các section module ở cấp cao nhất của config.",
             new[] { "Catalog", "DLNA", "JacRed", "Sync", "TimeCode", "TorrServer", "Tracks", "transcoding", "TmdbProxy", "CubProxy", "WebLog" }),
 
-        new("src-anime", "Nguồn · anime", "Nguồn anime online và liên quan (gồm Kodik).",
-            new[] { "AniLiberty", "AniLibria", "Animebesst", "AnimeGo", "AnimeLib", "AnimeON", "Animevost", "AniMedia", "Dreamerscast", "Kodik", "Mikai", "MoonAnime" }),
-        new("src-embed", "Nguồn · player nhúng", "Embed và aggregator player bên thứ ba.",
-            new[] { "Autoembed", "Hydraflix", "MovPI", "Playembed", "Rgshows", "Smashystream", "Twoembed", "VidLink", "Videasy", "Vidsrc" }),
-        new("src-vod", "Nguồn · VOD và CDN", "Phim, series, nguồn khu vực và CDN.",
+        new("src-vn", "Nguồn · Việt Nam", "Các nguồn phim Việt tùy biến, không cần Playwright.",
+            new[] { "KKPhim", "K20", "VsMov" }),
+
+        new("src-http-bridge", "Nguồn · HTTP và Stremio", "Bridge HTTP/Stremio cùng Videasy/VidLink direct API, độc lập với nhóm embed Playwright.",
+            new[] { "AIOStreams", "Mapple4K", "OpenDirectory", "Sootio", "Videasy", "VidLink", "WebStreamr" }),
+
+        new("src-rus", "Nguồn · Nga và CIS", "Nguồn VOD/CDN Nga; Mirage và Phantom nằm ở nhóm cần trình duyệt.",
             new[]
             {
-                "Alloha", "Ashdi", "AsiaGe", "BamBoo", "CDNvideohub", "Collaps", "Eneyida", "FanCDN", "Filmix", "FilmixPartner", "FilmixTV", "FlixCDN",
-                "Geosaitebi", "GetsTV", "HDVB", "HdvbUA", "IptvOnline", "iRemux", "Kinobase", "Kinoflix", "Kinogo", "Kinotochka", "Kinoukr", "KinoPub",
-                "LeProduction", "Mirage", "Rezka", "RezkaPrem", "RutubeMovie", "Tortuga", "UaKino", "VideoDB", "Videoseed", "VeoVeo", "Vibix", "VkMovie", "VoKino",
-                "WebStreamr", "K20", "OpenDirectory", "Sootio", "AIOStreams"
+                "CDNvideohub", "Collaps", "FanCDN", "FlixCDN", "HDVB", "Kinobase", "Kinogo", "Kinotochka", "LeProduction",
+                "PizdatoeHD", "RutubeMovie", "Spectre", "VeoVeo", "Vibix", "VideoDB", "Videoseed", "VkMovie", "Zetflix", "ZetflixDB"
             }),
-        new("src-adult", "Nguồn · 18+", "SISI / trang người lớn.",
+
+        new("src-paid", "Nguồn · cần tài khoản hoặc token", "Các nguồn thường cần token, cookie hoặc tài khoản riêng.",
+            new[] { "Alloha", "Filmix", "FilmixPartner", "FilmixTV", "GetsTV", "IptvOnline", "iRemux", "KinoPub", "Rezka", "RezkaPrem", "SakhTV", "VoKino" }),
+
+        new("src-ukr", "Nguồn · Ukraine", "Nguồn phim Ukraine và mirror liên quan.",
+            new[] { "Ashdi", "BamBoo", "Eneyida", "HdvbUA", "Kinoukr", "Tortuga", "UAFilm", "UaKino" }),
+
+        new("src-geo", "Nguồn · Georgia và châu Á", "Nguồn theo khu vực Georgia/Asia.",
+            new[] { "AsiaGe", "Geosaitebi", "Kinoflix" }),
+
+        new("src-anime", "Nguồn · anime", "Nguồn anime online và liên quan, bao gồm Kodik.",
+            new[] { "AiLiberty", "AniLiberty", "AniLibria", "AniMedia", "Animebesst", "AnimeGo", "AnimeLib", "AnimeON", "Animevost", "Dreamerscast", "Kodik", "Mikai", "MoonAnime" }),
+
+        new("src-adult", "Nguồn · SISI / 18+", "Module Adult viết bằng C# và engine NextHUB YAML.",
             new[]
             {
-                "BongaCams", "Chaturbate", "Ebalovo", "Eporner", "HQporner", "PornHub", "PornHubPremium", "Porntrex", "Runetki", "Spankbang", "Tizam",
+                "NextHUB", "BongaCams", "Chaturbate", "Ebalovo", "Eporner", "HQporner", "PornHub", "PornHubPremium", "Porntrex", "Runetki", "Spankbang", "Tizam",
                 "Xhamster", "Xnxx", "Xvideos", "XvideosRED"
             }),
     };
 
-    public static List<GroupDto> Build(JObject currentRoot)
+    public static List<GroupDto> Build(JObject currentRoot, IEnumerable<string> nextHubSiteKeys = null)
     {
         if (currentRoot == null)
             currentRoot = new JObject();
@@ -84,6 +103,24 @@ public static class ConfigSectionGroups
             result.Add(new GroupDto(g.Id, g.Title, g.Hint, keys));
         }
 
+        var nextHubKeys = (nextHubSiteKeys ?? Array.Empty<string>())
+            .Where(inFile.Contains)
+            .Where(k => !assigned.Contains(k))
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(k => k, StringComparer.Ordinal)
+            .ToArray();
+        if (nextHubKeys.Length > 0)
+        {
+            foreach (var k in nextHubKeys)
+                assigned.Add(k);
+
+            result.Add(new GroupDto(
+                "src-adult-nexthub",
+                "Nguồn · NextHUB / 18+",
+                "Thông thường chỉ cần đổi enable. streamproxy đi qua Lampac nhưng không đổi IP; useproxy/useproxystream cần proxy ngoài; rhub/rch và các trường còn lại nên giữ nguyên.",
+                nextHubKeys));
+        }
+
         var orphans = inFile.Where(k => !assigned.Contains(k)).OrderBy(k => k, StringComparer.Ordinal).ToArray();
         if (orphans.Length > 0)
             result.Add(new GroupDto("other", "Khác", "Các khóa từ current.conf chưa có trong danh mục (module mới).", orphans));
@@ -91,11 +128,25 @@ public static class ConfigSectionGroups
         return result;
     }
 
-    public static List<GroupDto> BuildCatalog()
+    public static List<GroupDto> BuildCatalog(IEnumerable<string> nextHubSiteKeys = null)
     {
-        var list = new List<GroupDto>(Catalog.Length);
+        var list = new List<GroupDto>(Catalog.Length + 1);
         foreach (var g in Catalog)
             list.Add(new GroupDto(g.Id, g.Title, g.Hint, g.Keys.ToArray()));
+
+        var nextHubKeys = (nextHubSiteKeys ?? Array.Empty<string>())
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(k => k, StringComparer.Ordinal)
+            .ToArray();
+        if (nextHubKeys.Length > 0)
+        {
+            list.Add(new GroupDto(
+                "src-adult-nexthub",
+                "Nguồn · NextHUB / 18+",
+                "Thông thường chỉ cần đổi enable. streamproxy đi qua Lampac nhưng không đổi IP; useproxy/useproxystream cần proxy ngoài; rhub/rch và các trường còn lại nên giữ nguyên.",
+                nextHubKeys));
+        }
+
         return list;
     }
 

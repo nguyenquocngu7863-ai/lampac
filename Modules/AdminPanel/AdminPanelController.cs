@@ -6,6 +6,7 @@ using Newtonsoft.Json.Serialization;
 using Shared;
 using Shared.Attributes;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -43,8 +44,9 @@ public class AdminPanelController : BaseController
     [Route("/adminpanel/api/groups")]
     public ActionResult Groups()
     {
-        var current = LoadCurrentRoot();
-        var built = ConfigSectionGroups.Build(current);
+        var sites = DiscoverNextHubSites();
+        var current = LoadCurrentRoot(sites);
+        var built = ConfigSectionGroups.Build(current, sites.Keys);
         var json = JsonConvert.SerializeObject(built, new JsonSerializerSettings
         {
             ContractResolver = new CamelCasePropertyNamesContractResolver(),
@@ -57,16 +59,18 @@ public class AdminPanelController : BaseController
     [Route("/adminpanel/api/groups/catalog")]
     public ActionResult GroupsCatalog()
     {
-        var built = ConfigSectionGroups.BuildCatalog();
-        var current = LoadCurrentRoot();
-        var inCatalog = ConfigSectionGroups.CatalogRootKeys;
+        var sites = DiscoverNextHubSites();
+        var built = ConfigSectionGroups.BuildCatalog(sites.Keys);
+        var current = LoadCurrentRoot(sites);
+        var inCatalog = new System.Collections.Generic.HashSet<string>(ConfigSectionGroups.CatalogRootKeys, StringComparer.Ordinal);
+        inCatalog.UnionWith(sites.Keys);
         var orphans = current.Properties()
             .Select(p => p.Name)
             .Where(k => !inCatalog.Contains(k))
             .OrderBy(k => k, StringComparer.Ordinal)
             .ToArray();
         if (orphans.Length > 0)
-            built.Add(new GroupDto("other", "Прочее", "Ключи из current, не из каталога групп.", orphans));
+            built.Add(new GroupDto("other", "Khác", "Các khóa trong current chưa có trong danh mục nhóm.", orphans));
 
         var json = JsonConvert.SerializeObject(built, new JsonSerializerSettings
         {
@@ -76,29 +80,89 @@ public class AdminPanelController : BaseController
         return Content(json, "application/json; charset=utf-8");
     }
 
-    static JObject LoadCurrentRoot()
+    static Dictionary<string, bool> DiscoverNextHubSites()
     {
+        var result = new Dictionary<string, bool>(StringComparer.Ordinal);
+        try
+        {
+            // AdminPanel itself may be loaded from mods/ while NextHUB still
+            // lives in module/. Search both loader roots instead of assuming
+            // both modules are siblings.
+            var sitesDirs = new[]
+            {
+                Path.GetFullPath(Path.Combine(ModInit.modpath, "..", "NextHUB", "sites")),
+                Path.GetFullPath(Path.Combine(ModInit.modpath, "..", "..", "module", "NextHUB", "sites")),
+                Path.GetFullPath(Path.Combine(ModInit.modpath, "..", "..", "mods", "NextHUB", "sites"))
+            }
+            .Distinct(StringComparer.Ordinal)
+            .Where(Directory.Exists);
+
+            foreach (var sitesDir in sitesDirs)
+            foreach (var path in Directory.GetFiles(sitesDir, "*.yaml"))
+            {
+                var slug = Path.GetFileNameWithoutExtension(path);
+                if (string.IsNullOrWhiteSpace(slug) || slug.Any(c => !(char.IsLetterOrDigit(c) || c == '-')))
+                    continue;
+
+                var enabled = true;
+                foreach (var line in System.IO.File.ReadLines(path))
+                {
+                    if (!line.StartsWith("enable:", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    if (bool.TryParse(line.Substring(line.IndexOf(':') + 1).Trim(), out var parsed))
+                        enabled = parsed;
+                    break;
+                }
+                result[slug] = enabled;
+            }
+        }
+        catch
+        {
+        }
+        return result;
+    }
+
+    static JObject LoadCurrentRoot(Dictionary<string, bool> nextHubSites = null)
+    {
+        var root = new JObject();
         try
         {
             if (System.IO.File.Exists(CurrentFile))
-                return JObject.Parse(System.IO.File.ReadAllText(CurrentFile, Encoding.UTF8));
+                root = JObject.Parse(System.IO.File.ReadAllText(CurrentFile, Encoding.UTF8));
         }
         catch (JsonException)
         {
+            root = new JObject();
         }
 
+        // current.conf can be written before SISI enumerates its YAML sources.
+        // Merge missing runtime sections so AdminPanel does not hide them.
         if (CoreInit.CurrentConf != null)
         {
             try
             {
-                return (JObject)CoreInit.CurrentConf.DeepClone();
+                foreach (var property in CoreInit.CurrentConf.Properties())
+                {
+                    if (root.Property(property.Name) == null)
+                        root[property.Name] = property.Value.DeepClone();
+                }
             }
             catch
             {
             }
         }
 
-        return new JObject();
+        // Every NextHUB YAML is independently overrideable through a root key
+        // with the same slug. Supply an enable template even before the source
+        // has been opened, allowing AdminPanel to manage all installed sites.
+        foreach (var site in nextHubSites ?? DiscoverNextHubSites())
+        {
+            if (root.Property(site.Key) == null)
+                root[site.Key] = new JObject { ["enable"] = site.Value };
+        }
+
+        return root;
     }
 
     [HttpGet]
@@ -116,15 +180,8 @@ public class AdminPanelController : BaseController
     [Route("/adminpanel/api/current")]
     public ActionResult GetCurrent()
     {
-        if (!System.IO.File.Exists(CurrentFile))
-        {
-            if (CoreInit.CurrentConf != null)
-                return Content(CoreInit.CurrentConf.ToString(Formatting.Indented), "application/json; charset=utf-8");
-            return Content("{}", "application/json; charset=utf-8");
-        }
-
-        var text = System.IO.File.ReadAllText(CurrentFile, Encoding.UTF8);
-        return Content(NormalizeJsonText(text), "application/json; charset=utf-8");
+        var current = LoadCurrentRoot(DiscoverNextHubSites());
+        return Content(current.ToString(Formatting.Indented), "application/json; charset=utf-8");
     }
 
     [HttpPost]

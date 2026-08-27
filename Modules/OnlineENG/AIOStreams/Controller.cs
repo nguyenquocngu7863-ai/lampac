@@ -9,6 +9,7 @@ using Shared.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Web;
@@ -594,7 +595,13 @@ public sealed class AIOStreamsController : BaseOnlineController<ModuleConf>
             title,
             quality,
             format,
-            headers.Count > 0 ? headers : null
+            headers.Count > 0 ? headers : null,
+            FindReleaseName(rawTitle, rawDescription, fileName),
+            FindSize(metadata),
+            FindSeeders(metadata),
+            FindVideoCodec(metadata),
+            FindHdr(metadata),
+            FindAudio(metadata)
         );
     }
 
@@ -688,10 +695,9 @@ public sealed class AIOStreamsController : BaseOnlineController<ModuleConf>
         // not collapsed into a single quality entry.
         foreach (AIOStreamItem stream in streams)
         {
-            string source = SourceGroupName(stream);
-            string label = source;
-            if (!string.IsNullOrWhiteSpace(stream.Quality))
-                label += $" • {stream.Quality}";
+            string label = init.detailedLabels
+                ? BuildLinkLabel(stream)
+                : BuildShortLabel(stream);
 
             labels.TryGetValue(label, out int count);
             count++;
@@ -704,11 +710,77 @@ public sealed class AIOStreamsController : BaseOnlineController<ModuleConf>
                 BuildVideoEndpoint(stream),
                 "play",
                 quality: stream.Quality,
-                details: Compact(stream.Title)
+                details: BuildCardDetails(stream)
             );
         }
 
         return tpl;
+    }
+
+    // One-line label for a stream: "2160p • HdHub • 52.3 GB • HEVC DV HDR10+ •
+    // TrueHD Atmos 7.1". Used by the movie card list and the Lampa
+    // "select link" quality dialog.
+    string BuildLinkLabel(AIOStreamItem stream)
+    {
+        var parts = new List<string>(6);
+
+        if (!string.IsNullOrWhiteSpace(stream.Quality))
+            parts.Add(stream.Quality);
+
+        parts.Add(SourceGroupName(stream));
+
+        if (!string.IsNullOrWhiteSpace(stream.Size))
+            parts.Add(stream.Size);
+
+        if (!string.IsNullOrWhiteSpace(stream.Video) && !string.IsNullOrWhiteSpace(stream.Hdr))
+            parts.Add($"{stream.Video} {stream.Hdr}");
+        else if (!string.IsNullOrWhiteSpace(stream.Video ?? stream.Hdr))
+            parts.Add(stream.Video ?? stream.Hdr);
+
+        if (!string.IsNullOrWhiteSpace(stream.Audio))
+            parts.Add(stream.Audio);
+
+        return string.Join(" • ", parts);
+    }
+
+    string BuildShortLabel(AIOStreamItem stream)
+    {
+        string source = SourceGroupName(stream);
+        return string.IsNullOrWhiteSpace(stream.Quality)
+            ? source
+            : $"{source} • {stream.Quality}";
+    }
+
+    // Subtitle/detail line under the card title: release name plus the
+    // technical bits that do not fit into the one-line label.
+    string BuildCardDetails(AIOStreamItem stream)
+    {
+        if (!init.detailedLabels)
+            return Compact(stream.Title);
+
+        var details = new StringBuilder(160);
+        void Add(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return;
+
+            if (details.Length > 0)
+                details.Append(" • ");
+            details.Append(value);
+        }
+
+        Add(stream.ReleaseName);
+        Add(stream.Size);
+        Add(!string.IsNullOrWhiteSpace(stream.Video) && !string.IsNullOrWhiteSpace(stream.Hdr)
+            ? $"{stream.Video} {stream.Hdr}"
+            : stream.Video ?? stream.Hdr);
+        Add(stream.Audio);
+        Add(!string.IsNullOrWhiteSpace(stream.Seeders) ? $"👤 {stream.Seeders}" : null);
+
+        if (details.Length > 0)
+            return details.ToString();
+
+        return Compact(stream.Title);
     }
 
     VoiceTpl BuildSourceFilter(
@@ -769,10 +841,9 @@ public sealed class AIOStreamsController : BaseOnlineController<ModuleConf>
 
         foreach (AIOStreamItem stream in streams)
         {
-            string key = stream.Quality ?? "auto";
-            string source = SourceGroupName(stream);
-            if (!string.IsNullOrWhiteSpace(source))
-                key += $" • {source}";
+            string key = init.detailedLabels
+                ? BuildLinkLabel(stream)
+                : BuildShortLabel(stream);
 
             // The quality picker ("Chọn link AIOStreams") only shows the dict
             // key, so carry the full release title there. Without it every
@@ -985,6 +1056,174 @@ public sealed class AIOStreamsController : BaseOnlineController<ModuleConf>
         return Regex.IsMatch(value, @"\b(?:4k|uhd)\b", RegexOptions.IgnoreCase)
             ? "2160p"
             : null;
+    }
+
+    static string FindReleaseName(string rawTitle, string rawDescription, string fileName)
+    {
+        // AIOStreams puts the scene/p2p release name on the first description
+        // line and often mirrors it in behaviorHints.filename. Only accept a
+        // line that carries a resolution token so provider headers like
+        // "4K REMUX" do not end up as the release name.
+        foreach (string candidate in new[] { FirstLine(fileName), FirstLine(rawTitle), FirstLine(rawDescription) })
+        {
+            if (string.IsNullOrWhiteSpace(candidate))
+                continue;
+
+            string value = Regex.Replace(
+                candidate.Trim(),
+                @"\.(?:mkv|mp4|m4v|avi|ts|wmv)$",
+                string.Empty,
+                RegexOptions.IgnoreCase
+            );
+
+            if (FindQuality(value) == null)
+                continue;
+
+            return value.Length > 110 ? value[..110] : value;
+        }
+
+        return null;
+    }
+
+    static string FirstLine(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        int index = value.IndexOfAny(new[] { '\r', '\n' });
+        return index > 0 ? value[..index] : index == 0 ? null : value;
+    }
+
+    static string FindSize(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        // AIOStreams marks the size with 📦 or 💾 depending on the template;
+        // fall back to a plain GB/MB token when the emoji line is absent.
+        Match match = Regex.Match(
+            value,
+            @"(?:📦|💾)\s*(?<size>\d+(?:[.,]\d+)?\s*(?:TB|GB|MB|KB))",
+            RegexOptions.IgnoreCase
+        );
+
+        if (!match.Success)
+        {
+            match = Regex.Match(
+                value,
+                @"(?<![\d.,])(?<size>\d+(?:[.,]\d+)?\s?(?:TB|GB|MB))(?![\d.,])",
+                RegexOptions.IgnoreCase
+            );
+        }
+
+        if (!match.Success)
+            return null;
+
+        string size = Regex.Replace(match.Groups["size"].Value, @"\s+", string.Empty).Replace(',', '.');
+        return Regex.Replace(size, @"(?i)(?:TB|GB|MB|KB)$", m => m.Value.ToUpperInvariant());
+    }
+
+    static string FindSeeders(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        Match match = Regex.Match(value, @"👤\s*(?<n>\d+)");
+        if (!match.Success)
+            match = Regex.Match(value, @"\b(?<n>\d+)\s*(?:seeders?|peers?)\b", RegexOptions.IgnoreCase);
+
+        return match.Success ? match.Groups["n"].Value : null;
+    }
+
+    static string FindVideoCodec(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        Match match = Regex.Match(
+            value,
+            @"(?<![A-Za-z0-9])(?:HEVC|H[ .]?26[45]|x26[45]|AVC|AV1|VP9|MPEG-?2|XviD)(?![A-Za-z0-9])",
+            RegexOptions.IgnoreCase
+        );
+
+        if (!match.Success)
+            return null;
+
+        string token = Regex.Replace(match.Value, @"[ .-]", string.Empty).ToUpperInvariant();
+        return token switch
+        {
+            "HEVC" or "H265" or "X265" => "HEVC",
+            "H264" or "X264" or "AVC" => "H.264",
+            "AV1" => "AV1",
+            "VP9" => "VP9",
+            "MPEG2" => "MPEG-2",
+            _ => token
+        };
+    }
+
+    static string FindHdr(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var parts = new List<string>();
+
+        if (Regex.IsMatch(value, @"dolby[ .-]?vision|dovi", RegexOptions.IgnoreCase) ||
+            Regex.IsMatch(value, @"(?<![A-Za-z0-9])DV(?![A-Za-z0-9])"))
+        {
+            parts.Add("DV");
+        }
+
+        if (Regex.IsMatch(value, @"HDR10\+", RegexOptions.IgnoreCase))
+            parts.Add("HDR10+");
+        else if (Regex.IsMatch(value, @"\bHDR10\b", RegexOptions.IgnoreCase))
+            parts.Add("HDR10");
+        else if (Regex.IsMatch(value, @"\bHLG\b", RegexOptions.IgnoreCase))
+            parts.Add("HLG");
+        else if (Regex.IsMatch(value, @"\bHDR\b", RegexOptions.IgnoreCase))
+            parts.Add("HDR");
+
+        return parts.Count > 0 ? string.Join(" ", parts) : null;
+    }
+
+    static string FindAudio(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var parts = new List<string>();
+
+        if (Regex.IsMatch(value, @"\bAtmos\b", RegexOptions.IgnoreCase))
+            parts.Add("Atmos");
+        if (Regex.IsMatch(value, @"\bTrue-?HD\b", RegexOptions.IgnoreCase))
+            parts.Add("TrueHD");
+
+        if (Regex.IsMatch(value, @"\bDTS[ .:-]?X\b", RegexOptions.IgnoreCase))
+            parts.Add("DTS-X");
+        else if (Regex.IsMatch(value, @"\bDTS[ .-]?HD(?:[ .-]?MA)?\b", RegexOptions.IgnoreCase))
+            parts.Add("DTS-HD");
+        else if (Regex.IsMatch(value, @"\bDTS\b", RegexOptions.IgnoreCase))
+            parts.Add("DTS");
+
+        if (parts.Count == 0)
+        {
+            if (Regex.IsMatch(value, @"\b(?:DDP|DD\+|E-?AC-?3)\b", RegexOptions.IgnoreCase))
+                parts.Add("DD+");
+            else if (Regex.IsMatch(value, @"\bAC-?3\b", RegexOptions.IgnoreCase))
+                parts.Add("DD");
+            else if (Regex.IsMatch(value, @"\bAAC\b", RegexOptions.IgnoreCase))
+                parts.Add("AAC");
+            else if (Regex.IsMatch(value, @"\bFLAC\b", RegexOptions.IgnoreCase))
+                parts.Add("FLAC");
+            else if (Regex.IsMatch(value, @"\bL?PCM\b", RegexOptions.IgnoreCase))
+                parts.Add("PCM");
+        }
+
+        Match channels = Regex.Match(value, @"(?<!\d)(?:7\.1|5\.1|2\.0)(?!\d)");
+        if (channels.Success)
+            parts.Add(channels.Value);
+
+        return parts.Count > 0 ? string.Join(" ", parts) : null;
     }
 
     static string SourceGroupName(AIOStreamItem stream)

@@ -9,11 +9,11 @@ cache_time: 2
 
 menu:
   categories:
-    Все: ""
-    Девушки: female?page={page}
-    Пары: couple?page={page}
-    Парни: male?page={page}
-    Трансы: transgender?page={page}
+    Tất cả: ""
+    Nữ: female?page={page}
+    Cặp đôi: couple?page={page}
+    Nam: male?page={page}
+    Chuyển giới: transgender?page={page}
 
 list:
   uri: "?page={page}"

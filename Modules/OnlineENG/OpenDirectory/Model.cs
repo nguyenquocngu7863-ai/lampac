@@ -12,11 +12,24 @@ public sealed class ModuleConf : BaseSettings, ICloneable
         displayindex = 1070;
         enable = true;
         directoryHost = "https://a.111477.xyz";
-        streamproxy = true;
+        // Phát thẳng từ host: tiết kiệm CPU/RAM của máy chạy Lampac so với
+        // proxy byte qua /proxy/. Nếu Cloudflare chặn UA của player (403:
+        // thấy link mà không phát được) thì bật lại streamproxy.
+        streamproxy = false;
+        // Link đưa cho Lampa là URL gốc của host luôn, không vòng qua endpoint
+        // /lite/opendirectory/* của Lampac. Tắt để dùng endpoint (bắt buộc khi
+        // streamproxy = true).
+        directLinks = true;
         timeoutSeconds = 20;
         maxFiles = 40;
         maxDirectoryEntries = 2500;
     }
+
+    /// <summary>
+    /// Hand the raw host URLs to Lampa instead of the Lampac lite endpoint.
+    /// The player then never touches this server during playback.
+    /// </summary>
+    public bool directLinks { get; set; }
 
     /// <summary>Public directory host. Only this host is accepted by the bridge.</summary>
     public string directoryHost { get; set; }

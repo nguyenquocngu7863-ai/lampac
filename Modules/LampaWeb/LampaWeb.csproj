@@ -11,6 +11,15 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Content Update="lang\vi.js">
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+    </Content>
+    <Content Update="vendor\hls\hls.js">
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+    </Content>
+    <Content Update="vendor\hls\LICENSE">
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+    </Content>
     <Content Update="plugins\extensions.json">
       <CopyToPublishDirectory>Always</CopyToPublishDirectory>
     </Content>
@@ -23,6 +32,9 @@
     <None Update="plugins\dorama.js">
       <CopyToPublishDirectory>Always</CopyToPublishDirectory>
     </None>
+    <None Update="plugins\jackett.js">
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+    </None>
     <None Update="plugins\lampainit-invc.js">
       <CopyToPublishDirectory>Always</CopyToPublishDirectory>
     </None>
@@ -30,6 +42,9 @@
       <CopyToPublishDirectory>Always</CopyToPublishDirectory>
     </None>
     <None Update="plugins\on.js">
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+    </None>
+    <None Update="plugins\online-compact.js">
       <CopyToPublishDirectory>Always</CopyToPublishDirectory>
     </None>
     <None Update="plugins\pirate_store.js">
@@ -51,6 +66,9 @@
       <CopyToPublishDirectory>Always</CopyToPublishDirectory>
     </None>
     <None Update="plugins\stremiosub.js">
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+    </None>
+    <None Update="plugins\vietnamese.js">
       <CopyToPublishDirectory>Always</CopyToPublishDirectory>
     </None>
   </ItemGroup>

@@ -41,6 +41,12 @@ public sealed class ModuleConf : BaseSettings, ICloneable
     /// <summary>How long an AIO response may stay in Lampac memory cache.</summary>
     public int cacheSeconds { get; set; } = 120;
 
+    /// <summary>
+    /// Show detailed stream labels (release name, size, codec, HDR, audio,
+    /// seeders) in the Lampa card list and the "select link" dialog.
+    /// </summary>
+    public bool detailedLabels { get; set; } = true;
+
     public ModuleConf Clone()
     {
         return (ModuleConf)MemberwiseClone();
@@ -58,5 +64,11 @@ public sealed record AIOStreamItem(
     string Title,
     string Quality,
     string Format,
-    System.Collections.Generic.List<HeadersModel> Headers
+    System.Collections.Generic.List<HeadersModel> Headers,
+    string ReleaseName,
+    string Size,
+    string Seeders,
+    string Video,
+    string Hdr,
+    string Audio
 );

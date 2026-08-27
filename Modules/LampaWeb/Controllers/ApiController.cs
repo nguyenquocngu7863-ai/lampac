@@ -634,6 +634,9 @@ public class ApiController : BaseController
             if (ModInit.conf.initPlugins.online)
                 plugins.Add(new("{localhost}/online.js", 1, "Online", "lampac"));
 
+            if (ModInit.conf.initPlugins.onlineCompact)
+                plugins.Add(new("{localhost}/online-compact.js", 1, "Online Compact", "lampac"));
+
             if (ModInit.conf.initPlugins.watch_together)
                 plugins.Add(new("{localhost}/watchtogether.js", 1, "Watch Together", "lampac"));
 
@@ -658,6 +661,9 @@ public class ApiController : BaseController
 
             if (ModInit.conf.initPlugins.adminpanel)
                 plugins.Add(new("{localhost}/adminpanel.js", 1, "Admin Panel", "lampac"));
+
+            if (ModInit.conf.initPlugins.jackett)
+                plugins.Add(new("{localhost}/jackett.js", 1, "Jackett local", "lampac"));
 
             if (ModInit.conf.initPlugins.gst)
                 plugins.Add(new("{localhost}/gst.js", 1, "GStreamer", "lampac"));
@@ -691,6 +697,10 @@ public class ApiController : BaseController
                         plugins.Add(p);
                 }
             }
+
+            // Load localization last so it can overlay built-in and third-party addons.
+            if (ModInit.conf.initPlugins.vietnamese)
+                plugins.Add(new("{localhost}/vietnamese.js", 1, "Tiếng Việt cho Lampac", "lampac"));
 
             sb = sb.Replace("{initiale}", JsonConvert.SerializeObject(plugins));
             #endregion
@@ -858,11 +868,17 @@ public class ApiController : BaseController
             if (ModInit.conf.initPlugins.adminpanel)
                 send("adminpanel", false);
 
+            if (ModInit.conf.initPlugins.jackett)
+                send("jackett", false);
+
             if (ModInit.conf.initPlugins.gst)
                 send("gst", true);
 
             if (ModInit.conf.initPlugins.online)
                 send("online", true);
+
+            if (ModInit.conf.initPlugins.onlineCompact)
+                send("online-compact", false);
 
             if (ModInit.conf.initPlugins.watch_together)
                 send("watchtogether", false);
@@ -896,6 +912,9 @@ public class ApiController : BaseController
                         plugins.Add($"\"{p.url}\"");
                 }
             }
+
+            if (ModInit.conf.initPlugins.vietnamese)
+                send("vietnamese", false);
             #endregion
 
             string onjs = FileCache.ReadAllText($"{ModInit.modpath}/plugins/on.js", "on.js");
@@ -1005,6 +1024,440 @@ public class ApiController : BaseController
         SetHeadersNoCache();
         string plugin = FileCache.ReadAllText($"{ModInit.modpath}/plugins/adminpanel.js", "adminpanel.js");
         return ContentTo(plugin, "application/javascript; charset=utf-8");
+    }
+
+    [HttpGet, AllowAnonymous]
+    [Route("online-compact.js")]
+    public ActionResult OnlineCompactJs()
+    {
+        SetHeadersNoCache();
+        string plugin = FileCache.ReadAllText($"{ModInit.modpath}/plugins/online-compact.js", "online-compact.js");
+        return ContentTo(plugin, "application/javascript; charset=utf-8");
+    }
+
+    [HttpGet, AllowAnonymous]
+    [Route("vietnamese.js")]
+    public ActionResult VietnameseJs()
+    {
+        SetHeadersNoCache();
+        string plugin = FileCache.ReadAllText($"{ModInit.modpath}/plugins/vietnamese.js", "vietnamese.js");
+        return ContentTo(plugin, "application/javascript; charset=utf-8");
+    }
+
+    [HttpGet, AllowAnonymous]
+    [Route("lang/vi.js")]
+    [Route("lampa-main/lang/vi.js")]
+    public ActionResult VietnameseLang()
+    {
+        SetHeadersNoCache();
+        string lang = FileCache.ReadAllText($"{ModInit.modpath}/lang/vi.js", "lang-vi.js");
+        return ContentTo(lang, "application/javascript; charset=utf-8");
+    }
+
+    private static readonly System.Net.Http.HttpClient LocalJackettHttpClient = new(
+        new System.Net.Http.SocketsHttpHandler
+        {
+            // Jackett intentionally redirects some /dl/ results to magnet:.
+            // HttpClient cannot follow non-HTTP schemes, so inspect Location ourselves.
+            AllowAutoRedirect = false
+        })
+    {
+        Timeout = TimeSpan.FromSeconds(45)
+    };
+
+    private (bool enabled, string apiKey, int port, bool proxyDownloads, string publicUrl) GetJackettConfig()
+    {
+        var root = JObject.Parse(ReadInitConfRaw());
+        var section = root["Jackett"] as JObject;
+        int port = section?.Value<int?>("port") ?? 9117;
+        if (port < 1 || port > 65535)
+            port = 9117;
+
+        return (
+            section?.Value<bool?>("enable") ?? false,
+            section?.Value<string>("api_key")?.Trim() ?? string.Empty,
+            port,
+            section?.Value<bool?>("proxy_downloads") ?? true,
+            section?.Value<string>("url")?.Trim() ?? string.Empty
+        );
+    }
+
+    private static string EncodeJackettPath(string value)
+        => Convert.ToBase64String(Encoding.UTF8.GetBytes(value))
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
+
+    private static string DecodeJackettPath(string value)
+    {
+        string base64 = (value ?? string.Empty).Replace('-', '+').Replace('_', '/');
+        base64 = base64.PadRight(base64.Length + ((4 - base64.Length % 4) % 4), '=');
+        return Encoding.UTF8.GetString(Convert.FromBase64String(base64));
+    }
+
+    private static readonly System.Threading.SemaphoreSlim JackettResolveSlots = new(6, 6);
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> JackettMagnetCache = new();
+
+    private async Task<string> ResolveJackettMagnet(Uri link, string apiKey, int port)
+    {
+        string cacheKey = link.PathAndQuery;
+        if (JackettMagnetCache.TryGetValue(cacheKey, out string cached))
+            return cached;
+
+        await JackettResolveSlots.WaitAsync(HttpContext.RequestAborted);
+        try
+        {
+            var query = HttpUtility.ParseQueryString(link.Query);
+            query.Remove("apikey");
+            query["jackett_apikey"] = apiKey;
+            string target = $"http://127.0.0.1:{port}{link.AbsolutePath}?{query}";
+
+            using var response = await LocalJackettHttpClient.GetAsync(target, HttpContext.RequestAborted);
+
+            if ((int)response.StatusCode is >= 300 and < 400 &&
+                response.Headers.Location is Uri location &&
+                location.Scheme.Equals("magnet", StringComparison.OrdinalIgnoreCase))
+            {
+                string redirectedMagnet = location.OriginalString;
+                JackettMagnetCache.TryAdd(cacheKey, redirectedMagnet);
+                return redirectedMagnet;
+            }
+
+            if (!response.IsSuccessStatusCode)
+                return null;
+
+            byte[] torrent = await response.Content.ReadAsByteArrayAsync(HttpContext.RequestAborted);
+
+            // Older/custom Jackett builds can return the magnet as a plain body
+            // instead of a redirect.
+            if (torrent.AsSpan().StartsWith("magnet:"u8))
+            {
+                string bodyMagnet = Encoding.UTF8.GetString(torrent).Trim();
+                JackettMagnetCache.TryAdd(cacheKey, bodyMagnet);
+                return bodyMagnet;
+            }
+
+            string magnet = TorrentToMagnet(torrent);
+            if (!string.IsNullOrEmpty(magnet))
+                JackettMagnetCache.TryAdd(cacheKey, magnet);
+
+            return magnet;
+        }
+        catch
+        {
+            return null;
+        }
+        finally
+        {
+            JackettResolveSlots.Release();
+        }
+    }
+
+    private static string TorrentToMagnet(byte[] torrent)
+    {
+        if (torrent == null || torrent.Length < 16 || torrent[0] != (byte)'d')
+            return null;
+
+        int position = 1;
+        int infoStart = -1;
+        int infoEnd = -1;
+        var trackers = new HashSet<string>(StringComparer.Ordinal);
+
+        while (position < torrent.Length && torrent[position] != (byte)'e')
+        {
+            if (!TryReadBencodeString(torrent, ref position, out int keyStart, out int keyLength))
+                return null;
+
+            string key = Encoding.UTF8.GetString(torrent, keyStart, keyLength);
+            int valueStart = position;
+
+            if (key == "announce")
+            {
+                if (!TryReadBencodeString(torrent, ref position, out int trackerStart, out int trackerLength))
+                    return null;
+
+                string tracker = Encoding.UTF8.GetString(torrent, trackerStart, trackerLength);
+                if (Uri.TryCreate(tracker, UriKind.Absolute, out _))
+                    trackers.Add(tracker);
+            }
+            else if (key == "announce-list")
+            {
+                if (!CollectBencodeStrings(torrent, ref position, trackers, 0))
+                    return null;
+            }
+            else
+            {
+                if (!SkipBencodeValue(torrent, ref position, 0))
+                    return null;
+
+                if (key == "info")
+                {
+                    infoStart = valueStart;
+                    infoEnd = position;
+                }
+            }
+        }
+
+        if (infoStart < 0 || infoEnd <= infoStart)
+            return null;
+
+        byte[] hash = System.Security.Cryptography.SHA1.HashData(torrent.AsSpan(infoStart, infoEnd - infoStart));
+        var magnet = new StringBuilder("magnet:?xt=urn:btih:").Append(Convert.ToHexString(hash).ToLowerInvariant());
+        foreach (string tracker in trackers)
+            magnet.Append("&tr=").Append(HttpUtility.UrlEncode(tracker));
+
+        return magnet.ToString();
+    }
+
+    private static bool TryReadBencodeString(byte[] data, ref int position, out int start, out int length)
+    {
+        start = 0;
+        length = 0;
+        if (position >= data.Length || data[position] < (byte)'0' || data[position] > (byte)'9')
+            return false;
+
+        long value = 0;
+        while (position < data.Length && data[position] >= (byte)'0' && data[position] <= (byte)'9')
+        {
+            value = value * 10 + data[position++] - (byte)'0';
+            if (value > int.MaxValue)
+                return false;
+        }
+
+        if (position >= data.Length || data[position++] != (byte)':')
+            return false;
+
+        if (value < 0 || position + value > data.Length)
+            return false;
+
+        start = position;
+        length = (int)value;
+        position += length;
+        return true;
+    }
+
+    private static bool SkipBencodeValue(byte[] data, ref int position, int depth)
+    {
+        if (depth > 128 || position >= data.Length)
+            return false;
+
+        byte token = data[position];
+        if (token >= (byte)'0' && token <= (byte)'9')
+            return TryReadBencodeString(data, ref position, out _, out _);
+
+        if (token == (byte)'i')
+        {
+            position++;
+            while (position < data.Length && data[position] != (byte)'e')
+                position++;
+            return position < data.Length && data[position++] == (byte)'e';
+        }
+
+        if (token != (byte)'l' && token != (byte)'d')
+            return false;
+
+        bool dictionary = token == (byte)'d';
+        position++;
+        while (position < data.Length && data[position] != (byte)'e')
+        {
+            if (dictionary && !TryReadBencodeString(data, ref position, out _, out _))
+                return false;
+            if (!SkipBencodeValue(data, ref position, depth + 1))
+                return false;
+        }
+
+        return position < data.Length && data[position++] == (byte)'e';
+    }
+
+    private static bool CollectBencodeStrings(byte[] data, ref int position, HashSet<string> values, int depth)
+    {
+        if (depth > 16 || position >= data.Length)
+            return false;
+
+        if (data[position] >= (byte)'0' && data[position] <= (byte)'9')
+        {
+            if (!TryReadBencodeString(data, ref position, out int start, out int length))
+                return false;
+            string value = Encoding.UTF8.GetString(data, start, length);
+            if (Uri.TryCreate(value, UriKind.Absolute, out _))
+                values.Add(value);
+            return true;
+        }
+
+        if (data[position] != (byte)'l')
+            return SkipBencodeValue(data, ref position, depth);
+
+        position++;
+        while (position < data.Length && data[position] != (byte)'e')
+        {
+            if (!CollectBencodeStrings(data, ref position, values, depth + 1))
+                return false;
+        }
+        return position < data.Length && data[position++] == (byte)'e';
+    }
+
+    [HttpGet, AllowAnonymous]
+    [Route("jackett/resolve")]
+    public async Task<IActionResult> JackettResolve(string token)
+    {
+        SetHeadersNoCache();
+
+        try
+        {
+            var config = GetJackettConfig();
+            if (!config.enabled || string.IsNullOrEmpty(config.apiKey))
+                return StatusCode(503, new { error = "Jackett is disabled or api_key is empty" });
+
+            string path = DecodeJackettPath(token);
+            if (string.IsNullOrWhiteSpace(path) || !path.StartsWith("/dl/", StringComparison.OrdinalIgnoreCase) ||
+                !Uri.TryCreate($"http://127.0.0.1:{config.port}{path}", UriKind.Absolute, out var source))
+            {
+                return BadRequest(new { error = "Invalid Jackett download token" });
+            }
+
+            string magnet = await ResolveJackettMagnet(source, config.apiKey, config.port);
+            if (string.IsNullOrWhiteSpace(magnet))
+                return StatusCode(502, new { error = "Jackett could not resolve this torrent to a magnet" });
+
+            return Ok(new { magnet });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(502, new { error = ex.Message });
+        }
+    }
+
+    [HttpGet, AllowAnonymous]
+    [Route("jackett/api/v2.0/indexers/all/results")]
+    public async Task<IActionResult> JackettResults()
+    {
+        SetHeadersNoCache();
+
+        try
+        {
+            var config = GetJackettConfig();
+            if (!config.enabled || string.IsNullOrEmpty(config.apiKey))
+                return StatusCode(503, new { error = "Jackett is disabled or api_key is empty" });
+
+            var query = HttpUtility.ParseQueryString(HttpContext.Request.QueryString.Value ?? string.Empty);
+            query["apikey"] = config.apiKey;
+            string target = $"http://127.0.0.1:{config.port}/api/v2.0/indexers/all/results?{query}";
+
+            using var upstream = await LocalJackettHttpClient.GetAsync(target, HttpContext.RequestAborted);
+            string body = await upstream.Content.ReadAsStringAsync(HttpContext.RequestAborted);
+            if (!upstream.IsSuccessStatusCode)
+                return StatusCode((int)upstream.StatusCode, body);
+
+            var payload = JObject.Parse(body);
+            if (config.proxyDownloads && payload["Results"] is JArray results)
+            {
+                foreach (JObject result in results.OfType<JObject>())
+                {
+                    string link = result.Value<string>("Link");
+                    if (string.IsNullOrWhiteSpace(link))
+                        continue;
+
+                    link = link.Replace("&amp;", "&", StringComparison.OrdinalIgnoreCase);
+                    if (!Uri.TryCreate(link, UriKind.Absolute, out var linkUri) &&
+                        !Uri.TryCreate($"http://127.0.0.1:{config.port}/{link.TrimStart('/')}", UriKind.Absolute, out linkUri))
+                    {
+                        continue;
+                    }
+
+                    if (linkUri.AbsolutePath.StartsWith("/dl/", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var linkQuery = HttpUtility.ParseQueryString(linkUri.Query);
+                        linkQuery.Remove("apikey");
+                        linkQuery.Remove("jackett_apikey");
+                        string path = linkUri.AbsolutePath + (linkQuery.Count > 0 ? $"?{linkQuery}" : string.Empty);
+                        result["Link"] = $"{host}/jackett/download?token={EncodeJackettPath(path)}";
+                    }
+                }
+            }
+
+            return Content(payload.ToString(Formatting.None), "application/json; charset=utf-8");
+        }
+        catch (TaskCanceledException) when (HttpContext.RequestAborted.IsCancellationRequested == false)
+        {
+            return StatusCode(504, new { error = "Jackett search timeout" });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(502, new { error = ex.Message });
+        }
+    }
+
+    [HttpGet, AllowAnonymous]
+    [Route("jackett/download")]
+    public async Task<IActionResult> JackettDownload(string token)
+    {
+        SetHeadersNoCache();
+
+        try
+        {
+            var config = GetJackettConfig();
+            if (!config.enabled || string.IsNullOrEmpty(config.apiKey))
+                return StatusCode(503, "Jackett is disabled or api_key is empty");
+
+            string path = DecodeJackettPath(token);
+            if (string.IsNullOrWhiteSpace(path) || !path.StartsWith("/dl/", StringComparison.OrdinalIgnoreCase) ||
+                !Uri.TryCreate($"http://localhost{path}", UriKind.Absolute, out var source))
+            {
+                return BadRequest("Only Jackett /dl/ paths are accepted");
+            }
+
+            // Never fetch a client-supplied authority. Rebuild the URL on local
+            // Jackett and inject the private API key server-side.
+            var downloadQuery = HttpUtility.ParseQueryString(source.Query);
+            downloadQuery["jackett_apikey"] = config.apiKey;
+            string target = $"http://127.0.0.1:{config.port}{source.AbsolutePath}?{downloadQuery}";
+            using var upstream = await LocalJackettHttpClient.GetAsync(target, HttpContext.RequestAborted);
+            byte[] torrent = await upstream.Content.ReadAsByteArrayAsync(HttpContext.RequestAborted);
+
+            if (!upstream.IsSuccessStatusCode)
+                return StatusCode((int)upstream.StatusCode, "Jackett could not download this torrent");
+
+            if (torrent.Length < 16 || torrent[0] != (byte)'d' || torrent.AsSpan().IndexOf("4:info"u8) < 0)
+                return StatusCode(502, "Jackett returned a non-torrent response");
+
+            return File(torrent, "application/x-bittorrent", "jackett.torrent");
+        }
+        catch (TaskCanceledException) when (HttpContext.RequestAborted.IsCancellationRequested == false)
+        {
+            return StatusCode(504, "Jackett torrent download timeout");
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(502, ex.Message);
+        }
+    }
+
+    [HttpGet, AllowAnonymous]
+    [Route("jackett.js")]
+    public ActionResult JackettJs()
+    {
+        SetHeadersNoCache();
+
+        try
+        {
+            var config = GetJackettConfig();
+            if (!config.enabled || string.IsNullOrEmpty(config.apiKey))
+                return Content("// Jackett integration is disabled or api_key is empty.\n", "application/javascript; charset=utf-8");
+
+            string url = config.proxyDownloads ? $"{host}/jackett" : config.publicUrl;
+            if (string.IsNullOrEmpty(url))
+                url = new UriBuilder("http", HttpContext.Request.Host.Host, config.port).Uri.GetLeftPart(UriPartial.Authority);
+
+            string plugin = FileCache.ReadAllText($"{ModInit.modpath}/plugins/jackett.js", "jackett.js")
+                .Replace("__JACKETT_URL__", JsonConvert.SerializeObject(url))
+                .Replace("__JACKETT_API_KEY__", JsonConvert.SerializeObject(config.proxyDownloads ? "lampac-proxy" : config.apiKey));
+
+            return ContentTo(plugin, "application/javascript; charset=utf-8");
+        }
+        catch (Exception ex)
+        {
+            return Content($"// Invalid Jackett configuration: {ex.Message.Replace("\n", " ").Replace("\r", " ")}\n", "application/javascript; charset=utf-8");
+        }
     }
 
     [HttpGet, AllowAnonymous]

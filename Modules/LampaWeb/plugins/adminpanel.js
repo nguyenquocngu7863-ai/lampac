@@ -5,6 +5,15 @@
 (function () {
   'use strict';
 
+  // This file can be delivered by several loaders at once (on.js bundle,
+  // lampainit.js plugin sync, the persisted Lampa plugin registry). Every
+  // loader creates a separate script evaluation with a fresh closure, so a
+  // closure-local guard cannot deduplicate the settings component — use a
+  // window flag like gst.js does, otherwise "Mở trang quản trị Lampac"
+  // appears once per evaluation.
+  if (window.lampac_adminpanel_plugin) return;
+  window.lampac_adminpanel_plugin = true;
+
   function serverOrigin() {
     var scripts = document.getElementsByTagName('script');
     for (var i = scripts.length - 1; i >= 0; i--) {
@@ -22,8 +31,7 @@
   }
 
   function install() {
-    if (install.done || !Lampa.SettingsApi) return;
-    install.done = true;
+    if (!Lampa.SettingsApi) return;
 
     Lampa.SettingsApi.addComponent({
       component: 'lampac_adminpanel',

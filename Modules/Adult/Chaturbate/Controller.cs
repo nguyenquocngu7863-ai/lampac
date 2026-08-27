@@ -63,7 +63,9 @@ public class ChaturbateController : BaseSisiController
             return badInitMsg;
 
     rhubFallback:
-        var cache = await InvokeCacheResult($"chaturbate:stream:{baba}", 1, jsonContext.DictionaryStringString, async e =>
+        // Live LL-HLS URLs are session-bound and can rotate while a room stays
+        // online. Never reuse the old one-minute URL cache on replay.
+        var cache = await InvokeCacheResult($"chaturbate:stream-live-v2:{baba}", 0, jsonContext.DictionaryStringString, async e =>
         {
             string url = ChaturbateTo.StreamLinksUri(init.host, baba);
             if (url == null)
