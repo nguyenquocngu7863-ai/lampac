@@ -182,8 +182,8 @@ public class VidLinkController : BaseENGController
 
             cached = (playlist, HeadersModel.Init(merged));
             hybridCache.Set(memKey, cached, cacheTime(20));
-            bool relayed = playlist.Contains("noon.mooncase.online", StringComparison.OrdinalIgnoreCase);
-            Console.WriteLine($"VidLink: direct API resolved {delivery} {qualityLabel ?? "auto"}{(relayed ? " relay" : "")} ({mediaType}:{id})");
+            bool usedRelay = playlist.Contains("noon.mooncase.online", StringComparison.OrdinalIgnoreCase);
+            Console.WriteLine($"VidLink: direct API resolved {delivery} {qualityLabel ?? "auto"}{(usedRelay ? " relay" : "")} ({mediaType}:{id})");
             return cached;
         }
         catch (Exception ex)
