@@ -5,6 +5,7 @@ using Shared.Models.Events;
 using Shared.Models.Module;
 using Shared.Models.Module.Interfaces;
 using Shared.Models.Online.Settings;
+using Shared.PlaywrightCore;
 using Shared.Services;
 using System.Collections.Generic;
 
@@ -22,6 +23,9 @@ public sealed class ModInit : IModuleLoaded, IModuleOnline
         bool allowWhenEngDisabled = conf.enabled;
         if ((CoreInit.conf?.disableEng != false && !allowWhenEngDisabled) ||
             (args.original_language != null && args.original_language != "en"))
+            return null;
+
+        if (PlaywrightBrowser.Status == PlaywrightStatus.disabled)
             return null;
 
         if (!(args.source is "tmdb" or "cub") ||

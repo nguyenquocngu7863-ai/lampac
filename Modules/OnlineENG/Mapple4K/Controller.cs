@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Playwright;
-using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Shared;
 using Shared.Attributes;
@@ -11,30 +10,12 @@ using Shared.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net.Http;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace Mapple4K;
 
 public sealed class Mapple4KController : BaseENGController
 {
-    const string SessionEndpoint = "https://enc-dec.app/api/enc-mapple";
-
-    static readonly (string Id, string Label)[] Sources =
-    [
-        ("europa", "Europa · 4K · Multi-audio"),
-        ("ganymede", "Ganymede · 4K · Multi-audio"),
-        ("callisto", "Callisto · 4K"),
-        ("io", "Io · 4K"),
-        // Older action aliases remain useful fallback mirrors.
-        ("mapple", "Mapple"),
-        ("sakura", "Sakura"),
-        ("alfa", "Alfa"),
-        ("oak", "Oak"),
-        ("wiggles", "Wiggles")
-    ];
-
     sealed record Candidate(string Url, string Label, List<HeadersModel> Headers);
 
     public Mapple4KController() : base(ModInit.conf) { }
@@ -84,90 +65,18 @@ public sealed class Mapple4KController : BaseENGController
     async Task<List<Candidate>> ResolveAll(long tmdbId, short season, short episode)
     {
         string mediaType = season > 0 ? "tv" : "movie";
-        string memKey = $"mapple4k:action-browser-v2:{mediaType}:{tmdbId}:{season}:{episode}";
+        string memKey = $"mapple4k:playback-api-v3:{mediaType}:{tmdbId}:{season}:{episode}";
         if (hybridCache.TryGetValue(memKey, out List<Candidate> cached))
             return cached;
 
-        var result = new List<Candidate>(Sources.Length);
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var result = new List<Candidate>(1);
 
-        foreach (var source in Sources)
-        {
-            try
-            {
-                JObject handshake = await httpHydra.Get<JObject>(
-                    SessionEndpoint,
-                    addheaders: HeadersModel.Init(
-                        ("Accept", "application/json"),
-                        ("Referer", init.host + "/"),
-                        ("User-Agent", Http.UserAgent)
-                    )
-                );
-                string sessionId = handshake?["result"]?.Value<string>("sessionId");
-                string nextAction = handshake?["result"]?.Value<string>("nextAction");
-                if (string.IsNullOrWhiteSpace(sessionId) || string.IsNullOrWhiteSpace(nextAction))
-                    continue;
-
-                var payload = new JArray
-                {
-                    new JObject
-                    {
-                        ["mediaId"] = tmdbId,
-                        ["mediaType"] = mediaType,
-                        ["source"] = source.Id,
-                        ["tv_slug"] = mediaType == "tv" ? $"{season}-{episode}" : string.Empty,
-                        ["sessionId"] = sessionId
-                    }
-                };
-
-                string actionUrl = $"{init.host}/watch/{mediaType}/{tmdbId}";
-                var headers = HeadersModel.Init(
-                    ("Accept", "text/x-component"),
-                    ("Referer", init.host + "/"),
-                    ("Origin", init.host),
-                    ("User-Agent", Http.UserAgent),
-                    ("Next-Action", nextAction)
-                );
-                using var content = new StringContent(payload.ToString(Formatting.None), Encoding.UTF8, "text/plain");
-                string response = await Http.Post(
-                    actionUrl,
-                    content,
-                    timeoutSeconds: 25,
-                    headers: headers,
-                    proxy: proxy,
-                    statusCodeOK: false
-                );
-
-                JObject action = ParseActionResponse(response);
-                if (action?.Value<bool?>("success") != true)
-                    continue;
-
-                string streamUrl = action["data"]?.Value<string>("stream_url")
-                    ?? action.Value<string>("stream_url");
-                if (string.IsNullOrWhiteSpace(streamUrl) ||
-                    !Uri.TryCreate(streamUrl, UriKind.Absolute, out _) ||
-                    !seen.Add(streamUrl))
-                    continue;
-
-                var streamHeaders = HeadersModel.Init(
-                    ("User-Agent", Http.UserAgent),
-                    ("Referer", init.host + "/"),
-                    ("Origin", init.host)
-                );
-                result.Add(new Candidate(streamUrl, $"{result.Count + 1:00}. {source.Label}", streamHeaders));
-            }
-            catch (Exception ex)
-            {
-                Serilog.Log.Debug(ex, "Mapple source {Source} failed", source.Id);
-            }
-        }
-
-        if (result.Count == 0)
-        {
-            Candidate browserCandidate = await ResolveBrowser(tmdbId, season, episode);
-            if (browserCandidate != null)
-                result.Add(browserCandidate);
-        }
+        // Current Mapple uses requestToken + /api/playback-init + optional
+        // proof-of-work, followed by /api/stream. Let its own page perform that
+        // moving protocol and intercept only the final stream response.
+        Candidate browserCandidate = await ResolveBrowser(tmdbId, season, episode);
+        if (browserCandidate != null)
+            result.Add(browserCandidate);
 
         if (result.Count > 0)
         {
@@ -203,6 +112,36 @@ public sealed class Mapple4KController : BaseENGController
                 try
                 {
                     string url = route.Request.Url;
+                    if (url.Contains("/api/stream?", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var fetched = await route.FetchAsync();
+                        string body = await fetched.TextAsync();
+                        try
+                        {
+                            JObject payload = JObject.Parse(body);
+                            string streamUrl = payload["data"]?.Value<string>("stream_url")
+                                ?? payload.Value<string>("stream_url");
+                            if (!string.IsNullOrWhiteSpace(streamUrl))
+                            {
+                                capturedHeaders = HeadersModel.Init(
+                                    ("User-Agent", Http.UserAgent),
+                                    ("Referer", init.host + "/"),
+                                    ("Origin", init.host)
+                                );
+                                browser.completionSource.TrySetResult(streamUrl);
+                            }
+                        }
+                        catch { }
+
+                        await route.FulfillAsync(new RouteFulfillOptions
+                        {
+                            Status = fetched.Status,
+                            Body = body,
+                            Headers = fetched.Headers
+                        });
+                        return;
+                    }
+
                     if (url.Contains(".m3u8", StringComparison.OrdinalIgnoreCase))
                     {
                         capturedHeaders = new List<HeadersModel>();
@@ -292,29 +231,4 @@ public sealed class Mapple4KController : BaseENGController
         }
     }
 
-    static JObject ParseActionResponse(string response)
-    {
-        if (string.IsNullOrWhiteSpace(response))
-            return null;
-
-        foreach (string rawLine in response.Split('\n', StringSplitOptions.RemoveEmptyEntries))
-        {
-            string line = rawLine.Trim();
-            int separator = line.IndexOf(':');
-            if (separator >= 0)
-                line = line[(separator + 1)..].Trim();
-
-            if (!line.StartsWith('{'))
-                continue;
-
-            try
-            {
-                JObject parsed = JObject.Parse(line);
-                if (parsed.ContainsKey("success") || parsed["data"]?["stream_url"] != null)
-                    return parsed;
-            }
-            catch { }
-        }
-        return null;
-    }
 }
