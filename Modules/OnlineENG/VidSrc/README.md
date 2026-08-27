@@ -1,6 +1,6 @@
 # VidSrc
 
-Онлайн-источник **VidSrc** (`https://vidsrc.cc`) для ENG — **`disableEng`**, источник **`tmdb`/`cub`**, положительный числовой **`id`**, Playwright активен.
+Онлайн-источник **VidSrc** (`https://vsembed.su`) для ENG. Актуальные маршруты сверены с player-конфигурацией CineWave: `/embed/movie/{tmdb}` и `/embed/tv/{tmdb}/{season}-{episode}`. Источник использует Playwright для захвата HLS.
 
 ## Интерфейс
 

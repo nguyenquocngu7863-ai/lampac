@@ -38,12 +38,11 @@ public class VidSrcController : BaseENGController
         if (await IsRequestBlocked(rch: false, rch_check: !play))
             return badInitMsg;
 
-        // vidsrc.to currently treats its old autoPlay/poster query as an
-        // unavailable-media request for titles that work at the clean embed
-        // URL. Start playback through the page controls instead.
+        // Current VidSrc frontend is vsembed.su. Movies use /{id}; TV uses
+        // the provider-specific /{season}-{episode} suffix.
         string embed = $"{init.host}/embed/movie/{id}";
         if (s > 0)
-            embed = $"{init.host}/embed/tv/{id}/{s}/{e}";
+            embed = $"{init.host}/embed/tv/{id}/{s}-{e}";
 
         var result = await black_magic(id, embed);
         if (result.m3u8 == null)

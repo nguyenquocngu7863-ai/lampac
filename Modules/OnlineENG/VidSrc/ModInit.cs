@@ -49,11 +49,20 @@ public class ModInit : IModuleLoaded, IModuleOnline
 
     private void UpdateConf()
     {
-        conf = ModuleInvoke.Init("Vidsrc", new OnlinesSettings("Vidsrc", "https://vidsrc.to")
+        conf = ModuleInvoke.Init("Vidsrc", new OnlinesSettings("Vidsrc", "https://vsembed.su")
         {
             displayindex = 1005,
+            kit = false,
+            rhub = false,
             streamproxy = true
         });
+
+        // CineWave's current VidSrc tab uses vsembed.su. Force the maintained
+        // endpoint so stale init/Kit values cannot route back to vidsrc.to.
+        conf.host = "https://vsembed.su";
+        conf.kit = false;
+        conf.rhub = false;
+        conf.streamproxy = true;
     }
 
     private string OnlineApiQuality(EventOnlineApiQuality e)
