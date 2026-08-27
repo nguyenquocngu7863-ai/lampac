@@ -1,17 +1,34 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Playwright;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using Shared;
 using Shared.Attributes;
 using Shared.Models.Base;
 using Shared.Models.Templates;
-using Shared.PlaywrightCore;
+using System;
 using System.Collections.Generic;
+using System.Text;
 using System.Threading.Tasks;
+using System.Web;
 
 namespace Videasy;
 
 public class VideasyController : BaseENGController
 {
+    const string ApiBase = "https://api.speedracelight.com";
+    const string TmdbProxy = "https://db.speedracelight.com/3";
+    const string PlayerOrigin = "https://player.videasy.to";
+
+    static readonly string[] Providers = ["cdn", "neon2", "m4uhd", "meine", "lamovie"];
+
+    static readonly uint[] MixTable =
+    [
+        1116352408, 1899447441, 3049323471, 3921009573,
+        961987163, 1508970993, 2453635748, 2870763221,
+        3624381080, 310598401, 607225278, 1426881987,
+        1925078388, 2162078206, 2614888103, 3248222580
+    ];
+
     public VideasyController() : base(ModInit.conf)
     {
     }
@@ -31,25 +48,21 @@ public class VideasyController : BaseENGController
         if (await IsRequestBlocked(rch: false, rch_check: !play))
             return badInitMsg;
 
-        if (id == 0)
+        if (id <= 0)
             return OnError();
 
-        string embed = $"{init.host}/movie/{id}";
-        if (s > 0)
-            embed = $"{init.host}/tv/{id}/{s}/{e}";
+        var result = await ResolveDirect(id, s, e);
+        if (result.stream == null)
+            return OnError("stream", 502);
 
-        var result = await black_magic(embed);
-        if (result.m3u8 == null)
-            return OnError("m3u8", 502);
-
-        string hls = HostStreamProxy(result.m3u8, headers: result.headers);
+        string stream = HostStreamProxy(result.stream, headers: result.headers);
 
         if (play)
-            return RedirectToPlay(hls);
+            return RedirectToPlay(stream);
 
         return ContentTo(VideoTpl.ToJson(
             "play",
-            hls,
+            stream,
             "English",
             vast: init.vast,
             headers: init.streamproxy ? null : result.headers,
@@ -57,89 +70,296 @@ public class VideasyController : BaseENGController
         ));
     }
 
-
-    async Task<(string m3u8, List<HeadersModel> headers)> black_magic(string uri)
+    async Task<(string stream, List<HeadersModel> headers)> ResolveDirect(long tmdbId, short season, short episode)
     {
-        if (string.IsNullOrEmpty(uri))
-            return default;
+        string mediaType = season > 0 ? "tv" : "movie";
+        string memKey = $"videasy:direct:{mediaType}:{tmdbId}:{season}:{episode}";
+        if (hybridCache.TryGetValue(memKey, out (string stream, List<HeadersModel> headers) cached))
+            return cached;
+
+        var apiHeaders = HeadersModel.Init(
+            ("User-Agent", Http.UserAgent),
+            ("Referer", PlayerOrigin + "/"),
+            ("Origin", PlayerOrigin),
+            ("Accept", "application/json, text/plain, */*")
+        );
 
         try
         {
-            string memKey = $"videasy:black_magic:{uri}";
-            if (!hybridCache.TryGetValue(memKey, out (string m3u8, List<HeadersModel> headers) cache))
+            string metadataUrl = $"{TmdbProxy}/{mediaType}/{tmdbId}?append_to_response=external_ids";
+            var metadata = await httpHydra.Get<JObject>(metadataUrl, addheaders: apiHeaders);
+            if (metadata == null)
             {
-                using (var browser = new PlaywrightBrowser(init.priorityBrowser))
-                {
-                    var page = await browser.NewPageAsync(init.plugin, httpHeaders(init)?.ToDictionary(), proxy_data, deferredDispose: true);
-                    if (page == null)
-                        return default;
-
-                    await page.RouteAsync("**/*", async route =>
-                    {
-                        try
-                        {
-                            if (browser.IsCompleted)
-                            {
-                                PlaywrightBase.ConsoleLog(() => $"Playwright: Abort {route.Request.Url}");
-                                await route.AbortAsync();
-                                return;
-                            }
-
-                            if (await PlaywrightBase.AbortOrCache(page, route, abortMedia: true))
-                                return;
-
-                            if (route.Request.Url.Contains(".m3u8") || route.Request.Url.Contains(".mp4") || route.Request.Url.Contains("/mp4/") || route.Request.Url.Contains("mp4."))
-                            {
-                                cache.headers = new List<HeadersModel>();
-                                foreach (var item in route.Request.Headers)
-                                {
-                                    if (item.Key.ToLower() is "host" or "accept-encoding" or "connection" or "range")
-                                        continue;
-
-                                    cache.headers.Add(new HeadersModel(item.Key, item.Value.ToString()));
-                                }
-
-                                PlaywrightBase.ConsoleLog(() => ($"Playwright: SET {route.Request.Url}", cache.headers));
-                                browser.completionSource.SetResult(route.Request.Url);
-                                await route.AbortAsync();
-                                return;
-                            }
-
-                            await route.ContinueAsync();
-                        }
-                        catch (System.Exception ex)
-                        {
-                            Serilog.Log.Error(ex, "CatchId={CatchId}", "id_dmgyxur2");
-                        }
-                    });
-
-                    PlaywrightBase.GotoAsync(page, uri);
-
-                    var playBtn = page.Locator("button:has(svg)");
-
-                    await playBtn.ClickAsync(new LocatorClickOptions
-                    {
-                        Timeout = 15000
-                    });
-
-                    cache.m3u8 = await browser.WaitPageResult();
-                }
-
-                if (cache.m3u8 == null)
-                {
-                    proxyManager?.Refresh();
-                    return default;
-                }
-
-                proxyManager?.Success();
-                hybridCache.Set(memKey, cache, cacheTime(20));
+                Console.WriteLine($"Videasy: metadata failed ({mediaType}:{tmdbId})");
+                return default;
             }
 
-            return cache;
+            string title = metadata.Value<string>("title")
+                ?? metadata.Value<string>("name")
+                ?? metadata.Value<string>("original_title")
+                ?? metadata.Value<string>("original_name");
+            if (string.IsNullOrWhiteSpace(title))
+                return default;
+
+            string date = metadata.Value<string>("release_date") ?? metadata.Value<string>("first_air_date") ?? string.Empty;
+            string year = date.Length >= 4 ? date[..4] : string.Empty;
+            string imdbId = metadata.Value<string>("imdb_id") ?? metadata["external_ids"]?.Value<string>("imdb_id") ?? string.Empty;
+            int totalSeasons = metadata.Value<int?>("number_of_seasons") ?? 0;
+
+            string seed = null;
+            for (int attempt = 0; attempt < 3 && string.IsNullOrEmpty(seed); attempt++)
+            {
+                var seedRoot = await httpHydra.Get<JObject>($"{ApiBase}/seed?mediaId={tmdbId}", addheaders: apiHeaders);
+                seed = seedRoot?.Value<string>("seed");
+                if (string.IsNullOrEmpty(seed))
+                    await Task.Delay(500 * (attempt + 1));
+            }
+
+            if (string.IsNullOrEmpty(seed))
+            {
+                Console.WriteLine($"Videasy: seed failed ({mediaType}:{tmdbId})");
+                return default;
+            }
+
+            var query = new Dictionary<string, string>
+            {
+                // Player pre-encodes the title before URLSearchParams encodes
+                // the complete query, so percent signs are intentionally
+                // encoded a second time (e.g. space -> %2520).
+                ["title"] = Uri.EscapeDataString(title),
+                ["mediaType"] = mediaType,
+                ["year"] = year,
+                ["tmdbId"] = tmdbId.ToString(),
+                ["imdbId"] = imdbId,
+                ["enc"] = "2",
+                ["seed"] = seed
+            };
+
+            if (mediaType == "tv")
+            {
+                query["seasonId"] = season.ToString();
+                query["episodeId"] = Math.Max(episode, (short)1).ToString();
+                if (totalSeasons > 0)
+                    query["totalSeasons"] = totalSeasons.ToString();
+            }
+            else
+            {
+                query["seasonId"] = "1";
+                query["episodeId"] = "1";
+            }
+
+            string queryString = BuildQuery(query);
+            foreach (string provider in Providers)
+            {
+                string encrypted = await httpHydra.Get(
+                    $"{ApiBase}/{provider}/sources-with-title?{queryString}",
+                    addheaders: apiHeaders,
+                    statusCodeOK: false
+                );
+
+                if (string.IsNullOrWhiteSpace(encrypted))
+                    continue;
+
+                encrypted = encrypted.Trim();
+                if (encrypted.StartsWith('"') && encrypted.EndsWith('"'))
+                {
+                    try { encrypted = JsonConvert.DeserializeObject<string>(encrypted); }
+                    catch { continue; }
+                }
+
+                if (encrypted.StartsWith('{'))
+                    continue;
+
+                JObject payload;
+                try
+                {
+                    payload = JObject.Parse(DecryptPayload(encrypted, seed, checked((int)tmdbId)));
+                }
+                catch
+                {
+                    continue;
+                }
+
+                if (payload["sources"] is not JArray sources)
+                    continue;
+
+                foreach (var source in sources)
+                {
+                    string url = source.Value<string>("url") ?? source.Value<string>("file");
+                    if (string.IsNullOrWhiteSpace(url) || !Uri.TryCreate(url, UriKind.Absolute, out _))
+                        continue;
+
+                    if (!url.Contains(".m3u", StringComparison.OrdinalIgnoreCase) &&
+                        !url.Contains(".mp4", StringComparison.OrdinalIgnoreCase) &&
+                        !url.Contains(".mpd", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    var streamHeaders = HeadersModel.Init(
+                        ("User-Agent", Http.UserAgent),
+                        ("Referer", PlayerOrigin + "/"),
+                        ("Origin", PlayerOrigin)
+                    );
+
+                    cached = (url, streamHeaders);
+                    hybridCache.Set(memKey, cached, cacheTime(15));
+                    proxyManager?.Success();
+                    Console.WriteLine($"Videasy: {provider} resolved ({mediaType}:{tmdbId})");
+                    return cached;
+                }
+            }
+
+            Console.WriteLine($"Videasy: providers returned no stream ({mediaType}:{tmdbId})");
+            proxyManager?.Refresh();
+            return default;
         }
-        catch
+        catch (Exception ex)
         {
+            Serilog.Log.Error(ex, "Videasy direct resolver failed for {MediaType}:{TmdbId}", mediaType, tmdbId);
             return default;
         }
     }
+
+    static string BuildQuery(Dictionary<string, string> values)
+    {
+        var query = new StringBuilder();
+        foreach (var item in values)
+        {
+            if (string.IsNullOrEmpty(item.Value))
+                continue;
+
+            if (query.Length > 0)
+                query.Append('&');
+
+            query.Append(HttpUtility.UrlEncode(item.Key));
+            query.Append('=');
+            query.Append(HttpUtility.UrlEncode(item.Value));
+        }
+        return query.ToString();
+    }
+
+    static string DecryptPayload(string payload, string seed, int mediaId)
+    {
+        string normalized = payload.Replace('-', '+').Replace('_', '/');
+        normalized = normalized.PadRight(((normalized.Length + 3) / 4) * 4, '=');
+        byte[] encrypted = Convert.FromBase64String(normalized);
+        byte[] key = KeyStream(seed, unchecked((uint)mediaId), encrypted.Length);
+
+        for (int i = 0; i < encrypted.Length; i++)
+            encrypted[i] ^= key[i];
+
+        if (encrypted.Length < 4 || encrypted[0] != 109 || encrypted[1] != 118 || encrypted[2] != 109 || encrypted[3] != 49)
+            throw new InvalidOperationException("Videasy decrypt magic mismatch");
+
+        return Encoding.UTF8.GetString(encrypted, 4, encrypted.Length - 4);
+    }
+
+    static byte[] KeyStream(string seed, uint mediaId, int length)
+    {
+        var state = BuildState(seed, mediaId);
+        var output = new byte[length];
+        uint counter = 0;
+
+        for (int index = 0; index < length;)
+        {
+            uint word = NextWord(state.values, ref state.acc, counter++);
+            output[index++] = (byte)word;
+            if (index < length) output[index++] = (byte)(word >> 8);
+            if (index < length) output[index++] = (byte)(word >> 16);
+            if (index < length) output[index++] = (byte)(word >> 24);
+        }
+
+        return output;
+    }
+
+    static (Dictionary<int, uint> values, uint acc) BuildState(string seed, uint mediaId)
+    {
+        var values = new Dictionary<int, uint>();
+
+        if (IsOddTri(seed.Length))
+        {
+            int[] box = Rc4Sbox(seed);
+            for (int i = 0; i < box.Length; i++)
+                values[i] = (uint)box[i];
+            return (values, AccSeed(seed));
+        }
+
+        uint acc = Mix(Fnv1a(seed) ^ Mix(mediaId ^ 2654435769u));
+        for (int i = 0; i < 8; i++)
+        {
+            if (IsEvenTri(i))
+            {
+                int slot = (int)(acc % 61);
+                acc = RotL(unchecked(acc + 2654435769u), 7 + (i & 7));
+                values[slot] = acc ^ Mix(acc);
+                acc = Mix(unchecked(acc + (uint)slot));
+            }
+            else
+            {
+                values[i] = MixTable[i & 15];
+            }
+        }
+
+        return (values, Mix(2779096485u ^ acc));
+    }
+
+    static uint NextWord(Dictionary<int, uint> values, ref uint acc, uint counter)
+    {
+        int slot = (int)(acc % 61);
+        uint mask = values.TryGetValue(slot, out uint value) ? uint.MaxValue : 0u;
+        uint mixed = value ^ unchecked(2654435769u * (counter + 1));
+        uint data = (acc ^ mixed) | (acc & mixed & mask);
+        data = RotL(unchecked(data + acc), slot & 31) ^ RotL(acc, (slot * 7) & 31);
+        acc = Mix(unchecked(data + 2654435769u));
+        values[slot] = acc;
+        return acc;
+    }
+
+    static int[] Rc4Sbox(string seed)
+    {
+        var box = new int[256];
+        for (int i = 0; i < box.Length; i++)
+            box[i] = i;
+
+        int cursor = 0;
+        for (int i = 0; i < box.Length; i++)
+        {
+            cursor = (cursor + box[i] + seed[i % seed.Length]) & 255;
+            (box[i], box[cursor]) = (box[cursor], box[i]);
+        }
+        return box;
+    }
+
+    static uint AccSeed(string seed)
+    {
+        uint acc = 1732584193u;
+        for (int i = 0; i < seed.Length; i++)
+            acc = RotL(acc ^ unchecked((uint)seed[i] * MixTable[i & 15]), 5);
+        return Mix(acc);
+    }
+
+    static uint Fnv1a(string value)
+    {
+        uint hash = 2166136261u;
+        foreach (char c in value)
+            hash = unchecked((hash ^ c) * 16777619u);
+        return Mix(hash);
+    }
+
+    static uint Mix(uint value)
+    {
+        value ^= value >> 16;
+        value = unchecked(value * 2246822507u);
+        value ^= value >> 13;
+        value = unchecked(value * 3266489909u);
+        return value ^ (value >> 16);
+    }
+
+    static uint RotL(uint value, int count)
+    {
+        count &= 31;
+        return count == 0 ? value : (value << count) | (value >> (32 - count));
+    }
+
+    static bool IsEvenTri(int value) => ((value * (value + 1)) & 1) == 0;
+    static bool IsOddTri(int value) => !IsEvenTri(value);
 }

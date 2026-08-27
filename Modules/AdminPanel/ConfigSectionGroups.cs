@@ -29,11 +29,11 @@ public static class ConfigSectionGroups
 
         new("realtime", "WebSocket và RCH", "Socket native và hub từ xa.",
             new[] { "WebSocket", "rch" }),
-        new("browser", "Nguồn cần trình duyệt", "Mirage/Phantom và phần lớn embed cần Chromium; HydraFlix/TwoEmbed cần Firefox. Khi disableEng=true, có thể thử riêng Videasy bằng enabled=true mà không mở cả nhóm ENG.",
+        new("browser", "Nguồn cần trình duyệt", "Mirage/Phantom và phần lớn embed cần Chromium; HydraFlix/TwoEmbed cần Firefox. Videasy direct API nằm ở nhóm HTTP và có thể bật riêng bằng enabled=true.",
             new[]
             {
                 "chromium", "firefox", "Mirage", "Phantom",
-                "Autoembed", "Hydraflix", "MovPI", "Playembed", "Rgshows", "Smashystream", "Twoembed", "VidLink", "Videasy", "Vidsrc"
+                "Autoembed", "Hydraflix", "MovPI", "Playembed", "Rgshows", "Smashystream", "Twoembed", "VidLink", "Vidsrc"
             }),
         new("diagnostics", "Log và chẩn đoán", "Serilog, xử lý exception, openstat.",
             new[] { "serilog", "useDeveloperExceptionPage", "exceptionHandlerLogTarget", "exceptionHandlerLogFile", "watcherInit", "openstat" }),
@@ -49,8 +49,8 @@ public static class ConfigSectionGroups
         new("src-vn", "Nguồn · Việt Nam", "Các nguồn phim Việt tùy biến, không cần Playwright.",
             new[] { "KKPhim", "K20", "VsMov" }),
 
-        new("src-http-bridge", "Nguồn · HTTP và Stremio", "Bridge HTTP/Stremio độc lập với nhóm embed Playwright.",
-            new[] { "AIOStreams", "CineWave", "OpenDirectory", "Sootio", "WebStreamr" }),
+        new("src-http-bridge", "Nguồn · HTTP và Stremio", "Bridge HTTP/Stremio và Videasy direct API, độc lập với nhóm embed Playwright.",
+            new[] { "AIOStreams", "CineWave", "OpenDirectory", "Sootio", "Videasy", "WebStreamr" }),
 
         new("src-rus", "Nguồn · Nga và CIS", "Nguồn VOD/CDN Nga; Mirage và Phantom nằm ở nhóm cần trình duyệt.",
             new[]
