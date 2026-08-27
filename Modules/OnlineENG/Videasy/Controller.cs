@@ -5,6 +5,7 @@ using Shared;
 using Shared.Attributes;
 using Shared.Models.Base;
 using Shared.Models.Templates;
+using Shared.Services;
 using System;
 using System.Collections.Generic;
 using System.Text;
