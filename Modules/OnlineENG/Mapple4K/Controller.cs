@@ -1,10 +1,12 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Playwright;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Shared;
 using Shared.Attributes;
 using Shared.Models.Base;
 using Shared.Models.Templates;
+using Shared.PlaywrightCore;
 using Shared.Services;
 using System;
 using System.Collections.Generic;
@@ -82,7 +84,7 @@ public sealed class Mapple4KController : BaseENGController
     async Task<List<Candidate>> ResolveAll(long tmdbId, short season, short episode)
     {
         string mediaType = season > 0 ? "tv" : "movie";
-        string memKey = $"mapple4k:action-v1:{mediaType}:{tmdbId}:{season}:{episode}";
+        string memKey = $"mapple4k:action-browser-v2:{mediaType}:{tmdbId}:{season}:{episode}";
         if (hybridCache.TryGetValue(memKey, out List<Candidate> cached))
             return cached;
 
@@ -160,6 +162,13 @@ public sealed class Mapple4KController : BaseENGController
             }
         }
 
+        if (result.Count == 0)
+        {
+            Candidate browserCandidate = await ResolveBrowser(tmdbId, season, episode);
+            if (browserCandidate != null)
+                result.Add(browserCandidate);
+        }
+
         if (result.Count > 0)
         {
             hybridCache.Set(memKey, result, cacheTime(15));
@@ -173,6 +182,114 @@ public sealed class Mapple4KController : BaseENGController
         }
 
         return result;
+    }
+
+    async Task<Candidate> ResolveBrowser(long tmdbId, short season, short episode)
+    {
+        string pageUrl = season > 0
+            ? $"{init.host}/watch/tv/{tmdbId}-{season}-{episode}?autoPlay=true"
+            : $"{init.host}/watch/movie/{tmdbId}?autoPlay=true";
+
+        try
+        {
+            using var browser = new PlaywrightBrowser(init.priorityBrowser);
+            var page = await browser.NewPageAsync(init.plugin, httpHeaders(init)?.ToDictionary(), proxy_data);
+            if (page == null)
+                return null;
+
+            List<HeadersModel> capturedHeaders = null;
+            await page.RouteAsync("**/*", async route =>
+            {
+                try
+                {
+                    string url = route.Request.Url;
+                    if (url.Contains(".m3u8", StringComparison.OrdinalIgnoreCase))
+                    {
+                        capturedHeaders = new List<HeadersModel>();
+                        foreach (var header in route.Request.Headers)
+                        {
+                            if (header.Key.ToLowerInvariant() is "host" or "connection" or "accept-encoding" or "range")
+                                continue;
+                            capturedHeaders.Add(new HeadersModel(header.Key, header.Value));
+                        }
+
+                        browser.completionSource.TrySetResult(url);
+                        await route.ContinueAsync();
+                        return;
+                    }
+
+                    if (browser.IsCompleted || await PlaywrightBase.AbortOrCache(page, route, abortMedia: true, fullCacheJS: true))
+                    {
+                        if (!browser.IsCompleted)
+                            return;
+                        await route.AbortAsync();
+                        return;
+                    }
+
+                    await route.ContinueAsync();
+                }
+                catch { }
+            });
+
+            PlaywrightBase.GotoAsync(page, pageUrl);
+            await Task.Delay(3000);
+            foreach (IFrame frame in page.Frames)
+            {
+                try
+                {
+                    await frame.EvaluateAsync(
+                        @"() => {
+                            const selectors = '[aria-label*=""play"" i], [data-action*=""play"" i], [class*=""play"" i], .vjs-big-play-button, button:has(svg), video';
+                            Array.from(document.querySelectorAll(selectors)).slice(0, 6).forEach(node => {
+                                if (node.tagName === 'VIDEO') node.play().catch(() => {});
+                                else node.click();
+                            });
+                        }"
+                    );
+                }
+                catch { }
+            }
+
+            string stream = await browser.WaitPageResult(20);
+            if (stream == null)
+            {
+                foreach (IFrame frame in page.Frames)
+                {
+                    try
+                    {
+                        string[] resources = await frame.EvaluateAsync<string[]>(
+                            "() => performance.getEntriesByType('resource').map(item => item.name)"
+                        );
+                        stream = resources?.FirstOrDefault(url =>
+                            url.Contains(".m3u8", StringComparison.OrdinalIgnoreCase));
+                        if (stream != null)
+                        {
+                            capturedHeaders = HeadersModel.Init(
+                                ("User-Agent", Http.UserAgent),
+                                ("Referer", frame.Url)
+                            );
+                            break;
+                        }
+                    }
+                    catch { }
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(stream))
+                return null;
+
+            capturedHeaders ??= HeadersModel.Init(
+                ("User-Agent", Http.UserAgent),
+                ("Referer", init.host + "/")
+            );
+            Console.WriteLine($"Mapple4K: browser HLS resolved ({tmdbId})");
+            return new Candidate(stream, "01. Mapple browser · 4K/Auto", capturedHeaders);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Warning(ex, "Mapple browser fallback failed for {TmdbId}", tmdbId);
+            return null;
+        }
     }
 
     static JObject ParseActionResponse(string response)

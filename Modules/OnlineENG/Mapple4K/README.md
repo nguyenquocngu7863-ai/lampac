@@ -15,6 +15,8 @@ Resolver dùng server-action protocol hiện tại:
 
 Nguồn thử theo thứ tự: Europa/Ganymede multi-audio 4K, Callisto/Io 4K, sau đó các alias Mapple/Sakura/Alfa/Oak/Wiggles. URL trùng bị loại; HLS được phát qua Lampac để giữ Referer.
 
+Nếu Server Action không trả stream (action/hash thay đổi), module mở trực tiếp trang Mapple bằng Chromium, kích hoạt player và bắt HLS từ network/Performance API. Browser fallback chỉ chạy một trang Mapple, không quét hàng loạt iframe như CineWave.
+
 ## Bật riêng
 
 ```json
