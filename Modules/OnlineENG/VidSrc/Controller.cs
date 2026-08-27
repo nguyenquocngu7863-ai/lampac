@@ -38,13 +38,14 @@ public class VidSrcController : BaseENGController
         if (await IsRequestBlocked(rch: false, rch_check: !play))
             return badInitMsg;
 
-        // Current VidSrc frontend is vsembed.su. Movies use /{id}; TV uses
-        // the provider-specific /{season}-{episode} suffix.
-        string embed = $"{init.host}/embed/movie/{id}";
-        if (s > 0)
-            embed = $"{init.host}/embed/tv/{id}/{s}-{e}";
+        // vsembed.su only initializes reliably inside the parent embed context
+        // used by CineWave. Open that page, select only its VidSrc tab, then
+        // capture the resulting HLS; do not scan the other 15 players.
+        string embedContext = s > 0
+            ? $"https://www.cinewave.su/tv/{id}"
+            : $"https://www.cinewave.su/movie/{id}";
 
-        var result = await black_magic(id, embed);
+        var result = await black_magic(id, embedContext, s, e);
         if (result.m3u8 == null)
             return OnError("m3u8", 502);
 
@@ -64,7 +65,7 @@ public class VidSrcController : BaseENGController
     }
 
 
-    async Task<(string m3u8, List<HeadersModel> headers)> black_magic(long id, string uri)
+    async Task<(string m3u8, List<HeadersModel> headers)> black_magic(long id, string uri, short season, short episode)
     {
         if (string.IsNullOrEmpty(uri))
             return default;
@@ -80,6 +81,7 @@ public class VidSrcController : BaseENGController
                     if (page == null)
                         return default;
 
+                    bool captureEnabled = false;
                     await page.RouteAsync("**/*", async route =>
                     {
                         try
@@ -94,7 +96,7 @@ public class VidSrcController : BaseENGController
                             if (await PlaywrightBase.AbortOrCache(page, route, fullCacheJS: true))
                                 return;
 
-                            if (route.Request.Url.Contains(".m3u8"))
+                            if (captureEnabled && route.Request.Url.Contains(".m3u8"))
                             {
                                 cache.headers = new List<HeadersModel>();
                                 foreach (var item in route.Request.Headers)
@@ -123,28 +125,34 @@ public class VidSrcController : BaseENGController
                     });
 
                     PlaywrightBase.GotoAsync(page, uri);
-                    await Task.Delay(2500);
+                    await Task.Delay(3500);
 
-                    // VidSrc changes the play control between nested buttons,
-                    // overlays and iframe players. Click the same small set of
-                    // controls that proved reliable in the CineWave capture.
+                    if (season > 0)
+                    {
+                        await ClickControl(page, $"Season {season}", startsWith: false);
+                        await Task.Delay(700);
+                        await ClickControl(page, $"E{episode} ·", startsWith: true);
+                        await Task.Delay(1000);
+                    }
+
+                    // Drop resources loaded by CineWave's default Videasy tab;
+                    // only requests created after selecting VidSrc are valid.
                     foreach (IFrame frame in page.Frames)
                     {
-                        try
-                        {
-                            await frame.EvaluateAsync(
-                                @"() => {
-                                    const selectors = '[aria-label*=""play"" i], .play-button, .vjs-big-play-button, button:has(svg), video';
-                                    Array.from(document.querySelectorAll(selectors)).slice(0, 5).forEach(node => {
-                                        if (node.tagName === 'VIDEO') node.play().catch(() => {});
-                                        else node.click();
-                                    });
-                                }"
-                            );
-                        }
+                        try { await frame.EvaluateAsync("() => performance.clearResourceTimings()"); }
                         catch { }
                     }
 
+                    captureEnabled = true;
+                    bool selected = await ClickControl(page, "VidSrc", startsWith: false);
+                    if (!selected)
+                    {
+                        Console.WriteLine($"VidSrc: CineWave tab not found ({id})");
+                        return default;
+                    }
+
+                    await Task.Delay(600);
+                    await TryStartPlayers(page);
                     cache.m3u8 = await browser.WaitPageResult(15);
 
                     // Service-worker requests can bypass page.RouteAsync.
@@ -190,6 +198,56 @@ public class VidSrcController : BaseENGController
         catch
         {
             return default;
+        }
+    }
+
+    static async Task<bool> ClickControl(IPage page, string label, bool startsWith)
+    {
+        try
+        {
+            return await page.EvaluateAsync<bool>(
+                @"([label, startsWith]) => {
+                    const norm = value => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+                    const wanted = norm(label);
+                    const matches = Array.from(document.querySelectorAll('body *')).filter(el => {
+                        const text = norm(el.textContent);
+                        return startsWith ? text.startsWith(wanted) : text === wanted;
+                    });
+                    if (!matches.length) return false;
+                    matches.sort((a, b) => norm(a.textContent).length - norm(b.textContent).length || a.children.length - b.children.length);
+                    const leaf = matches[0];
+                    const node = leaf.closest('button, [role=""button""], a, [tabindex]') || leaf;
+                    node.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+                    node.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+                    node.click();
+                    return true;
+                }",
+                new object[] { label, startsWith }
+            );
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    static async Task TryStartPlayers(IPage page)
+    {
+        foreach (IFrame frame in page.Frames.Skip(1))
+        {
+            try
+            {
+                await frame.EvaluateAsync(
+                    @"() => {
+                        const selectors = '[aria-label*=""play"" i], .play-button, .vjs-big-play-button, button:has(svg), video';
+                        Array.from(document.querySelectorAll(selectors)).slice(0, 5).forEach(node => {
+                            if (node.tagName === 'VIDEO') node.play().catch(() => {});
+                            else node.click();
+                        });
+                    }"
+                );
+            }
+            catch { }
         }
     }
 }
