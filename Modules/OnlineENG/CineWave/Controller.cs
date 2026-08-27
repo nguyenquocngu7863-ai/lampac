@@ -314,17 +314,21 @@ public sealed class CineWaveController : BaseOnlineController<ModuleConf>
             }
 
             int perPlayerDelay = Math.Clamp(init.resolveSeconds * 1000 / PlayerLabels.Length, 1500, 2500);
+            int clickedPlayers = 0;
             foreach (string playerLabel in PlayerLabels)
             {
                 activePlayer = playerLabel;
                 bool clicked = await ClickPlayerControl(page, playerLabel, startsWith: false);
                 if (clicked)
                 {
+                    clickedPlayers++;
                     await Task.Delay(350);
                     await TryStartEmbeddedPlayers(page);
                     await Task.Delay(perPlayerDelay);
                 }
             }
+
+            Console.WriteLine($"CineWave.su: clicked {clickedPlayers}/{PlayerLabels.Length} player tabs");
         }
         catch (Exception ex)
         {
@@ -366,12 +370,25 @@ public sealed class CineWaveController : BaseOnlineController<ModuleConf>
                 @"([label, startsWith]) => {
                     const norm = value => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
                     const wanted = norm(label);
-                    const nodes = Array.from(document.querySelectorAll('button, [role=""button""], a, label'));
-                    const node = nodes.find(el => {
+                    const matches = Array.from(document.querySelectorAll('body *')).filter(el => {
                         const text = norm(el.textContent);
                         return startsWith ? text.startsWith(wanted) : text === wanted;
                     });
-                    if (!node) return false;
+                    if (!matches.length) return false;
+
+                    // React renders the player name inside nested spans/divs,
+                    // not necessarily on the button itself. Pick the smallest
+                    // matching node, then walk back to its clickable owner.
+                    matches.sort((a, b) => norm(a.textContent).length - norm(b.textContent).length || a.children.length - b.children.length);
+                    const leaf = matches[0];
+                    if (leaf.tagName === 'OPTION' && leaf.parentElement) {
+                        leaf.parentElement.value = leaf.value;
+                        leaf.parentElement.dispatchEvent(new Event('change', { bubbles: true }));
+                        return true;
+                    }
+                    const node = leaf.closest('button, [role=""button""], a, [tabindex]') || leaf;
+                    node.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+                    node.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
                     node.click();
                     return true;
                 }",
