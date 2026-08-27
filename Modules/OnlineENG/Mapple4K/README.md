@@ -1,15 +1,21 @@
 # Mapple 4K
 
-Nguồn ENG cho Mapple (`https://mapple.uk`), không phụ thuộc `vidsrc.win`.
+Nguồn ENG trực tiếp cho Mapple, không phụ thuộc `vidsrc.win` và không cần Chromium.
 
-## Endpoint
+Protocol hiện tại được đối chiếu với plugin StreamPlay build ngày 2026-08-27:
+
+1. Thử các mirror Mapple đang hoạt động.
+2. GET trang watch và đọc `window.__REQUEST_TOKEN__`.
+3. Tìm client key công khai trong bundle JavaScript lúc chạy; không hardcode key vào repository.
+4. POST `/api/playback-init`.
+5. Nếu server yêu cầu proof-of-work, giải SHA-256 challenge và POST lại.
+6. Dùng playback token gọi `/api/stream` cho sáu source: Mapple, Nexus, Cipher, Pulse, Vertex, Chimp.
+7. Thu thập `data.stream_url`, loại URL trùng và phát qua Lampac proxy với Referer đúng.
+
+Route:
 
 - Phim: `/watch/movie/{tmdbId}`
-- TV: `/watch/tv/{tmdbId}-{season}-{episode}`
-
-Mapple hiện dùng protocol động gồm `window.__REQUEST_TOKEN__`, `/api/playback-init`, proof-of-work tùy phiên, rồi `/api/stream`. Module để chính trang Mapple thực hiện handshake/PoW trong Chromium và chặn response `/api/stream` để đọc `data.stream_url`; không lưu API key hay hash action trong source.
-
-HLS cũng được bắt trực tiếp từ network và Performance API làm fallback. Chỉ một trang Mapple được mở, không quét nhiều iframe như CineWave.
+- TV: `/watch/tv/{tmdbId}/{season}-{episode}`
 
 ## Bật riêng
 

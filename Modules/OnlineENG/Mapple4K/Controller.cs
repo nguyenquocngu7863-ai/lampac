@@ -1,21 +1,55 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Playwright;
 using Newtonsoft.Json.Linq;
 using Shared;
 using Shared.Attributes;
 using Shared.Models.Base;
 using Shared.Models.Templates;
-using Shared.PlaywrightCore;
 using Shared.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using System.Web;
 
 namespace Mapple4K;
 
 public sealed class Mapple4KController : BaseENGController
 {
+    static readonly (string Id, string Label)[] Sources =
+    [
+        ("mapple", "Mapple"),
+        ("s1", "Nexus"),
+        ("s2", "Cipher"),
+        ("s3", "Pulse"),
+        ("s4", "Vertex"),
+        ("s10", "Chimp")
+    ];
+
+    static readonly string[] Mirrors =
+    [
+        "https://mapple.uk", "https://mapple.rip", "https://mapplee.com",
+        "https://mapple.cc", "https://mappl.tv", "https://mapple.vip", "https://mapple.bid"
+    ];
+
+    static readonly Regex RequestTokenRegex = new(
+        "window\\.__REQUEST_TOKEN__\\s*=\\s*\"([^\"]+)\"",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant
+    );
+
+    static readonly Regex ClientKeyRegex = new(
+        "mptv_sk_[a-zA-Z0-9]+",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant
+    );
+
+    static readonly Regex ScriptRegex = new(
+        "<script[^>]+src=[\"']([^\"']+)[\"']",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant
+    );
+
     sealed record Candidate(string Url, string Label, List<HeadersModel> Headers);
 
     public Mapple4KController() : base(ModInit.conf) { }
@@ -23,9 +57,7 @@ public sealed class Mapple4KController : BaseENGController
     [HttpGet, Staticache(manually: true)]
     [Route("lite/mapple4k")]
     public Task<ActionResult> Index(bool checksearch, long id, long tmdb_id, string imdb_id, string title, string original_title, byte serial, short s = -1, bool rjson = false)
-    {
-        return ViewTmdb(checksearch, id, tmdb_id, imdb_id, title, original_title, serial, s, rjson, method: "call");
-    }
+        => ViewTmdb(checksearch, id, tmdb_id, imdb_id, title, original_title, serial, s, rjson, method: "call");
 
     [HttpGet, Staticache(manually: true)]
     [Route("lite/mapple4k/video")]
@@ -65,170 +97,236 @@ public sealed class Mapple4KController : BaseENGController
     async Task<List<Candidate>> ResolveAll(long tmdbId, short season, short episode)
     {
         string mediaType = season > 0 ? "tv" : "movie";
-        string memKey = $"mapple4k:playback-api-v3:{mediaType}:{tmdbId}:{season}:{episode}";
+        string memKey = $"mapple4k:playback-protocol-v4:{mediaType}:{tmdbId}:{season}:{episode}";
         if (hybridCache.TryGetValue(memKey, out List<Candidate> cached))
             return cached;
 
-        var result = new List<Candidate>(1);
-
-        // Current Mapple uses requestToken + /api/playback-init + optional
-        // proof-of-work, followed by /api/stream. Let its own page perform that
-        // moving protocol and intercept only the final stream response.
-        Candidate browserCandidate = await ResolveBrowser(tmdbId, season, episode);
-        if (browserCandidate != null)
-            result.Add(browserCandidate);
-
-        if (result.Count > 0)
+        foreach (string configuredBase in PreferredMirrors())
         {
-            hybridCache.Set(memKey, result, cacheTime(15));
-            Console.WriteLine($"Mapple4K: {result.Count} streams ({mediaType}:{tmdbId}) [{string.Join(", ", result.Select(i => i.Label))}]");
-            proxyManager?.Success();
-        }
-        else
-        {
-            Console.WriteLine($"Mapple4K: no stream ({mediaType}:{tmdbId})");
-            proxyManager?.Refresh();
+            string baseUrl = configuredBase.TrimEnd('/');
+            try
+            {
+                List<Candidate> result = await ResolveMirror(baseUrl, tmdbId, mediaType, season, episode);
+                if (result.Count == 0)
+                    continue;
+
+                hybridCache.Set(memKey, result, cacheTime(15));
+                proxyManager?.Success();
+                Console.WriteLine($"Mapple4K: {result.Count} streams ({mediaType}:{tmdbId}) [{string.Join(", ", result.Select(i => i.Label))}]");
+                return result;
+            }
+            catch (Exception ex)
+            {
+                Serilog.Log.Debug(ex, "Mapple mirror failed: {Mirror}", baseUrl);
+            }
         }
 
+        proxyManager?.Refresh();
+        Console.WriteLine($"Mapple4K: no stream ({mediaType}:{tmdbId})");
+        return [];
+    }
+
+    IEnumerable<string> PreferredMirrors()
+    {
+        string configured = string.IsNullOrWhiteSpace(init.host) ? "https://mapple.uk" : init.host.TrimEnd('/');
+        yield return configured;
+        foreach (string mirror in Mirrors)
+        {
+            if (!mirror.Equals(configured, StringComparison.OrdinalIgnoreCase))
+                yield return mirror;
+        }
+    }
+
+    async Task<List<Candidate>> ResolveMirror(string baseUrl, long tmdbId, string mediaType, short season, short episode)
+    {
+        string tvSlug = mediaType == "tv" ? $"{season}-{episode}" : string.Empty;
+        string pageUrl = mediaType == "tv"
+            ? $"{baseUrl}/watch/tv/{tmdbId}/{tvSlug}"
+            : $"{baseUrl}/watch/movie/{tmdbId}";
+        var headers = HeadersModel.Init(
+            ("User-Agent", Http.UserAgent),
+            ("Referer", baseUrl + "/"),
+            ("Origin", baseUrl),
+            ("Accept", "*/*")
+        );
+
+        string html = await httpHydra.Get(pageUrl, addheaders: headers, statusCodeOK: false);
+        if (string.IsNullOrWhiteSpace(html))
+            return [];
+
+        string requestToken = RequestTokenRegex.Match(html).Groups[1].Value;
+        if (string.IsNullOrWhiteSpace(requestToken))
+            return [];
+
+        string clientKey = await FindClientKey(baseUrl, html, headers);
+        if (string.IsNullOrWhiteSpace(clientKey))
+            return [];
+
+        JObject initRequest = new()
+        {
+            ["mediaId"] = tmdbId,
+            ["mediaType"] = mediaType,
+            ["requestToken"] = requestToken
+        };
+        JObject initialization = await PostJson($"{baseUrl}/api/playback-init", initRequest, headers);
+        if (initialization == null)
+            return [];
+
+        if (initialization.Value<bool?>("requiresPow") == true)
+        {
+            JObject pow = initialization["pow"] as JObject;
+            string challenge = pow?.Value<string>("challenge");
+            string challengeId = pow?.Value<string>("challengeId");
+            int difficulty = pow?.Value<int?>("difficulty") ?? 0;
+            string nonce = SolvePow(challenge, difficulty);
+            if (string.IsNullOrWhiteSpace(challengeId) || nonce == null)
+                return [];
+
+            initRequest["pow"] = new JObject
+            {
+                ["challengeId"] = challengeId,
+                ["nonce"] = nonce
+            };
+            initialization = await PostJson($"{baseUrl}/api/playback-init", initRequest, headers);
+        }
+
+        string playbackToken = initialization?.Value<string>("token");
+        if (string.IsNullOrWhiteSpace(playbackToken))
+            return [];
+
+        var result = new List<Candidate>(Sources.Length);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var source in Sources)
+        {
+            string streamUrl = $"{baseUrl}/api/stream" +
+                $"?mediaId={tmdbId}" +
+                $"&mediaType={HttpUtility.UrlEncode(mediaType)}" +
+                $"&tv_slug={HttpUtility.UrlEncode(tvSlug)}" +
+                $"&source={HttpUtility.UrlEncode(source.Id)}" +
+                $"&apikey={HttpUtility.UrlEncode(clientKey)}" +
+                $"&requestToken={HttpUtility.UrlEncode(requestToken)}" +
+                $"&token={HttpUtility.UrlEncode(playbackToken)}";
+
+            JObject response = await GetJsonNoLog(streamUrl, headers);
+            if (response?.Value<bool?>("success") != true)
+                continue;
+
+            string media = response["data"]?.Value<string>("stream_url") ?? response.Value<string>("stream_url");
+            if (string.IsNullOrWhiteSpace(media) || !Uri.TryCreate(media, UriKind.Absolute, out _) || !seen.Add(media))
+                continue;
+
+            if (media.Contains("omena-puu", StringComparison.OrdinalIgnoreCase))
+                media += media.Contains('?') ? "&format=.m3u8" : "?format=.m3u8";
+            if (media.Contains("nocach", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            result.Add(new Candidate(media, $"{result.Count + 1:00}. Mapple [{source.Label}]", headers));
+        }
         return result;
     }
 
-    async Task<Candidate> ResolveBrowser(long tmdbId, short season, short episode)
+    async Task<string> FindClientKey(string baseUrl, string html, List<HeadersModel> headers)
     {
-        string pageUrl = season > 0
-            ? $"{init.host}/watch/tv/{tmdbId}-{season}-{episode}?autoPlay=true"
-            : $"{init.host}/watch/movie/{tmdbId}?autoPlay=true";
+        string cacheKey = $"mapple4k:client-key:{baseUrl}";
+        if (hybridCache.TryGetValue(cacheKey, out string cachedKey) && !string.IsNullOrWhiteSpace(cachedKey))
+            return cachedKey;
 
+        Match direct = ClientKeyRegex.Match(html);
+        if (direct.Success)
+        {
+            hybridCache.Set(cacheKey, direct.Value, TimeSpan.FromHours(6), inmemory: true);
+            return direct.Value;
+        }
+
+        foreach (Match script in ScriptRegex.Matches(html).Cast<Match>().Take(20))
+        {
+            string src = script.Groups[1].Value;
+            if (!Uri.TryCreate(src, UriKind.Absolute, out Uri scriptUri))
+                scriptUri = new Uri(new Uri(baseUrl + "/"), src);
+
+            string javascript = await httpHydra.Get(scriptUri.AbsoluteUri, addheaders: headers, statusCodeOK: false);
+            if (string.IsNullOrEmpty(javascript))
+                continue;
+
+            Match key = ClientKeyRegex.Match(javascript);
+            if (key.Success)
+            {
+                hybridCache.Set(cacheKey, key.Value, TimeSpan.FromHours(6), inmemory: true);
+                return key.Value;
+            }
+        }
+        return null;
+    }
+
+    async Task<JObject> GetJsonNoLog(string url, List<HeadersModel> headers)
+    {
         try
         {
-            using var browser = new PlaywrightBrowser(init.priorityBrowser);
-            var page = await browser.NewPageAsync(init.plugin, httpHeaders(init)?.ToDictionary(), proxy_data);
-            if (page == null)
+            using var client = new HttpClient(Http.Handler(url, proxy))
+            {
+                Timeout = TimeSpan.FromSeconds(25)
+            };
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            foreach (HeadersModel header in headers)
+                request.Headers.TryAddWithoutValidation(header.name, header.val);
+
+            using HttpResponseMessage response = await client.SendAsync(request);
+            if (!response.IsSuccessStatusCode)
                 return null;
 
-            List<HeadersModel> capturedHeaders = null;
-            await page.RouteAsync("**/*", async route =>
-            {
-                try
-                {
-                    string url = route.Request.Url;
-                    if (url.Contains("/api/stream?", StringComparison.OrdinalIgnoreCase))
-                    {
-                        var fetched = await route.FetchAsync();
-                        string body = await fetched.TextAsync();
-                        try
-                        {
-                            JObject payload = JObject.Parse(body);
-                            string streamUrl = payload["data"]?.Value<string>("stream_url")
-                                ?? payload.Value<string>("stream_url");
-                            if (!string.IsNullOrWhiteSpace(streamUrl))
-                            {
-                                capturedHeaders = HeadersModel.Init(
-                                    ("User-Agent", Http.UserAgent),
-                                    ("Referer", init.host + "/"),
-                                    ("Origin", init.host)
-                                );
-                                browser.completionSource.TrySetResult(streamUrl);
-                            }
-                        }
-                        catch { }
-
-                        await route.FulfillAsync(new RouteFulfillOptions
-                        {
-                            Status = fetched.Status,
-                            Body = body,
-                            Headers = fetched.Headers
-                        });
-                        return;
-                    }
-
-                    if (url.Contains(".m3u8", StringComparison.OrdinalIgnoreCase))
-                    {
-                        capturedHeaders = new List<HeadersModel>();
-                        foreach (var header in route.Request.Headers)
-                        {
-                            if (header.Key.ToLowerInvariant() is "host" or "connection" or "accept-encoding" or "range")
-                                continue;
-                            capturedHeaders.Add(new HeadersModel(header.Key, header.Value));
-                        }
-
-                        browser.completionSource.TrySetResult(url);
-                        await route.ContinueAsync();
-                        return;
-                    }
-
-                    if (browser.IsCompleted || await PlaywrightBase.AbortOrCache(page, route, abortMedia: true, fullCacheJS: true))
-                    {
-                        if (!browser.IsCompleted)
-                            return;
-                        await route.AbortAsync();
-                        return;
-                    }
-
-                    await route.ContinueAsync();
-                }
-                catch { }
-            });
-
-            PlaywrightBase.GotoAsync(page, pageUrl);
-            await Task.Delay(3000);
-            foreach (IFrame frame in page.Frames)
-            {
-                try
-                {
-                    await frame.EvaluateAsync(
-                        @"() => {
-                            const selectors = '[aria-label*=""play"" i], [data-action*=""play"" i], [class*=""play"" i], .vjs-big-play-button, button:has(svg), video';
-                            Array.from(document.querySelectorAll(selectors)).slice(0, 6).forEach(node => {
-                                if (node.tagName === 'VIDEO') node.play().catch(() => {});
-                                else node.click();
-                            });
-                        }"
-                    );
-                }
-                catch { }
-            }
-
-            string stream = await browser.WaitPageResult(20);
-            if (stream == null)
-            {
-                foreach (IFrame frame in page.Frames)
-                {
-                    try
-                    {
-                        string[] resources = await frame.EvaluateAsync<string[]>(
-                            "() => performance.getEntriesByType('resource').map(item => item.name)"
-                        );
-                        stream = resources?.FirstOrDefault(url =>
-                            url.Contains(".m3u8", StringComparison.OrdinalIgnoreCase));
-                        if (stream != null)
-                        {
-                            capturedHeaders = HeadersModel.Init(
-                                ("User-Agent", Http.UserAgent),
-                                ("Referer", frame.Url)
-                            );
-                            break;
-                        }
-                    }
-                    catch { }
-                }
-            }
-
-            if (string.IsNullOrWhiteSpace(stream))
-                return null;
-
-            capturedHeaders ??= HeadersModel.Init(
-                ("User-Agent", Http.UserAgent),
-                ("Referer", init.host + "/")
-            );
-            Console.WriteLine($"Mapple4K: browser HLS resolved ({tmdbId})");
-            return new Candidate(stream, "01. Mapple browser · 4K/Auto", capturedHeaders);
+            string body = await response.Content.ReadAsStringAsync();
+            return string.IsNullOrWhiteSpace(body) ? null : JObject.Parse(body);
         }
-        catch (Exception ex)
+        catch
         {
-            Serilog.Log.Warning(ex, "Mapple browser fallback failed for {TmdbId}", tmdbId);
             return null;
         }
     }
 
+    async Task<JObject> PostJson(string url, JObject payload, List<HeadersModel> headers)
+    {
+        using var content = new StringContent(payload.ToString(Newtonsoft.Json.Formatting.None), Encoding.UTF8, "application/json");
+        return await Http.Post<JObject>(
+            url,
+            content,
+            timeoutSeconds: 25,
+            headers: headers,
+            proxy: proxy,
+            statusCodeOK: false
+        );
+    }
+
+    static string SolvePow(string challenge, int difficulty)
+    {
+        if (string.IsNullOrWhiteSpace(challenge) || difficulty < 0 || difficulty > 30)
+            return null;
+
+        int fullBytes = difficulty / 8;
+        int remainingBits = difficulty % 8;
+        int mask = remainingBits == 0 ? 0 : (0xff << (8 - remainingBits)) & 0xff;
+        byte[] challengeBytes = Encoding.UTF8.GetBytes(challenge);
+
+        using SHA256 sha = SHA256.Create();
+        for (int nonce = 0; nonce < 10_000_000; nonce++)
+        {
+            byte[] nonceBytes = Encoding.UTF8.GetBytes(nonce.ToString());
+            byte[] input = new byte[challengeBytes.Length + nonceBytes.Length];
+            Buffer.BlockCopy(challengeBytes, 0, input, 0, challengeBytes.Length);
+            Buffer.BlockCopy(nonceBytes, 0, input, challengeBytes.Length, nonceBytes.Length);
+            byte[] hash = sha.ComputeHash(input);
+
+            bool valid = true;
+            for (int i = 0; i < fullBytes; i++)
+            {
+                if (hash[i] != 0)
+                {
+                    valid = false;
+                    break;
+                }
+            }
+            if (valid && (mask == 0 || (hash[fullBytes] & mask) == 0))
+                return nonce.ToString();
+        }
+        return null;
+    }
 }
