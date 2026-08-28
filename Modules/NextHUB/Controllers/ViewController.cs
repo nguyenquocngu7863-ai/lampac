@@ -18,7 +18,7 @@ namespace NextHUB;
 public class ViewController : BaseSisiController<NxtSettings>
 {
     static readonly Serilog.ILogger Log = Serilog.Log.ForContext<ViewController>();
-    static readonly ConcurrentDictionary<string, (Cookie[] cookies, DateTime expiry)> _playwrightCookies = new();
+    static readonly ConcurrentDictionary<string, (System.Net.Cookie[] cookies, DateTime expiry)> _playwrightCookies = new();
 
     IQueryCollection evalQuery = QueryCollection.Empty;
     string evalQueryCacheKey = string.Empty;
@@ -544,11 +544,11 @@ public class ViewController : BaseSisiController<NxtSettings>
                     try
                     {
                         var pwCookies = await page.Context.CookiesAsync(new[] { targetHost }).ConfigureAwait(false);
-                        if (pwCookies.Length > 0)
+                        if (pwCookies.Count > 0)
                         {
                             var cookieArray = pwCookies
                                 .Where(c => !string.IsNullOrEmpty(c.Name))
-                                .Select(c => new Cookie(c.Name, c.Value, c.Domain, c.Path))
+                                .Select(c => new System.Net.Cookie(c.Name, c.Value, c.Domain, c.Path))
                                 .ToArray();
                             if (cookieArray.Length > 0)
                                 _playwrightCookies[cache.file] = (cookieArray, DateTime.UtcNow.AddMinutes(10));
