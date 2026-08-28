@@ -63,9 +63,9 @@ view:
   viewsource: true
   eval: |
     string link = null;
-    foreach (string q in new string[] { "_1080p", "_720p", "_480p", "_360p", "" })
+    foreach (string q in new string[] { "_1080p", "_720p", "_480p", "_360p" })
     {
-        link = Regex.Match(html, $"(https?://[^/]+/get_file/[^'\\\"\\s]+{q}\\.mp4[^'\\\"\\s]*download=true[^'\\\"\\s]*)", RegexOptions.IgnoreCase).Groups[1].Value;
+        link = Regex.Match(html, $"(https?://[^/]+/get_file/[^'\\\"\\s]+{q}\\.mp4[^'\\\"\\s]*)", RegexOptions.IgnoreCase).Groups[1].Value;
         if (!string.IsNullOrEmpty(link))
             break;
     }
@@ -82,8 +82,7 @@ view:
         }
     }
     if (string.IsNullOrEmpty(link))
+        link = Regex.Match(html, "(https?://[^/]+/get_file/[^'\\\"\\s]+\\.mp4[^'\\\"\\s]*)", RegexOptions.IgnoreCase).Groups[1].Value;
+    if (string.IsNullOrEmpty(link))
         return null;
-    link = link.Replace("&amp;", "&").Replace("function/0/", "");
-    if (link.IndexOf("download=true", StringComparison.OrdinalIgnoreCase) < 0)
-        link += (link.Contains("?") ? "&" : "?") + "download=true";
-    return link;
+    return link.Replace("&amp;", "&").Replace("function/0/", "");

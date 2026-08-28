@@ -8,6 +8,7 @@ using Shared.Attributes;
 using Shared.Models.CSharpGlobals;
 using Shared.Models.SISI.NextHUB;
 using Shared.PlaywrightCore;
+using System.Web;
 
 namespace NextHUB;
 
@@ -108,6 +109,26 @@ public class ViewController : BaseSisiController<NxtSettings>
 
             if (related)
                 return PlaylistResult(stream_links?.recomends, false, null, total_pages: 1);
+
+            if (!string.IsNullOrEmpty(video.file) && video.file.Contains("/get_file/", StringComparison.OrdinalIgnoreCase))
+            {
+                string token = EncryptQuery($"{plugin}_-:-_{url}_-:-_{video.file}");
+                stream_links.qualitys["auto"] = $"{host}/nexthub/strem.mp4?u={HttpUtility.UrlEncode(token)}";
+
+                bool savedProxy = init.streamproxy;
+                bool savedReserve = init.url_reserve;
+                init.streamproxy = false;
+                init.url_reserve = false;
+                try
+                {
+                    return OnResult(stream_links);
+                }
+                finally
+                {
+                    init.streamproxy = savedProxy;
+                    init.url_reserve = savedReserve;
+                }
+            }
 
             return OnResult(stream_links);
         }
@@ -603,7 +624,7 @@ public class ViewController : BaseSisiController<NxtSettings>
                 goto resetGotoAsync;
             }
 
-            cache.file = await ResolveKvsMedia(cache.file, url).ConfigureAwait(false);
+            cache.file = CleanKvsMedia(cache.file);
 
             if (!Root.isSafeHttpUrl(cache.file))
                 return default;
@@ -640,47 +661,172 @@ public class ViewController : BaseSisiController<NxtSettings>
     #endregion
 
 
-    #region ResolveKvsMedia
-    async Task<string> ResolveKvsMedia(string file, string referer)
+    [HttpGet]
+    [Route("nexthub/strem.mp4")]
+    [Route("nexthub/strem")]
+    async public Task<ActionResult> Strem(string u)
+    {
+        u = DecryptQuery(u);
+        if (string.IsNullOrEmpty(u))
+            return OnError("uri", rcache: false);
+
+        int first = u.IndexOf("_-:-_", StringComparison.Ordinal);
+        int second = first > 0 ? u.IndexOf("_-:-_", first + 5, StringComparison.Ordinal) : -1;
+        if (first <= 0 || second <= 0 || second + 5 >= u.Length)
+            return OnError("uri", rcache: false);
+
+        string plugin = u.Substring(0, first);
+        string referer = u.Substring(first + 5, second - (first + 5));
+        string file = u.Substring(second + 5);
+
+        var _nxtInit = Root.goInit(plugin);
+        if (_nxtInit == null)
+            return OnError("init not found", rcache: false);
+
+        if (await IsRequestBlocked(_nxtInit, rch: _nxtInit.rch_access != null))
+            return badInitMsg;
+
+        file = CleanKvsMedia(file);
+        if (!Root.isSafeHttpUrl(file))
+            return OnError("url", rcache: false);
+
+        SemaphorManager semaphore = null;
+        string semaphoreKey = $"nexthub:strem:{file}";
+
+        try
+        {
+            if (rch?.enable != true)
+            {
+                semaphore = new SemaphorManager(semaphoreKey, TimeSpan.FromSeconds(30));
+                bool acquired = await semaphore.WaitAsync();
+                if (!acquired)
+                    return OnError();
+            }
+
+            string memKey = ipkey(semaphoreKey);
+            if (!hybridCache.TryGetValue(memKey, out string location))
+            {
+                location = await ResolveKvsLocation(file, referer).ConfigureAwait(false);
+                if (string.IsNullOrEmpty(location) || !Root.isSafeHttpUrl(location))
+                    return OnError("location", refresh_proxy: true);
+
+                proxyManager?.Success();
+                hybridCache.Set(memKey, location, cacheTime(20));
+            }
+
+            if (location.Contains(".mp4", StringComparison.OrdinalIgnoreCase) && location.IndexOf('#') < 0)
+                location += "#.mp4";
+
+            return Redirect(HostStreamProxy(location));
+        }
+        finally
+        {
+            semaphore?.Release();
+        }
+    }
+
+
+    #region CleanKvsMedia
+    static string CleanKvsMedia(string file)
     {
         if (string.IsNullOrEmpty(file))
             return file;
 
+        int hash = file.IndexOf('#');
+        if (hash >= 0)
+            file = file.Substring(0, hash);
+
         file = file.Replace("\\", "").Replace("&amp;", "&").Replace("u0026", "&").Replace("function/0/", "");
         file = Regex.Replace(file, "\\.mp4/+(\\?|$)", ".mp4$1", RegexOptions.IgnoreCase);
+        file = Regex.Replace(file, "([?&])download(_filename)?=[^&]*", "$1", RegexOptions.IgnoreCase);
+        file = Regex.Replace(file, "[?&]{2,}", m => m.Value.IndexOf('?') >= 0 ? "?" : "&");
+        file = file.Replace("?&", "?");
+        file = Regex.Replace(file, "[?&]$", "");
+        return file;
+    }
+    #endregion
 
-        if (file.Contains("/get_file/", StringComparison.OrdinalIgnoreCase))
+    #region ResolveKvsLocation
+    async Task<string> ResolveKvsLocation(string file, string referer)
+    {
+        file = CleanKvsMedia(file);
+        if (string.IsNullOrEmpty(file))
+            return file;
+
+        var headers = httpHeaders(init, HeadersModel.Init(
+            ("accept", "*/*"),
+            ("user-agent", Http.UserAgent),
+            ("sec-fetch-dest", "video"),
+            ("sec-fetch-mode", "no-cors"),
+            ("sec-fetch-site", "same-origin")
+        ));
+
+        string refer = !string.IsNullOrEmpty(referer) ? referer : $"{init.host}/";
+
+        async Task<string> locate(string url, bool autoRedirect)
         {
-            if (file.IndexOf("download=true", StringComparison.OrdinalIgnoreCase) < 0)
-                file += (file.Contains('?') ? "&" : "?") + "download=true";
+            string loc = await Http.GetLocation(
+                init.cors(url, headers, requestInfo),
+                referer: refer,
+                headers: headers,
+                timeoutSeconds: Math.Max(12, init.httptimeout),
+                httpversion: init.httpversion,
+                proxy: proxy,
+                allowAutoRedirect: autoRedirect
+            ).ConfigureAwait(false);
 
-            var headers = HeadersModel.Init(
-                ("accept", "*/*"),
-                ("user-agent", Http.UserAgent)
-            );
-
-            string location = await Http.GetLocation(file, referer: referer, headers: headers, timeoutSeconds: 12, proxy: proxy, allowAutoRedirect: true).ConfigureAwait(false);
-            if (!string.IsNullOrEmpty(location) && !string.Equals(location, file, StringComparison.OrdinalIgnoreCase))
-            {
-                if (location.StartsWith("//", StringComparison.Ordinal))
-                {
-                    bool https = !string.IsNullOrEmpty(referer) && referer.StartsWith("https", StringComparison.OrdinalIgnoreCase);
-                    location = $"{(https ? "https" : "http")}:{location}";
-                }
-
-                if (Uri.TryCreate(location, UriKind.Absolute, out Uri abs) ||
-                    (Uri.TryCreate(file, UriKind.Absolute, out Uri baseUri) && Uri.TryCreate(baseUri, location, out abs)))
-                {
-                    file = abs.AbsoluteUri;
-                    file = Regex.Replace(file, "\\.mp4/+(\\?|$)", ".mp4$1", RegexOptions.IgnoreCase);
-                }
-            }
+            return AbsoluteMedia(url, loc, refer);
         }
 
-        if (file.Contains(".mp4", StringComparison.OrdinalIgnoreCase) && file.IndexOf('#') < 0)
-            file += "#.mp4";
+        bool isDirect(string loc) =>
+            !string.IsNullOrEmpty(loc) &&
+            !loc.Contains("/get_file/", StringComparison.OrdinalIgnoreCase);
+
+        string location = await locate(file, false).ConfigureAwait(false);
+        if (isDirect(location))
+            return location;
+
+        string followed = await locate(file, true).ConfigureAwait(false);
+        if (isDirect(followed))
+            return followed;
+        if (!string.IsNullOrEmpty(followed) && !string.Equals(followed, file, StringComparison.OrdinalIgnoreCase))
+            location = followed;
+
+        string download = file;
+        if (download.IndexOf("download=true", StringComparison.OrdinalIgnoreCase) < 0)
+            download += (download.Contains('?') ? "&" : "?") + "download=true";
+
+        string downloaded = await locate(download, true).ConfigureAwait(false);
+        if (isDirect(downloaded))
+            return downloaded;
+        if (!string.IsNullOrEmpty(downloaded) && !string.Equals(downloaded, download, StringComparison.OrdinalIgnoreCase))
+            return downloaded;
+
+        if (!string.IsNullOrEmpty(location) && Root.isSafeHttpUrl(location))
+            return location;
 
         return file;
+    }
+
+    static string AbsoluteMedia(string file, string location, string referer)
+    {
+        if (string.IsNullOrEmpty(location))
+            return null;
+
+        location = location.Replace("&amp;", "&").Replace("u0026", "&");
+        if (location.StartsWith("//", StringComparison.Ordinal))
+        {
+            bool https = !string.IsNullOrEmpty(referer) && referer.StartsWith("https", StringComparison.OrdinalIgnoreCase);
+            location = $"{(https ? "https" : "http")}:{location}";
+        }
+
+        if (Uri.TryCreate(location, UriKind.Absolute, out Uri abs) ||
+            (Uri.TryCreate(file, UriKind.Absolute, out Uri baseUri) && Uri.TryCreate(baseUri, location, out abs)))
+        {
+            return Regex.Replace(abs.AbsoluteUri, "\\.mp4/+(\\?|$)", ".mp4$1", RegexOptions.IgnoreCase);
+        }
+
+        return null;
     }
     #endregion
 
