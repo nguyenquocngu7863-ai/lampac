@@ -603,6 +603,8 @@ public class ViewController : BaseSisiController<NxtSettings>
                 goto resetGotoAsync;
             }
 
+            cache.file = await ResolveKvsMedia(cache.file, url).ConfigureAwait(false);
+
             if (!Root.isSafeHttpUrl(cache.file))
                 return default;
 
@@ -637,6 +639,47 @@ public class ViewController : BaseSisiController<NxtSettings>
     }
     #endregion
 
+
+    #region ResolveKvsMedia
+    async Task<string> ResolveKvsMedia(string file, string referer)
+    {
+        if (string.IsNullOrEmpty(file))
+            return file;
+
+        file = file.Replace("\\", "").Replace("&amp;", "&").Replace("u0026", "&").Replace("function/0/", "");
+        file = Regex.Replace(file, "\\.mp4/+(\\?|$)", ".mp4$1", RegexOptions.IgnoreCase);
+
+        if (file.Contains("/get_file/", StringComparison.OrdinalIgnoreCase))
+        {
+            var headers = HeadersModel.Init(
+                ("accept", "*/*"),
+                ("user-agent", Http.UserAgent)
+            );
+
+            string location = await Http.GetLocation(file, referer: referer, headers: headers, timeoutSeconds: 12, proxy: proxy).ConfigureAwait(false);
+            if (!string.IsNullOrEmpty(location) && !string.Equals(location, file, StringComparison.OrdinalIgnoreCase))
+            {
+                if (location.StartsWith("//", StringComparison.Ordinal))
+                {
+                    bool https = !string.IsNullOrEmpty(referer) && referer.StartsWith("https", StringComparison.OrdinalIgnoreCase);
+                    location = $"{(https ? "https" : "http")}:{location}";
+                }
+
+                if (Uri.TryCreate(location, UriKind.Absolute, out Uri abs) ||
+                    (Uri.TryCreate(file, UriKind.Absolute, out Uri baseUri) && Uri.TryCreate(baseUri, location, out abs)))
+                {
+                    file = abs.AbsoluteUri;
+                    file = Regex.Replace(file, "\\.mp4/+(\\?|$)", ".mp4$1", RegexOptions.IgnoreCase);
+                }
+            }
+        }
+
+        if (file.Contains(".mp4", StringComparison.OrdinalIgnoreCase) && file.IndexOf('#') < 0)
+            file += "#.mp4";
+
+        return file;
+    }
+    #endregion
 
     #region evalCodeToRegexMatch
     static string evalCodeToRegexMatch(RegexMatchSettings rm)

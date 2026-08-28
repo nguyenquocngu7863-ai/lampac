@@ -461,6 +461,9 @@ sync_latest_modules() {
         if [ -d \"\$nexthub/sites\" ]; then
             pull Modules/NextHUB/sites/85po.yaml \"\$nexthub/sites/85po.yaml\"
         fi
+        if [ -d \"\$nexthub/Controllers\" ]; then
+            pull Modules/NextHUB/Controllers/ViewController.cs \"\$nexthub/Controllers/ViewController.cs\"
+        fi
     "
 
     ok "Latest patch files applied"
@@ -560,6 +563,8 @@ install_custom_modules() {
             done
             curl -fSL --retry 3 \"\$nexthubrootbase/Controllers/ListController.cs\" -o \"\$nexthubroottarget/Controllers/ListController.cs.tmp\"
             mv \"\$nexthubroottarget/Controllers/ListController.cs.tmp\" \"\$nexthubroottarget/Controllers/ListController.cs\"
+            curl -fSL --retry 3 \"\$nexthubrootbase/Controllers/ViewController.cs\" -o \"\$nexthubroottarget/Controllers/ViewController.cs.tmp\"
+            mv \"\$nexthubroottarget/Controllers/ViewController.cs.tmp\" \"\$nexthubroottarget/Controllers/ViewController.cs\"
         fi
 
         # Keep Eporner playback behind Lampac's proxy so its CDN receives the
@@ -957,6 +962,8 @@ case "${1:-}" in
                 done
                 curl -fSL --retry 3 "$nexthubrootbase/Controllers/ListController.cs" -o "$nexthubroottarget/Controllers/ListController.cs.tmp"
                 mv "$nexthubroottarget/Controllers/ListController.cs.tmp" "$nexthubroottarget/Controllers/ListController.cs"
+                curl -fSL --retry 3 "$nexthubrootbase/Controllers/ViewController.cs" -o "$nexthubroottarget/Controllers/ViewController.cs.tmp"
+                mv "$nexthubroottarget/Controllers/ViewController.cs.tmp" "$nexthubroottarget/Controllers/ViewController.cs"
             fi
 
             epornerbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/Modules/Adult/Eporner"
