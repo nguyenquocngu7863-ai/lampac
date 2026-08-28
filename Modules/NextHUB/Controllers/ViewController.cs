@@ -651,12 +651,15 @@ public class ViewController : BaseSisiController<NxtSettings>
 
         if (file.Contains("/get_file/", StringComparison.OrdinalIgnoreCase))
         {
+            if (file.IndexOf("download=true", StringComparison.OrdinalIgnoreCase) < 0)
+                file += (file.Contains('?') ? "&" : "?") + "download=true";
+
             var headers = HeadersModel.Init(
                 ("accept", "*/*"),
                 ("user-agent", Http.UserAgent)
             );
 
-            string location = await Http.GetLocation(file, referer: referer, headers: headers, timeoutSeconds: 12, proxy: proxy).ConfigureAwait(false);
+            string location = await Http.GetLocation(file, referer: referer, headers: headers, timeoutSeconds: 12, proxy: proxy, allowAutoRedirect: true).ConfigureAwait(false);
             if (!string.IsNullOrEmpty(location) && !string.Equals(location, file, StringComparison.OrdinalIgnoreCase))
             {
                 if (location.StartsWith("//", StringComparison.Ordinal))
