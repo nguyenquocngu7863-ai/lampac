@@ -439,7 +439,7 @@ VI_LANG
 # shipping a small fix so Termux does not re-download Chrome, hls.js, or
 # every custom module. Use --sync-all for a full refresh.
 sync_latest_modules() {
-    info "Syncing latest patch files only (Chaturbate/Videasy HLS)..."
+    info "Syncing latest patch files only (Chaturbate categories + 18+ streamproxy)..."
 
     proot-distro login ubuntu -- bash -c "
         set -euo pipefail
@@ -457,10 +457,13 @@ sync_latest_modules() {
             mv \"\$dest.tmp\" \"\$dest\"
             echo \"  [sync] \$dest\"
         }
+        pull Modules/Adult/Chaturbate/Service.cs /root/lampac/module/Adult/Chaturbate/Service.cs
+        pull Modules/Adult/Chaturbate/Controller.cs /root/lampac/module/Adult/Chaturbate/Controller.cs
         pull Modules/Adult/Chaturbate/ModInit.cs /root/lampac/module/Adult/Chaturbate/ModInit.cs
-        pull Modules/OnlineENG/Videasy/ModInit.cs /root/lampac/module/OnlineENG/Videasy/ModInit.cs
-        pull Online/plugin.js /root/lampac/module/Online/plugin.js
-        pull SISI/plugins/sisi.js /root/lampac/module/SISI/plugins/sisi.js
+        pull Modules/Adult/BongaCams/ModInit.cs /root/lampac/module/Adult/BongaCams/ModInit.cs
+        pull Modules/Adult/Runetki/ModInit.cs /root/lampac/module/Adult/Runetki/ModInit.cs
+        pull Modules/Adult/Spankbang/ModInit.cs /root/lampac/module/Adult/Spankbang/ModInit.cs
+        pull Modules/Adult/Ebalovo/ModInit.cs /root/lampac/module/Adult/Ebalovo/ModInit.cs
     "
 
     ok "Latest patch files applied"
@@ -602,6 +605,14 @@ install_custom_modules() {
                 mv \"\$chaturbatetarget/\$file.tmp\" \"\$chaturbatetarget/\$file\"
             done
         fi
+
+        for adultmodinit in BongaCams Runetki Spankbang Ebalovo; do
+            adulttarget=\"/root/lampac/module/Adult/\$adultmodinit\"
+            if [ -d \"\$adulttarget\" ]; then
+                curl -fSL --retry 3 \"${CUSTOM_SOURCE_BASE}/Modules/Adult/\$adultmodinit/ModInit.cs?cb=\$syncstamp\" -o \"\$adulttarget/ModInit.cs.tmp\"
+                mv \"\$adulttarget/ModInit.cs.tmp\" \"\$adulttarget/ModInit.cs\"
+            fi
+        done
 
         # Videasy is the first ENG resolver under isolated repair. Sync only
         # this provider; `disableEng` remains globally enabled.
@@ -984,6 +995,14 @@ case "${1:-}" in
                     mv "$chaturbatetarget/$file.tmp" "$chaturbatetarget/$file"
                 done
             fi
+
+            for adultmodinit in BongaCams Runetki Spankbang Ebalovo; do
+                adulttarget="/root/lampac/module/Adult/$adultmodinit"
+                if [ -d "$adulttarget" ]; then
+                    curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/Modules/Adult/$adultmodinit/ModInit.cs?cb=$syncstamp" -o "$adulttarget/ModInit.cs.tmp"
+                    mv "$adulttarget/ModInit.cs.tmp" "$adulttarget/ModInit.cs"
+                fi
+            done
 
             videasybase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/Modules/OnlineENG/Videasy"
             videasytarget=/root/lampac/module/OnlineENG/Videasy

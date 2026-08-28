@@ -13,8 +13,10 @@ namespace Chaturbate;
 
 public static class ChaturbateTo
 {
+    static readonly Regex SafeTag = new("^[a-z0-9_-]+$", RegexOptions.Compiled);
+
     #region Uri
-    public static string Uri(string host, string sort, int pg)
+    public static string Uri(string host, string sort, string tag, int pg)
     {
         var url = StringBuilderPool.ThreadInstance;
 
@@ -27,10 +29,16 @@ public static class ChaturbateTo
             url.Append(sort);
         }
 
+        if (!string.IsNullOrWhiteSpace(tag) && SafeTag.IsMatch(tag))
+        {
+            url.Append("&hashtags=");
+            url.Append(tag);
+        }
+
         if (pg > 1)
         {
             url.Append("&offset=");
-            url.Append(pg * 90);
+            url.Append((pg - 1) * 90);
         }
 
         return url.ToString();
@@ -81,30 +89,105 @@ public static class ChaturbateTo
     #endregion
 
     #region Menu
-    public static List<MenuItem> Menu(string host, string sort)
+    static string ListUrl(string host, string sort, string tag)
+    {
+        var url = StringBuilderPool.ThreadInstance;
+        url.Append(host);
+        url.Append("/chu");
+
+        bool hasQuery = false;
+        void append(string key, string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return;
+
+            url.Append(hasQuery ? '&' : '?');
+            hasQuery = true;
+            url.Append(key);
+            url.Append('=');
+            url.Append(value);
+        }
+
+        append("sort", sort);
+        append("c", tag);
+        return url.ToString();
+    }
+
+    public static List<MenuItem> Menu(string host, string sort, string tag)
     {
         var memoryCache = HybridCache.GetMemory();
-        string menuKey = $"Chaturbate_menu_{host}_{sort}";
+        string menuKey = $"Chaturbate_menu_{host}_{sort}_{tag}";
 
         if (memoryCache.TryGetValue(menuKey, out List<MenuItem> menu))
             return menu;
 
         var sortmenu = new List<MenuItem>(5)
         {
-            new("Tốt nhất", $"{host}/chu"),
-            new("Nữ", $"{host}/chu?sort=f"),
-            new("Cặp đôi", $"{host}/chu?sort=c"),
-            new("Nam", $"{host}/chu?sort=m"),
-            new("Chuyển giới", $"{host}/chu?sort=t")
+            new("Tốt nhất", ListUrl(host, null, tag)),
+            new("Nữ", ListUrl(host, "f", tag)),
+            new("Cặp đôi", ListUrl(host, "c", tag)),
+            new("Nam", ListUrl(host, "m", tag)),
+            new("Chuyển giới", ListUrl(host, "t", tag))
         };
 
-        menu = new List<MenuItem>(1)
+        var catmenu = new List<MenuItem>(34)
+        {
+            new("Tất cả", ListUrl(host, sort, null)),
+            new("Á châu", ListUrl(host, sort, "asian")),
+            new("Nhật Bản", ListUrl(host, sort, "japanese")),
+            new("Hàn Quốc", ListUrl(host, sort, "korean")),
+            new("Ấn Độ", ListUrl(host, sort, "indian")),
+            new("Ả Rập", ListUrl(host, sort, "arab")),
+            new("Nga", ListUrl(host, sort, "russian")),
+            new("Latinh", ListUrl(host, sort, "latina")),
+            new("Da đen", ListUrl(host, sort, "ebony")),
+            new("Da trắng", ListUrl(host, sort, "white")),
+            new("Tóc vàng", ListUrl(host, sort, "blonde")),
+            new("Tóc nâu", ListUrl(host, sort, "brunette")),
+            new("Tóc đỏ", ListUrl(host, sort, "redhead")),
+            new("MILF", ListUrl(host, sort, "milf")),
+            new("Trưởng thành", ListUrl(host, sort, "mature")),
+            new("Nhỏ nhắn", ListUrl(host, sort, "petite")),
+            new("Ngực lớn", ListUrl(host, sort, "bigtits")),
+            new("Mông lớn", ListUrl(host, sort, "bigass")),
+            new("Mới lên sóng", ListUrl(host, sort, "new")),
+            new("Lovense", ListUrl(host, sort, "lovense")),
+            new("Tương tác", ListUrl(host, sort, "interactive")),
+            new("Anal", ListUrl(host, sort, "anal")),
+            new("Squirt", ListUrl(host, sort, "squirt")),
+            new("Lesbian", ListUrl(host, sort, "lesbian")),
+            new("Tự sướng", ListUrl(host, sort, "masturbation")),
+            new("Đồ chơi", ListUrl(host, sort, "toys")),
+            new("Ngoài trời", ListUrl(host, sort, "outdoor")),
+            new("Xăm", ListUrl(host, sort, "tattoo")),
+            new("Hút thuốc", ListUrl(host, sort, "smoking")),
+            new("Chân", ListUrl(host, sort, "feet")),
+            new("BDSM", ListUrl(host, sort, "bdsm")),
+            new("Có lông", ListUrl(host, sort, "hairy")),
+            new("Cạo", ListUrl(host, sort, "shaven"))
+        };
+
+        string genderTitle = string.IsNullOrWhiteSpace(sort)
+            ? "Tốt nhất"
+            : sortmenu.FirstOrDefault(i => i.playlist_url.Contains($"sort={sort}"))?.title ?? "Tốt nhất";
+
+        string catTitle = string.IsNullOrWhiteSpace(tag)
+            ? "tất cả"
+            : catmenu.FirstOrDefault(i => i.playlist_url.Contains($"c={tag}"))?.title ?? tag;
+
+        menu = new List<MenuItem>(2)
         {
             new MenuItem()
             {
-                title = $"Sắp xếp: {sortmenu.FirstOrDefault(i => i.playlist_url.EndsWith($"={sort}"))?.title ?? "Tốt nhất" }",
+                title = $"Giới tính: {genderTitle}",
                 playlist_url = "submenu",
                 submenu = sortmenu
+            },
+            new MenuItem()
+            {
+                title = $"Danh mục: {catTitle}",
+                playlist_url = "submenu",
+                submenu = catmenu
             }
         };
 

@@ -40,17 +40,38 @@ public class ModInit : IModuleLoaded, IModuleSisi
 
     void updateConf()
     {
-        conf = ModuleInvoke.Init("BongaCams", new SisiSettings("BongaCams", "https://ee.bongacams.com")
+        const string browserUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+        const string site = "https://ee.bongacams.com";
+
+        conf = ModuleInvoke.Init("BongaCams", new SisiSettings("BongaCams", site)
         {
             spider = false,
             httpversion = 2,
             displayindex = 22,
             rch_access = "apk",
             stream_access = "apk,cors,web",
+            kit = false,
+            rhub = false,
+            qualitys_proxy = false,
+            streamproxy = true,
+            rchstreamproxy = "web",
             headers = HeadersModel.Init(
-                ("referer", "https://ee.bongacams.com/"),
+                ("User-Agent", browserUserAgent),
+                ("referer", site + "/"),
                 ("x-requested-with", "XMLHttpRequest")
+            ).ToDictionary(),
+            headers_stream = HeadersModel.Init(
+                ("User-Agent", browserUserAgent),
+                ("Referer", site + "/"),
+                ("Origin", site),
+                ("Accept", "*/*")
             ).ToDictionary()
         });
+
+        // Live bcvcdn HLS is token/CORS bound — Android cannot play it directly.
+        conf.kit = false;
+        conf.rhub = false;
+        conf.qualitys_proxy = false;
+        conf.streamproxy = true;
     }
 }
