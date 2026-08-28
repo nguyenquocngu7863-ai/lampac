@@ -499,9 +499,17 @@ Thay `TenNguon` bằng đúng tên section trong Admin Panel, phân biệt hoa/t
 
 ## Việt hóa bền vững qua các lần update
 
-Bản Việt hóa gồm hai lớp. File ngôn ngữ lõi độc lập `Modules/LampaWeb/lang/vi.js` có cùng toàn bộ key với `en.js`, không import/spread/fallback runtime; file được deploy thành `wwwroot/lampa-main/lang/vi.js` và đăng ký vào `lang/meta.js`. Người dùng tự chọn **Tiếng Việt** trong Interface, hệ thống không tự đổi ngôn ngữ. Plugin `/vietnamese.js` chỉ bổ sung một số cụm quan trọng của addon như tìm kiếm, bộ lọc, phân loại và nguồn.
+Bản Việt hóa gồm hai lớp. File ngôn ngữ lõi độc lập `Modules/LampaWeb/lang/vi.js` có cùng toàn bộ key với `en.js`, không import/spread/fallback runtime. File được chèn vào **file gốc** của frontend Lampa:
 
-Không sửa trực tiếp file addon upstream chỉ để dịch. Khi `--update` thay release, `--sync` sẽ cài lại `vi.js`, vá registry `meta.js`, rồi chép overlay `vietnamese.js`. `LampaCron` cũng tự kiểm tra và cài lại language sau mỗi lần frontend được tải/cập nhật, tránh race khi thư mục `lampa-main/lang` xuất hiện sau lúc sync. Có thể bật/tắt lớp addon tại **Settings → Interface → Lớp Việt hóa addon**.
+- `wwwroot/lampa-main/lang/vi.js` — dictionary Lampa tải lúc boot (`./lang/{code}.js`)
+- `wwwroot/lampa-main/lang/meta.js` — registry nguồn
+- `wwwroot/lampa-main/app.min.js` — Lampa bundle `meta.languages` vào đây; chỉ vá `meta.js` thì bộ chọn ngôn ngữ lúc boot vẫn không có `vi`
+
+Người dùng tự chọn **Tiếng Việt** trong Interface; Lampa reload rồi tải `lang/vi.js` theo luồng gốc. Hệ thống không tự đổi ngôn ngữ. Plugin `/vietnamese.js` **không** là lớp ngôn ngữ lõi: chỉ dịch chuỗi hardcode của addon (Online, SISI, v.v.). Không gọi `Lang.addCodes` trong overlay vì API đó xóa dictionary `vi` vừa load.
+
+Không sửa trực tiếp file addon upstream chỉ để dịch. Khi `--update` thay release, `--sync` sẽ cài lại `vi.js`, vá `meta.js` **và** `app.min.js`, rồi chép overlay `vietnamese.js`. `LampaCron` cũng tự kiểm tra và cài lại language pack gốc sau mỗi lần frontend được tải/cập nhật, tránh race khi thư mục `lampa-main/lang` xuất hiện sau lúc sync. Có thể bật/tắt lớp addon tại **Settings → Interface → Lớp Việt hóa addon**.
+
+Muốn 100% tiếng Việt lõi, mở giao diện Lampac `http://IP:9118` (file gốc đã vá). App Lampa Android (`file:`) vẫn tải `lang/{code}.js` từ GitHub/lampa.mx; plugin không sửa được `app.min.js` đóng gói trong APK.
 
 Khi người dùng tự chọn `vi`, overlay đồng bộ `tmdb_lang=vi` để tiêu đề, mô tả và thể loại lấy từ TMDB bằng tiếng Việt. Riêng request ảnh dùng `include_image_language=en,null`, ưu tiên logo English/ngôn ngữ trung lập vì TMDB thường không có logo `vi`.
 

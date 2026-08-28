@@ -158,6 +158,7 @@ public class ApiController : BaseController
         }
 
         string file = IO.File.ReadAllText($"wwwroot/{type}/app.min.js");
+        file = LampaVietnamese.EnsureLanguageRegistry(file);
 
         #region appReplace
         if (ModInit.conf.appReplace != null)

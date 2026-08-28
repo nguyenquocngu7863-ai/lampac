@@ -2,7 +2,6 @@ using Shared.Services;
 using System;
 using System.IO;
 using System.IO.Compression;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Shared.Services.Utilities;
@@ -150,25 +149,10 @@ public static class LampaCron
         if (!File.Exists(target) || CrypTo.md5File(source) != CrypTo.md5File(target))
             File.Copy(source, target, true);
 
-        string metaPath = Path.Combine(langDirectory, "meta.js");
-        if (!File.Exists(metaPath))
-            return;
-
-        string meta = File.ReadAllText(metaPath);
-        if (Regex.IsMatch(meta, @"(^|[,\{])\s*vi\s*:", RegexOptions.Multiline))
-            return;
-
-        const string entry = "vi: { code: \"vi\", name: \"Tiếng Việt\", lang_choice_title: \"Chào mừng\", lang_choice_subtitle: \"Chọn ngôn ngữ của bạn\" },";
-        string patched = Regex.Replace(
-            meta,
-            @"languages\s*:\s*\{",
-            match => match.Value + " " + entry,
-            RegexOptions.IgnoreCase,
-            TimeSpan.FromSeconds(1)
-        );
-
-        if (!ReferenceEquals(patched, meta) && patched != meta)
-            File.WriteAllText(metaPath, patched);
+        // meta.js is the source registry; app.min.js is what Lampa actually
+        // boots, because webpack inlines meta.languages. Patch both.
+        LampaVietnamese.PatchFile(Path.Combine(langDirectory, "meta.js"));
+        LampaVietnamese.PatchFile("wwwroot/lampa-main/app.min.js");
     }
 
     static void InstallHlsRuntime()

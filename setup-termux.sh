@@ -389,37 +389,44 @@ ensure_runtime_config() {
     ok "Runtime configuration applied; existing ENG/Chromium choices preserved"
 }
 
-# Patch Lampa meta.js with Vietnamese. Keep this OUT of bash -c "..." —
+# Patch original Lampa files with Vietnamese. Keep this OUT of bash -c "..." —
 # the language strings contain double quotes and would terminate that script.
+# meta.js is the source registry; app.min.js is what Lampa boots (webpack
+# inlines meta.languages). Native loadLang then fetches lang/vi.js.
 patch_vietnamese_language() {
-    info "Registering Vietnamese language in Lampa meta.js..."
+    info "Registering Vietnamese in original Lampa files (vi.js, meta.js, app.min.js)..."
     proot-distro login ubuntu -- bash -s <<'VI_LANG'
 set -euo pipefail
 src=/root/lampac/module/LampaWeb/lang/vi.js
-langdir=/root/lampac/wwwroot/lampa-main/lang
+root=/root/lampac/wwwroot/lampa-main
+langdir="$root/lang"
 mkdir -p "$langdir"
 if [ -f "$src" ]; then
     cp "$src" "$langdir/vi.js"
 fi
-meta="$langdir/meta.js"
-[ -f "$meta" ] || exit 0
-if grep -qE '(^|[,{])[[:space:]]*vi[[:space:]]*:' "$meta"; then
-    exit 0
-fi
 entry='vi: { code: "vi", name: "Tiếng Việt", lang_choice_title: "Chào mừng", lang_choice_subtitle: "Chọn ngôn ngữ của bạn" }, '
-awk -v entry="$entry" '
-  BEGIN { done = 0 }
-  {
-    if (!done && match($0, /languages[[:space:]]*:[[:space:]]*\{/)) {
-      sub(/languages[[:space:]]*:[[:space:]]*\{/, "& " entry)
-      done = 1
-    }
-    print
-  }
-' "$meta" > "$meta.tmp"
-mv "$meta.tmp" "$meta"
+patch_registry() {
+    local file="$1"
+    [ -f "$file" ] || return 0
+    if grep -qF 'Tiếng Việt' "$file"; then
+        return 0
+    fi
+    awk -v entry="$entry" '
+      BEGIN { done = 0 }
+      {
+        if (!done && match($0, /languages[[:space:]]*:[[:space:]]*\{/)) {
+          sub(/languages[[:space:]]*:[[:space:]]*\{/, "& " entry)
+          done = 1
+        }
+        print
+      }
+    ' "$file" > "$file.tmp"
+    mv "$file.tmp" "$file"
+}
+patch_registry "$langdir/meta.js"
+patch_registry "$root/app.min.js"
 VI_LANG
-    ok "Vietnamese language registered"
+    ok "Vietnamese registered in lang/vi.js, lang/meta.js and app.min.js"
 }
 
 install_custom_modules() {
@@ -617,7 +624,7 @@ install_custom_modules() {
         webtarget=/root/lampac/module/LampaWeb
         mkdir -p \"\$webtarget/Controllers\" \"\$webtarget/Models\" \"\$webtarget/Services\" \"\$webtarget/plugins\" \"\$webtarget/lang\"
         webbase=\"${CUSTOM_SOURCE_BASE}/Modules/LampaWeb\"
-        for file in Controllers/ApiController.cs ModInit.cs Models/InitPlugins.cs Services/LampaCron.cs lang/vi.js plugins/lampainit.js plugins/jackett.js plugins/online-compact.js plugins/vietnamese.js plugins/subsense-auto.js plugins/subsense.js plugins/subfinder.js plugins/stremiosub.js plugins/adminpanel.js; do
+        for file in Controllers/ApiController.cs ModInit.cs Models/InitPlugins.cs Services/LampaCron.cs Services/LampaVietnamese.cs lang/vi.js plugins/lampainit.js plugins/jackett.js plugins/online-compact.js plugins/vietnamese.js plugins/subsense-auto.js plugins/subsense.js plugins/subfinder.js plugins/stremiosub.js plugins/adminpanel.js; do
             curl -fSL --retry 3 \"\$webbase/\$file\" -o \"\$webtarget/\$file\"
         done
 
@@ -989,7 +996,7 @@ case "${1:-}" in
             webbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/Modules/LampaWeb"
             webtarget=/root/lampac/module/LampaWeb
             mkdir -p "$webtarget/Controllers" "$webtarget/Models" "$webtarget/Services" "$webtarget/plugins" "$webtarget/lang"
-            for file in Controllers/ApiController.cs ModInit.cs Models/InitPlugins.cs Services/LampaCron.cs lang/vi.js plugins/lampainit.js plugins/jackett.js plugins/online-compact.js plugins/vietnamese.js plugins/subsense-auto.js plugins/subsense.js plugins/subfinder.js plugins/stremiosub.js plugins/adminpanel.js; do
+            for file in Controllers/ApiController.cs ModInit.cs Models/InitPlugins.cs Services/LampaCron.cs Services/LampaVietnamese.cs lang/vi.js plugins/lampainit.js plugins/jackett.js plugins/online-compact.js plugins/vietnamese.js plugins/subsense-auto.js plugins/subsense.js plugins/subfinder.js plugins/stremiosub.js plugins/adminpanel.js; do
                 curl -fSL --retry 3 "$webbase/$file" -o "$webtarget/$file"
             done
             curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/config/base.conf" -o /root/lampac/base.conf
@@ -1044,28 +1051,33 @@ case "${1:-}" in
         proot-distro login ubuntu -- bash -s <<'VI_LANG'
 set -euo pipefail
 src=/root/lampac/module/LampaWeb/lang/vi.js
-langdir=/root/lampac/wwwroot/lampa-main/lang
+root=/root/lampac/wwwroot/lampa-main
+langdir="$root/lang"
 mkdir -p "$langdir"
 if [ -f "$src" ]; then
     cp "$src" "$langdir/vi.js"
 fi
-meta="$langdir/meta.js"
-[ -f "$meta" ] || exit 0
-if grep -qE '(^|[,{])[[:space:]]*vi[[:space:]]*:' "$meta"; then
-    exit 0
-fi
 entry='vi: { code: "vi", name: "Tiếng Việt", lang_choice_title: "Chào mừng", lang_choice_subtitle: "Chọn ngôn ngữ của bạn" }, '
-awk -v entry="$entry" '
-  BEGIN { done = 0 }
-  {
-    if (!done && match($0, /languages[[:space:]]*:[[:space:]]*\{/)) {
-      sub(/languages[[:space:]]*:[[:space:]]*\{/, "& " entry)
-      done = 1
-    }
-    print
-  }
-' "$meta" > "$meta.tmp"
-mv "$meta.tmp" "$meta"
+patch_registry() {
+    local file="$1"
+    [ -f "$file" ] || return 0
+    if grep -qF 'Tiếng Việt' "$file"; then
+        return 0
+    fi
+    awk -v entry="$entry" '
+      BEGIN { done = 0 }
+      {
+        if (!done && match($0, /languages[[:space:]]*:[[:space:]]*\{/)) {
+          sub(/languages[[:space:]]*:[[:space:]]*\{/, "& " entry)
+          done = 1
+        }
+        print
+      }
+    ' "$file" > "$file.tmp"
+    mv "$file.tmp" "$file"
+}
+patch_registry "$langdir/meta.js"
+patch_registry "$root/app.min.js"
 VI_LANG
         ;;
     *)

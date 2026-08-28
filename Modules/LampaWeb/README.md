@@ -93,5 +93,6 @@ Kiểm thử sau khi sửa đổi:
 
 | Thành phần | Vai trò |
 |-----------|------|
-| `LampaCron` | Cập nhật từ Git nền theo cấu hình. |
+| `LampaCron` | Cập nhật từ Git nền theo cấu hình; cài `lang/vi.js` và vá `meta.js` + `app.min.js`. |
+| `LampaVietnamese` | Chèn `vi` vào registry ngôn ngữ gốc của Lampa (file `meta.js`/`app.min.js`). |
 | `ErrorDocController` | Các route lỗi bổ sung (`/e/acb`). |

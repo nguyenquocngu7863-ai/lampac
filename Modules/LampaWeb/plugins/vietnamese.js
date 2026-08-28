@@ -1,12 +1,14 @@
 (function () {
   'use strict';
 
+  // Addon overlay only. Core Lampa UI comes from original files:
+  // wwwroot/lampa-main/lang/vi.js, lang/meta.js, and app.min.js.
+  // Do not call Lang.addCodes here — it wipes langs.vi after native loadLang.
+
   if (window.lampac_vietnamese_plugin) return;
   window.lampac_vietnamese_plugin = true;
 
   var settingName = 'lampac_vietnamese_overlay';
-  var scriptSource = document.currentScript && document.currentScript.src || '';
-  var lampacOrigin = '{localhost}';
   var scheduled = false;
   var pendingRoots = [];
 
@@ -240,77 +242,6 @@
     else window.setTimeout(flush, 0);
   }
 
-  function pluginOrigin() {
-    if (/^https?:\/\//i.test(lampacOrigin) && lampacOrigin.indexOf('{localhost}') < 0)
-      return lampacOrigin.replace(/\/+$/, '');
-
-    var match = /^(https?:\/\/[^/]+)/i.exec(scriptSource);
-    if (match) return match[1];
-
-    try {
-      var plugins = (window.Lampa && Lampa.Plugins && Lampa.Plugins.get && Lampa.Plugins.get()) || [];
-      for (var i = 0; i < plugins.length; i++) {
-        var url = plugins[i] && plugins[i].url || '';
-        if (/vietnamese\.js(?:[?#]|$)/i.test(url)) {
-          var fromPlugin = /^(https?:\/\/[^/]+)/i.exec(url);
-          if (fromPlugin) return fromPlugin[1];
-        }
-      }
-    } catch (e) {}
-
-    if (window.location && /^https?:$/i.test(window.location.protocol) && window.location.host)
-      return window.location.protocol + '//' + window.location.host;
-
-    return '';
-  }
-
-  function applyVietnameseDictionary(data) {
-    if (!data || typeof data !== 'object' || !window.Lampa || !Lampa.Lang) return;
-
-    if (Lampa.Lang.addCodes) Lampa.Lang.addCodes({ vi: 'Tiếng Việt' });
-    if (Lampa.Lang.AddTranslation) Lampa.Lang.AddTranslation('vi', data);
-
-    if (Lampa.Lang.add) {
-      var catalog = {};
-      Object.keys(data).forEach(function (key) {
-        catalog[key] = { vi: data[key] };
-      });
-      Lampa.Lang.add(catalog);
-    }
-
-    schedule(document.body);
-  }
-
-  function installCoreLanguage() {
-    if (!window.Lampa || !Lampa.Lang) return;
-    if (Lampa.Lang.addCodes) Lampa.Lang.addCodes({ vi: 'Tiếng Việt' });
-
-    var origin = pluginOrigin();
-    if (!origin) {
-      if (window.console) console.error('Vietnamese', 'Không xác định được origin Lampac để tải vi.js');
-      return;
-    }
-
-    // Android Lampa evals plugins, so import() / currentScript fail. Load an
-    // IIFE build with a script tag, the same way this plugin itself was loaded.
-    var url = origin + '/lampa-main/lang/vi.js?iife=1&v=' + Date.now();
-    var apply = function () {
-      applyVietnameseDictionary(window.LampaLangVi);
-    };
-
-    if (Lampa.Utils && Lampa.Utils.putScript)
-      Lampa.Utils.putScript([url], apply, apply, apply, true);
-    else {
-      var script = document.createElement('script');
-      script.src = url;
-      script.onload = apply;
-      script.onerror = function () {
-        if (window.console) console.error('Vietnamese', 'Không tải được vi.js', url);
-      };
-      (document.head || document.documentElement).appendChild(script);
-    }
-  }
-
   function addLangCatalog() {
     if (!window.Lampa || !Lampa.Lang || !Lampa.Lang.add) return;
 
@@ -420,7 +351,6 @@
       return;
     }
 
-    installCoreLanguage();
     addLangCatalog();
     installSetting();
     installTmdbLogoPolicy();
