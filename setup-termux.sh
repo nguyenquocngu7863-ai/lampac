@@ -439,7 +439,7 @@ VI_LANG
 # shipping a small fix so Termux does not re-download Chrome, hls.js, or
 # every custom module. Use --sync-all for a full refresh.
 sync_latest_modules() {
-    info "Syncing latest patch files only (NextHUB 85PO)..."
+    info "Syncing latest patch files only (NextHUB Vietnamese menus)..."
 
     proot-distro login ubuntu -- bash -c "
         set -euo pipefail
@@ -457,7 +457,13 @@ sync_latest_modules() {
             mv \"\$dest.tmp\" \"\$dest\"
             echo \"  [sync] \$dest\"
         }
-        pull Modules/NextHUB/sites/85po.yaml /root/lampac/module/NextHUB/sites/85po.yaml
+        nexthub=/root/lampac/module/NextHUB
+        if [ -d \"\$nexthub/sites\" ]; then
+            pull Modules/NextHUB/CategoryVi.cs \"\$nexthub/CategoryVi.cs\"
+            for file in 24rolika.yaml 24video.yaml 3movs.yaml 85po.yaml analdin.yaml batsa.yaml beeg.yaml bigboss.yaml brazzrus.yaml cam4.yaml crocotube.yaml ebasos.yaml ebun.yaml familyporn.yaml fapguru.yaml film-adult.yaml fpo.yaml gayporntube.yaml hellporno.yaml hochutv.yaml huyamba.yaml jopaonline.yaml lenkino.yaml lenporno.yaml noodlemagazine.yaml oxax.yaml perfektdamen.yaml porn4days.yaml porndig.yaml pornhub.yaml pornk.yaml porno365.yaml porno666.yaml pornoakt.yaml pornobolt.yaml pornobriz.yaml pornokaef.yaml pornone.yaml pornve.yaml prostoporno.yaml rusporno.yaml rusvideos.yaml sex-studentki.yaml sexporno.yaml sexxxxhub.yaml sosushka.yaml trahkino.yaml uporno.yaml veporn.yaml vporno.yaml vtrahe.yaml vtrahetv.yaml watchporn.yaml xasiat.yaml xozilla.yaml xxxperevod.yaml yaeby.yaml youjizz.yaml; do
+                pull Modules/NextHUB/sites/\$file \"\$nexthub/sites/\$file\"
+            done
+        fi
     "
 
     ok "Latest patch files applied"
@@ -547,7 +553,7 @@ install_custom_modules() {
         nexthubroottarget=/root/lampac/module/NextHUB
         nexthubtarget=\"\$nexthubroottarget/sites\"
         if [ -d \"\$nexthubtarget\" ]; then
-            for file in sex-studentki.yaml noodlemagazine.yaml pornone.yaml cam4.yaml oxax.yaml watchporn.yaml prostoporno.yaml yaeby.yaml 85po.yaml trahkino.yaml rusvideos.yaml veporn.yaml; do
+            for file in 24rolika.yaml 24video.yaml 3movs.yaml 85po.yaml analdin.yaml batsa.yaml beeg.yaml bigboss.yaml brazzrus.yaml cam4.yaml crocotube.yaml ebasos.yaml ebun.yaml familyporn.yaml fapguru.yaml film-adult.yaml fpo.yaml gayporntube.yaml hellporno.yaml hochutv.yaml huyamba.yaml jopaonline.yaml lenkino.yaml lenporno.yaml noodlemagazine.yaml oxax.yaml perfektdamen.yaml porn4days.yaml porndig.yaml pornhub.yaml pornk.yaml porno365.yaml porno666.yaml pornoakt.yaml pornobolt.yaml pornobriz.yaml pornokaef.yaml pornone.yaml pornve.yaml prostoporno.yaml rusporno.yaml rusvideos.yaml sex-studentki.yaml sexporno.yaml sexxxxhub.yaml sosushka.yaml trahkino.yaml uporno.yaml veporn.yaml vporno.yaml vtrahe.yaml vtrahetv.yaml watchporn.yaml xasiat.yaml xozilla.yaml xxxperevod.yaml yaeby.yaml youjizz.yaml; do
                 curl -fSL --retry 3 \"\$nexthubrootbase/sites/\$file?cb=\$syncstamp\" -o \"\$nexthubtarget/\$file.tmp\"
                 mv \"\$nexthubtarget/\$file.tmp\" \"\$nexthubtarget/\$file\"
             done
@@ -944,7 +950,7 @@ case "${1:-}" in
             nexthubroottarget=/root/lampac/module/NextHUB
             nexthubtarget="$nexthubroottarget/sites"
             if [ -d "$nexthubtarget" ]; then
-                for file in sex-studentki.yaml noodlemagazine.yaml pornone.yaml cam4.yaml oxax.yaml watchporn.yaml prostoporno.yaml yaeby.yaml 85po.yaml trahkino.yaml rusvideos.yaml veporn.yaml; do
+                for file in 24rolika.yaml 24video.yaml 3movs.yaml 85po.yaml analdin.yaml batsa.yaml beeg.yaml bigboss.yaml brazzrus.yaml cam4.yaml crocotube.yaml ebasos.yaml ebun.yaml familyporn.yaml fapguru.yaml film-adult.yaml fpo.yaml gayporntube.yaml hellporno.yaml hochutv.yaml huyamba.yaml jopaonline.yaml lenkino.yaml lenporno.yaml noodlemagazine.yaml oxax.yaml perfektdamen.yaml porn4days.yaml porndig.yaml pornhub.yaml pornk.yaml porno365.yaml porno666.yaml pornoakt.yaml pornobolt.yaml pornobriz.yaml pornokaef.yaml pornone.yaml pornve.yaml prostoporno.yaml rusporno.yaml rusvideos.yaml sex-studentki.yaml sexporno.yaml sexxxxhub.yaml sosushka.yaml trahkino.yaml uporno.yaml veporn.yaml vporno.yaml vtrahe.yaml vtrahetv.yaml watchporn.yaml xasiat.yaml xozilla.yaml xxxperevod.yaml yaeby.yaml youjizz.yaml; do
                     curl -fSL --retry 3 "$nexthubrootbase/sites/$file?cb=$syncstamp" -o "$nexthubtarget/$file.tmp"
                     mv "$nexthubtarget/$file.tmp" "$nexthubtarget/$file"
                 done

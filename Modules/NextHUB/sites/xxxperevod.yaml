@@ -11,9 +11,9 @@ streamproxy_preview: true
 
 menu:
   sort:
-    Новинки: ""
-    Топ рейтинга: top-rated/{page}/
-    Популярное: most-popular/{page}/
+    Mới nhất: ""
+    Đánh giá cao: top-rated/{page}/
+    Phổ biến: most-popular/{page}/
 
 list:
   uri: latest-updates/{page}/

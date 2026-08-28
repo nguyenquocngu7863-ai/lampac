@@ -108,7 +108,7 @@ curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/0
 lampac stop && lampac start
 ```
 
-List file của `--sync` nằm trong `sync_latest_modules()` của script; mỗi patch sẽ thay list này. Không dùng `--sync` khi cần LampaWeb, tiếng Việt lõi, Jackett/AIO controller, hoặc toàn bộ YAML NextHUB.
+List file của `--sync` nằm trong `sync_latest_modules()` của script; mỗi patch sẽ thay list này. Bản vá hiện tại kéo `CategoryVi.cs` và toàn bộ YAML NextHUB (menu tiếng Việt). Không dùng `--sync` khi cần LampaWeb, tiếng Việt lõi, hoặc Jackett/AIO controller.
 
 ### Sync đầy đủ — mọi module tuỳ biến + runtime trình duyệt
 
@@ -559,7 +559,7 @@ Muốn 100% tiếng Việt lõi, mở giao diện Lampac `http://IP:9118` (file 
 
 Khi người dùng tự chọn `vi`, overlay đồng bộ `tmdb_lang=vi` để tiêu đề, mô tả và thể loại lấy từ TMDB bằng tiếng Việt. Riêng request ảnh dùng `include_image_language=en,null`, ưu tiên logo English/ngôn ngữ trung lập vì TMDB thường không có logo `vi`.
 
-Online và addon thông thường tiếp tục dùng catalog overlay. Riêng SISI được Việt hóa trực tiếp trong `SISI/plugins/*.js` và menu `Modules/Adult/*/Service.cs` để không dịch nhầm tiêu đề video. NextHUB dịch category tại `Modules/NextHUB/CategoryVi.cs` theo slug ngay lúc server dựng menu; tên playlist/video không đi qua bộ dịch này. Khi upstream update SISI/NextHUB, merge source và giữ catalog Việt tương ứng.
+Online và addon thông thường tiếp tục dùng catalog overlay. Riêng SISI được Việt hóa trực tiếp trong `SISI/plugins/*.js` và menu `Modules/Adult/*/Service.cs` để không dịch nhầm tiêu đề video. NextHUB: YAML site Nga đã đổi nhãn sort/category sang tiếng Việt (slug/host/parse giữ nguyên); tube quốc tế chỉ đổi nhãn sort tiếng Nga. `CategoryVi.cs` vẫn dịch nhãn Cyrillic còn lại theo slug lúc server dựng menu; tên playlist/video không đi qua bộ dịch này. Khi upstream update SISI/NextHUB, merge source và giữ catalog Việt tương ứng.
 
 ## Giao diện Online gọn trên điện thoại
 

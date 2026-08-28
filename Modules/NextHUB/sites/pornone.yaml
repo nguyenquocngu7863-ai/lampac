@@ -61,8 +61,8 @@ menu:
     cat: "{host}/{cat}/{page}/"
     catsort: "{host}/{cat}/{sort}/{page}/"
   sort:
-    Новинки: ""
-    Популярные: rating
+    Mới nhất: ""
+    Phổ biến: rating
   categories:
     Amateur: amateur
     Anal: anal

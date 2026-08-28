@@ -57,142 +57,142 @@ view:
 
 menu:
   sort:
-    Новинки: ""
-    Лучшие: top-rated/?mode=async&function=get_block&block_id=list_videos_common_videos_list&sort_by=rating_today&from={page}
-    Популярные: pop-video/?mode=async&function=get_block&block_id=list_videos_common_videos_list&sort_by=video_viewed_today&from={page}
+    Mới nhất: ""
+    Hay nhất: top-rated/?mode=async&function=get_block&block_id=list_videos_common_videos_list&sort_by=rating_today&from={page}
+    Phổ biến: pop-video/?mode=async&function=get_block&block_id=list_videos_common_videos_list&sort_by=video_viewed_today&from={page}
   categories:
     format: porno/{cat}/?mode=async&function=get_block&block_id=list_videos_common_videos_list&sort_by=post_date_and_popularity&from={page}
-    Аматорское, любительское: amatorskoe
-    Соло: solo
-    От первого лица: ot-pervogo-lica
-    Большая жопа: big-ass
-    Крупный план: krupnyy-plan
-    Гламурная: glamurnaya
-    Секс боком: seks-bokom
-    Шатенка: shatenka
-    Русское: russkoe
-    Мастурбация: masturbaciya
-    Нежно: nejno
-    Зрелые женщины: zrelye
-    Куни: kuni
-    Красивое: krasivoe
-    Наездница: naezdnica
-    Русское домашнее: russkoe-domashnee-porno
-    Девушки Красотки: krasotka
-    Горловой минет: gorlovoy-minet
-    Кончил в девушку: konchil-v-devushku
-    Минет: minet
-    Большие сиськи: bolshie-siski
-    Сперма в рот: sperma-v-rot
-    Блондинки: blonidinki
-    Раком: rakom
-    Анал: anal
-    Чулки: chulki
-    Рыжие: ryjie
-    Сперма на живот: sperma-na-jivot
-    За деньги: za-dengi
-    Лифчик: lifchik
-    Римминг: rimming
-    Высокие: vysokie
-    Большой член: bolshoy-chlen
-    Худые: hudye
-    Негритянки: negrityanki
-    На улице: na-ulice
-    Кончил на лицо: konchil-na-lico
-    Брюнетки: bryunetki
-    Кончил в анал: konchil-v-anal
-    Молодые: molodye
-    Сперма на сиськах: sperma-na-siskah
-    В магазине: v-magazine
-    На каблуках: na-kablukah
-    В очках: v-ochkah
-    В офисе: v-ofise
-    Пикап: pikap
-    Толстые: tolstye
-    Частное, домашнее: chastnoe-porno
-    В сапогах: v-sapogah
-    Лесби: lesbi
-    Униформа: uniforma
-    Поза 69: poza-69
-    Тату: tatu
-    ЖМЖ: jmj
-    С закрытыми глазами: s-zakrytymi-glazami
-    Спортсменка: sportsmenka
-    Трусики: trusiki
-    С сюжетом: s-syujetom
-    Застукала: zastukala
-    На столе: na-stole
-    Медсестра: medsestra
-    Стоя: stoya
-    На диване: na-divane
-    Низкие: nizkie
-    В одежде: v-odejde
-    Двойное проникновение: dvoynoe-proniknovenie
-    Волосатая пизда: volosataya-pizda
-    В машине: v-mashine
-    Межрассовое: mejrassovoe
-    Секс в спальне: seks-v-spalne
-    В масле: v-masle
-    В шортиках: v-shortikah
-    Измена: izmena
-    Втроем: vtroem
-    Куколд: kukold
-    Оргия: orgiya
-    Азиатки: aziatki
-    Тренер: trener
-    На природе: na-prirode
-    Групповуха: gruppovuha
-    Дрочит парню: drochit-parnyu
-    В мини юбке: v-mini-yubke
-    Сквирт: skvirt
-    На кухне: na-kuhne
-    Писсинг: pissing
-    Секс в ванной: seks-v-vannoy
-    Латино: latino
-    Горничная: gornichnaya
-    Секретарша: sekretarsha
-    Эротика: erotika
-    Колготки: kolgotki
-    Свингер секс: svinger-seks
-    Секс игрушки: seks-igrushki
-    Косплей: kospley
-    Студенты: studenty
-    Начальница: nachalnica
-    В презервативе: v-prezervative
-    Массаж: massaj
-    Хентай и Аниме: hentay-i-anime
-    Женский оргазм: jenskiy-orgazm
-    С неграми: negry
-    МЖМ: mjm
-    Чёрный член негра: bolshoy-chernyy-chlen
-    Фут Фетиш: fut-fetish
-    На пляже: na-plyaje
-    Начальник: nachalnik
-    Доктор: doktor
-    Фильмы и кино: filmy-i-kino
-    Ганг Банг: gang-bang
-    Кастинг: kasting
-    В душе: v-dushe
-    На публике: na-publike
-    Страпон: strapon
-    Пародии: parodii
-    Фистинг: fisting
-    В туалете: v-tualete
-    Связанные: svyazannye
-    Жесткое, насилие: jestkoe
-    Вуайеризм: vuayerizm
-    Вебкам запись: vebkam-zapis
-    Невеста: nevesta
-    Скрытая камера: skrytaya-kamera
-    В латексе: v-latekse
-    В клубе: v-klube
-    Полицейский: policeyskiy
-    Госпожа: gospoja
-    Одежда из латекса: odejda-iz-lateksa
-    БДСМ: bdsm
-    Секс в лодке: seks-na-lodke
+    Nghiệp dư: amatorskoe
+    Đơn: solo
+    Góc nhìn thứ nhất: ot-pervogo-lica
+    Mông lớn: big-ass
+    Cận cảnh: krupnyy-plan
+    Glamour: glamurnaya
+    Tư thế nằm nghiêng: seks-bokom
+    Tóc nâu hạt: shatenka
+    Nga: russkoe
+    Thủ dâm nữ: masturbaciya
+    Nhẹ nhàng: nejno
+    Trưởng thành: zrelye
+    Khẩu giao nữ: kuni
+    Hình ảnh đẹp: krasivoe
+    Tư thế cưỡi: naezdnica
+    Tự quay Nga: russkoe-domashnee-porno
+    Người đẹp: krasotka
+    Khẩu giao sâu: gorlovoy-minet
+    Xuất tinh bên trong: konchil-v-devushku
+    Khẩu giao: minet
+    Ngực lớn: bolshie-siski
+    Xuất tinh vào miệng: sperma-v-rot
+    Tóc vàng: blonidinki
+    Tư thế từ phía sau: rakom
+    Hậu môn: anal
+    Vớ dài: chulki
+    Tóc đỏ: ryjie
+    Xuất tinh lên bụng: sperma-na-jivot
+    Trả phí: za-dengi
+    Đồ lót: lifchik
+    Rimming: rimming
+    Người cao: vysokie
+    Dương vật lớn: bolshoy-chlen
+    Mảnh mai: hudye
+    Phụ nữ da đen: negrityanki
+    Ngoài phố: na-ulice
+    Xuất tinh lên mặt: konchil-na-lico
+    Tóc nâu: bryunetki
+    Xuất tinh lên mông: konchil-v-anal
+    Người trẻ 18+: molodye
+    Xuất tinh lên ngực: sperma-na-siskah
+    Cửa hàng: v-magazine
+    Giày cao gót: na-kablukah
+    Đeo kính: v-ochkah
+    Văn phòng: v-ofise
+    Làm quen: pikap
+    Đầy đặn: tolstye
+    Tự quay: chastnoe-porno
+    Giày boot: v-sapogah
+    Đồng tính nữ: lesbi
+    Đồng phục: uniforma
+    Tư thế 69: poza-69
+    Hình xăm: tatu
+    Hai nữ một nam: jmj
+    Mắt nhắm: s-zakrytymi-glazami
+    Thể thao: sportsmenka
+    Quần lót: trusiki
+    Có cốt truyện: s-syujetom
+    Bắt quả tang: zastukala
+    Trên bàn: na-stole
+    Bác sĩ và y tá: medsestra
+    Tư thế đứng: stoya
+    Ghế sofa: na-divane
+    Người thấp: nizkie
+    Mặc quần áo: v-odejde
+    Thâm nhập kép: dvoynoe-proniknovenie
+    Không cạo: volosataya-pizda
+    Trong xe: v-mashine
+    Quốc tế: mejrassovoe
+    Phòng ngủ: seks-v-spalne
+    Bôi dầu: v-masle
+    Quần short: v-shortikah
+    Ngoại tình: izmena
+    Quan hệ ba người: vtroem
+    Cuckold: kukold
+    Orgy: orgiya
+    Châu Á: aziatki
+    Huấn luyện viên: trener
+    Ngoài trời: na-prirode
+    Quan hệ nhóm tập thể: gruppovuha
+    Kích thích bằng tay: drochit-parnyu
+    Váy: v-mini-yubke
+    Squirt: skvirt
+    Nhà bếp: na-kuhne
+    Pissing: pissing
+    Phòng tắm: seks-v-vannoy
+    Mỹ Latin: latino
+    Người hầu: gornichnaya
+    Thư ký: sekretarsha
+    Gợi cảm: erotika
+    Quần tất: kolgotki
+    Swinger: svinger-seks
+    Đồ chơi: seks-igrushki
+    Cosplay: kospley
+    Sinh viên: studenty
+    Sếp nữ: nachalnica
+    Bao cao su: v-prezervative
+    Mát-xa: massaj
+    Hentai: hentay-i-anime
+    Cực khoái: jenskiy-orgazm
+    Nam da đen: negry
+    Hai nam một nữ: mjm
+    Kích thước rất lớn da đen: bolshoy-chernyy-chlen
+    Kích thích bằng chân: fut-fetish
+    Bãi biển: na-plyaje
+    Sếp nam: nachalnik
+    Bác sĩ: doktor
+    Phim: filmy-i-kino
+    Gangbang: gang-bang
+    Thử vai: kasting
+    Trong vòi sen: v-dushe
+    Nơi công cộng: na-publike
+    Strap-on: strapon
+    Phim nhại: parodii
+    Fisting: fisting
+    Nhà vệ sinh: v-tualete
+    Trói buộc: svyazannye
+    Cưỡng ép giả tưởng: jestkoe
+    Nhìn trộm: vuayerizm
+    Webcam: vebkam-zapis
+    Cô dâu: nevesta
+    Camera ẩn: skrytaya-kamera
+    Latex: v-latekse
+    Câu lạc bộ: v-klube
+    Cảnh sát: policeyskiy
+    Nữ thống trị: gospoja
+    Trang phục latex: odejda-iz-lateksa
+    BDSM: bdsm
+    Trên thuyền: seks-na-lodke
   customs:
-    - name: Студии
+    - name: Studio
       arg: studio
       format: channels/{value}/?mode=async&function=get_block&block_id=list_videos_common_videos_list&sort_by=post_date_and_popularity&from={page}
       submenu:
