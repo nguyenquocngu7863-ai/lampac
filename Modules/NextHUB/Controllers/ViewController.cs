@@ -674,6 +674,15 @@ public class ViewController : BaseSisiController<NxtSettings>
     {
         StatiCacheDisabled = true;
 
+        if (HttpMethods.IsHead(Request.Method))
+        {
+            Response.StatusCode = 200;
+            Response.ContentType = "video/mp4";
+            Response.Headers["Accept-Ranges"] = "bytes";
+            Response.Headers["Cache-Control"] = "no-store";
+            return _emptyResult;
+        }
+
         u = DecryptQuery(u);
         if (string.IsNullOrEmpty(u))
             return OnError("uri", rcache: false);
