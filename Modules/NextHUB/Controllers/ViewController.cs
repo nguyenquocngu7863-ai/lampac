@@ -549,7 +549,12 @@ public class ViewController : BaseSisiController<NxtSettings>
                         {
                             var cookieArray = pwCookies
                                 .Where(c => !string.IsNullOrEmpty(c.Name))
-                                .Select(c => new System.Net.Cookie(c.Name, c.Value, c.Domain, c.Path))
+                                .Select(c => {
+                                    // Ensure cookies use root domain so they match CDN subdomains
+                                    string d = c.Domain ?? "";
+                                    if (!d.StartsWith(".")) d = "." + d;
+                                    return new System.Net.Cookie(c.Name, c.Value, d, c.Path);
+                                })
                                 .ToArray();
                             if (cookieArray.Length > 0)
                             {
@@ -795,93 +800,43 @@ public class ViewController : BaseSisiController<NxtSettings>
         using (handler)
         using (var client = new HttpClient(handler, disposeHandler: false) { Timeout = TimeSpan.FromHours(2) })
         {
-            // Phase 1 — use license passed from Index (bypasses Cloudflare)
-            // Also try fetching license from referer page as fallback
-            if (string.IsNullOrEmpty(license) && Root.isSafeHttpUrl(referer))
+            // The URL from Playwright already has a valid hash — just stream it.
+            // If it fails (hash expired / Cloudflare), warm the page and extract fresh URLs.
+            for (int round = 0; round < 3; round++)
             {
-                try
+                // Build candidates: original file + download=true variant
+                var candidates = new List<string>();
+                if (!string.IsNullOrEmpty(file))
                 {
-                    using (var req = new HttpRequestMessage(HttpMethod.Get, referer))
-                    {
-                        req.Headers.TryAddWithoutValidation("Accept", "text/html");
-                        req.Headers.TryAddWithoutValidation("User-Agent", Http.UserAgent);
-                        using (var resp = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, HttpContext.RequestAborted).ConfigureAwait(false))
-                        {
-                            if (resp.Content != null)
-                            {
-                                string html = await resp.Content.ReadAsStringAsync(HttpContext.RequestAborted).ConfigureAwait(false);
-                                if (!string.IsNullOrEmpty(html) && html.Length > 32)
-                                    license = Regex.Match(html, "license_code:[\\n\\r\\t ]+'([^']+)'", RegexOptions.IgnoreCase).Groups[1].Value;
-                            }
-                        }
-                    }
-                }
-                catch (OperationCanceledException) { throw; }
-                catch { }
-            }
-
-            if (!string.IsNullOrEmpty(license) && !string.IsNullOrEmpty(file))
-            {
-                string rehashed = RehashKvs(file, license);
-                if (rehashed != file)
-                {
-                    string download = rehashed;
+                    AddKvsCandidate(candidates, file);
+                    string download = file;
                     if (download.IndexOf("download=true", StringComparison.OrdinalIgnoreCase) < 0)
                         download = download + (download.IndexOf('?') >= 0 ? "&" : "?") + "download=true";
-                    if (await WriteKvsMedia(client, download, referer).ConfigureAwait(false))
-                        return _emptyResult;
-                    if (await WriteKvsMedia(client, rehashed, referer).ConfigureAwait(false))
-                        return _emptyResult;
+                    AddKvsCandidate(candidates, download);
                 }
-            }
-
-            // Phase 1b — try the original URL + download=true
-            if (!string.IsNullOrEmpty(file))
-            {
-                string download = file;
-                if (download.IndexOf("download=true", StringComparison.OrdinalIgnoreCase) < 0)
-                    download = download + (download.IndexOf('?') >= 0 ? "&" : "?") + "download=true";
-                if (await WriteKvsMedia(client, download, referer).ConfigureAwait(false))
-                    return _emptyResult;
-                if (await WriteKvsMedia(client, file, referer).ConfigureAwait(false))
-                    return _emptyResult;
-            }
-
-            // Phase 2 — warm page, extract fresh URLs, retry up to 2 rounds
-            for (int round = 0; round < 2; round++)
-            {
-                string html = await WarmKvsPage(client, referer).ConfigureAwait(false);
-
-                var candidates = new List<string>();
-                if (!string.IsNullOrEmpty(html))
-                {
-                    List<string> live = ExtractKvsMedia(html);
-                    for (int i = 0; i < live.Count; i++)
-                        AddKvsCandidate(candidates, live[i]);
-                }
-                AddKvsCandidate(candidates, file);
-
-                kvsLastError = string.IsNullOrEmpty(html) ? "file:page" : "file";
 
                 if (await TryKvsCandidates(client, candidates, referer).ConfigureAwait(false))
                     return _emptyResult;
 
-                // Extract license from fresh HTML for rehash
-                if (!string.IsNullOrEmpty(html) && string.IsNullOrEmpty(license))
-                    license = Regex.Match(html, "license_code:[\\n\\r\\t ]+'([^']+)'", RegexOptions.IgnoreCase).Groups[1].Value;
-
-                if (!string.IsNullOrEmpty(license) && candidates.Count > 0)
+                // On failure: warm the referer page to extract fresh URLs
+                string html = await WarmKvsPage(client, referer).ConfigureAwait(false);
+                if (!string.IsNullOrEmpty(html))
                 {
-                    var rehashed = new List<string>();
-                    for (int i = 0; i < candidates.Count; i++)
-                        AddKvsCandidate(rehashed, RehashKvs(candidates[i], license));
+                    var fresh = ExtractKvsMedia(html);
+                    for (int i = 0; i < fresh.Count; i++)
+                        AddKvsCandidate(candidates, fresh[i]);
 
-                    if (await TryKvsCandidates(client, rehashed, referer).ConfigureAwait(false))
+                    kvsLastError = "file";
+                    if (await TryKvsCandidates(client, candidates, referer).ConfigureAwait(false))
                         return _emptyResult;
                 }
+                else
+                {
+                    kvsLastError = "file:page";
+                }
 
-                // Wait briefly before retry
-                if (round == 0)
+                // Brief delay before retry
+                if (round < 2)
                     await Task.Delay(300, HttpContext.RequestAborted).ConfigureAwait(false);
             }
         }
