@@ -7,7 +7,8 @@
 #   bash setup-termux.sh            # install & run
 #   bash setup-termux.sh --install  # install only
 #   bash setup-termux.sh --run      # run only (skip install)
-#   bash setup-termux.sh --sync     # repair browser runtime + apply custom modules without replacing Lampac
+#   bash setup-termux.sh --sync     # curl only the latest patch files (fast)
+#   bash setup-termux.sh --sync-all # repair browser runtime + apply every custom module
 #   bash setup-termux.sh --update   # update to latest release
 #
 set -euo pipefail
@@ -24,6 +25,7 @@ MODE=""
 [[ "${1:-}" == "--install" ]] && MODE="install"
 [[ "${1:-}" == "--run" ]]    && MODE="run"
 [[ "${1:-}" == "--sync" ]]   && MODE="sync"
+[[ "${1:-}" == "--sync-all" ]] && MODE="sync-all"
 [[ "${1:-}" == "--update" ]] && MODE="update"
 [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]] && { MODE="help"; }
 
@@ -61,7 +63,8 @@ show_help() {
     printf "${BOLD}Options:${RESET}\n"
     printf "  ${GREEN}--install${RESET}    Install proot-distro + Ubuntu + .NET + Lampac\n"
     printf "  ${GREEN}--run${RESET}        Run Lampac (skip install)\n"
-    printf "  ${GREEN}--sync${RESET}       Repair browser runtime + apply custom modules without replacing Lampac\n"
+    printf "  ${GREEN}--sync${RESET}       Curl only the latest patch files (fast, no Chrome/hls.js)\n"
+    printf "  ${GREEN}--sync-all${RESET}   Repair browser runtime + apply every custom module\n"
     printf "  ${GREEN}--update${RESET}     Update Lampac to latest release\n"
     printf "  ${GREEN}--help${RESET}       Show this help\n\n"
     printf "${BOLD}Environment:${RESET}\n"
@@ -75,8 +78,10 @@ show_help() {
     printf "  bash setup-termux.sh\n\n"
     printf "  ${DIM}# Custom port${RESET}\n"
     printf "  LAMPAC_PORT=8080 bash setup-termux.sh\n\n"
-    printf "  ${DIM}# Apply custom modules without replacing the current release${RESET}\n"
+    printf "  ${DIM}# Apply only the latest patch files (fast)${RESET}\n"
     printf "  bash setup-termux.sh --sync\n\n"
+    printf "  ${DIM}# Re-apply every custom module + browser runtime${RESET}\n"
+    printf "  bash setup-termux.sh --sync-all\n\n"
 
     printf "  ${DIM}# Install optional local services${RESET}\n"
     printf "  aio install\n"
@@ -427,6 +432,38 @@ patch_registry "$langdir/meta.js"
 patch_registry "$root/app.min.js"
 VI_LANG
     ok "Vietnamese registered in lang/vi.js, lang/meta.js and app.min.js"
+}
+
+
+# --sync pulls only the files from the latest patch. Update this list when
+# shipping a small fix so Termux does not re-download Chrome, hls.js, or
+# every custom module. Use --sync-all for a full refresh.
+sync_latest_modules() {
+    info "Syncing latest patch files only (Chaturbate/Videasy HLS)..."
+
+    proot-distro login ubuntu -- bash -c "
+        set -euo pipefail
+        base=\"${CUSTOM_SOURCE_BASE}\"
+        stamp=\$(date +%s)
+        pull() {
+            src=\"\$1\"
+            dest=\"\$2\"
+            dir=\$(dirname \"\$dest\")
+            if [ ! -d \"\$dir\" ]; then
+                echo \"  [sync] skip (missing dir): \$dest\"
+                return 0
+            fi
+            curl -fSL --retry 3 \"\$base/\$src?cb=\$stamp\" -o \"\$dest.tmp\"
+            mv \"\$dest.tmp\" \"\$dest\"
+            echo \"  [sync] \$dest\"
+        }
+        pull Modules/Adult/Chaturbate/ModInit.cs /root/lampac/module/Adult/Chaturbate/ModInit.cs
+        pull Modules/OnlineENG/Videasy/ModInit.cs /root/lampac/module/OnlineENG/Videasy/ModInit.cs
+        pull Online/plugin.js /root/lampac/module/Online/plugin.js
+        pull SISI/plugins/sisi.js /root/lampac/module/SISI/plugins/sisi.js
+    "
+
+    ok "Latest patch files applied"
 }
 
 install_custom_modules() {
@@ -1098,7 +1135,7 @@ SHORTCUT
     cat > "$PREFIX/bin/aio" <<'AIO_SHORTCUT'
 #!/usr/bin/env bash
 if ! proot-distro login ubuntu -- test -x /root/aioctl.sh 2>/dev/null; then
-    echo "AIO controller is not installed yet. Run: bash setup-termux.sh --sync"
+    echo "AIO controller is not installed yet. Run: bash setup-termux.sh --sync-all"
     exit 1
 fi
 case "${1:-info}" in
@@ -1117,7 +1154,7 @@ AIO_SHORTCUT
     cat > "$PREFIX/bin/jackett" <<'JACKETT_SHORTCUT'
 #!/usr/bin/env bash
 if ! proot-distro login ubuntu -- test -x /root/jackettctl.sh 2>/dev/null; then
-    echo "Jackett controller is not installed yet. Run: bash setup-termux.sh --sync"
+    echo "Jackett controller is not installed yet. Run: bash setup-termux.sh --sync-all"
     exit 1
 fi
 guest() {
@@ -1197,6 +1234,15 @@ main() {
             run_lampac
             ;;
         "sync")
+            if ! proot-distro login ubuntu -- test -f /root/lampac/Core.dll 2>/dev/null; then
+                err "Lampac not installed. Run: bash setup-termux.sh --install"
+                exit 1
+            fi
+
+            sync_latest_modules
+            ok "Latest patch applied. Restart with: lampac stop && lampac start"
+            ;;
+        "sync-all")
             if ! proot-distro login ubuntu -- test -f /root/lampac/Core.dll 2>/dev/null; then
                 err "Lampac not installed. Run: bash setup-termux.sh --install"
                 exit 1
