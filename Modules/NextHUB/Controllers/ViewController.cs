@@ -20,6 +20,7 @@ public class ViewController : BaseSisiController<NxtSettings>
 
     IQueryCollection evalQuery = QueryCollection.Empty;
     string evalQueryCacheKey = string.Empty;
+    string kvsLastError;
 
     public ViewController() : base(default) { }
 
@@ -233,7 +234,8 @@ public class ViewController : BaseSisiController<NxtSettings>
                                         cache.headers = new List<HeadersModel>(_headers.Count);
                                         foreach (var item in _headers)
                                         {
-                                            if (item.Key.ToLower() is "host" or "accept-encoding" or "connection" or "range")
+                                            string hk = item.Key.ToLower();
+                                            if (hk == "host" || hk == "accept-encoding" || hk == "connection" || hk == "range")
                                                 continue;
 
                                             cache.headers.Add(new HeadersModel(item.Key, item.Value.ToString()));
@@ -683,11 +685,12 @@ public class ViewController : BaseSisiController<NxtSettings>
             return _emptyResult;
         }
 
-        string file;
+        string file = null;
 
-        if (!string.IsNullOrEmpty(src))
+        if (!string.IsNullOrEmpty(src) || (!string.IsNullOrEmpty(referer) && string.IsNullOrEmpty(u)))
         {
-            plugin = string.IsNullOrEmpty(plugin) ? "85po" : plugin;
+            if (string.IsNullOrEmpty(plugin))
+                plugin = "85po";
             file = src;
         }
         else
@@ -714,39 +717,55 @@ public class ViewController : BaseSisiController<NxtSettings>
             return badInitMsg;
 
         file = CleanKvsMedia(file);
-        if (!Root.isSafeHttpUrl(file))
+        if (!string.IsNullOrEmpty(file) && !Root.isSafeHttpUrl(file))
             return OnError("url", rcache: false);
 
-        string download = file;
-        if (download.IndexOf("download=true", StringComparison.OrdinalIgnoreCase) < 0)
-            download += (download.Contains('?') ? "&" : "?") + "download=true";
-
         var cookies = new CookieContainer();
-        var handler = new HttpClientHandler
-        {
-            AllowAutoRedirect = true,
-            MaxAutomaticRedirections = 8,
-            UseCookies = true,
-            CookieContainer = cookies,
-            AutomaticDecompression = DecompressionMethods.None,
-            ServerCertificateCustomValidationCallback = Http.AlwaysAllowCertificate,
-            UseProxy = proxy != null,
-            Proxy = proxy
-        };
+        var handler = new HttpClientHandler();
+        handler.AllowAutoRedirect = true;
+        handler.MaxAutomaticRedirections = 8;
+        handler.UseCookies = true;
+        handler.CookieContainer = cookies;
+        handler.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate;
+        handler.ServerCertificateCustomValidationCallback = Http.AlwaysAllowCertificate;
+        handler.UseProxy = proxy != null;
+        handler.Proxy = proxy;
 
         using (handler)
         using (var client = new HttpClient(handler, disposeHandler: false) { Timeout = TimeSpan.FromHours(2) })
         {
-            await WarmKvsPage(client, referer).ConfigureAwait(false);
+            string html = await WarmKvsPage(client, referer).ConfigureAwait(false);
 
-            if (await WriteKvsMedia(client, file, referer).ConfigureAwait(false))
+            var candidates = new List<string>();
+            if (!string.IsNullOrEmpty(html))
+            {
+                List<string> live = ExtractKvsMedia(html);
+                for (int i = 0; i < live.Count; i++)
+                    AddKvsCandidate(candidates, live[i]);
+            }
+            AddKvsCandidate(candidates, file);
+
+            kvsLastError = string.IsNullOrEmpty(html) ? "file:page" : "file";
+
+            if (await TryKvsCandidates(client, candidates, referer).ConfigureAwait(false))
                 return _emptyResult;
 
-            if (await WriteKvsMedia(client, download, referer).ConfigureAwait(false))
-                return _emptyResult;
+            string license = null;
+            if (!string.IsNullOrEmpty(html))
+                license = Regex.Match(html, "license_code:[\\n\\r\\t ]+'([^']+)'", RegexOptions.IgnoreCase).Groups[1].Value;
+
+            if (!string.IsNullOrEmpty(license) && candidates.Count > 0)
+            {
+                var rehashed = new List<string>();
+                for (int i = 0; i < candidates.Count; i++)
+                    AddKvsCandidate(rehashed, RehashKvs(candidates[i], license));
+
+                if (await TryKvsCandidates(client, rehashed, referer).ConfigureAwait(false))
+                    return _emptyResult;
+            }
         }
 
-        return OnError("file", refresh_proxy: true);
+        return OnError(string.IsNullOrEmpty(kvsLastError) ? "file" : kvsLastError, refresh_proxy: true);
     }
 
 
@@ -770,11 +789,204 @@ public class ViewController : BaseSisiController<NxtSettings>
     }
     #endregion
 
+    #region AddKvsCandidate
+    static void AddKvsCandidate(List<string> list, string file)
+    {
+        file = CleanKvsMedia(file);
+        if (string.IsNullOrEmpty(file) || !Root.isSafeHttpUrl(file))
+            return;
+
+        for (int i = 0; i < list.Count; i++)
+        {
+            if (string.Equals(list[i], file, StringComparison.OrdinalIgnoreCase))
+                return;
+        }
+
+        list.Add(file);
+    }
+    #endregion
+
+    #region ExtractKvsMedia
+    static List<string> ExtractKvsMedia(string html)
+    {
+        var urls = new List<string>();
+        if (string.IsNullOrEmpty(html))
+            return urls;
+
+        string[] qualities = new string[] { "_1080p", "_720p", "_480p", "_360p" };
+        for (int i = 0; i < qualities.Length; i++)
+        {
+            Match m = Regex.Match(html, "(https?://[^/]+/get_file/[^'\\\"\\s]+" + qualities[i] + "\\.mp4[^'\\\"\\s]*)", RegexOptions.IgnoreCase);
+            if (m.Success)
+                AddKvsCandidate(urls, m.Groups[1].Value);
+        }
+
+        string[] keys = new string[] { "alt_url5", "alt_url4", "alt_url3", "alt_url2", "alt_url", "url" };
+        for (int i = 0; i < keys.Length; i++)
+        {
+            Match m = Regex.Match(html, "video_" + keys[i] + ":\\s*'([^']+)'", RegexOptions.IgnoreCase);
+            if (m.Success && m.Groups[1].Value.IndexOf("/get_file/", StringComparison.OrdinalIgnoreCase) >= 0)
+                AddKvsCandidate(urls, m.Groups[1].Value);
+        }
+
+        MatchCollection all = Regex.Matches(html, "https?://[^'\\\"\\s]+/get_file/[^'\\\"\\s]+\\.mp4[^'\\\"\\s]*", RegexOptions.IgnoreCase);
+        for (int i = 0; i < all.Count; i++)
+            AddKvsCandidate(urls, all[i].Value);
+
+        if (urls.Count > 4)
+            urls.RemoveRange(4, urls.Count - 4);
+
+        return urls;
+    }
+    #endregion
+
+    #region RehashKvs
+    static string RehashKvs(string file, string license)
+    {
+        if (string.IsNullOrEmpty(file) || string.IsNullOrEmpty(license))
+            return file;
+
+        try
+        {
+            string[] arr = file.Split('/');
+            int gi = -1;
+            for (int i = 0; i < arr.Length; i++)
+            {
+                if (string.Equals(arr[i], "get_file", StringComparison.OrdinalIgnoreCase))
+                {
+                    gi = i;
+                    break;
+                }
+            }
+
+            if (gi < 0 || gi + 2 >= arr.Length || arr[gi + 2].Length < 32)
+                return file;
+
+            string hashed = CalcKvsHash(arr[gi + 2], license);
+            if (string.IsNullOrEmpty(hashed) || hashed == arr[gi + 2])
+                return file;
+
+            arr[gi + 2] = hashed;
+            return string.Join("/", arr);
+        }
+        catch
+        {
+            return file;
+        }
+    }
+
+    static string CalcKvsHash(string fakeHash, string licenseCode)
+    {
+        string h = fakeHash.Substring(0, 32);
+        string i = KvsLicenseKey(licenseCode);
+        string j = h;
+
+        for (int k = h.Length - 1; k >= 0; k--)
+        {
+            int l = k;
+            for (int m = k; m < i.Length; m++)
+                l += i[m] - '0';
+
+            while (l >= h.Length)
+                l -= h.Length;
+
+            char[] n = new char[h.Length];
+            for (int o = 0; o < h.Length; o++)
+            {
+                if (o == k)
+                    n[o] = h[l];
+                else if (o == l)
+                    n[o] = h[k];
+                else
+                    n[o] = h[o];
+            }
+            h = new string(n);
+        }
+
+        return fakeHash.Replace(j, h);
+    }
+
+    static string KvsLicenseKey(string licenseCode)
+    {
+        string d = licenseCode;
+        string f = "";
+
+        for (int g = 1; g < d.Length; g++)
+        {
+            if (char.IsDigit(d[g]))
+            {
+                int digit = d[g] - '0';
+                f += digit != 0 ? digit.ToString() : "1";
+            }
+            else
+            {
+                f += "1";
+            }
+        }
+
+        int j = f.Length / 2;
+        long k = long.Parse(f.Substring(0, j + 1));
+        long l = long.Parse(f.Substring(j));
+
+        long g1 = l - k;
+        if (g1 < 0) g1 = -g1;
+        long g2 = k - l;
+        if (g2 < 0) g2 = -g2;
+
+        f = ((g1 + g2) * 2).ToString();
+
+        int cap = 10;
+        string m = "";
+        for (int g = 0; g < j + 1; g++)
+        {
+            for (int h = 1; h <= 4; h++)
+            {
+                int charValue1 = 0;
+                if (g + h < d.Length && char.IsDigit(d[g + h]))
+                    charValue1 = d[g + h] - '0';
+
+                int charValue2 = 0;
+                if (g < f.Length && char.IsDigit(f[g]))
+                    charValue2 = f[g] - '0';
+
+                int n = charValue1 + charValue2;
+                if (n >= cap)
+                    n -= cap;
+                m += n.ToString();
+            }
+        }
+
+        return m;
+    }
+    #endregion
+
+    #region TryKvsCandidates
+    async Task<bool> TryKvsCandidates(HttpClient client, List<string> files, string referer)
+    {
+        int max = files.Count < 3 ? files.Count : 3;
+        for (int i = 0; i < max; i++)
+        {
+            string play = files[i];
+            if (await WriteKvsMedia(client, play, referer).ConfigureAwait(false))
+                return true;
+
+            string download = play;
+            if (download.IndexOf("download=true", StringComparison.OrdinalIgnoreCase) < 0)
+                download = download + (download.IndexOf('?') >= 0 ? "&" : "?") + "download=true";
+
+            if (download != play && await WriteKvsMedia(client, download, referer).ConfigureAwait(false))
+                return true;
+        }
+
+        return false;
+    }
+    #endregion
+
     #region WarmKvsPage
-    async Task WarmKvsPage(HttpClient client, string referer)
+    async Task<string> WarmKvsPage(HttpClient client, string referer)
     {
         if (!Root.isSafeHttpUrl(referer))
-            return;
+            return null;
 
         try
         {
@@ -783,15 +995,26 @@ public class ViewController : BaseSisiController<NxtSettings>
                 req.Version = HttpVersion.Version11;
                 req.Headers.TryAddWithoutValidation("Accept", "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8");
                 req.Headers.TryAddWithoutValidation("User-Agent", Http.UserAgent);
+                req.Headers.TryAddWithoutValidation("Accept-Language", "en-US,en;q=0.9");
                 using (var resp = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, HttpContext.RequestAborted).ConfigureAwait(false))
                 {
-                    if (resp.Content != null)
-                        await resp.Content.CopyToAsync(Stream.Null, HttpContext.RequestAborted).ConfigureAwait(false);
+                    if (resp.Content == null)
+                        return null;
+
+                    string html = await resp.Content.ReadAsStringAsync(HttpContext.RequestAborted).ConfigureAwait(false);
+                    if (string.IsNullOrEmpty(html) || html.Length < 32)
+                        return null;
+                    if (html.Length > 1500000)
+                        html = html.Substring(0, 1500000);
+                    return html;
                 }
             }
         }
         catch (OperationCanceledException) { throw; }
-        catch { }
+        catch
+        {
+            return null;
+        }
     }
     #endregion
 
@@ -801,8 +1024,14 @@ public class ViewController : BaseSisiController<NxtSettings>
         if (string.IsNullOrEmpty(file) || !Root.isSafeHttpUrl(file))
             return false;
 
-        string refer = !string.IsNullOrEmpty(referer) ? referer : $"{init.host}/";
+        string refer = !string.IsNullOrEmpty(referer) ? referer : (init.host + "/");
+        string origin = null;
+        Uri ru;
+        if (!string.IsNullOrEmpty(refer) && Uri.TryCreate(refer, UriKind.Absolute, out ru))
+            origin = ru.GetLeftPart(UriPartial.Authority);
+
         var headers = httpHeaders(init.host ?? init.apihost, HeadersModel.InitOrNull(init.headers_stream));
+        bool started = false;
 
         using (var req = new HttpRequestMessage(HttpMethod.Get, file))
         {
@@ -810,6 +1039,11 @@ public class ViewController : BaseSisiController<NxtSettings>
             req.Headers.TryAddWithoutValidation("Accept", "*/*");
             req.Headers.TryAddWithoutValidation("User-Agent", Http.UserAgent);
             req.Headers.TryAddWithoutValidation("Referer", refer);
+            if (!string.IsNullOrEmpty(origin))
+                req.Headers.TryAddWithoutValidation("Origin", origin);
+            req.Headers.TryAddWithoutValidation("Sec-Fetch-Dest", "video");
+            req.Headers.TryAddWithoutValidation("Sec-Fetch-Mode", "no-cors");
+            req.Headers.TryAddWithoutValidation("Sec-Fetch-Site", "same-origin");
 
             if (headers != null)
             {
@@ -817,7 +1051,8 @@ public class ViewController : BaseSisiController<NxtSettings>
                 {
                     if (h.name.Equals("referer", StringComparison.OrdinalIgnoreCase) ||
                         h.name.Equals("host", StringComparison.OrdinalIgnoreCase) ||
-                        h.name.Equals("range", StringComparison.OrdinalIgnoreCase))
+                        h.name.Equals("range", StringComparison.OrdinalIgnoreCase) ||
+                        h.name.Equals("origin", StringComparison.OrdinalIgnoreCase))
                         continue;
 
                     req.Headers.TryAddWithoutValidation(h.name, h.val);
@@ -832,40 +1067,56 @@ public class ViewController : BaseSisiController<NxtSettings>
                 using (var response = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, HttpContext.RequestAborted).ConfigureAwait(false))
                 {
                     int code = (int)response.StatusCode;
-                    if (code is not (200 or 206))
+                    if (code != 200 && code != 206)
+                    {
+                        kvsLastError = "file:" + code;
                         return false;
+                    }
 
-                    string mediaType = response.Content?.Headers?.ContentType?.MediaType ?? string.Empty;
-                    if (mediaType.Contains("html", StringComparison.OrdinalIgnoreCase) ||
-                        mediaType.Contains("json", StringComparison.OrdinalIgnoreCase) ||
+                    string mediaType = response.Content != null && response.Content.Headers.ContentType != null
+                        ? (response.Content.Headers.ContentType.MediaType ?? string.Empty)
+                        : string.Empty;
+                    if (mediaType.IndexOf("html", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        mediaType.IndexOf("json", StringComparison.OrdinalIgnoreCase) >= 0 ||
                         mediaType.StartsWith("text/", StringComparison.OrdinalIgnoreCase))
+                    {
+                        kvsLastError = "file:html";
                         return false;
+                    }
 
-                    await using (var input = await response.Content.ReadAsStreamAsync(HttpContext.RequestAborted).ConfigureAwait(false))
+                    using (var input = await response.Content.ReadAsStreamAsync(HttpContext.RequestAborted).ConfigureAwait(false))
                     {
                         byte[] probe = new byte[16];
                         int probed = 0;
                         while (probed < 12)
                         {
-                            int read = await input.ReadAsync(probe.AsMemory(probed, probe.Length - probed), HttpContext.RequestAborted).ConfigureAwait(false);
+                            int read = await input.ReadAsync(probe, probed, probe.Length - probed, HttpContext.RequestAborted).ConfigureAwait(false);
                             if (read <= 0)
                                 break;
                             probed += read;
                         }
 
                         if (probed == 0)
+                        {
+                            kvsLastError = "file:empty";
                             return false;
+                        }
 
-                        if (probe[0] is (byte)'<' or (byte)'{' or (byte)'[')
+                        byte b0 = probe[0];
+                        if (b0 == (byte)'<' || b0 == (byte)'{' || b0 == (byte)'[')
+                        {
+                            kvsLastError = "file:html";
                             return false;
+                        }
 
                         Response.StatusCode = code;
+                        started = true;
                         Response.ContentType = mediaType.StartsWith("video/", StringComparison.OrdinalIgnoreCase)
                             ? mediaType
                             : "video/mp4";
 
-                        if (response.Content.Headers.ContentLength is long length)
-                            Response.ContentLength = length;
+                        if (response.Content.Headers.ContentLength.HasValue)
+                            Response.ContentLength = response.Content.Headers.ContentLength.Value;
 
                         Response.Headers["Accept-Ranges"] = "bytes";
                         if (response.Content.Headers.ContentRange != null)
@@ -878,7 +1129,7 @@ public class ViewController : BaseSisiController<NxtSettings>
                             return true;
 
                         if (probed > 0)
-                            await Response.Body.WriteAsync(probe.AsMemory(0, probed), HttpContext.RequestAborted).ConfigureAwait(false);
+                            await Response.Body.WriteAsync(probe, 0, probed, HttpContext.RequestAborted).ConfigureAwait(false);
 
                         await input.CopyToAsync(Response.Body, HttpContext.RequestAborted).ConfigureAwait(false);
                     }
@@ -888,10 +1139,20 @@ public class ViewController : BaseSisiController<NxtSettings>
             }
             catch (OperationCanceledException)
             {
-                return true;
+                return started;
             }
             catch (Exception ex)
             {
+                if (started)
+                    return true;
+
+                string msg = ex.Message ?? string.Empty;
+                if (msg.IndexOf("SSL", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    msg.IndexOf("TLS", StringComparison.OrdinalIgnoreCase) >= 0)
+                    kvsLastError = "file:ssl";
+                else
+                    kvsLastError = "file:ex";
+
                 Log.Error(ex, "CatchId={CatchId}", "id_kvsstrem1");
                 return false;
             }
