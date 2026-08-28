@@ -667,6 +667,7 @@ public class ViewController : BaseSisiController<NxtSettings>
 
 
     [HttpGet]
+    [HttpHead]
     [Route("nexthub/strem.mp4")]
     [Route("nexthub/strem")]
     async public Task<ActionResult> Strem(string u)
@@ -701,11 +702,30 @@ public class ViewController : BaseSisiController<NxtSettings>
         if (download.IndexOf("download=true", StringComparison.OrdinalIgnoreCase) < 0)
             download += (download.Contains('?') ? "&" : "?") + "download=true";
 
-        if (await WriteKvsMedia(file, referer).ConfigureAwait(false))
-            return _emptyResult;
+        var cookies = new CookieContainer();
+        var handler = new HttpClientHandler
+        {
+            AllowAutoRedirect = true,
+            MaxAutomaticRedirections = 8,
+            UseCookies = true,
+            CookieContainer = cookies,
+            AutomaticDecompression = DecompressionMethods.None,
+            ServerCertificateCustomValidationCallback = Http.AlwaysAllowCertificate,
+            UseProxy = proxy != null,
+            Proxy = proxy
+        };
 
-        if (await WriteKvsMedia(download, referer).ConfigureAwait(false))
-            return _emptyResult;
+        using (handler)
+        using (var client = new HttpClient(handler, disposeHandler: false) { Timeout = TimeSpan.FromHours(2) })
+        {
+            await WarmKvsPage(client, referer).ConfigureAwait(false);
+
+            if (await WriteKvsMedia(client, file, referer).ConfigureAwait(false))
+                return _emptyResult;
+
+            if (await WriteKvsMedia(client, download, referer).ConfigureAwait(false))
+                return _emptyResult;
+        }
 
         return OnError("file", refresh_proxy: true);
     }
@@ -731,8 +751,33 @@ public class ViewController : BaseSisiController<NxtSettings>
     }
     #endregion
 
+    #region WarmKvsPage
+    async Task WarmKvsPage(HttpClient client, string referer)
+    {
+        if (!Root.isSafeHttpUrl(referer))
+            return;
+
+        try
+        {
+            using (var req = new HttpRequestMessage(HttpMethod.Get, referer))
+            {
+                req.Version = HttpVersion.Version11;
+                req.Headers.TryAddWithoutValidation("Accept", "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8");
+                req.Headers.TryAddWithoutValidation("User-Agent", Http.UserAgent);
+                using (var resp = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, HttpContext.RequestAborted).ConfigureAwait(false))
+                {
+                    if (resp.Content != null)
+                        await resp.Content.CopyToAsync(Stream.Null, HttpContext.RequestAborted).ConfigureAwait(false);
+                }
+            }
+        }
+        catch (OperationCanceledException) { throw; }
+        catch { }
+    }
+    #endregion
+
     #region WriteKvsMedia
-    async Task<bool> WriteKvsMedia(string file, string referer)
+    async Task<bool> WriteKvsMedia(HttpClient client, string file, string referer)
     {
         if (string.IsNullOrEmpty(file) || !Root.isSafeHttpUrl(file))
             return false;
@@ -740,20 +785,6 @@ public class ViewController : BaseSisiController<NxtSettings>
         string refer = !string.IsNullOrEmpty(referer) ? referer : $"{init.host}/";
         var headers = httpHeaders(init.host ?? init.apihost, HeadersModel.InitOrNull(init.headers_stream));
 
-        var handler = new HttpClientHandler
-        {
-            AllowAutoRedirect = true,
-            MaxAutomaticRedirections = 8,
-            UseCookies = true,
-            CookieContainer = new CookieContainer(),
-            AutomaticDecompression = DecompressionMethods.None,
-            ServerCertificateCustomValidationCallback = Http.AlwaysAllowCertificate,
-            UseProxy = proxy != null,
-            Proxy = proxy
-        };
-
-        using (handler)
-        using (var client = new HttpClient(handler, disposeHandler: false) { Timeout = TimeSpan.FromHours(2) })
         using (var req = new HttpRequestMessage(HttpMethod.Get, file))
         {
             req.Version = HttpVersion.Version11;
@@ -791,24 +822,45 @@ public class ViewController : BaseSisiController<NxtSettings>
                         mediaType.StartsWith("text/", StringComparison.OrdinalIgnoreCase))
                         return false;
 
-                    Response.StatusCode = code;
-                    Response.ContentType = mediaType.StartsWith("video/", StringComparison.OrdinalIgnoreCase)
-                        ? mediaType
-                        : "video/mp4";
-
-                    if (response.Content.Headers.ContentLength is long length)
-                        Response.ContentLength = length;
-
-                    Response.Headers["Accept-Ranges"] = "bytes";
-
-                    if (response.Content.Headers.ContentRange != null)
-                        Response.Headers["Content-Range"] = response.Content.Headers.ContentRange.ToString();
-
-                    Response.Headers["Cache-Control"] = "no-store";
-                    Response.Headers.Remove("Content-Disposition");
-
                     await using (var input = await response.Content.ReadAsStreamAsync(HttpContext.RequestAborted).ConfigureAwait(false))
                     {
+                        byte[] probe = new byte[16];
+                        int probed = 0;
+                        while (probed < 12)
+                        {
+                            int read = await input.ReadAsync(probe.AsMemory(probed, probe.Length - probed), HttpContext.RequestAborted).ConfigureAwait(false);
+                            if (read <= 0)
+                                break;
+                            probed += read;
+                        }
+
+                        if (probed == 0)
+                            return false;
+
+                        if (probe[0] is (byte)'<' or (byte)'{' or (byte)'[')
+                            return false;
+
+                        Response.StatusCode = code;
+                        Response.ContentType = mediaType.StartsWith("video/", StringComparison.OrdinalIgnoreCase)
+                            ? mediaType
+                            : "video/mp4";
+
+                        if (response.Content.Headers.ContentLength is long length)
+                            Response.ContentLength = length;
+
+                        Response.Headers["Accept-Ranges"] = "bytes";
+                        if (response.Content.Headers.ContentRange != null)
+                            Response.Headers["Content-Range"] = response.Content.Headers.ContentRange.ToString();
+
+                        Response.Headers["Cache-Control"] = "no-store";
+                        Response.Headers.Remove("Content-Disposition");
+
+                        if (HttpMethods.IsHead(Request.Method))
+                            return true;
+
+                        if (probed > 0)
+                            await Response.Body.WriteAsync(probe.AsMemory(0, probed), HttpContext.RequestAborted).ConfigureAwait(false);
+
                         await input.CopyToAsync(Response.Body, HttpContext.RequestAborted).ConfigureAwait(false);
                     }
 
