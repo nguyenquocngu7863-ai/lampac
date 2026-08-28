@@ -769,9 +769,6 @@ public class ViewController : BaseSisiController<NxtSettings>
         if (_nxtInit == null)
             return OnError("init not found", rcache: false);
 
-        // Set base class init so WriteKvsMedia can access host/headers
-        init = _nxtInit;
-
         if (await IsRequestBlocked(_nxtInit, rch: _nxtInit.rch_access != null, rch_check: false))
             return badInitMsg;
 
