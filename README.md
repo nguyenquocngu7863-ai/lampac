@@ -16,11 +16,10 @@ Bản hướng dẫn này dành cho cách chạy Lampac trên **Android qua Term
 Mở Termux, tải script rồi chạy:
 
 ```bash
-pkg update -y && pkg install -y curl
-curl -fLO https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac/setup-termux.sh
-
-curl -fLO https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac/setup-termux.sh
-bash setup-termux.sh
+pkg update -y && pkg install -y git curl
+git clone --depth 1 --branch arena/01a04884-lampac https://github.com/nguyenquocngu7863-ai/lampac.git
+cd lampac
+bash setup-termux.sh --install
 ```
 
 Sau khi cài xong, script hỏi có khởi động Lampac ngay không. Chọn `Y` hoặc chỉ nhấn Enter để chạy ngay.
@@ -151,7 +150,7 @@ proot-distro login ubuntu -- bash -lc '
 Không cần clone Git:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac/setup-termux.sh \
+curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/setup-termux.sh \
   | bash -s -- --update
 ```
 
@@ -529,9 +528,7 @@ curl -s http://127.0.0.1:9118/lampainit.js | grep -oE 'StremioSub[^" ]*|stremios
 Nếu lệnh không in ra `stremiosub.js`, đồng bộ và khởi động lại:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac/setup-termux.sh | bash -s -- --sync
-
-curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac/setup-termux.sh | bash -s -- --sync
+curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/setup-termux.sh | bash -s -- --sync
 lampac stop
 lampac start
 ```

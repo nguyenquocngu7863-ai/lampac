@@ -18,9 +18,7 @@ LAMPAC_DIR="$HOME/lampac"
 LISTEN_PORT="${LAMPAC_PORT:-9118}"
 ROOT_PASSWORD="${LAMPAC_PASSWD:-lampac}"
 # Custom modules maintained in this repository. Override when using a private fork.
-CUSTOM_SOURCE_BASE="${LAMPAC_CUSTOM_SOURCE_BASE:-https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac}"
-
-CUSTOM_SOURCE_BASE="${LAMPAC_CUSTOM_SOURCE_BASE:-https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac}"
+CUSTOM_SOURCE_BASE="${LAMPAC_CUSTOM_SOURCE_BASE:-https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac}"
 
 MODE=""
 [[ "${1:-}" == "--install" ]] && MODE="install"
@@ -391,6 +389,39 @@ ensure_runtime_config() {
     ok "Runtime configuration applied; existing ENG/Chromium choices preserved"
 }
 
+# Patch Lampa meta.js with Vietnamese. Keep this OUT of bash -c "..." —
+# the language strings contain double quotes and would terminate that script.
+patch_vietnamese_language() {
+    info "Registering Vietnamese language in Lampa meta.js..."
+    proot-distro login ubuntu -- bash -s <<'VI_LANG'
+set -euo pipefail
+src=/root/lampac/module/LampaWeb/lang/vi.js
+langdir=/root/lampac/wwwroot/lampa-main/lang
+mkdir -p "$langdir"
+if [ -f "$src" ]; then
+    cp "$src" "$langdir/vi.js"
+fi
+meta="$langdir/meta.js"
+[ -f "$meta" ] || exit 0
+if grep -qE '(^|[,{])[[:space:]]*vi[[:space:]]*:' "$meta"; then
+    exit 0
+fi
+entry='vi: { code: "vi", name: "Tiếng Việt", lang_choice_title: "Chào mừng", lang_choice_subtitle: "Chọn ngôn ngữ của bạn" }, '
+awk -v entry="$entry" '
+  BEGIN { done = 0 }
+  {
+    if (!done && match($0, /languages[[:space:]]*:[[:space:]]*\{/)) {
+      sub(/languages[[:space:]]*:[[:space:]]*\{/, "& " entry)
+      done = 1
+    }
+    print
+  }
+' "$meta" > "$meta.tmp"
+mv "$meta.tmp" "$meta"
+VI_LANG
+    ok "Vietnamese language registered"
+}
+
 install_custom_modules() {
     info "Installing custom KKPhim/K20/VsMov/WebStreamr/Open Directory/Sootio/AIOStreams/CineWave/GStreamer module files..."
 
@@ -584,45 +615,42 @@ install_custom_modules() {
         # subtitle assets, otherwise a release can serve an old plugin list or
         # miss the selected built-in subtitle provider.
         webtarget=/root/lampac/module/LampaWeb
-        mkdir -p "\$webtarget/Controllers" "\$webtarget/Models" "\$webtarget/Services" "\$webtarget/plugins" "\$webtarget/lang"
-        webbase="${CUSTOM_SOURCE_BASE}/Modules/LampaWeb"
+        mkdir -p \"\$webtarget/Controllers\" \"\$webtarget/Models\" \"\$webtarget/Services\" \"\$webtarget/plugins\" \"\$webtarget/lang\"
+        webbase=\"${CUSTOM_SOURCE_BASE}/Modules/LampaWeb\"
         for file in Controllers/ApiController.cs ModInit.cs Models/InitPlugins.cs Services/LampaCron.cs lang/vi.js plugins/lampainit.js plugins/jackett.js plugins/online-compact.js plugins/vietnamese.js plugins/subsense-auto.js plugins/subsense.js plugins/subfinder.js plugins/stremiosub.js plugins/adminpanel.js; do
-            curl -fSL --retry 3 "\$webbase/\$file" -o "\$webtarget/\$file"
+            curl -fSL --retry 3 \"\$webbase/\$file\" -o \"\$webtarget/\$file\"
         done
 
-        mkdir -p "\$webtarget/vendor/hls"
+        mkdir -p \"\$webtarget/vendor/hls\"
         for file in hls.js LICENSE; do
-            curl -fSL --retry 3 "\$webbase/vendor/hls/\$file?cb=\$syncstamp" -o "\$webtarget/vendor/hls/\$file.tmp"
-            mv "\$webtarget/vendor/hls/\$file.tmp" "\$webtarget/vendor/hls/\$file"
+            curl -fSL --retry 3 \"\$webbase/vendor/hls/\$file?cb=\$syncstamp\" -o \"\$webtarget/vendor/hls/\$file.tmp\"
+            mv \"\$webtarget/vendor/hls/\$file.tmp\" \"\$webtarget/vendor/hls/\$file\"
         done
         if [ -f /root/lampac/wwwroot/lampa-main/app.min.js ]; then
             mkdir -p /root/lampac/wwwroot/lampa-main/vender/hls
-            cp "\$webtarget/vendor/hls/hls.js" /root/lampac/wwwroot/lampa-main/vender/hls/hls.js.tmp
+            cp \"\$webtarget/vendor/hls/hls.js\" /root/lampac/wwwroot/lampa-main/vender/hls/hls.js.tmp
             mv /root/lampac/wwwroot/lampa-main/vender/hls/hls.js.tmp /root/lampac/wwwroot/lampa-main/vender/hls/hls.js
         fi
 
         # base.conf is part of the published app, not the dynamic module.
         # Sync it too so default LampaWeb subtitle flags match the controller
         # and do not remain stuck at an older release's defaults.
-        curl -fSL --retry 3 "${CUSTOM_SOURCE_BASE}/config/base.conf" -o /root/lampac/base.conf
+        curl -fSL --retry 3 \"${CUSTOM_SOURCE_BASE}/config/base.conf\" -o /root/lampac/base.conf
 
         # Some release archives already contain lampa-main, so LampaCron sees
         # no update to perform and never makes its usual lampainit.js injection.
         # Ensure the page opened at http://PHONE_IP:9118/ always boots Lampac's
         # configured built-in plugins (ts, gst, subtitles, etc.).
         webindex=/root/lampac/wwwroot/lampa-main/index.html
-        if [ -f "\$webindex" ] && ! grep -q 'src="/lampainit.js"' "\$webindex"; then
-            sed -i 's#</body>#<script src="/lampainit.js"></script></body>#' "\$webindex"
+        if [ -f \"\$webindex\" ] && ! grep -q 'src=\"/lampainit.js\"' \"\$webindex\"; then
+            sed -i 's#</body>#<script src=\"/lampainit.js\"></script></body>#' \"\$webindex\"
         fi
 
-        # Install a real Lampa language module, not only the addon overlay.
+        # Copy vi.js now; meta.js is patched after this bash -c so Vietnamese
+        # strings do not break the surrounding double-quoted script.
         langdir=/root/lampac/wwwroot/lampa-main/lang
-        mkdir -p "\$langdir"
-        cp "\$webtarget/lang/vi.js" "\$langdir/vi.js"
-        meta="\$langdir/meta.js"
-        if [ -f "\$meta" ] && ! grep -qE '(^|[,{])[[:space:]]*vi[[:space:]]*:' "\$meta"; then
-            sed -i -E '0,/languages[[:space:]]*:[[:space:]]*\{/{s/languages[[:space:]]*:[[:space:]]*\{/languages: { vi: { code: "vi", name: "Tiếng Việt", lang_choice_title: "Chào mừng", lang_choice_subtitle: "Chọn ngôn ngữ của bạn" },/}' "\$meta"
-        fi
+        mkdir -p \"\$langdir\"
+        cp \"\$webtarget/lang/vi.js\" \"\$langdir/vi.js\"
 
         # The AdminPanel is protected by the Lampac root password. If it is
         # already installed/enabled, keep its Vietnamese UI in sync too.
@@ -641,6 +669,8 @@ install_custom_modules() {
             echo \"  [admin] synced and verified: \$admintarget\"
         done
     "
+
+    patch_vietnamese_language
 
     ok "Custom Online, NextHUB, AIOStreams, GStreamer and LampaWeb files installed; removed retired NguonC"
 }
@@ -774,63 +804,63 @@ case "${1:-}" in
             # NguonC is retired; VsMov is synced below.
             rm -rf /root/lampac/module/OnlineVN/NguonC
 
-            base="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac/Modules/OnlineVN/KKPhim"
+            base="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/Modules/OnlineVN/KKPhim"
 
-            base="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac/Modules/OnlineVN/KKPhim"
+            base="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/Modules/OnlineVN/KKPhim"
             target=/root/lampac/module/OnlineVN/KKPhim
             mkdir -p "$target"
             for file in Controller.cs Model.cs ModInit.cs manifest.json; do
                 curl -fSL --retry 3 "$base/$file" -o "$target/$file"
             done
 
-            k20base="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac/Modules/OnlineVN/K20"
+            k20base="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/Modules/OnlineVN/K20"
 
-            k20base="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac/Modules/OnlineVN/K20"
+            k20base="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/Modules/OnlineVN/K20"
             k20target=/root/lampac/module/OnlineVN/K20
             mkdir -p "$k20target"
             for file in Controller.cs Model.cs ModInit.cs manifest.json; do
                 curl -fSL --retry 3 "$k20base/$file" -o "$k20target/$file"
             done
 
-            vsmovbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac/Modules/OnlineVN/VsMov"
+            vsmovbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/Modules/OnlineVN/VsMov"
 
-            vsmovbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac/Modules/OnlineVN/VsMov"
+            vsmovbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/Modules/OnlineVN/VsMov"
             vsmovtarget=/root/lampac/module/OnlineVN/VsMov
             mkdir -p "$vsmovtarget"
             for file in Controller.cs Model.cs ModInit.cs manifest.json; do
                 curl -fSL --retry 3 "$vsmovbase/$file" -o "$vsmovtarget/$file"
             done
 
-            webbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac/Modules/OnlineENG/WebStreamr"
+            webbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/Modules/OnlineENG/WebStreamr"
 
-            webbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac/Modules/OnlineENG/WebStreamr"
+            webbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/Modules/OnlineENG/WebStreamr"
             webtarget=/root/lampac/module/OnlineENG/WebStreamr
             mkdir -p "$webtarget"
             for file in Controller.cs Model.cs ModInit.cs manifest.json; do
                 curl -fSL --retry 3 "$webbase/$file" -o "$webtarget/$file"
             done
 
-            opendirectorybase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac/Modules/OnlineENG/OpenDirectory"
+            opendirectorybase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/Modules/OnlineENG/OpenDirectory"
 
-            opendirectorybase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac/Modules/OnlineENG/OpenDirectory"
+            opendirectorybase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/Modules/OnlineENG/OpenDirectory"
             opendirectorytarget=/root/lampac/module/OnlineENG/OpenDirectory
             mkdir -p "$opendirectorytarget"
             for file in Controller.cs Model.cs ModInit.cs manifest.json; do
                 curl -fSL --retry 3 "$opendirectorybase/$file" -o "$opendirectorytarget/$file"
             done
 
-            sootiobase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac/Modules/OnlineENG/Sootio"
+            sootiobase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/Modules/OnlineENG/Sootio"
 
-            sootiobase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac/Modules/OnlineENG/Sootio"
+            sootiobase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/Modules/OnlineENG/Sootio"
             sootiotarget=/root/lampac/module/OnlineENG/Sootio
             mkdir -p "$sootiotarget"
             for file in Controller.cs Model.cs ModInit.cs manifest.json; do
                 curl -fSL --retry 3 "$sootiobase/$file" -o "$sootiotarget/$file"
             done
 
-            aiobase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac/Modules/OnlineENG/AIOStreams"
+            aiobase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/Modules/OnlineENG/AIOStreams"
 
-            aiobase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac/Modules/OnlineENG/AIOStreams"
+            aiobase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/Modules/OnlineENG/AIOStreams"
             aiotarget=/root/lampac/module/OnlineENG/AIOStreams
             mkdir -p "$aiotarget"
             for file in Controller.cs Model.cs ModInit.cs manifest.json; do
@@ -838,30 +868,30 @@ case "${1:-}" in
             done
 
             # Custom Online (Lampa client) plugin: wrapped info rows + full titles.
-            onlinebase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac/Online"
+            onlinebase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/Online"
             onlinetarget=/root/lampac/module/Online
             mkdir -p "$onlinetarget"
             curl -fSL --retry 3 "$onlinebase/plugin.js" -o "$onlinetarget/plugin.js"
 
-            curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac/aioctl.sh" -o /root/aioctl.sh
+            curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/aioctl.sh" -o /root/aioctl.sh
             chmod +x /root/aioctl.sh
 
             # Keep the dynamic LampaWeb subtitle/plugin selector in sync after
             # replacing a release archive.
-            webbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac/Modules/LampaWeb"
+            webbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/Modules/LampaWeb"
 
-            cwbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac/Modules/OnlineENG/CineWave"
+            cwbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/Modules/OnlineENG/CineWave"
             cwtarget=/root/lampac/module/OnlineENG/CineWave
             mkdir -p "$cwtarget"
             for file in Controller.cs Model.cs ModInit.cs manifest.json; do
                 curl -fSL --retry 3 "$cwbase/$file" -o "$cwtarget/$file"
             done
-            curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac/aioctl.sh" -o /root/aioctl.sh
-            curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac/jackettctl.sh" -o /root/jackettctl.sh
+            curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/aioctl.sh" -o /root/aioctl.sh
+            curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/jackettctl.sh" -o /root/jackettctl.sh
             chmod +x /root/aioctl.sh /root/jackettctl.sh
 
             syncstamp=$(date +%s)
-            nexthubrootbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac/Modules/NextHUB"
+            nexthubrootbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/Modules/NextHUB"
             nexthubroottarget=/root/lampac/module/NextHUB
             nexthubtarget="$nexthubroottarget/sites"
             if [ -d "$nexthubtarget" ]; then
@@ -877,7 +907,7 @@ case "${1:-}" in
                 mv "$nexthubroottarget/Controllers/ListController.cs.tmp" "$nexthubroottarget/Controllers/ListController.cs"
             fi
 
-            epornerbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac/Modules/Adult/Eporner"
+            epornerbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/Modules/Adult/Eporner"
             epornertarget=/root/lampac/module/Adult/Eporner
             if [ -d "$epornertarget" ]; then
                 for file in Controller.cs ModInit.cs Service.cs; do
@@ -889,7 +919,7 @@ case "${1:-}" in
             sisitarget=/root/lampac/module/SISI/plugins
             if [ -d "$sisitarget" ]; then
                 for file in sisi.js startpage.js; do
-                    curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac/SISI/plugins/$file" -o "$sisitarget/$file.tmp"
+                    curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/SISI/plugins/$file" -o "$sisitarget/$file.tmp"
                     mv "$sisitarget/$file.tmp" "$sisitarget/$file"
                 done
             fi
@@ -897,12 +927,12 @@ case "${1:-}" in
             for adultmodule in BongaCams Chaturbate Ebalovo Eporner HQporner PornHub Porntrex Runetki Spankbang Xhamster Xnxx Xvideos XvideosRED; do
                 adulttarget="/root/lampac/module/Adult/$adultmodule"
                 if [ -d "$adulttarget" ]; then
-                    curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac/Modules/Adult/$adultmodule/Service.cs?cb=$syncstamp" -o "$adulttarget/Service.cs.tmp"
+                    curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/Modules/Adult/$adultmodule/Service.cs?cb=$syncstamp" -o "$adulttarget/Service.cs.tmp"
                     mv "$adulttarget/Service.cs.tmp" "$adulttarget/Service.cs"
                 fi
             done
 
-            chaturbatebase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac/Modules/Adult/Chaturbate"
+            chaturbatebase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/Modules/Adult/Chaturbate"
             chaturbatetarget=/root/lampac/module/Adult/Chaturbate
             if [ -d "$chaturbatetarget" ]; then
                 for file in Controller.cs ModInit.cs; do
@@ -911,7 +941,7 @@ case "${1:-}" in
                 done
             fi
 
-            videasybase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac/Modules/OnlineENG/Videasy"
+            videasybase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/Modules/OnlineENG/Videasy"
             videasytarget=/root/lampac/module/OnlineENG/Videasy
             if [ -d "$videasytarget" ]; then
                 for file in Controller.cs ModInit.cs; do
@@ -920,7 +950,7 @@ case "${1:-}" in
                 done
             fi
 
-            vidsrcbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac/Modules/OnlineENG/VidSrc"
+            vidsrcbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/Modules/OnlineENG/VidSrc"
             vidsrctarget=/root/lampac/module/OnlineENG/VidSrc
             if [ -d "$vidsrctarget" ]; then
                 for file in Controller.cs ModInit.cs; do
@@ -929,7 +959,7 @@ case "${1:-}" in
                 done
             fi
 
-            vidlinkbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac/Modules/OnlineENG/VidLink"
+            vidlinkbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/Modules/OnlineENG/VidLink"
             vidlinktarget=/root/lampac/module/OnlineENG/VidLink
             if [ -d "$vidlinktarget" ]; then
                 for file in Controller.cs ModInit.cs; do
@@ -938,7 +968,7 @@ case "${1:-}" in
                 done
             fi
 
-            mapplebase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac/Modules/OnlineENG/Mapple4K"
+            mapplebase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/Modules/OnlineENG/Mapple4K"
             mappletarget=/root/lampac/module/OnlineENG/Mapple4K
             mkdir -p "$mappletarget"
             for file in Controller.cs ModInit.cs manifest.json README.md; do
@@ -949,22 +979,22 @@ case "${1:-}" in
             for proxymodule in CubProxy TmdbProxy; do
                 proxytarget="/root/lampac/module/Proxy/$proxymodule"
                 if [ -d "$proxytarget" ]; then
-                    curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac/Modules/Proxy/$proxymodule/Controller.cs" -o "$proxytarget/Controller.cs.tmp"
+                    curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/Modules/Proxy/$proxymodule/Controller.cs" -o "$proxytarget/Controller.cs.tmp"
                     mv "$proxytarget/Controller.cs.tmp" "$proxytarget/Controller.cs"
                 fi
             done
 
             # Keep the dynamic LampaWeb subtitle/plugin selector in sync after
             # replacing a release archive.
-            webbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac/Modules/LampaWeb"
+            webbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/Modules/LampaWeb"
             webtarget=/root/lampac/module/LampaWeb
             mkdir -p "$webtarget/Controllers" "$webtarget/Models" "$webtarget/Services" "$webtarget/plugins" "$webtarget/lang"
             for file in Controllers/ApiController.cs ModInit.cs Models/InitPlugins.cs Services/LampaCron.cs lang/vi.js plugins/lampainit.js plugins/jackett.js plugins/online-compact.js plugins/vietnamese.js plugins/subsense-auto.js plugins/subsense.js plugins/subfinder.js plugins/stremiosub.js plugins/adminpanel.js; do
                 curl -fSL --retry 3 "$webbase/$file" -o "$webtarget/$file"
             done
-            curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac/config/base.conf" -o /root/lampac/base.conf
+            curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/config/base.conf" -o /root/lampac/base.conf
 
-            gstbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac/Modules/GStreamer"
+            gstbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/Modules/GStreamer"
 
 
             mkdir -p "$webtarget/vendor/hls"
@@ -981,14 +1011,10 @@ case "${1:-}" in
             langdir=/root/lampac/wwwroot/lampa-main/lang
             mkdir -p "$langdir"
             cp "$webtarget/lang/vi.js" "$langdir/vi.js"
-            meta="$langdir/meta.js"
-            if [ -f "$meta" ] && ! grep -qE '(^|[,{])[[:space:]]*vi[[:space:]]*:' "$meta"; then
-                sed -i -E '0,/languages[[:space:]]*:[[:space:]]*\{/{s/languages[[:space:]]*:[[:space:]]*\{/languages: { vi: { code: "vi", name: "Tiếng Việt", lang_choice_title: "Chào mừng", lang_choice_subtitle: "Chọn ngôn ngữ của bạn" },/}' "$meta"
-            fi
 
-            curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac/config/base.conf" -o /root/lampac/base.conf
+            curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/config/base.conf" -o /root/lampac/base.conf
 
-            gstbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac/Modules/GStreamer"
+            gstbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/Modules/GStreamer"
             gsttarget=/root/lampac/module/GStreamer
             mkdir -p "$gsttarget/Services" "$gsttarget/plugins"
             for file in Controller.cs Services/GService.cs Services/GStask.cs Services/HdrToneMappingBackend.cs Services/GStask.Pipeline.cs Services/GStask.Producer.cs plugins/gst.js; do
@@ -997,9 +1023,9 @@ case "${1:-}" in
 
             admintarget=/root/lampac/module/AdminPanel
             if [ -d "$admintarget" ]; then
-                adminbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac/Modules/AdminPanel"
+                adminbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/Modules/AdminPanel"
 
-            adminbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a043c7-lampac/Modules/AdminPanel"
+            adminbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/Modules/AdminPanel"
             adminstamp=$(date +%s)
             for admintarget in /root/lampac/module/AdminPanel /root/lampac/mods/AdminPanel; do
                 [ -d "$admintarget" ] || continue
@@ -1007,7 +1033,7 @@ case "${1:-}" in
                     curl -fSL --retry 3 "$adminbase/$file?cb=$adminstamp" -o "$admintarget/$file.tmp"
                     mv "$admintarget/$file.tmp" "$admintarget/$file"
                 done
-                if ! grep -q 'src-adult-nexthub' "$admintarget/ConfigSectionGroups.cs"; then
+                if ! grep -q src-adult-nexthub "$admintarget/ConfigSectionGroups.cs"; then
                     echo "  [admin] ERROR: downloaded grouping is stale: $admintarget" >&2
                     exit 1
                 fi
@@ -1015,6 +1041,32 @@ case "${1:-}" in
             done
             echo "Update complete!"
         '
+        proot-distro login ubuntu -- bash -s <<'VI_LANG'
+set -euo pipefail
+src=/root/lampac/module/LampaWeb/lang/vi.js
+langdir=/root/lampac/wwwroot/lampa-main/lang
+mkdir -p "$langdir"
+if [ -f "$src" ]; then
+    cp "$src" "$langdir/vi.js"
+fi
+meta="$langdir/meta.js"
+[ -f "$meta" ] || exit 0
+if grep -qE '(^|[,{])[[:space:]]*vi[[:space:]]*:' "$meta"; then
+    exit 0
+fi
+entry='vi: { code: "vi", name: "Tiếng Việt", lang_choice_title: "Chào mừng", lang_choice_subtitle: "Chọn ngôn ngữ của bạn" }, '
+awk -v entry="$entry" '
+  BEGIN { done = 0 }
+  {
+    if (!done && match($0, /languages[[:space:]]*:[[:space:]]*\{/)) {
+      sub(/languages[[:space:]]*:[[:space:]]*\{/, "& " entry)
+      done = 1
+    }
+    print
+  }
+' "$meta" > "$meta.tmp"
+mv "$meta.tmp" "$meta"
+VI_LANG
         ;;
     *)
         echo "Usage: lampac {start|stop|status|config|info|update}"
