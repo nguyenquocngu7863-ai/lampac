@@ -670,7 +670,7 @@ public class ViewController : BaseSisiController<NxtSettings>
     [HttpHead]
     [Route("nexthub/strem.mp4")]
     [Route("nexthub/strem")]
-    async public Task<ActionResult> Strem(string u)
+    async public Task<ActionResult> Strem(string u, string src, string plugin, string referer)
     {
         StatiCacheDisabled = true;
 
@@ -683,18 +683,28 @@ public class ViewController : BaseSisiController<NxtSettings>
             return _emptyResult;
         }
 
-        u = DecryptQuery(u);
-        if (string.IsNullOrEmpty(u))
-            return OnError("uri", rcache: false);
+        string file;
 
-        int first = u.IndexOf("_-:-_", StringComparison.Ordinal);
-        int second = first > 0 ? u.IndexOf("_-:-_", first + 5, StringComparison.Ordinal) : -1;
-        if (first <= 0 || second <= 0 || second + 5 >= u.Length)
-            return OnError("uri", rcache: false);
+        if (!string.IsNullOrEmpty(src))
+        {
+            plugin = string.IsNullOrEmpty(plugin) ? "85po" : plugin;
+            file = src;
+        }
+        else
+        {
+            u = DecryptQuery(u);
+            if (string.IsNullOrEmpty(u))
+                return OnError("uri", rcache: false);
 
-        string plugin = u.Substring(0, first);
-        string referer = u.Substring(first + 5, second - (first + 5));
-        string file = u.Substring(second + 5);
+            int first = u.IndexOf("_-:-_", StringComparison.Ordinal);
+            int second = first > 0 ? u.IndexOf("_-:-_", first + 5, StringComparison.Ordinal) : -1;
+            if (first <= 0 || second <= 0 || second + 5 >= u.Length)
+                return OnError("uri", rcache: false);
+
+            plugin = u.Substring(0, first);
+            referer = u.Substring(first + 5, second - (first + 5));
+            file = u.Substring(second + 5);
+        }
 
         var _nxtInit = Root.goInit(plugin);
         if (_nxtInit == null)
