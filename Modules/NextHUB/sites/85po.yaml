@@ -61,6 +61,6 @@ view:
   related: true
   bindingToIP: true
   viewsource: true
-  regexMatch:
-    matches: ["video_alt_url", "video_url"]
-    pattern: "{value}:[\\t ]+'([^']+)'"
+  eval: |
+    {include:kt_player.eval}
+    return decode();

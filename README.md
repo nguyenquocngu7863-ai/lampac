@@ -108,7 +108,7 @@ curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/0
 lampac stop && lampac start
 ```
 
-List file của `--sync` nằm trong `sync_latest_modules()` của script; mỗi patch sẽ thay list này. Bản vá hiện tại kéo `CategoryVi.cs` và toàn bộ YAML NextHUB (menu tiếng Việt). Không dùng `--sync` khi cần LampaWeb, tiếng Việt lõi, hoặc Jackett/AIO controller.
+List file của `--sync` nằm trong `sync_latest_modules()` của script; mỗi patch sẽ thay list này. Bản vá hiện tại kéo `Modules/NextHUB/sites/85po.yaml` (sửa phát video KVS). Không dùng `--sync` khi cần LampaWeb, tiếng Việt lõi, hoặc Jackett/AIO controller.
 
 ### Sync đầy đủ — mọi module tuỳ biến + runtime trình duyệt
 
