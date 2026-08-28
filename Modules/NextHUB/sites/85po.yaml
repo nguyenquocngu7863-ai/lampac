@@ -4,7 +4,7 @@ displayname: 85PO
 rch_access: apk,cors
 stream_access: apk,cors
 host: https://www.85po.com
-priorityBrowser: http
+priorityBrowser: chrome
 streamproxy: true
 headers_stream:
   User-Agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"
@@ -60,7 +60,6 @@ contentParse:
 view:
   related: true
   bindingToIP: true
-  viewsource: true
   eval: |
     string link = null;
     foreach (string q in new string[] { "_1080p", "_720p", "_480p", "_360p" })
@@ -85,4 +84,8 @@ view:
         link = Regex.Match(html, "(https?://[^/]+/get_file/[^'\\\"\\s]+\\.mp4[^'\\\"\\s]*)", RegexOptions.IgnoreCase).Groups[1].Value;
     if (string.IsNullOrEmpty(link))
         return null;
-    return link.Replace("&amp;", "&").Replace("function/0/", "");
+    link = link.Replace("&amp;", "&").Replace("function/0/", "");
+    string lic = Regex.Match(html, "license_code:[\\n\\r\\t ]+'([^']+)'", RegexOptions.IgnoreCase).Groups[1].Value;
+    if (!string.IsNullOrEmpty(lic))
+        return link + "||||" + lic;
+    return link;

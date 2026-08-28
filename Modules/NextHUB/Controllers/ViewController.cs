@@ -115,8 +115,19 @@ public class ViewController : BaseSisiController<NxtSettings>
 
             if (!string.IsNullOrEmpty(video.file) && video.file.Contains("/get_file/", StringComparison.OrdinalIgnoreCase))
             {
-                string token = EncryptQuery($"{plugin}_-:-_{url}_-:-_{video.file}");
-                stream_links.qualitys["auto"] = $"{host}/nexthub/strem.mp4?u={HttpUtility.UrlEncode(token)}&amp;referer={HttpUtility.UrlEncode(url)}";
+                string videoUrl = video.file;
+                string licenseCode = null;
+                int licSep = video.file.IndexOf("||||", StringComparison.Ordinal);
+                if (licSep > 0)
+                {
+                    videoUrl = video.file.Substring(0, licSep);
+                    licenseCode = video.file.Substring(licSep + 4);
+                }
+                string token = EncryptQuery($"{plugin}_-:-_{url}_-:-_{videoUrl}");
+                string stremUrl = $"{host}/nexthub/strem.mp4?u={HttpUtility.UrlEncode(token)}&amp;referer={HttpUtility.UrlEncode(url)}";
+                if (!string.IsNullOrEmpty(licenseCode))
+                    stremUrl += $"&amp;license={HttpUtility.UrlEncode(licenseCode)}";
+                stream_links.qualitys["auto"] = stremUrl;
 
                 bool savedProxy = init.streamproxy;
                 bool savedReserve = init.url_reserve;
@@ -672,7 +683,7 @@ public class ViewController : BaseSisiController<NxtSettings>
     [HttpHead]
     [Route("nexthub/strem.mp4")]
     [Route("nexthub/strem")]
-    async public Task<ActionResult> Strem(string u, string src, string plugin, string referer)
+    async public Task<ActionResult> Strem(string u, string src, string plugin, string referer, string license)
     {
         StatiCacheDisabled = true;
 
@@ -693,6 +704,10 @@ public class ViewController : BaseSisiController<NxtSettings>
             referer = Request.Query["amp;referer"].ToString();
         if (string.IsNullOrEmpty(u))
             u = Request.Query["amp;u"].ToString();
+        if (string.IsNullOrEmpty(license))
+            license = Request.Query["amp;license"].ToString();
+        if (string.IsNullOrEmpty(license))
+            license = Request.Query["license"].ToString();
 
         string file = null;
 
@@ -743,9 +758,9 @@ public class ViewController : BaseSisiController<NxtSettings>
         using (handler)
         using (var client = new HttpClient(handler, disposeHandler: false) { Timeout = TimeSpan.FromHours(2) })
         {
-            // Phase 1 — try rehash + download=true first (no cookies needed)
-            string license = null;
-            if (Root.isSafeHttpUrl(referer))
+            // Phase 1 — use license passed from Index (bypasses Cloudflare)
+            // Also try fetching license from referer page as fallback
+            if (string.IsNullOrEmpty(license) && Root.isSafeHttpUrl(referer))
             {
                 try
                 {
