@@ -685,6 +685,15 @@ public class ViewController : BaseSisiController<NxtSettings>
             return _emptyResult;
         }
 
+        if (string.IsNullOrEmpty(src))
+            src = Request.Query["amp;src"].ToString();
+        if (string.IsNullOrEmpty(plugin))
+            plugin = Request.Query["amp;plugin"].ToString();
+        if (string.IsNullOrEmpty(referer))
+            referer = Request.Query["amp;referer"].ToString();
+        if (string.IsNullOrEmpty(u))
+            u = Request.Query["amp;u"].ToString();
+
         string file = null;
 
         if (!string.IsNullOrEmpty(src) || (!string.IsNullOrEmpty(referer) && string.IsNullOrEmpty(u)))
