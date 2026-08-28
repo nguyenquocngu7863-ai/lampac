@@ -1,0 +1,66 @@
+enable: true
+displayindex: 6
+displayname: 85PO
+rch_access: apk,cors
+stream_access: apk,cors
+host: https://www.85po.com
+priorityBrowser: http
+streamproxy: true
+headers_stream:
+  referer: "{host}/"
+  origin: "{host}"
+  accept: "*/*"
+
+menu:
+  sort:
+    Mới nhất: ""
+    Phổ biến: most-popular/{page}/
+    Đánh giá cao: top-rated/{page}/
+  categories:
+    format: tags/{cat}/{page}/
+    Tự quay: zi-pai
+    Đài Loan: tai-wan
+    Nhật Bản: ri-ben
+    Cặp đôi: qing-lv
+    Khẩu giao: kou-jiao
+    Ngực lớn: ju-ru
+    Ngực to: da-nai
+    Mông đẹp: mei-tun
+    Thủ dâm: zi-wei
+    Squirt: pen-shui
+    Quan hệ: zuo-ai
+    Cởi đồ: tuo-yi
+    Khỏa thân: quan-luo
+    Đồ lót: nei-yi2
+    Có lông: duo-mao
+    Trên giường: chuang-shang
+    Gợi cảm: sao
+
+list:
+  firstpage: latest-updates/
+  uri: latest-updates/{page}/
+
+search:
+  uri: search/{search}/{page}/
+
+contentParse:
+  nodes: //div[contains(concat(' ', normalize-space(@class), ' '), ' item ')]
+  name:
+    node: .//a
+    attribute: title
+  href:
+    node: .//a[contains(@href, '/v/')]
+    attribute: href
+  img:
+    node: .//img
+    attributes: ["data-original", "data-src", "src"]
+  duration:
+    node: .//*[contains(@class, 'duration')]
+
+view:
+  related: true
+  bindingToIP: true
+  viewsource: true
+  regexMatch:
+    matches: ["video_alt_url", "video_url"]
+    pattern: "{value}:[\\t ]+'([^']+)'"

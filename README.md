@@ -539,6 +539,7 @@ Không bật hàng loạt 50+ YAML. Chỉ những nguồn Android không phát t
 | **Cam4** | Live HLS trong playlist — cùng kiểu Chaturbate |
 | **Oxax, WatchPorn** | YAML đã có `headers_stream` (Referer) nhưng chưa proxy → APK không gửi header |
 | **ProstoPorno, yaeby** | KVS `/get_file/` + `bindingToIP` — redirect khóa Referer/IP |
+| **85PO** | Tube KVS Đài Loan/Nhật; `get_file` khóa Referer/IP |
 
 Tube còn lại (Youjizz, Porndig, Porn4days, đa số KVS Nga với `rchstreamproxy: web`) để APK phát thẳng. `rchstreamproxy: web` **không** phải `streamproxy` cho điện thoại.
 

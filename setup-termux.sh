@@ -439,7 +439,7 @@ VI_LANG
 # shipping a small fix so Termux does not re-download Chrome, hls.js, or
 # every custom module. Use --sync-all for a full refresh.
 sync_latest_modules() {
-    info "Syncing latest patch files only (NextHUB streamproxy)..."
+    info "Syncing latest patch files only (NextHUB 85PO)..."
 
     proot-distro login ubuntu -- bash -c "
         set -euo pipefail
@@ -457,11 +457,7 @@ sync_latest_modules() {
             mv \"\$dest.tmp\" \"\$dest\"
             echo \"  [sync] \$dest\"
         }
-        pull Modules/NextHUB/sites/cam4.yaml /root/lampac/module/NextHUB/sites/cam4.yaml
-        pull Modules/NextHUB/sites/oxax.yaml /root/lampac/module/NextHUB/sites/oxax.yaml
-        pull Modules/NextHUB/sites/watchporn.yaml /root/lampac/module/NextHUB/sites/watchporn.yaml
-        pull Modules/NextHUB/sites/prostoporno.yaml /root/lampac/module/NextHUB/sites/prostoporno.yaml
-        pull Modules/NextHUB/sites/yaeby.yaml /root/lampac/module/NextHUB/sites/yaeby.yaml
+        pull Modules/NextHUB/sites/85po.yaml /root/lampac/module/NextHUB/sites/85po.yaml
     "
 
     ok "Latest patch files applied"
@@ -551,7 +547,7 @@ install_custom_modules() {
         nexthubroottarget=/root/lampac/module/NextHUB
         nexthubtarget=\"\$nexthubroottarget/sites\"
         if [ -d \"\$nexthubtarget\" ]; then
-            for file in sex-studentki.yaml noodlemagazine.yaml pornone.yaml cam4.yaml oxax.yaml watchporn.yaml prostoporno.yaml yaeby.yaml trahkino.yaml rusvideos.yaml veporn.yaml; do
+            for file in sex-studentki.yaml noodlemagazine.yaml pornone.yaml cam4.yaml oxax.yaml watchporn.yaml prostoporno.yaml yaeby.yaml 85po.yaml trahkino.yaml rusvideos.yaml veporn.yaml; do
                 curl -fSL --retry 3 \"\$nexthubrootbase/sites/\$file?cb=\$syncstamp\" -o \"\$nexthubtarget/\$file.tmp\"
                 mv \"\$nexthubtarget/\$file.tmp\" \"\$nexthubtarget/\$file\"
             done
@@ -948,7 +944,7 @@ case "${1:-}" in
             nexthubroottarget=/root/lampac/module/NextHUB
             nexthubtarget="$nexthubroottarget/sites"
             if [ -d "$nexthubtarget" ]; then
-                for file in sex-studentki.yaml noodlemagazine.yaml pornone.yaml cam4.yaml oxax.yaml watchporn.yaml prostoporno.yaml yaeby.yaml trahkino.yaml rusvideos.yaml veporn.yaml; do
+                for file in sex-studentki.yaml noodlemagazine.yaml pornone.yaml cam4.yaml oxax.yaml watchporn.yaml prostoporno.yaml yaeby.yaml 85po.yaml trahkino.yaml rusvideos.yaml veporn.yaml; do
                     curl -fSL --retry 3 "$nexthubrootbase/sites/$file?cb=$syncstamp" -o "$nexthubtarget/$file.tmp"
                     mv "$nexthubtarget/$file.tmp" "$nexthubtarget/$file"
                 done
