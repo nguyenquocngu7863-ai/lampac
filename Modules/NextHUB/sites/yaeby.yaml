@@ -4,7 +4,12 @@ displayname: yaeby
 rch_access: apk,cors
 stream_access: apk,cors
 rchstreamproxy: web, apk,cors
+streamproxy: true
 host: https://m.yaeby.dad/
+headers_stream:
+  referer: "{host}"
+  origin: "{host}"
+  accept: "*/*"
 
 list:
   uri: "new-porno/?mode=async&function=get_block&block_id=list_videos_latest_videos_list&sort_by=post_date_and_popularity&from={page}"

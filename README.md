@@ -79,6 +79,46 @@ ip addr show wlan0
 
 ## Cập nhật và đồng bộ module
 
+Có **ba lệnh**. Script trên điện thoại tự chứa danh sách file, nên sau mỗi bản vá phải tải lại `setup-termux.sh` một lần rồi mới sync — nếu không, `--sync` vẫn dùng list cũ.
+
+```bash
+# Bước 0 — lấy script mới (làm một lần sau mỗi patch)
+curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/setup-termux.sh -o setup-termux.sh
+```
+
+| Lệnh | Khi nào dùng | Tải gì |
+|---|---|---|
+| `--sync` | Vá nhỏ vừa ship (Chaturbate, proxy 18+, NextHUB YAML, …) | **Chỉ file của bản vá mới nhất.** Không tải Chrome, hls.js, KKPhim, LampaWeb |
+| `--sync-all` | Muốn lấy lại **mọi** module tuỳ biến / Chrome bị hỏng / plugin LampaWeb | Chrome/Chromium + KKPhim/K20/VsMov + SISI + NextHUB + LampaWeb/hls.js + AdminPanel |
+| `--update` | Có release Lampac mới | `lampac-nextgen.zip` rồi chạy cùng bước với `--sync-all` |
+
+### Sync nhẹ — chỉ file bản vá mới nhất
+
+Nhanh. Dùng khi chat bảo “chạy `--sync`”.
+
+```bash
+bash setup-termux.sh --sync
+lampac stop && lampac start
+```
+
+Hoặc một lệnh (vẫn nên tải script mới trước):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/setup-termux.sh | bash -s -- --sync
+lampac stop && lampac start
+```
+
+List file của `--sync` nằm trong `sync_latest_modules()` của script; mỗi patch sẽ thay list này. Không dùng `--sync` khi cần LampaWeb, tiếng Việt lõi, Jackett/AIO controller, hoặc toàn bộ YAML NextHUB.
+
+### Sync đầy đủ — mọi module tuỳ biến + runtime trình duyệt
+
+```bash
+bash setup-termux.sh --sync-all
+lampac stop && lampac start
+```
+
+Lấy lại **KKPhim, K20, VsMov, WebStreamr, Open Directory, Sootio, AIOStreams, GStreamer, SISI, Eporner, Chaturbate, NextHUB YAML, LampaWeb/StremioSub/hls.js**, sửa Chrome nếu thiếu. Nặng hơn `--sync`, dùng khi cài lại module hoặc vá không nằm trong list nhẹ.
+
 ### Cập nhật đầy đủ, không mất dữ liệu
 
 `--update` thay toàn bộ release trong `/root/lampac`. Không backup/restore thư mục `module/`, `Core.dll`, `Shared.dll` hoặc `wwwroot/lampa-main`, vì đây là code phải lấy từ bản mới. Tách backup thành hai nhóm:
@@ -238,14 +278,6 @@ jackett start
 ```
 
 Không xóa `/root/lampac-backups/` cho tới khi đã kiểm tra bookmark, user, TorrServer và APK. Backup override vẫn còn nguyên để lấy lại từng file khi cần, nhưng không tự động đè code mới.
-
-### Chỉ đồng bộ module tuỳ biến
-
-Dùng khi release Lampac vẫn giữ nguyên nhưng bạn muốn lấy lại các thay đổi tuỳ biến (**KKPhim, K20, VsMov, WebStreamr, Open Directory, Sootio, AIOStreams, GStreamer, Eporner stream-proxy, các site definition NextHUB đã sửa và LampaWeb/StremioSub**):
-
-```bash
-bash setup-termux.sh --sync
-```
 
 ### Chỉ chạy server
 
@@ -497,6 +529,19 @@ Thay `TenNguon` bằng đúng tên section trong Admin Panel, phân biệt hoa/t
 - Không bật proxy cho nguồn đang chạy bình thường.
 - Test từng nguồn và từng lỗi; chỉ nâng từ `streamproxy` lên external proxy khi thật sự cần đổi IP.
 
+### NextHUB (YAML) — những site đã bật `streamproxy`
+
+Không bật hàng loạt 50+ YAML. Chỉ những nguồn Android không phát thẳng CDN:
+
+| Site | Lý do |
+|---|---|
+| PornOne, NoodleMagazine, SEX Studentki, 24rolika, FapGuru, Uporno, Beeg, PerfektDamen | Đã bật từ trước (`streamproxy` / `geostreamproxy: ALL`) |
+| **Cam4** | Live HLS trong playlist — cùng kiểu Chaturbate |
+| **Oxax, WatchPorn** | YAML đã có `headers_stream` (Referer) nhưng chưa proxy → APK không gửi header |
+| **ProstoPorno, yaeby** | KVS `/get_file/` + `bindingToIP` — redirect khóa Referer/IP |
+
+Tube còn lại (Youjizz, Porndig, Porn4days, đa số KVS Nga với `rchstreamproxy: web`) để APK phát thẳng. `rchstreamproxy: web` **không** phải `streamproxy` cho điện thoại.
+
 ## Việt hóa bền vững qua các lần update
 
 Bản Việt hóa gồm hai lớp. File ngôn ngữ lõi độc lập `Modules/LampaWeb/lang/vi.js` có cùng toàn bộ key với `en.js`, không import/spread/fallback runtime. File được chèn vào **file gốc** của frontend Lampa:
@@ -507,7 +552,7 @@ Bản Việt hóa gồm hai lớp. File ngôn ngữ lõi độc lập `Modules/L
 
 Người dùng tự chọn **Tiếng Việt** trong Interface; Lampa reload rồi tải `lang/vi.js` theo luồng gốc. Hệ thống không tự đổi ngôn ngữ. Plugin `/vietnamese.js` **không** là lớp ngôn ngữ lõi: chỉ dịch chuỗi hardcode của addon (Online, SISI, v.v.). Không gọi `Lang.addCodes` trong overlay vì API đó xóa dictionary `vi` vừa load.
 
-Không sửa trực tiếp file addon upstream chỉ để dịch. Khi `--update` thay release, `--sync` sẽ cài lại `vi.js`, vá `meta.js` **và** `app.min.js`, rồi chép overlay `vietnamese.js`. `LampaCron` cũng tự kiểm tra và cài lại language pack gốc sau mỗi lần frontend được tải/cập nhật, tránh race khi thư mục `lampa-main/lang` xuất hiện sau lúc sync. Có thể bật/tắt lớp addon tại **Settings → Interface → Lớp Việt hóa addon**.
+Không sửa trực tiếp file addon upstream chỉ để dịch. Khi `--update` thay release, `--sync-all` sẽ cài lại `vi.js`, vá `meta.js` **và** `app.min.js`, rồi chép overlay `vietnamese.js`. `LampaCron` cũng tự kiểm tra và cài lại language pack gốc sau mỗi lần frontend được tải/cập nhật, tránh race khi thư mục `lampa-main/lang` xuất hiện sau lúc sync. Có thể bật/tắt lớp addon tại **Settings → Interface → Lớp Việt hóa addon**.
 
 Muốn 100% tiếng Việt lõi, mở giao diện Lampac `http://IP:9118` (file gốc đã vá). App Lampa Android (`file:`) vẫn tải `lang/{code}.js` từ GitHub/lampa.mx; plugin không sửa được `app.min.js` đóng gói trong APK.
 
@@ -525,7 +570,7 @@ Lampac có SubSense Auto, SubSense, SubFinder và StremioSub. Vì các plugin t�
 
 ## StremioSub — plugin phụ đề built-in
 
-`StremioSub` là plugin built-in của Lampac: **không cài bằng URL jsDelivr trong mục Extensions**. Nếu module AIOStreams đã bật, plugin ưu tiên subtitle resource từ AIO; nếu chưa thì dùng fallback SubDL + SubSource. Sau một lần `--sync` và restart Lampac, Lampa nhận plugin nội bộ với tên **StremioSub — SubDL + SubSource/AIOStreams**.
+`StremioSub` là plugin built-in của Lampac: **không cài bằng URL jsDelivr trong mục Extensions**. Nếu module AIOStreams đã bật, plugin ưu tiên subtitle resource từ AIO; nếu chưa thì dùng fallback SubDL + SubSource. Sau một lần `--sync-all` và restart Lampac, Lampa nhận plugin nội bộ với tên **StremioSub — SubDL + SubSource/AIOStreams**.
 
 Kiểm tra Lampac đã đưa plugin vào init chưa:
 
@@ -533,10 +578,10 @@ Kiểm tra Lampac đã đưa plugin vào init chưa:
 curl -s http://127.0.0.1:9118/lampainit.js | grep -oE 'StremioSub[^" ]*|stremiosub\.js'
 ```
 
-Nếu lệnh không in ra `stremiosub.js`, đồng bộ và khởi động lại:
+Nếu lệnh không in ra `stremiosub.js`, đồng bộ đầy đủ LampaWeb rồi khởi động lại:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/setup-termux.sh | bash -s -- --sync
+curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04884-lampac/setup-termux.sh | bash -s -- --sync-all
 lampac stop
 lampac start
 ```
@@ -582,7 +627,7 @@ Manifest URL có thể chứa UUID, password, API key hoặc token; không đưa
 
 ### Local host AIOStreams trên Ubuntu proot
 
-Sau khi chạy `bash setup-termux.sh --sync`, cài AIOStreams chính chủ bằng:
+Sau khi chạy `bash setup-termux.sh --sync-all`, cài AIOStreams chính chủ bằng:
 
 ```bash
 aio install
@@ -602,7 +647,7 @@ AIOStreams chạy Node.js riêng, không được nhúng vào Lampac. Bản loca
 
 ## Jackett local — port 9117
 
-Sau `bash setup-termux.sh --sync`, cài gói Jackett chính chủ phù hợp với kiến trúc Ubuntu proot:
+Sau `bash setup-termux.sh --sync-all`, cài gói Jackett chính chủ phù hợp với kiến trúc Ubuntu proot:
 
 ```bash
 jackett install
@@ -644,7 +689,7 @@ jackett update
 
 ## Trạng thái nguồn ENG và Mirage
 
-Bản cài mới mặc định dùng `disableEng: true` và `chromium.enable: false` để giảm RAM. `--sync`/`--update` không còn ép lại hai giá trị này, nên lựa chọn bật nguồn của người dùng được giữ nguyên. AIOStreams vẫn hoạt động độc lập khi section `AIOStreams` có `enable: true` và manifest hợp lệ.
+Bản cài mới mặc định dùng `disableEng: true` và `chromium.enable: false` để giảm RAM. `--sync-all`/`--update` không còn ép lại hai giá trị này, nên lựa chọn bật nguồn của người dùng được giữ nguyên. AIOStreams vẫn hoạt động độc lập khi section `AIOStreams` có `enable: true` và manifest hợp lệ.
 
 Mirage không bị xóa: module mặc định `enable: false` và tự ẩn khi Chromium/Playwright bị tắt. Nguồn này cần Google Chrome/Edge và khoảng 1 GB RAM. Muốn bật, cấu hình đường dẫn Chrome thật rồi restart:
 
@@ -679,7 +724,7 @@ Khi thêm một plugin built-in mới, cập nhật cả ba phần sau:
    /root/lampac/module/LampaWeb/plugins/
    ```
 
-Sau khi mirror branch, luôn áp dụng bằng `--sync` rồi restart `lampac`. Không chép sang `/root/lampac/plugins/`: LampaWeb không đọc plugin từ đường dẫn đó. `--sync` cũng bảo đảm `wwwroot/lampa-main/index.html` có thẻ `/lampainit.js`; nếu thiếu thẻ này, URL gốc vẫn mở Lampa nhưng giống một app mới tinh và không nhận bất kỳ plugin built-in nào.
+Sau khi mirror branch, luôn áp dụng bằng `--sync-all` rồi restart `lampac`. Không chép sang `/root/lampac/plugins/`: LampaWeb không đọc plugin từ đường dẫn đó. `--sync-all` cũng bảo đảm `wwwroot/lampa-main/index.html` có thẻ `/lampainit.js`; nếu thiếu thẻ này, URL gốc vẫn mở Lampa nhưng giống một app mới tinh và không nhận bất kỳ plugin built-in nào.
 
 ## Xử lý lỗi thường gặp
 
@@ -714,7 +759,7 @@ Lệnh `reset` xoá Ubuntu proot hiện tại, vì vậy cần cài lại Lampac
 Đây là giới hạn reserve bộ nhớ ảo của CoreCLR trên Android/proot ARM64, không nhất thiết là điện thoại đã hết RAM. Controller mặc định đặt `DOTNET_GCHeapHardLimit=40000000` (hex, tương đương 1 GiB) và tắt Server GC riêng cho Jackett. Đồng bộ controller mới rồi khởi động lại:
 
 ```bash
-bash setup-termux.sh --sync
+bash setup-termux.sh --sync-all
 jackett restart
 ```
 

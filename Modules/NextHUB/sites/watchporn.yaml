@@ -4,6 +4,7 @@ displayname: WatchPorn
 rch_access: apk,cors
 stream_access: apk,cors
 rchstreamproxy: web, apk,cors
+streamproxy: true
 host: https://watchporn.to
 priorityBrowser: http
 headers_stream:

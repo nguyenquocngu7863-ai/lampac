@@ -439,7 +439,7 @@ VI_LANG
 # shipping a small fix so Termux does not re-download Chrome, hls.js, or
 # every custom module. Use --sync-all for a full refresh.
 sync_latest_modules() {
-    info "Syncing latest patch files only (Chaturbate categories + 18+ streamproxy)..."
+    info "Syncing latest patch files only (NextHUB streamproxy)..."
 
     proot-distro login ubuntu -- bash -c "
         set -euo pipefail
@@ -457,13 +457,11 @@ sync_latest_modules() {
             mv \"\$dest.tmp\" \"\$dest\"
             echo \"  [sync] \$dest\"
         }
-        pull Modules/Adult/Chaturbate/Service.cs /root/lampac/module/Adult/Chaturbate/Service.cs
-        pull Modules/Adult/Chaturbate/Controller.cs /root/lampac/module/Adult/Chaturbate/Controller.cs
-        pull Modules/Adult/Chaturbate/ModInit.cs /root/lampac/module/Adult/Chaturbate/ModInit.cs
-        pull Modules/Adult/BongaCams/ModInit.cs /root/lampac/module/Adult/BongaCams/ModInit.cs
-        pull Modules/Adult/Runetki/ModInit.cs /root/lampac/module/Adult/Runetki/ModInit.cs
-        pull Modules/Adult/Spankbang/ModInit.cs /root/lampac/module/Adult/Spankbang/ModInit.cs
-        pull Modules/Adult/Ebalovo/ModInit.cs /root/lampac/module/Adult/Ebalovo/ModInit.cs
+        pull Modules/NextHUB/sites/cam4.yaml /root/lampac/module/NextHUB/sites/cam4.yaml
+        pull Modules/NextHUB/sites/oxax.yaml /root/lampac/module/NextHUB/sites/oxax.yaml
+        pull Modules/NextHUB/sites/watchporn.yaml /root/lampac/module/NextHUB/sites/watchporn.yaml
+        pull Modules/NextHUB/sites/prostoporno.yaml /root/lampac/module/NextHUB/sites/prostoporno.yaml
+        pull Modules/NextHUB/sites/yaeby.yaml /root/lampac/module/NextHUB/sites/yaeby.yaml
     "
 
     ok "Latest patch files applied"
@@ -553,7 +551,7 @@ install_custom_modules() {
         nexthubroottarget=/root/lampac/module/NextHUB
         nexthubtarget=\"\$nexthubroottarget/sites\"
         if [ -d \"\$nexthubtarget\" ]; then
-            for file in sex-studentki.yaml noodlemagazine.yaml pornone.yaml cam4.yaml trahkino.yaml rusvideos.yaml veporn.yaml; do
+            for file in sex-studentki.yaml noodlemagazine.yaml pornone.yaml cam4.yaml oxax.yaml watchporn.yaml prostoporno.yaml yaeby.yaml trahkino.yaml rusvideos.yaml veporn.yaml; do
                 curl -fSL --retry 3 \"\$nexthubrootbase/sites/\$file?cb=\$syncstamp\" -o \"\$nexthubtarget/\$file.tmp\"
                 mv \"\$nexthubtarget/\$file.tmp\" \"\$nexthubtarget/\$file\"
             done
@@ -950,7 +948,7 @@ case "${1:-}" in
             nexthubroottarget=/root/lampac/module/NextHUB
             nexthubtarget="$nexthubroottarget/sites"
             if [ -d "$nexthubtarget" ]; then
-                for file in sex-studentki.yaml noodlemagazine.yaml pornone.yaml cam4.yaml trahkino.yaml rusvideos.yaml veporn.yaml; do
+                for file in sex-studentki.yaml noodlemagazine.yaml pornone.yaml cam4.yaml oxax.yaml watchporn.yaml prostoporno.yaml yaeby.yaml trahkino.yaml rusvideos.yaml veporn.yaml; do
                     curl -fSL --retry 3 "$nexthubrootbase/sites/$file?cb=$syncstamp" -o "$nexthubtarget/$file.tmp"
                     mv "$nexthubtarget/$file.tmp" "$nexthubtarget/$file"
                 done

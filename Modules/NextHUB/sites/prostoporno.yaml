@@ -2,9 +2,14 @@ enable: true
 displayindex: 150
 stream_access: apk,cors,web
 qualitys_proxy: false
+streamproxy: true
 displayname: ProstoPorno
 host: https://prostoporno.zone
 priorityBrowser: http
+headers_stream:
+  referer: "{host}/"
+  origin: "{host}"
+  accept: "*/*"
 
 menu:
   route:
