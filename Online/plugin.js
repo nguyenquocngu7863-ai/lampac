@@ -646,6 +646,14 @@
         }
       }
     };
+    // Android WebView reports native HLS support, so Lampa skips hls.js
+    // (`use program hls: false`). Videasy fMP4 / alternate-audio playlists
+    // then stall or play without sound. Force hls.js for m3u8.
+    this.applyHlsType = function (data) {
+      if (!data || data.hls_type) return;
+      var url = data.url;
+      if (typeof url === 'string' && /\.m3u8?(?:$|[?#])/i.test(url)) data.hls_type = 'hlsjs';
+    };
     this.display = function (videos) {
       var _this5 = this;
       this.draw(videos, {
@@ -661,6 +669,7 @@
                 first.quality = json_call.quality || item.qualitys;
                 first.segments = json_call.segments || item.segments;
                 first.hls_manifest_timeout = json_call.hls_manifest_timeout || json.hls_manifest_timeout;
+                first.hls_type = json_call.hls_type || json.hls_type;
                 first.subtitles = json.subtitles;
                 first.subtitles_call = json_call.subtitles_call || json.subtitles_call;
                 if (json.vast && json.vast.url) {
@@ -672,6 +681,7 @@
                 }
                 _this5.orUrlReserve(first);
                 _this5.setDefaultQuality(first);
+                _this5.applyHlsType(first);
                 if (item.season) {
                   videos.forEach(function (elem) {
                     var cell = _this5.toPlayElement(elem);
@@ -693,6 +703,7 @@
                                   cell.subtitles = stream.subtitles;
                                   _this5.orUrlReserve(cell);
                                   _this5.setDefaultQuality(cell);
+                                  _this5.applyHlsType(cell);
                                   elem.mark();
                                 } else {
                                   cell.url = '';
@@ -713,6 +724,7 @@
                     }
                     _this5.orUrlReserve(cell);
                     _this5.setDefaultQuality(cell);
+                    _this5.applyHlsType(cell);
                     playlist.push(cell);
                   }); //Lampa.Player.playlist(playlist)
                 } else {

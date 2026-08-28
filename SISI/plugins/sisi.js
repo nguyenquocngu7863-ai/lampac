@@ -70,6 +70,15 @@
     return url;
   }
 
+  // Android WebView advertises native HLS, so Lampa's inner player skips
+  // hls.js (`use program hls: false`). Chaturbate LL-HLS and similar live
+  // playlists then fail with MEDIA_ERR_SRC_NOT_SUPPORTED.
+  function applyHlsType(data) {
+    if (!data || data.hls_type) return;
+    var url = data.url;
+    if (typeof url === 'string' && /\.m3u8?(?:$|[?#])/i.test(url)) data.hls_type = 'hlsjs';
+  }
+
   function play(element) {
     var controller_enabled = Lampa.Controller.enabled().name;
 
@@ -114,6 +123,7 @@
           quality: qualitys,
           headers: data.headers_stream
         };
+        applyHlsType(video);
         Lampa.Player.play(video);
 
         if (recomends.length) {
@@ -161,6 +171,7 @@
         url_reserve: Api.account(qualityDefault(element.qualitys_proxy) || element.video_reserve || '', true),
         quality: element.qualitys
       };
+      applyHlsType(video);
       Lampa.Player.play(video);
       Lampa.Player.playlist([video]);
       Lampa.Player.callback(function() {

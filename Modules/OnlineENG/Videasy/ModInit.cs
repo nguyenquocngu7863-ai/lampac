@@ -63,6 +63,11 @@ public class ModInit : IModuleLoaded, IModuleOnline
         conf.rhub = false;
         conf.httptimeout = 20;
         conf.streamproxy = true;
+        conf.headers_stream ??= HeadersModel.Init(
+            ("User-Agent", Http.UserAgent),
+            ("Referer", "https://player.videasy.to/"),
+            ("Origin", "https://player.videasy.to")
+        ).ToDictionary();
     }
 
     private string OnlineApiQuality(EventOnlineApiQuality e)
