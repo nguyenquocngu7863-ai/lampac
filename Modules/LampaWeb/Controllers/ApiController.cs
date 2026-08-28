@@ -1040,7 +1040,8 @@ public class ApiController : BaseController
     public ActionResult VietnameseJs()
     {
         SetHeadersNoCache();
-        string plugin = FileCache.ReadAllText($"{ModInit.modpath}/plugins/vietnamese.js", "vietnamese.js");
+        string plugin = FileCache.ReadAllText($"{ModInit.modpath}/plugins/vietnamese.js", "vietnamese.js")
+            .Replace("{localhost}", host);
         return ContentTo(plugin, "application/javascript; charset=utf-8");
     }
 
@@ -1051,6 +1052,12 @@ public class ApiController : BaseController
     {
         SetHeadersNoCache();
         string lang = FileCache.ReadAllText($"{ModInit.modpath}/lang/vi.js", "lang-vi.js");
+        bool iife = string.Equals(HttpContext.Request.Query["iife"].ToString(), "1", StringComparison.OrdinalIgnoreCase);
+        if (iife)
+        {
+            lang = Regex.Replace(lang, @"^\s*export\s+default\s*", "", RegexOptions.Multiline);
+            lang = "window.LampaLangVi = " + lang.Trim().TrimEnd(';') + ";\n";
+        }
         return ContentTo(lang, "application/javascript; charset=utf-8");
     }
 
