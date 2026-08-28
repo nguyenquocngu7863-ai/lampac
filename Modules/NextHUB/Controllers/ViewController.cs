@@ -8,6 +8,8 @@ using Shared.Attributes;
 using Shared.Models.CSharpGlobals;
 using Shared.Models.SISI.NextHUB;
 using Shared.PlaywrightCore;
+using System.Net;
+using System.Net.Http;
 using System.Web;
 
 namespace NextHUB;
@@ -117,8 +119,10 @@ public class ViewController : BaseSisiController<NxtSettings>
 
                 bool savedProxy = init.streamproxy;
                 bool savedReserve = init.url_reserve;
+                var savedHeaders = init.headers_stream;
                 init.streamproxy = false;
                 init.url_reserve = false;
+                init.headers_stream = null;
                 try
                 {
                     return OnResult(stream_links);
@@ -127,6 +131,7 @@ public class ViewController : BaseSisiController<NxtSettings>
                 {
                     init.streamproxy = savedProxy;
                     init.url_reserve = savedReserve;
+                    init.headers_stream = savedHeaders;
                 }
             }
 
@@ -666,6 +671,8 @@ public class ViewController : BaseSisiController<NxtSettings>
     [Route("nexthub/strem")]
     async public Task<ActionResult> Strem(string u)
     {
+        StatiCacheDisabled = true;
+
         u = DecryptQuery(u);
         if (string.IsNullOrEmpty(u))
             return OnError("uri", rcache: false);
@@ -683,46 +690,24 @@ public class ViewController : BaseSisiController<NxtSettings>
         if (_nxtInit == null)
             return OnError("init not found", rcache: false);
 
-        if (await IsRequestBlocked(_nxtInit, rch: _nxtInit.rch_access != null))
+        if (await IsRequestBlocked(_nxtInit, rch: _nxtInit.rch_access != null, rch_check: false))
             return badInitMsg;
 
         file = CleanKvsMedia(file);
         if (!Root.isSafeHttpUrl(file))
             return OnError("url", rcache: false);
 
-        SemaphorManager semaphore = null;
-        string semaphoreKey = $"nexthub:strem:{file}";
+        string download = file;
+        if (download.IndexOf("download=true", StringComparison.OrdinalIgnoreCase) < 0)
+            download += (download.Contains('?') ? "&" : "?") + "download=true";
 
-        try
-        {
-            if (rch?.enable != true)
-            {
-                semaphore = new SemaphorManager(semaphoreKey, TimeSpan.FromSeconds(30));
-                bool acquired = await semaphore.WaitAsync();
-                if (!acquired)
-                    return OnError();
-            }
+        if (await WriteKvsMedia(file, referer).ConfigureAwait(false))
+            return _emptyResult;
 
-            string memKey = ipkey(semaphoreKey);
-            if (!hybridCache.TryGetValue(memKey, out string location))
-            {
-                location = await ResolveKvsLocation(file, referer).ConfigureAwait(false);
-                if (string.IsNullOrEmpty(location) || !Root.isSafeHttpUrl(location))
-                    return OnError("location", refresh_proxy: true);
+        if (await WriteKvsMedia(download, referer).ConfigureAwait(false))
+            return _emptyResult;
 
-                proxyManager?.Success();
-                hybridCache.Set(memKey, location, cacheTime(20));
-            }
-
-            if (location.Contains(".mp4", StringComparison.OrdinalIgnoreCase) && location.IndexOf('#') < 0)
-                location += "#.mp4";
-
-            return Redirect(HostStreamProxy(location));
-        }
-        finally
-        {
-            semaphore?.Release();
-        }
+        return OnError("file", refresh_proxy: true);
     }
 
 
@@ -746,87 +731,100 @@ public class ViewController : BaseSisiController<NxtSettings>
     }
     #endregion
 
-    #region ResolveKvsLocation
-    async Task<string> ResolveKvsLocation(string file, string referer)
+    #region WriteKvsMedia
+    async Task<bool> WriteKvsMedia(string file, string referer)
     {
-        file = CleanKvsMedia(file);
-        if (string.IsNullOrEmpty(file))
-            return file;
-
-        var headers = httpHeaders(init, HeadersModel.Init(
-            ("accept", "*/*"),
-            ("user-agent", Http.UserAgent),
-            ("sec-fetch-dest", "video"),
-            ("sec-fetch-mode", "no-cors"),
-            ("sec-fetch-site", "same-origin")
-        ));
+        if (string.IsNullOrEmpty(file) || !Root.isSafeHttpUrl(file))
+            return false;
 
         string refer = !string.IsNullOrEmpty(referer) ? referer : $"{init.host}/";
+        var headers = httpHeaders(init.host ?? init.apihost, HeadersModel.InitOrNull(init.headers_stream));
 
-        async Task<string> locate(string url, bool autoRedirect)
+        var handler = new HttpClientHandler
         {
-            string loc = await Http.GetLocation(
-                init.cors(url, headers, requestInfo),
-                referer: refer,
-                headers: headers,
-                timeoutSeconds: Math.Max(12, init.httptimeout),
-                httpversion: init.httpversion,
-                proxy: proxy,
-                allowAutoRedirect: autoRedirect
-            ).ConfigureAwait(false);
+            AllowAutoRedirect = true,
+            MaxAutomaticRedirections = 8,
+            UseCookies = true,
+            CookieContainer = new CookieContainer(),
+            AutomaticDecompression = DecompressionMethods.None,
+            ServerCertificateCustomValidationCallback = Http.AlwaysAllowCertificate,
+            UseProxy = proxy != null,
+            Proxy = proxy
+        };
 
-            return AbsoluteMedia(url, loc, refer);
-        }
-
-        bool isDirect(string loc) =>
-            !string.IsNullOrEmpty(loc) &&
-            !loc.Contains("/get_file/", StringComparison.OrdinalIgnoreCase);
-
-        string location = await locate(file, false).ConfigureAwait(false);
-        if (isDirect(location))
-            return location;
-
-        string followed = await locate(file, true).ConfigureAwait(false);
-        if (isDirect(followed))
-            return followed;
-        if (!string.IsNullOrEmpty(followed) && !string.Equals(followed, file, StringComparison.OrdinalIgnoreCase))
-            location = followed;
-
-        string download = file;
-        if (download.IndexOf("download=true", StringComparison.OrdinalIgnoreCase) < 0)
-            download += (download.Contains('?') ? "&" : "?") + "download=true";
-
-        string downloaded = await locate(download, true).ConfigureAwait(false);
-        if (isDirect(downloaded))
-            return downloaded;
-        if (!string.IsNullOrEmpty(downloaded) && !string.Equals(downloaded, download, StringComparison.OrdinalIgnoreCase))
-            return downloaded;
-
-        if (!string.IsNullOrEmpty(location) && Root.isSafeHttpUrl(location))
-            return location;
-
-        return file;
-    }
-
-    static string AbsoluteMedia(string file, string location, string referer)
-    {
-        if (string.IsNullOrEmpty(location))
-            return null;
-
-        location = location.Replace("&amp;", "&").Replace("u0026", "&");
-        if (location.StartsWith("//", StringComparison.Ordinal))
+        using (handler)
+        using (var client = new HttpClient(handler, disposeHandler: false) { Timeout = TimeSpan.FromHours(2) })
+        using (var req = new HttpRequestMessage(HttpMethod.Get, file))
         {
-            bool https = !string.IsNullOrEmpty(referer) && referer.StartsWith("https", StringComparison.OrdinalIgnoreCase);
-            location = $"{(https ? "https" : "http")}:{location}";
-        }
+            req.Version = HttpVersion.Version11;
+            req.Headers.TryAddWithoutValidation("Accept", "*/*");
+            req.Headers.TryAddWithoutValidation("User-Agent", Http.UserAgent);
+            req.Headers.TryAddWithoutValidation("Referer", refer);
 
-        if (Uri.TryCreate(location, UriKind.Absolute, out Uri abs) ||
-            (Uri.TryCreate(file, UriKind.Absolute, out Uri baseUri) && Uri.TryCreate(baseUri, location, out abs)))
-        {
-            return Regex.Replace(abs.AbsoluteUri, "\\.mp4/+(\\?|$)", ".mp4$1", RegexOptions.IgnoreCase);
-        }
+            if (headers != null)
+            {
+                foreach (var h in headers)
+                {
+                    if (h.name.Equals("referer", StringComparison.OrdinalIgnoreCase) ||
+                        h.name.Equals("host", StringComparison.OrdinalIgnoreCase) ||
+                        h.name.Equals("range", StringComparison.OrdinalIgnoreCase))
+                        continue;
 
-        return null;
+                    req.Headers.TryAddWithoutValidation(h.name, h.val);
+                }
+            }
+
+            if (Request.Headers.TryGetValue("Range", out var range) && range.Count > 0)
+                req.Headers.TryAddWithoutValidation("Range", range.ToString());
+
+            try
+            {
+                using (var response = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, HttpContext.RequestAborted).ConfigureAwait(false))
+                {
+                    int code = (int)response.StatusCode;
+                    if (code is not (200 or 206))
+                        return false;
+
+                    string mediaType = response.Content?.Headers?.ContentType?.MediaType ?? string.Empty;
+                    if (mediaType.Contains("html", StringComparison.OrdinalIgnoreCase) ||
+                        mediaType.Contains("json", StringComparison.OrdinalIgnoreCase) ||
+                        mediaType.StartsWith("text/", StringComparison.OrdinalIgnoreCase))
+                        return false;
+
+                    Response.StatusCode = code;
+                    Response.ContentType = mediaType.StartsWith("video/", StringComparison.OrdinalIgnoreCase)
+                        ? mediaType
+                        : "video/mp4";
+
+                    if (response.Content.Headers.ContentLength is long length)
+                        Response.ContentLength = length;
+
+                    Response.Headers["Accept-Ranges"] = "bytes";
+
+                    if (response.Content.Headers.ContentRange != null)
+                        Response.Headers["Content-Range"] = response.Content.Headers.ContentRange.ToString();
+
+                    Response.Headers["Cache-Control"] = "no-store";
+                    Response.Headers.Remove("Content-Disposition");
+
+                    await using (var input = await response.Content.ReadAsStreamAsync(HttpContext.RequestAborted).ConfigureAwait(false))
+                    {
+                        await input.CopyToAsync(Response.Body, HttpContext.RequestAborted).ConfigureAwait(false);
+                    }
+
+                    return true;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "CatchId={CatchId}", "id_kvsstrem1");
+                return false;
+            }
+        }
     }
     #endregion
 
