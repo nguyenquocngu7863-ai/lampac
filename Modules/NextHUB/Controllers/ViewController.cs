@@ -8,6 +8,7 @@ using Shared.Attributes;
 using Shared.Models.CSharpGlobals;
 using Shared.Models.SISI.NextHUB;
 using Shared.PlaywrightCore;
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http;
 using System.Web;
@@ -17,6 +18,7 @@ namespace NextHUB;
 public class ViewController : BaseSisiController<NxtSettings>
 {
     static readonly Serilog.ILogger Log = Serilog.Log.ForContext<ViewController>();
+    static readonly ConcurrentDictionary<string, (Cookie[] cookies, DateTime expiry)> _playwrightCookies = new();
 
     IQueryCollection evalQuery = QueryCollection.Empty;
     string evalQueryCacheKey = string.Empty;
@@ -535,6 +537,25 @@ public class ViewController : BaseSisiController<NxtSettings>
                     }
                 }
                 #endregion
+
+                // Extract Playwright cookies so Strem can use them for CDN streaming
+                if (!string.IsNullOrEmpty(cache.file) && cache.file.Contains("/get_file/"))
+                {
+                    try
+                    {
+                        var pwCookies = await page.Context.CookiesAsync(new[] { targetHost }).ConfigureAwait(false);
+                        if (pwCookies.Length > 0)
+                        {
+                            var cookieArray = pwCookies
+                                .Where(c => !string.IsNullOrEmpty(c.Name))
+                                .Select(c => new Cookie(c.Name, c.Value, c.Domain, c.Path))
+                                .ToArray();
+                            if (cookieArray.Length > 0)
+                                _playwrightCookies[cache.file] = (cookieArray, DateTime.UtcNow.AddMinutes(10));
+                        }
+                    }
+                    catch { }
+                }
             }
 
             proxyManager?.Success();
@@ -745,6 +766,16 @@ public class ViewController : BaseSisiController<NxtSettings>
             return OnError("url", rcache: false);
 
         var cookies = new CookieContainer();
+
+        // Retrieve Playwright cookies cached by goVideoToBrowser (bypasses Cloudflare)
+        if (!string.IsNullOrEmpty(file) && _playwrightCookies.TryGetValue(file, out var pwCookieEntry) && pwCookieEntry.expiry > DateTime.UtcNow)
+        {
+            foreach (var c in pwCookieEntry.cookies)
+                cookies.Add(c);
+            // Evict after use
+            _playwrightCookies.TryRemove(file, out _);
+        }
+
         var handler = new HttpClientHandler();
         handler.AllowAutoRedirect = true;
         handler.MaxAutomaticRedirections = 8;
