@@ -539,6 +539,7 @@ public class ViewController : BaseSisiController<NxtSettings>
                 #endregion
 
                 // Extract Playwright cookies so Strem can use them for CDN streaming
+                // Strip ||||license suffix so cookie key matches what Index encrypts into the token
                 if (!string.IsNullOrEmpty(cache.file) && cache.file.Contains("/get_file/"))
                 {
                     try
@@ -551,7 +552,12 @@ public class ViewController : BaseSisiController<NxtSettings>
                                 .Select(c => new System.Net.Cookie(c.Name, c.Value, c.Domain, c.Path))
                                 .ToArray();
                             if (cookieArray.Length > 0)
-                                _playwrightCookies[cache.file] = (cookieArray, DateTime.UtcNow.AddMinutes(10));
+                            {
+                                string cookieKey = cache.file;
+                                int pipeSep = cookieKey.IndexOf("||||", StringComparison.Ordinal);
+                                if (pipeSep > 0) cookieKey = cookieKey.Substring(0, pipeSep);
+                                _playwrightCookies[cookieKey] = (cookieArray, DateTime.UtcNow.AddMinutes(10));
+                            }
                         }
                     }
                     catch { }
