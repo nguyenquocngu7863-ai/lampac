@@ -370,4 +370,7 @@ healthchecksdb
 # Allow GStreamer portable runtime bin
 !/Modules/GStreamer/
 !/Modules/GStreamer/gst-libs/
-!/Modules/GStreamer/gst-libs/**.test-compact/
+!/Modules/GStreamer/gst-libs/**
+
+# Local scratch test page for online-compact plugin
+/.test-compact/
