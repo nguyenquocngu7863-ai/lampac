@@ -593,7 +593,7 @@ install_custom_modules() {
         fi
         sisitarget=/root/lampac/module/SISI/plugins
         if [ -d \"\$sisitarget\" ]; then
-            rm -f "$sisitarget/sisi-layout.js" "$sisitarget/sisi-layout.js.tmp"
+            rm -f \"\$sisitarget/sisi-layout.js\" \"\$sisitarget/sisi-layout.js.tmp\"
             for file in sisi.js startpage.js; do
                 curl -fSL --retry 3 \"${CUSTOM_SOURCE_BASE}/SISI/plugins/\$file\" -o \"\$sisitarget/\$file.tmp\"
                 mv \"\$sisitarget/\$file.tmp\" \"\$sisitarget/\$file\"
