@@ -3,7 +3,8 @@
 #
 # Cách chạy ở Termux:
 #   pkg update -y && pkg install -y git gh
-#   git clone --depth 1 --branch arena/01a04b3e-lampac https://github.com/nguyenquocngu7863-ai/lampac.git
+#   git clone --depth 1 --branch main https://github.com/nguyenquocngu7863-ai/lampac.git
+#   (script nằm trên nhánh nào thì clone đúng nhánh đó; sau khi gộp vào main thì dùng main)
 #   cd lampac
 #   DRY_RUN=1 bash termux-push-main-cleanup.sh     # xem trước, không đụng gì
 #   bash termux-push-main-cleanup.sh               # làm thật (an toàn: backup + merge main)
@@ -74,8 +75,9 @@ if [ -n "$(git status --porcelain)" ]; then
 fi
 
 # ------------------------------ 4. trỏ setup-termux.sh / README về main
-# 45 URL raw.githubusercontent đang hard-code arena/01a04884-lampac. Nếu xoá nhánh
-# đó mà không sửa, `setup-termux.sh --sync` và `lampac update` sẽ 404 hàng loạt.
+# 45 URL raw.githubusercontent có thể đang hard-code một nhánh làm việc tạm (không phải
+# main). Nếu xoá nhánh đó mà không sửa, `setup-termux.sh --sync` và `lampac update`
+# sẽ 404 hàng loạt.
 NEEDS_FIX="$(git grep -l -E 'arena/01a0[0-9a-f]+-lampac' -- setup-termux.sh setup-gstreamer-hdr.sh README.md 2>/dev/null || true)"
 if [ -n "$NEEDS_FIX" ]; then
   echo "Sửa tham chiếu nhánh hard-code -> main: $NEEDS_FIX"
