@@ -1,6 +1,6 @@
 # Sootio Stremio bridge
 
-Module riêng cho Sootio, chạy song song với WebStreamr, K20 và Open Directory.
+Module riêng cho Sootio, chạy song song với WebStreamr và K20.
 Module gọi Stremio chuẩn:
 
 ```text

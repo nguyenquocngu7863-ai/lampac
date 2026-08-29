@@ -99,7 +99,7 @@ fi
 
 # -------------------------------------------------------- 5. sao lưu (nên làm)
 # 23 commit trên các nhánh arena/* CHƯA có ở nhánh này (MX Sub Bridge APK,
-# subsense-download.js, Jackett trong setup-termux, fix Mapple4K/VidLink, tiếng Việt...).
+# subsense-download.js, Jackett trong setup-termux, fix VidLink, tiếng Việt...).
 if [ "$DO_BACKUP" = "1" ]; then
   BK="$HOME/lampac-backup-$(date +%Y%m%d-%H%M%S)"
   mkdir -p "$BK"

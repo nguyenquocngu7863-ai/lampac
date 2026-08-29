@@ -57,8 +57,8 @@ public class ModInit : IModuleLoaded, IModuleOnline
             streamproxy = true
         });
 
-        // CineWave's current VidSrc tab uses vsembed.su. Force the maintained
-        // endpoint so stale init/Kit values cannot route back to vidsrc.to.
+        // Force the maintained vsembed.su endpoint so stale init/Kit values
+        // cannot route back to vidsrc.to.
         conf.host = "https://vsembed.su";
         conf.kit = false;
         conf.rhub = false;

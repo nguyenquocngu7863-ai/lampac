@@ -14,6 +14,9 @@
     <None Update="plugins\sisi.js">
       <CopyToPublishDirectory>Always</CopyToPublishDirectory>
     </None>
+    <None Update="plugins\sisi-layout.js">
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+    </None>
     <None Update="plugins\startpage.js">
       <CopyToPublishDirectory>Always</CopyToPublishDirectory>
     </None>

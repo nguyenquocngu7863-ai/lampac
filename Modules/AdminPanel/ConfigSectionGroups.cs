@@ -29,7 +29,7 @@ public static class ConfigSectionGroups
 
         new("realtime", "WebSocket và RCH", "Socket native và hub từ xa.",
             new[] { "WebSocket", "rch" }),
-        new("browser", "Nguồn cần trình duyệt", "Mirage/Phantom và CineWave cần Chromium; HydraFlix/TwoEmbed cần Firefox. Các nguồn ENG còn lại xem nhóm ENG.", new[] { "chromium", "firefox", "Mirage", "Phantom", "CineWave" }),
+        new("browser", "Nguồn cần trình duyệt", "Mirage/Phantom cần Chromium; HydraFlix/TwoEmbed cần Firefox. Các nguồn ENG còn lại xem nhóm ENG.", new[] { "chromium", "firefox", "Mirage", "Phantom" }),
         new("diagnostics", "Log và chẩn đoán", "Serilog, xử lý exception, openstat.",
             new[] { "serilog", "useDeveloperExceptionPage", "exceptionHandlerLogTarget", "exceptionHandlerLogFile", "watcherInit", "openstat" }),
 
@@ -47,8 +47,8 @@ public static class ConfigSectionGroups
         new("src-eng", "Nguồn · ENG (10 nguồn gốc)", "Nhóm embed tiếng Anh theo bản gốc: đủ 10 nguồn (Videasy/VidSrc là bản fix riêng). Phần lớn chạy bằng embed/Playwright; cần disableEng: false để hiện trong Lampa.",
             new[] { "Autoembed", "Hydraflix", "MovPI", "Playembed", "Rgshows", "Smashystream", "Twoembed", "VidLink", "Videasy", "Vidsrc" }),
 
-        new("src-http-bridge", "Nguồn · HTTP / Stremio (tùy biến)", "Các nguồn tự viết, chạy không cần Playwright: Stremio bridge (AIOStreams, Open Directory, Sootio, WebStreamr) và Mapple4K direct API.",
-            new[] { "AIOStreams", "Mapple4K", "OpenDirectory", "Sootio", "WebStreamr" }),
+        new("src-http-bridge", "Nguồn · HTTP / Stremio (tùy biến)", "Các nguồn tự viết, chạy không cần Playwright: Stremio bridge (AIOStreams, Sootio, WebStreamr).",
+            new[] { "AIOStreams", "Sootio", "WebStreamr" }),
 
         new("src-rus", "Nguồn · Nga và CIS", "Nguồn VOD/CDN Nga; Mirage và Phantom nằm ở nhóm cần trình duyệt.",
             new[]

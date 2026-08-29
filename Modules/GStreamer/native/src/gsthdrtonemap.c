@@ -151,8 +151,8 @@ static void gst_hdr_tone_map_configure_graph(AVFilterGraph *graph)
      * FFmpeg chooses a sensible number for the phone, while explicitly
      * allowing slice-parallel filters.
      */
-    avfilter_graph_set_threads(graph, 0);
-    avfilter_graph_set_thread_type(graph, AVFILTER_THREAD_SLICE);
+    graph->nb_threads = 0;
+    graph->thread_type = AVFILTER_THREAD_SLICE;
 }
 
 static const gchar *gst_hdr_tone_map_av_error(gint error, gchar *buffer, gsize size)

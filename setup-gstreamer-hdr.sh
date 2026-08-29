@@ -24,16 +24,18 @@ JOBS="$5"
 SOURCE_BASE="$6"
 NATIVE_ROOT="$LAMPAC_ROOT/module/GStreamer/native"
 
-GST_SCANNER=$(find /usr/lib /usr/libexec -type f -name gst-plugin-scanner -perm -111 2>/dev/null | head -n 1 || true)
+GST_SCANNER=$(find /usr/lib /usr/libexec /usr/local/lib /usr/local/libexec \
+    -type f -name gst-plugin-scanner -perm -111 2>/dev/null | head -n 1 || true)
 if [ -n "$GST_SCANNER" ]; then
     export GST_PLUGIN_SCANNER="$GST_SCANNER"
+    export GST_PLUGIN_SCANNER_1_0="$GST_SCANNER"
 fi
 
 # Release archives do not always contain the native build helpers. Keep the
 # small, auditable native source tree synchronized with the selected
 # repository. The version stamp also makes an existing install pick up a
 # native plugin fix after a subsequent run without downloading on every run.
-NATIVE_SOURCE_VERSION="2"
+NATIVE_SOURCE_VERSION="3"
 NATIVE_SOURCE_STAMP="$WORK_ROOT/.native-source-version"
 if [ ! -x "$NATIVE_ROOT/build-linux.sh" ] ||
    [ ! -f "$NATIVE_SOURCE_STAMP" ] ||

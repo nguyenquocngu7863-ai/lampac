@@ -39,6 +39,41 @@ curl -s http://127.0.0.1:9118/gst/status
 
 Для ARM64 нужен отдельный native plugin `libgsthdrtonemap.so`; если `hdr_backend_available` равен `false`, выполните `bash setup-gstreamer-hdr.sh` из корня репозитория и перезапустите Lampac.
 
+### Termux: ошибка `Reason=probe`
+
+Если в логе появляются одновременно:
+
+```text
+External plugin loader failed
+GStreamer: add rejected source. Reason=probe
+```
+
+это означает, что `gst-discoverer-1.0` не смог запустить внешний `gst-plugin-scanner`. Это ошибка проверки источника до определения контейнера и видеокодека; она не означает, что режим copy выключен.
+
+В Ubuntu proot должны быть установлены инструменты GStreamer:
+
+```bash
+apt-get update
+apt-get install -y gstreamer1.0-tools gstreamer1.0-plugins-base-apps
+```
+
+Проверить scanner можно так:
+
+```bash
+S=$(find /usr/lib /usr/libexec /usr/local/lib /usr/local/libexec \
+  -type f -name gst-plugin-scanner -perm -111 2>/dev/null | head -n 1)
+printf 'scanner=%s\n' "$S"
+```
+
+Для необычных установок задайте путь до найденного файла до запуска Core:
+
+```bash
+export GST_PLUGIN_SCANNER="$S"
+export GST_PLUGIN_SCANNER_1_0="$S"
+```
+
+Версии модуля с автоматической настройкой scanner сами ищут его в стандартных Ubuntu/Debian-путях. После изменения окружения или обновления модуля перезапустите Lampac.
+
 ## Copy или transcode
 
 Для большинства файлов достаточно режима copy. Оставьте все параметры `transcode*` выключенными, если устройство умеет воспроизводить исходный видеокодек.

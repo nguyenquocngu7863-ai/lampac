@@ -1,6 +1,6 @@
 # VidSrc
 
-Онлайн-источник **VidSrc** (`https://vsembed.su`) для ENG. Используются документированные iframe-маршруты `/embed/movie/{id}` и `/embed/tv/{id}/{season}/{episode}`. Lampac создаёт нейтральную parent-страницу через `/api/chromium/iframe`, нажимает Play внутри iframe и перехватывает HLS; CineWave для инициализации больше не нужен.
+Онлайн-источник **VidSrc** (`https://vsembed.su`) для ENG. Используются документированные iframe-маршруты `/embed/movie/{id}` и `/embed/tv/{id}/{season}/{episode}`. Lampac создаёт нейтральную parent-страницу через `/api/chromium/iframe`, нажимает Play внутри iframe и перехватывает HLS.
 
 ## Интерфейс
 

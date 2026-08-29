@@ -22,6 +22,7 @@ Phân phối **web-client Lampa** từ **`wwwroot`**, build **`lampainit.js`** v
 | `/on.js`, `/on/js/{token}`, `/on/h/{token}`, `/on/{token}` | Chế độ online-plugin. |
 | `/dorama.js`, `/dorama/js/{token}` | Lampa plugin riêng cho mục **«Doramas»** và nguồn `lampac_dorama`. |
 | `/subsense-auto.js` | Plugin **SubSense Auto** (opt-in), được đăng ký giống `ts.js` và tự gắn phụ đề từ addon SubSense. |
+| `/sisi-layout.js` | Addon bố cục 18+ / SISI (được nối tự động ngay sau `/sisi.js` khi SISI bật). |
 | `/subsense.js` | Plugin **SubSense** (legacy opt-in) — tự động gắn phụ đề tiếng Việt cho player (nguồn SubSense, chuyển đổi srt/zip → VTT). |
 | `/stremiosub.js` | Plugin **StremioSub** — ưu tiên subtitle resource của AIOStreams, fallback về SubDL và SubSource. |
 | `/privateinit.js` | Khởi tạo bổ sung. |

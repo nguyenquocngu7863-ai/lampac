@@ -714,7 +714,8 @@ public class ViewController : BaseSisiController<NxtSettings>
         if (!string.IsNullOrEmpty(src) || (!string.IsNullOrEmpty(referer) && string.IsNullOrEmpty(u)))
         {
             if (string.IsNullOrEmpty(plugin))
-                plugin = "85po";
+                return OnError("plugin", rcache: false);
+
             file = src;
         }
         else

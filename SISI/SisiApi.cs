@@ -99,6 +99,17 @@ public class SisiApiController : BaseController
     }
     #endregion
 
+    #region sisi-layout.js
+    [HttpGet, AllowAnonymous]
+    [Staticache(20, always: true, setHeadersNoCache: true)]
+    [Route("sisi-layout.js")]
+    public ActionResult SisiLayout()
+    {
+        string layout = FileCache.ReadAllText($"{ModInit.modpath}/plugins/sisi-layout.js", "sisi-layout.js", saveCache: false);
+        return ContentTo(layout, "application/javascript; charset=utf-8");
+    }
+    #endregion
+
     #region startpage.js
     [HttpGet, AllowAnonymous]
     [Staticache(10, always: true, setHeadersNoCache: true)]

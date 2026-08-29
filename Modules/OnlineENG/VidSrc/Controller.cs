@@ -128,8 +128,8 @@ public class VidSrcController : BaseENGController
                     await Task.Delay(2500);
 
                     // VidSrc changes the play control between nested buttons,
-                    // overlays and iframe players. Click the same small set of
-                    // controls that proved reliable in the CineWave capture.
+                    // overlays and iframe players. Click the small set of
+                    // controls used by its current player.
                     foreach (IFrame frame in page.Frames)
                     {
                         try

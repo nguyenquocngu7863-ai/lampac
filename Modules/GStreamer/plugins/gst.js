@@ -424,6 +424,27 @@
         } catch (error) { }
     }
 
+    function formatGstRequestError(error, exception) {
+        var text = '';
+
+        if (error && typeof error.responseText === 'string')
+            text = error.responseText;
+        else if (typeof error === 'string')
+            text = error;
+        else if (error && typeof error.message === 'string')
+            text = error.message;
+
+        if (!text && error && error.status)
+            text = 'HTTP ' + error.status;
+
+        if (!text && exception && exception !== 'error')
+            text = String(exception);
+
+        return String(text || '')
+            .replace(/https?:[^ ]+/gi, '<url>')
+            .slice(0, 240);
+    }
+
     function playDirectAfterGstFailure(e, reason) {
         try {
             Lampa.Loading.stop();
@@ -441,18 +462,17 @@
     }
 
     function withoutAddonSelect(url) {
-        // Open Directory carries the marker in a URL fragment (#...) so the
-        // tag never reaches the origin host; strip both query and fragment
-        // forms, plus any dangling separator left over.
+        // Strip the selection marker before handing the URL to the origin
+        // host, including any dangling separator left over.
         return String(url || '')
-            .replace(/([?&#])(?:webstreamr|k20|opendirectory|sootio|aiostreams)_select=1&?/i, '$1')
+            .replace(/([?&#])(?:webstreamr|k20|sootio|aiostreams)_select=1&?/i, '$1')
             .replace(/[?&#]$/, '');
     }
 
     function isAddonSelection(e) {
         return !!(e && e.data &&
             typeof e.data.url === 'string' &&
-            /(?:webstreamr|k20|opendirectory|sootio|aiostreams)_select=1/i.test(e.data.url) &&
+            /(?:webstreamr|k20|sootio|aiostreams)_select=1/i.test(e.data.url) &&
             !e.data.__addonSelected);
     }
 
@@ -486,13 +506,11 @@
         Lampa.Select.show({
             title: /k20_select/i.test(e.data.url)
                 ? 'Chọn link K20'
-                : /opendirectory_select/i.test(e.data.url)
-                    ? 'Chọn file Open Directory'
-                    : /aiostreams_select/i.test(e.data.url)
-                        ? 'Chọn link AIOStreams'
-                        : /sootio_select/i.test(e.data.url)
-                            ? 'Chọn link Sootio'
-                            : 'Chọn link WebStreamr',
+                : /aiostreams_select/i.test(e.data.url)
+                    ? 'Chọn link AIOStreams'
+                    : /sootio_select/i.test(e.data.url)
+                        ? 'Chọn link Sootio'
+                        : 'Chọn link WebStreamr',
             items: items,
             onSelect: function (item) {
                 Lampa.Select.close();
@@ -688,12 +706,16 @@
                         Lampa.Controller.toggle(last_controller);
                     }
                 });
-            }, function (error) {
+            }, function (error, exception) {
                 if (!isCurrentTranscode(state))
                     return;
 
                 pendingTranscode = null;
-                playDirectAfterGstFailure(e, 'GStreamer request failed');
+                var detail = formatGstRequestError(error, exception);
+                playDirectAfterGstFailure(
+                    e,
+                    'GStreamer request failed' + (detail ? ': ' + detail : '')
+                );
             });
         }, 10);
 

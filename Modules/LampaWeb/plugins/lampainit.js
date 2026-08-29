@@ -59,7 +59,7 @@
     var resetKey = 'lampac_plugin_reset_20260823_v2';
     if (Lampa.Storage.get(resetKey, 'false') !== 'true') {
       Lampa.Storage.set('lampac_plugins_backup_20260823', plugins);
-      var lampacPluginPath = /\/(?:dlna|tracks|transcoding|tmdbproxy|cubproxy|online|online-compact|vietnamese|jackett|watchtogether|catalog|dorama|subsense-auto|subsense|subfinder|stremiosub|adminpanel|gst|sisi|startpage|sync|timecode|bookmark|ts|backup)\.js(?:[?#]|$)/i;
+      var lampacPluginPath = /\/(?:dlna|tracks|transcoding|tmdbproxy|cubproxy|online|online-compact|vietnamese|jackett|watchtogether|catalog|dorama|subsense-auto|subsense|subfinder|stremiosub|adminpanel|gst|sisi|sisi-layout|startpage|sync|timecode|bookmark|ts|backup)\.js(?:[?#]|$)/i;
       var subtitlePluginPath = /\/(?:subsense-auto|subsense|subfinder|stremiosub)\.js(?:[?#]|$)/i;
       plugins.forEach(function (plugin) {
         var url = plugin && plugin.url || '';

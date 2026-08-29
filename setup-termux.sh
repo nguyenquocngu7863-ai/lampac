@@ -151,7 +151,8 @@ install_lampac_in_ubuntu() {
         export DEBIAN_FRONTEND=noninteractive
         apt-get update -qq
         apt-get install -y -qq curl wget unzip libicu-dev libssl-dev \
-            gstreamer1.0-tools libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 \
+            gstreamer1.0-tools gstreamer1.0-plugins-base-apps \
+            libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 \
             gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
             gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly \
             gstreamer1.0-libav ocl-icd-libopencl1 > /dev/null 2>&1
@@ -243,9 +244,12 @@ install_lampac_in_ubuntu() {
   },
   \"gst\": {
     \"enable\": true,
-    \"hdr_to_sdr\": false,
-    \"useGpu\": false,
-    \"hardwareAcceleration\": false
+    \"hdr_to_sdr\": true,
+    \"useGpu\": true,
+    \"hardwareAcceleration\": false,
+    \"x264Ultrafast\": true,
+    \"segment_seconds\": 2,
+    \"segment_buffer\": 4
   },
   \"Jackett\": {
     \"enable\": true,
@@ -439,7 +443,7 @@ VI_LANG
 # shipping a small fix so Termux does not re-download Chrome, hls.js, or
 # every custom module. Use --sync-all for a full refresh.
 sync_latest_modules() {
-    info "Syncing latest patch files only (NextHUB 85PO playback)..."
+    info "Syncing latest patch files only (NextHUB playback controller)..."
 
     proot-distro login ubuntu -- bash -c "
         set -euo pipefail
@@ -457,10 +461,18 @@ sync_latest_modules() {
             mv \"\$dest.tmp\" \"\$dest\"
             echo \"  [sync] \$dest\"
         }
+        # Remove modules and site definitions retired from the repository so
+        # an existing installation cannot load them after a lightweight sync.
+        rm -rf /root/lampac/module/OnlineENG/CineWave \
+               /root/lampac/module/OnlineENG/Mapple4K \
+               /root/lampac/module/OnlineENG/OpenDirectory \
+               /root/lampac/mods/OnlineENG/CineWave \
+               /root/lampac/mods/OnlineENG/Mapple4K \
+               /root/lampac/mods/OnlineENG/OpenDirectory
+        rm -f /root/lampac/module/NextHUB/sites/85po.yaml \
+              /root/lampac/mods/NextHUB/sites/85po.yaml
+
         nexthub=/root/lampac/module/NextHUB
-        if [ -d \"\$nexthub/sites\" ]; then
-            pull Modules/NextHUB/sites/85po.yaml \"\$nexthub/sites/85po.yaml\"
-        fi
         if [ -d \"\$nexthub/Controllers\" ]; then
             pull Modules/NextHUB/Controllers/ViewController.cs \"\$nexthub/Controllers/ViewController.cs\"
         fi
@@ -470,14 +482,22 @@ sync_latest_modules() {
 }
 
 install_custom_modules() {
-    info "Installing custom KKPhim/K20/VsMov/WebStreamr/Open Directory/Sootio/AIOStreams/CineWave/GStreamer module files..."
+    info "Installing custom KKPhim/K20/VsMov/WebStreamr/Sootio/AIOStreams/GStreamer module files..."
 
     proot-distro login ubuntu -- bash -c "
         set -euo pipefail
 
-        # NguonC is retired. Remove leftovers so the dynamic module loader does
-        # not load the broken provider again. VsMov is installed below.
-        rm -rf /root/lampac/module/OnlineVN/NguonC
+        # Remove retired providers and stale site definitions so the dynamic
+        # module loader cannot load them from an earlier installation.
+        rm -rf /root/lampac/module/OnlineVN/NguonC \
+               /root/lampac/module/OnlineENG/CineWave \
+               /root/lampac/module/OnlineENG/Mapple4K \
+               /root/lampac/module/OnlineENG/OpenDirectory \
+               /root/lampac/mods/OnlineENG/CineWave \
+               /root/lampac/mods/OnlineENG/Mapple4K \
+               /root/lampac/mods/OnlineENG/OpenDirectory
+        rm -f /root/lampac/module/NextHUB/sites/85po.yaml \
+              /root/lampac/mods/NextHUB/sites/85po.yaml
 
         kkbase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineVN/KKPhim\"
         kktarget=/root/lampac/module/OnlineVN/KKPhim
@@ -507,13 +527,6 @@ install_custom_modules() {
             curl -fSL --retry 3 \"\$webbase/\$file\" -o \"\$webtarget/\$file\"
         done
 
-        opendirectorybase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineENG/OpenDirectory\"
-        opendirectorytarget=/root/lampac/module/OnlineENG/OpenDirectory
-        mkdir -p \"\$opendirectorytarget\"
-        for file in Controller.cs Model.cs ModInit.cs manifest.json; do
-            curl -fSL --retry 3 \"\$opendirectorybase/\$file\" -o \"\$opendirectorytarget/\$file\"
-        done
-
         sootiobase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineENG/Sootio\"
         sootiotarget=/root/lampac/module/OnlineENG/Sootio
         mkdir -p \"\$sootiotarget\"
@@ -534,13 +547,6 @@ install_custom_modules() {
         mkdir -p \"\$onlinetarget\"
         curl -fSL --retry 3 \"\$onlinebase/plugin.js\" -o \"\$onlinetarget/plugin.js\"
 
-        cwbase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineENG/CineWave\"
-        cwtarget=/root/lampac/module/OnlineENG/CineWave
-        mkdir -p \"\$cwtarget\"
-        for file in Controller.cs Model.cs ModInit.cs manifest.json; do
-            curl -fSL --retry 3 \"\$cwbase/\$file\" -o \"\$cwtarget/\$file\"
-        done
-
         curl -fSL --retry 3 \"${CUSTOM_SOURCE_BASE}/aioctl.sh\" -o /root/aioctl.sh
         curl -fSL --retry 3 \"${CUSTOM_SOURCE_BASE}/jackettctl.sh\" -o /root/jackettctl.sh
         chmod +x /root/aioctl.sh /root/jackettctl.sh
@@ -553,7 +559,7 @@ install_custom_modules() {
         nexthubroottarget=/root/lampac/module/NextHUB
         nexthubtarget=\"\$nexthubroottarget/sites\"
         if [ -d \"\$nexthubtarget\" ]; then
-            for file in 24rolika.yaml 24video.yaml 3movs.yaml 85po.yaml analdin.yaml batsa.yaml beeg.yaml bigboss.yaml brazzrus.yaml cam4.yaml crocotube.yaml ebasos.yaml ebun.yaml familyporn.yaml fapguru.yaml film-adult.yaml fpo.yaml gayporntube.yaml hellporno.yaml hochutv.yaml huyamba.yaml jopaonline.yaml lenkino.yaml lenporno.yaml noodlemagazine.yaml oxax.yaml perfektdamen.yaml porn4days.yaml porndig.yaml pornhub.yaml pornk.yaml porno365.yaml porno666.yaml pornoakt.yaml pornobolt.yaml pornobriz.yaml pornokaef.yaml pornone.yaml pornve.yaml prostoporno.yaml rusporno.yaml rusvideos.yaml sex-studentki.yaml sexporno.yaml sexxxxhub.yaml sosushka.yaml trahkino.yaml uporno.yaml veporn.yaml vporno.yaml vtrahe.yaml vtrahetv.yaml watchporn.yaml xasiat.yaml xozilla.yaml xxxperevod.yaml yaeby.yaml youjizz.yaml; do
+            for file in 24rolika.yaml 24video.yaml 3movs.yaml analdin.yaml batsa.yaml beeg.yaml bigboss.yaml brazzrus.yaml cam4.yaml crocotube.yaml ebasos.yaml ebun.yaml familyporn.yaml fapguru.yaml film-adult.yaml fpo.yaml gayporntube.yaml hellporno.yaml hochutv.yaml huyamba.yaml jopaonline.yaml lenkino.yaml lenporno.yaml noodlemagazine.yaml oxax.yaml perfektdamen.yaml porn4days.yaml porndig.yaml pornhub.yaml pornk.yaml porno365.yaml porno666.yaml pornoakt.yaml pornobolt.yaml pornobriz.yaml pornokaef.yaml pornone.yaml pornve.yaml prostoporno.yaml rusporno.yaml rusvideos.yaml sex-studentki.yaml sexporno.yaml sexxxxhub.yaml sosushka.yaml trahkino.yaml uporno.yaml veporn.yaml vporno.yaml vtrahe.yaml vtrahetv.yaml watchporn.yaml xasiat.yaml xozilla.yaml xxxperevod.yaml yaeby.yaml youjizz.yaml; do
                 curl -fSL --retry 3 \"\$nexthubrootbase/sites/\$file?cb=\$syncstamp\" -o \"\$nexthubtarget/\$file.tmp\"
                 mv \"\$nexthubtarget/\$file.tmp\" \"\$nexthubtarget/\$file\"
             done
@@ -582,7 +588,7 @@ install_custom_modules() {
         # translator, preventing category rules from touching video titles.
         sisitarget=/root/lampac/module/SISI/plugins
         if [ -d \"\$sisitarget\" ]; then
-            for file in sisi.js startpage.js; do
+            for file in sisi.js sisi-layout.js startpage.js; do
                 curl -fSL --retry 3 \"${CUSTOM_SOURCE_BASE}/SISI/plugins/\$file\" -o \"\$sisitarget/\$file.tmp\"
                 mv \"\$sisitarget/\$file.tmp\" \"\$sisitarget/\$file\"
             done
@@ -645,14 +651,6 @@ install_custom_modules() {
             done
         fi
 
-        mapplebase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineENG/Mapple4K\"
-        mappletarget=/root/lampac/module/OnlineENG/Mapple4K
-        mkdir -p \"\$mappletarget\"
-        for file in Controller.cs ModInit.cs manifest.json README.md; do
-            curl -fSL --retry 3 \"\$mapplebase/\$file?cb=\$syncstamp\" -o \"\$mappletarget/\$file.tmp\"
-            mv \"\$mappletarget/\$file.tmp\" \"\$mappletarget/\$file\"
-        done
-
         for proxymodule in CubProxy TmdbProxy; do
             proxytarget=\"/root/lampac/module/Proxy/\$proxymodule\"
             if [ -d \"\$proxytarget\" ]; then
@@ -664,7 +662,7 @@ install_custom_modules() {
         gstbase=\"${CUSTOM_SOURCE_BASE}/Modules/GStreamer\"
         gsttarget=/root/lampac/module/GStreamer
         mkdir -p \"\$gsttarget/Services\" \"\$gsttarget/plugins\"
-        for file in Controller.cs Services/GService.cs Services/GStask.cs Services/HdrToneMappingBackend.cs Services/GStask.Pipeline.cs Services/GStask.Producer.cs plugins/gst.js; do
+        for file in Controller.cs ModInit.cs Services/GService.cs Services/GSProbe.cs Services/GStask.cs Services/HdrToneMappingBackend.cs Services/GStask.Pipeline.cs Services/GStask.Producer.cs plugins/gst.js; do
             curl -fSL --retry 3 \"\$gstbase/\$file\" -o \"\$gsttarget/\$file\"
         done
 
@@ -762,9 +760,11 @@ export PATH="$DOTNET_DIR:$PATH"
 export DOTNET_CLI_TELEMETRY_OPTOUT=1
 export DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
 
-GST_SCANNER=$(find /usr/lib /usr/libexec -type f -name gst-plugin-scanner -perm -111 2>/dev/null | head -n 1 || true)
+GST_SCANNER=$(find /usr/lib /usr/libexec /usr/local/lib /usr/local/libexec \
+    -type f -name gst-plugin-scanner -perm -111 2>/dev/null | head -n 1 || true)
 if [[ -n "$GST_SCANNER" ]]; then
     export GST_PLUGIN_SCANNER="$GST_SCANNER"
+    export GST_PLUGIN_SCANNER_1_0="$GST_SCANNER"
 fi
 
 # AIOStreams remains in the Lampac lifecycle. Jackett is intentionally managed
@@ -788,7 +788,16 @@ case "${1:-}" in
         proot-distro login ubuntu -- bash /root/lampac-run.sh
         ;;
     stop)
-        pkill -f 'proot.*Core.dll' 2>/dev/null && echo "Lampac stopped" || echo "Lampac not running"
+        # The Core process can appear as `dotnet Core.dll` rather than
+        # `proot.*Core.dll`; kill both forms so a stale listener cannot block
+        # the next start on the configured port.
+        if pkill -TERM -f '[C]ore\.dll' 2>/dev/null; then
+            sleep 1
+            pkill -KILL -f '[C]ore\.dll' 2>/dev/null || true
+            echo "Lampac stopped"
+        else
+            echo "Lampac not running"
+        fi
         if proot-distro login ubuntu -- test -d /root/aiostreams 2>/dev/null; then
             proot-distro login ubuntu -- bash /root/aioctl.sh stop 2>/dev/null || true
         fi
@@ -858,8 +867,17 @@ case "${1:-}" in
                 fi
             fi
 
-            # NguonC is retired; VsMov is synced below.
-            rm -rf /root/lampac/module/OnlineVN/NguonC
+            # Remove retired providers and stale site definitions so the dynamic
+            # module loader cannot load them from an earlier installation.
+            rm -rf /root/lampac/module/OnlineVN/NguonC \
+                   /root/lampac/module/OnlineENG/CineWave \
+                   /root/lampac/module/OnlineENG/Mapple4K \
+                   /root/lampac/module/OnlineENG/OpenDirectory \
+                   /root/lampac/mods/OnlineENG/CineWave \
+                   /root/lampac/mods/OnlineENG/Mapple4K \
+                   /root/lampac/mods/OnlineENG/OpenDirectory
+            rm -f /root/lampac/module/NextHUB/sites/85po.yaml \
+                  /root/lampac/mods/NextHUB/sites/85po.yaml
 
             base="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/Modules/OnlineVN/KKPhim"
 
@@ -897,15 +915,6 @@ case "${1:-}" in
                 curl -fSL --retry 3 "$webbase/$file" -o "$webtarget/$file"
             done
 
-            opendirectorybase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/Modules/OnlineENG/OpenDirectory"
-
-            opendirectorybase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/Modules/OnlineENG/OpenDirectory"
-            opendirectorytarget=/root/lampac/module/OnlineENG/OpenDirectory
-            mkdir -p "$opendirectorytarget"
-            for file in Controller.cs Model.cs ModInit.cs manifest.json; do
-                curl -fSL --retry 3 "$opendirectorybase/$file" -o "$opendirectorytarget/$file"
-            done
-
             sootiobase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/Modules/OnlineENG/Sootio"
 
             sootiobase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/Modules/OnlineENG/Sootio"
@@ -937,12 +946,6 @@ case "${1:-}" in
             # replacing a release archive.
             webbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/Modules/LampaWeb"
 
-            cwbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/Modules/OnlineENG/CineWave"
-            cwtarget=/root/lampac/module/OnlineENG/CineWave
-            mkdir -p "$cwtarget"
-            for file in Controller.cs Model.cs ModInit.cs manifest.json; do
-                curl -fSL --retry 3 "$cwbase/$file" -o "$cwtarget/$file"
-            done
             curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/aioctl.sh" -o /root/aioctl.sh
             curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/jackettctl.sh" -o /root/jackettctl.sh
             chmod +x /root/aioctl.sh /root/jackettctl.sh
@@ -952,7 +955,7 @@ case "${1:-}" in
             nexthubroottarget=/root/lampac/module/NextHUB
             nexthubtarget="$nexthubroottarget/sites"
             if [ -d "$nexthubtarget" ]; then
-                for file in 24rolika.yaml 24video.yaml 3movs.yaml 85po.yaml analdin.yaml batsa.yaml beeg.yaml bigboss.yaml brazzrus.yaml cam4.yaml crocotube.yaml ebasos.yaml ebun.yaml familyporn.yaml fapguru.yaml film-adult.yaml fpo.yaml gayporntube.yaml hellporno.yaml hochutv.yaml huyamba.yaml jopaonline.yaml lenkino.yaml lenporno.yaml noodlemagazine.yaml oxax.yaml perfektdamen.yaml porn4days.yaml porndig.yaml pornhub.yaml pornk.yaml porno365.yaml porno666.yaml pornoakt.yaml pornobolt.yaml pornobriz.yaml pornokaef.yaml pornone.yaml pornve.yaml prostoporno.yaml rusporno.yaml rusvideos.yaml sex-studentki.yaml sexporno.yaml sexxxxhub.yaml sosushka.yaml trahkino.yaml uporno.yaml veporn.yaml vporno.yaml vtrahe.yaml vtrahetv.yaml watchporn.yaml xasiat.yaml xozilla.yaml xxxperevod.yaml yaeby.yaml youjizz.yaml; do
+                for file in 24rolika.yaml 24video.yaml 3movs.yaml analdin.yaml batsa.yaml beeg.yaml bigboss.yaml brazzrus.yaml cam4.yaml crocotube.yaml ebasos.yaml ebun.yaml familyporn.yaml fapguru.yaml film-adult.yaml fpo.yaml gayporntube.yaml hellporno.yaml hochutv.yaml huyamba.yaml jopaonline.yaml lenkino.yaml lenporno.yaml noodlemagazine.yaml oxax.yaml perfektdamen.yaml porn4days.yaml porndig.yaml pornhub.yaml pornk.yaml porno365.yaml porno666.yaml pornoakt.yaml pornobolt.yaml pornobriz.yaml pornokaef.yaml pornone.yaml pornve.yaml prostoporno.yaml rusporno.yaml rusvideos.yaml sex-studentki.yaml sexporno.yaml sexxxxhub.yaml sosushka.yaml trahkino.yaml uporno.yaml veporn.yaml vporno.yaml vtrahe.yaml vtrahetv.yaml watchporn.yaml xasiat.yaml xozilla.yaml xxxperevod.yaml yaeby.yaml youjizz.yaml; do
                     curl -fSL --retry 3 "$nexthubrootbase/sites/$file?cb=$syncstamp" -o "$nexthubtarget/$file.tmp"
                     mv "$nexthubtarget/$file.tmp" "$nexthubtarget/$file"
                 done
@@ -977,7 +980,7 @@ case "${1:-}" in
 
             sisitarget=/root/lampac/module/SISI/plugins
             if [ -d "$sisitarget" ]; then
-                for file in sisi.js startpage.js; do
+                for file in sisi.js sisi-layout.js startpage.js; do
                     curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/SISI/plugins/$file" -o "$sisitarget/$file.tmp"
                     mv "$sisitarget/$file.tmp" "$sisitarget/$file"
                 done
@@ -1035,14 +1038,6 @@ case "${1:-}" in
                 done
             fi
 
-            mapplebase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/Modules/OnlineENG/Mapple4K"
-            mappletarget=/root/lampac/module/OnlineENG/Mapple4K
-            mkdir -p "$mappletarget"
-            for file in Controller.cs ModInit.cs manifest.json README.md; do
-                curl -fSL --retry 3 "$mapplebase/$file?cb=$syncstamp" -o "$mappletarget/$file.tmp"
-                mv "$mappletarget/$file.tmp" "$mappletarget/$file"
-            done
-
             for proxymodule in CubProxy TmdbProxy; do
                 proxytarget="/root/lampac/module/Proxy/$proxymodule"
                 if [ -d "$proxytarget" ]; then
@@ -1084,7 +1079,7 @@ case "${1:-}" in
             gstbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/Modules/GStreamer"
             gsttarget=/root/lampac/module/GStreamer
             mkdir -p "$gsttarget/Services" "$gsttarget/plugins"
-            for file in Controller.cs Services/GService.cs Services/GStask.cs Services/HdrToneMappingBackend.cs Services/GStask.Pipeline.cs Services/GStask.Producer.cs plugins/gst.js; do
+            for file in Controller.cs ModInit.cs Services/GService.cs Services/GSProbe.cs Services/GStask.cs Services/HdrToneMappingBackend.cs Services/GStask.Pipeline.cs Services/GStask.Producer.cs plugins/gst.js; do
                 curl -fSL --retry 3 "$gstbase/$file" -o "$gsttarget/$file"
             done
 

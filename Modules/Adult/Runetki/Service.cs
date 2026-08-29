@@ -75,33 +75,145 @@ public static class RunetkiTo
     }
 
     public static List<MenuItem> Menu(string host, string sort)
+        => LiveCamMenu.Build(host, "runetki", sort);
+
+    static class LiveCamMenu
     {
-        var memoryCache = HybridCache.GetMemory();
-        string menuKey = $"Runetki_menu_{host}_{sort}";
 
-        if (memoryCache.TryGetValue(menuKey, out List<MenuItem> menu))
-            return menu;
-
-        menu = new List<MenuItem>(1)
+        public static List<MenuItem> Build(string host, string route, string sort)
         {
-            new MenuItem()
+            var memoryCache = HybridCache.GetMemory();
+            string menuKey = $"LiveCam_menu_{host}_{route}_{sort}";
+
+            if (memoryCache.TryGetValue(menuKey, out List<MenuItem> menu))
+                return menu;
+
+            var genderMenu = new List<MenuItem>(6)
             {
-                title = $"Sắp xếp: {(string.IsNullOrWhiteSpace(sort) ? "chọn" : sort)}",
-                playlist_url = "submenu",
-                submenu = new List<MenuItem>(5)
+                new("Tốt nhất", ListUrl(host, route, null)),
+                new("Mới nhất", ListUrl(host, route, "new")),
+                new("Nữ", ListUrl(host, route, "female")),
+                new("Cặp đôi", ListUrl(host, route, "couples")),
+                new("Nam", ListUrl(host, route, "male")),
+                new("Chuyển giới", ListUrl(host, route, "transsexual"))
+            };
+
+            // The live providers use a female/tags/<tag> listing for their
+            // category pages. Keep the tags in one place so both cam sources have
+            // the same useful browsing experience as Chaturbate.
+            var categoryMenu = new List<MenuItem>(34)
+            {
+                new("Tất cả", CategoryAllUrl(host, route, sort)),
+                new("Á châu", TagUrl(host, route, "asian")),
+                new("Nhật Bản", TagUrl(host, route, "japanese")),
+                new("Hàn Quốc", TagUrl(host, route, "korean")),
+                new("Ấn Độ", TagUrl(host, route, "indian")),
+                new("Ả Rập", TagUrl(host, route, "arab")),
+                new("Nga", TagUrl(host, route, "russian")),
+                new("Latinh", TagUrl(host, route, "latina")),
+                new("Da đen", TagUrl(host, route, "ebony")),
+                new("Da trắng", TagUrl(host, route, "white")),
+                new("Tóc vàng", TagUrl(host, route, "blonde")),
+                new("Tóc nâu", TagUrl(host, route, "brunette")),
+                new("Tóc đỏ", TagUrl(host, route, "redhead")),
+                new("MILF", TagUrl(host, route, "milf")),
+                new("Trưởng thành", TagUrl(host, route, "mature")),
+                new("Nhỏ nhắn", TagUrl(host, route, "petite")),
+                new("Ngực lớn", TagUrl(host, route, "bigtits")),
+                new("Mông lớn", TagUrl(host, route, "bigass")),
+                new("Mới lên sóng", TagUrl(host, route, "new")),
+                new("Lovense", TagUrl(host, route, "lovense")),
+                new("Tương tác", TagUrl(host, route, "interactive")),
+                new("Anal", TagUrl(host, route, "anal")),
+                new("Squirt", TagUrl(host, route, "squirt")),
+                new("Lesbian", TagUrl(host, route, "lesbian")),
+                new("Tự sướng", TagUrl(host, route, "masturbation")),
+                new("Đồ chơi", TagUrl(host, route, "toys")),
+                new("Ngoài trời", TagUrl(host, route, "outdoor")),
+                new("Xăm", TagUrl(host, route, "tattoo")),
+                new("Hút thuốc", TagUrl(host, route, "smoking")),
+                new("Chân", TagUrl(host, route, "feet")),
+                new("BDSM", TagUrl(host, route, "bdsm")),
+                new("Có lông", TagUrl(host, route, "hairy")),
+                new("Cạo", TagUrl(host, route, "shaven"))
+            };
+
+            string genderTitle = GenderTitle(sort);
+            string categoryTitle = CategoryTitle(sort, categoryMenu);
+
+            menu = new List<MenuItem>(2)
+            {
+                new MenuItem()
                 {
-                    new("Mới nhất", $"{host}/runetki?sort=new"),
-                    new("Cặp đôi", $"{host}/runetki?sort=couples"),
-                    new("Nữ", $"{host}/runetki?sort=female"),
-                    new("Nam", $"{host}/runetki?sort=male"),
-                    new("Chuyển giới", $"{host}/runetki?sort=transsexual")
+                    title = $"Giới tính: {genderTitle}",
+                    playlist_url = "submenu",
+                    submenu = genderMenu
+                },
+                new MenuItem()
+                {
+                    title = $"Danh mục: {categoryTitle}",
+                    playlist_url = "submenu",
+                    submenu = categoryMenu
                 }
+            };
+
+            if (CoreInit.conf.lowMemoryMode == false)
+                memoryCache.Set(menuKey, menu, TimeSpan.FromDays(1));
+
+            return menu;
+        }
+
+        static string ListUrl(string host, string route, string sort)
+        {
+            return string.IsNullOrWhiteSpace(sort)
+                ? $"{host}/{route}"
+                : $"{host}/{route}?sort={sort}";
+        }
+
+        static string TagUrl(string host, string route, string tag)
+            => ListUrl(host, route, $"female/tags/{tag}");
+
+        static string CategoryAllUrl(string host, string route, string sort)
+        {
+            if (!string.IsNullOrWhiteSpace(sort) && sort.StartsWith("female/tags/", StringComparison.OrdinalIgnoreCase))
+                sort = "female";
+
+            return ListUrl(host, route, sort);
+        }
+
+        static string GenderTitle(string sort)
+        {
+            if (string.IsNullOrWhiteSpace(sort))
+                return "Tốt nhất";
+
+            if (sort.StartsWith("female/tags/", StringComparison.OrdinalIgnoreCase))
+                return "Nữ";
+
+            return sort switch
+            {
+                "new" => "Mới nhất",
+                "female" => "Nữ",
+                "couples" => "Cặp đôi",
+                "male" => "Nam",
+                "transsexual" => "Chuyển giới",
+                _ => sort
+            };
+        }
+
+        static string CategoryTitle(string sort, List<MenuItem> categoryMenu)
+        {
+            const string prefix = "female/tags/";
+            if (string.IsNullOrWhiteSpace(sort) || !sort.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                return "tất cả";
+
+            string tag = sort[prefix.Length..];
+            foreach (var item in categoryMenu)
+            {
+                if (item.playlist_url.EndsWith($"sort={sort}", StringComparison.OrdinalIgnoreCase))
+                    return item.title;
             }
-        };
 
-        if (CoreInit.conf.lowMemoryMode == false)
-            memoryCache.Set(menuKey, menu, TimeSpan.FromDays(1));
-
-        return menu;
+            return tag;
+        }
     }
 }

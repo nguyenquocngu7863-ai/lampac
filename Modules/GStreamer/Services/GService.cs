@@ -326,10 +326,11 @@ public static class GService
         if (hybridCache.TryGetValue(probeKey, out ProbeInfo cachedProbe))
             return new(cachedProbe, null);
 
-        var probe = await GSProbe.Get(sourceUrl);
-        if (probe == null)
-            return new(null, "probe");
+        var probeResult = await GSProbe.Get(sourceUrl);
+        if (probeResult.probe == null)
+            return new(null, probeResult.error ?? "probe");
 
+        var probe = probeResult.probe;
         hybridCache.Set(probeKey, probe, TimeSpan.FromDays(1));
 
         return new(probe, null);

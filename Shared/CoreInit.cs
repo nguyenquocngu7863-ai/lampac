@@ -168,27 +168,9 @@ public class CoreInit
         if (_tempConf == null)
             throw new Exception("Failed to deserialize init.conf");
 
-        conf = _tempConf;
+        _tempConf.accsdb.MergeAccounts();
 
-        if (conf.accsdb.accounts != null)
-        {
-            foreach (var u in conf.accsdb.accounts)
-            {
-                if (conf.accsdb.findUser(u.Key) is AccsUser user)
-                {
-                    if (u.Value > user.expires)
-                        user.expires = u.Value;
-                }
-                else
-                {
-                    conf.accsdb.users.Add(new AccsUser()
-                    {
-                        id = u.Key.ToLowerAndTrim(),
-                        expires = u.Value
-                    });
-                }
-            }
-        }
+        conf = _tempConf;
 
         PosterApi.Initialization(conf.omdbapi_key, conf.posterApi);
     }
@@ -219,25 +201,7 @@ public class CoreInit
                             }
                         });
 
-                        if (conf.accsdb.accounts != null)
-                        {
-                            foreach (var u in conf.accsdb.accounts)
-                            {
-                                if (conf.accsdb.findUser(u.Key) is AccsUser user)
-                                {
-                                    if (u.Value > user.expires)
-                                        user.expires = u.Value;
-                                }
-                                else
-                                {
-                                    conf.accsdb.users.Add(new AccsUser()
-                                    {
-                                        id = u.Key.ToLowerAndTrim(),
-                                        expires = u.Value
-                                    });
-                                }
-                            }
-                        }
+                        conf.accsdb.MergeAccounts();
 
                         PosterApi.Initialization(conf.omdbapi_key, conf.posterApi);
                     }
@@ -347,7 +311,7 @@ public class CoreInit
     {
         api_key = "4ef0d7355d9ffb5151e987764708ce96",
         scheme = "https",
-        domain = "cub.red",
+        domain = "cub.best",
         mirror = "cub.best"
     };
 

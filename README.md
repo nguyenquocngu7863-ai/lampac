@@ -47,7 +47,7 @@ Khi chạy lần đầu, `setup-termux.sh` thực hiện tuần tự các bướ
 2. Cài Ubuntu trong `proot-distro` (hoặc sửa/cài lại Ubuntu nếu môi trường đang hỏng).
 3. Trong Ubuntu, cài các thư viện cần thiết, GStreamer và **ASP.NET Core Runtime .NET 10** tại `/opt/dotnet`.
 4. Tải bản phát hành Lampac NextGen mới nhất, giải nén vào `/root/lampac` trong Ubuntu.
-5. Tạo `init.conf` tối ưu cho Termux: `lowMemoryMode`, GStreamer; tạm đặt `disableEng: true` và tắt Chromium trong lúc luồng ENG embed được sửa.
+5. Tạo `init.conf` tối ưu cho Termux: `lowMemoryMode`, GStreamer; mặc định đặt `disableEng: true` để ẩn nhóm ENG nhưng vẫn bật Chromium với đường dẫn `/usr/bin/google-chrome-stable` cho các module cần Playwright.
 6. Xoá nguồn đã ngừng dùng/lỗi **NguonC**, rồi đồng bộ module tuỳ biến: **KKPhim, K20, VsMov, AIOStreams, GStreamer** và **LampaWeb/StremioSub**; mã các nguồn ENG vẫn được giữ để phát triển nhưng không xuất hiện khi `disableEng` đang bật.
 7. Cài controller tùy chọn cho **AIOStreams** (port `3002`) và **Jackett** (port `9117`).
 8. Tạo các lệnh `lampac`, `aio` và `jackett` để quản lý từ Termux.
@@ -79,6 +79,8 @@ ip addr show wlan0
 
 ## Cập nhật và đồng bộ module
 
+Quy trình đầy đủ giữa Termux, GitHub và bản Lampac đang chạy nằm trong [`docs/TERMUX-GITHUB-LAMPAC.md`](docs/TERMUX-GITHUB-LAMPAC.md). Đọc mục này khi cần đưa branch agent vào `main`, xử lý thay đổi local hoặc xoá module cũ trong Ubuntu proot.
+
 Có **ba lệnh**. Script trên điện thoại tự chứa danh sách file, nên sau mỗi bản vá phải tải lại `setup-termux.sh` một lần rồi mới sync — nếu không, `--sync` vẫn dùng list cũ.
 
 ```bash
@@ -108,7 +110,7 @@ curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/se
 lampac stop && lampac start
 ```
 
-List file của `--sync` nằm trong `sync_latest_modules()` của script; mỗi patch sẽ thay list này. Bản vá hiện tại kéo `Modules/NextHUB/sites/85po.yaml` và `Modules/NextHUB/Controllers/ViewController.cs` (sửa phát video KVS). Không dùng `--sync` khi cần LampaWeb, tiếng Việt lõi, hoặc Jackett/AIO controller.
+List file của `--sync` nằm trong `sync_latest_modules()` của script; mỗi patch sẽ thay list này. Bản vá hiện tại kéo `Modules/NextHUB/Controllers/ViewController.cs` (sửa phát video KVS). Không dùng `--sync` khi cần LampaWeb, tiếng Việt lõi, hoặc Jackett/AIO controller.
 
 ### Sync đầy đủ — mọi module tuỳ biến + runtime trình duyệt
 
@@ -117,7 +119,7 @@ bash setup-termux.sh --sync-all
 lampac stop && lampac start
 ```
 
-Lấy lại **KKPhim, K20, VsMov, WebStreamr, Open Directory, Sootio, AIOStreams, GStreamer, SISI, Eporner, Chaturbate, NextHUB YAML, LampaWeb/StremioSub/hls.js**, sửa Chrome nếu thiếu. Nặng hơn `--sync`, dùng khi cài lại module hoặc vá không nằm trong list nhẹ.
+Lấy lại **KKPhim, K20, VsMov, WebStreamr, Sootio, AIOStreams, GStreamer, SISI, Eporner, Chaturbate, NextHUB YAML, LampaWeb/StremioSub/hls.js**, sửa Chrome nếu thiếu. Nặng hơn `--sync`, dùng khi cài lại module hoặc vá không nằm trong list nhẹ.
 
 ### Cập nhật đầy đủ, không mất dữ liệu
 
@@ -314,14 +316,29 @@ Cấu hình mặc định của script đã bao gồm:
   "disableEng": true,
   "gst": {
     "enable": true,
-    "useGpu": false,
-    "hardwareAcceleration": false
+    "hdr_to_sdr": true,
+    "useGpu": true,
+    "hardwareAcceleration": false,
+    "x264Ultrafast": true,
+    "segment_seconds": 2,
+    "segment_buffer": 4
   },
   "chromium": { "enable": false }
 }
 ```
 
-Thiết lập này ưu tiên ổn định và tiết kiệm RAM. Nếu máy yếu, không nên bật đồng thời AIOStreams, Jackett, nhiều module nặng hoặc transcoding.
+Thiết lập này bật sẵn HDR-to-SDR bằng plugin native đã build, dùng OpenCL nếu thiết bị có driver và tự fallback về CPU. Nếu máy yếu, không nên bật đồng thời AIOStreams, Jackett, nhiều module nặng hoặc transcoding khác.
+
+### Chẩn đoán GStreamer copy mode
+
+GStreamer chỉ proxy/remux nguồn MKV/WebM nhận diện được; nó không ép mọi MP4, HLS hoặc live stream vào copy mode. Nếu log có:
+
+```text
+External plugin loader failed
+GStreamer: add rejected source. Reason=probe
+```
+
+thì `gst-discoverer-1.0` chưa chạy được `gst-plugin-scanner`, nên lỗi xảy ra trước khi kiểm tra container và codec. Đây không phải do `hdr_to_sdr`, `useGpu` hoặc các tùy chọn `transcode*`. Trên Termux/Ubuntu proot, xem hướng dẫn sửa và lệnh kiểm tra trong [`Modules/GStreamer/README.md`](Modules/GStreamer/README.md#termux-ошибка-reasonprobe), rồi restart Lampac.
 
 ## Sổ tay cấu hình proxy cho từng nguồn
 
@@ -539,7 +556,6 @@ Không bật hàng loạt 50+ YAML. Chỉ những nguồn Android không phát t
 | **Cam4** | Live HLS trong playlist — cùng kiểu Chaturbate |
 | **Oxax, WatchPorn** | YAML đã có `headers_stream` (Referer) nhưng chưa proxy → APK không gửi header |
 | **ProstoPorno, yaeby** | KVS `/get_file/` + `bindingToIP` — redirect khóa Referer/IP |
-| **85PO** | Tube KVS Đài Loan/Nhật; `get_file` khóa Referer/IP |
 
 Tube còn lại (Youjizz, Porndig, Porn4days, đa số KVS Nga với `rchstreamproxy: web`) để APK phát thẳng. `rchstreamproxy: web` **không** phải `streamproxy` cho điện thoại.
 
@@ -624,7 +640,7 @@ Lampac có module **AIOStreams** tùy chọn. Module này chỉ gọi manifest v
 }
 ```
 
-Manifest URL có thể chứa UUID, password, API key hoặc token; không đưa nó vào Git, log hoặc chat. Các nguồn cũ như **HDVB, KKPhim, K20, WebStreamr, Open Directory và Sootio** vẫn giữ nguyên làm fallback. AIOStreams chỉ là nguồn riêng thêm vào, không thay thế chúng.
+Manifest URL có thể chứa UUID, password, API key hoặc token; không đưa nó vào Git, log hoặc chat. Các nguồn cũ như **HDVB, KKPhim, K20, WebStreamr và Sootio** vẫn giữ nguyên làm fallback. AIOStreams chỉ là nguồn riêng thêm vào, không thay thế chúng.
 
 ### Local host AIOStreams trên Ubuntu proot
 
@@ -690,7 +706,7 @@ jackett update
 
 ## Trạng thái nguồn ENG và Mirage
 
-Bản cài mới mặc định dùng `disableEng: true` và `chromium.enable: false` để giảm RAM. `--sync-all`/`--update` không còn ép lại hai giá trị này, nên lựa chọn bật nguồn của người dùng được giữ nguyên. AIOStreams vẫn hoạt động độc lập khi section `AIOStreams` có `enable: true` và manifest hợp lệ.
+Bản cài Termux mặc định dùng `disableEng: true` để ẩn nhóm ENG, nhưng Chromium được bật với đường dẫn rõ ràng `/usr/bin/google-chrome-stable`; các nguồn browser-backed khác vẫn có thể dùng Playwright. `--sync-all`/`--update` không nên ghi đè lựa chọn `disableEng` hoặc section Chromium chi tiết của người dùng. Muốn hiện nguồn ENG, đổi `disableEng` thành `false`. AIOStreams vẫn hoạt động độc lập khi section `AIOStreams` có `enable: true` và manifest hợp lệ.
 
 Mirage không bị xóa: module mặc định `enable: false` và tự ẩn khi Chromium/Playwright bị tắt. Nguồn này cần Google Chrome/Edge và khoảng 1 GB RAM. Muốn bật, cấu hình đường dẫn Chrome thật rồi restart:
 
@@ -751,9 +767,67 @@ Lệnh `reset` xoá Ubuntu proot hiện tại, vì vậy cần cài lại Lampac
 - Đảm bảo cả hai thiết bị cùng mạng Wi-Fi và router không chặn client-to-client.
 - Kiểm tra port trong `lampac info` hoặc `init.conf`.
 
+<a id="termux-playwright-recovery"></a>
+### Khôi phục Playwright trên Termux
+
+Nếu log báo `chromium is not installed` dù Chrome đã cài, đừng chỉ kiểm tra package. Lampac có thể đang dùng đường dẫn mặc định không đúng, đặc biệt trên Android ARM64. Hãy cấu hình rõ executable:
+
+```json
+"chromium": {
+  "enable": true,
+  "Headless": true,
+  "executablePath": "/usr/bin/google-chrome-stable",
+  "Args": [
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
+    "--disable-dev-shm-usage",
+    "--disable-gpu"
+  ]
+}
+```
+
+Mẫu khôi phục tối thiểu có sẵn tại [`config/termux-recovery.init.conf`](config/termux-recovery.init.conf). Mẫu này giữ `disableEng: false`, bật SISI và giữ `hochutv.enable: true`; nó không chứa mật khẩu, cookie, token hay proxy.
+
+Nếu `init.conf` bị mất hoàn toàn, backup trước rồi mới lấy mẫu:
+
+```bash
+proot-distro login ubuntu -- bash -lc '
+  set -e
+  mkdir -p /root/lampac-backups
+  [ -f /root/lampac/init.conf ] && cp -a /root/lampac/init.conf /root/lampac-backups/init.conf.before-recovery
+  [ -f /root/lampac/passwd ] && cp -a /root/lampac/passwd /root/lampac-backups/passwd.before-recovery
+  curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/config/termux-recovery.init.conf \
+    -o /root/lampac/init.conf
+'
+```
+
+Nếu `init.conf` còn các cấu hình riêng, không chép đè cả file; chỉ hợp nhất ba phần `disableEng`, `chromium` và `hochutv` từ mẫu. Nếu có `/root/lampac/init.yaml`, kiểm tra nó nữa vì `init.yaml` có thể ghi đè `init.conf`.
+
+Nếu Chrome thật sự không còn, dùng `--sync-all` để cài lại browser và module mà không xóa `/root/lampac`:
+
+```bash
+bash setup-termux.sh --sync-all
+```
+
+Không cần dùng `--update` chỉ để khôi phục Playwright. Sau khi cấu hình xong:
+
+```bash
+lampac stop
+lampac start
+```
+
+Log thành công phải có đủ:
+
+```text
+Chromium: Initialization
+Chromium: CreateAsync
+Chromium: LaunchAsync
+Chromium: v... / headless / True
+```
+
 ### Không thấy nguồn ENG/Playwright
 
-Đây là trạng thái tạm thời có chủ đích: profile Termux đặt `disableEng: true` và `chromium.enable: false`. Hiện nên dùng nguồn Việt, AIOStreams hoặc luồng torrent Jackett. Chỉ bật lại ENG/Chromium khi tiếp tục kiểm thử embed.
+Đổi `disableEng` thành `false` để hiện nguồn ENG. Nếu vẫn không hiện, kiểm tra log có đủ dòng `Chromium: LaunchAsync` và `Chromium: v... / headless / True` hay chưa; chỉ có `Chromium: CreateAsync` chưa chứng minh browser đã khởi chạy.
 
 ### Jackett báo `GC heap initialization failed ... 0x8007000E`
 
@@ -785,6 +859,7 @@ Giữ Termux ở foreground khi cần độ ổn định cao, tắt battery opti
 
 - [Script cài Termux](setup-termux.sh)
 - [Cấu hình mẫu](config/example.init.conf)
+- [Mẫu khôi phục Termux + Playwright](config/termux-recovery.init.conf)
 - [Module LampaWeb](Modules/LampaWeb/README.md)
 - [Danh sách module](Modules/)
 - [Giấy phép MIT](LICENSE)
