@@ -906,6 +906,36 @@ phải `git reset` hay clone lại cả repo chỉ vì một addon hỏng.
 - Không chia sẻ `init.conf`, `passwd`, cookie, token hoặc tài khoản cá nhân.
 - Chỉ sử dụng nội dung mà bạn có quyền truy cập theo luật pháp và điều khoản của từng nguồn.
 
+## Self-hosted SubDL/SubSource addon (tránh rare-limit)
+
+Mặc định plugin `stremiosub.js` trong Lampa gọi addon công cộng `subdl.strem.top` / `subsource.strem.top` — cả 2 dùng chung 1 API key của tác giả nên thường dính *rate limit* ("rare limit") vào giờ cao điểm.
+
+Lampac có sẵn một addon Stremio nhỏ tự host (`scripts/stremio-sub-addon/`) chạy ngay trong Ubuntu proot trên port **7000**, gọi thẳng `api.subdl.com` và `api.subsource.net` bằng **API key của bạn** lấy từ block `SubFinder` trong `init.conf`, nên không bao giờ bị chung hạn với ai:
+
+1. `bash setup-termux.sh --sync-all` (cài Node 22 trong Ubuntu, kéo addon, vá `stremiosub.js` trỏ về `127.0.0.1:7000`)
+2. `lampac config` → điền 2 key:
+   ```json
+   "SubFinder": {
+     "subdl_api_key": "...",
+     "subsource_api_key": "..."
+   }
+   ```
+   Lấy key miễn phí tại:
+   - SubDL: <https://subdl.com/panel/api>
+   - SubSource: <https://subsource.net> (Profile → API Key)
+3. `lampac restart` (sẽ tự động `subaddon start` vì đã thêm vào `lampac-run.sh`)
+4. Mở `http://<IP-điện-thoại>:7000/manifest.json` xem manifest trả JSON là sống.
+
+Các lệnh quản lý addon phụ đề:
+```bash
+subaddon start      # chạy nền (cũng tự chạy khi lampac start)
+subaddon stop
+subaddon restart
+subaddon status     # xem có lên không, health check
+subaddon logs       # xem log phụ đề
+```
+Phụ đề tiếp tục được Lampa tự đính vào player qua `stremiosub.js`, chỉ khác là backend search bây giờ là nhà bạn — không còn đi qua `strem.top` chung nữa.
+
 ## Tài liệu mã nguồn
 
 - [Script cài Termux](setup-termux.sh)
