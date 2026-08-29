@@ -848,6 +848,57 @@ JACKETT_GC_HEAP_HARD_LIMIT=20000000 jackett start
 
 Giữ Termux ở foreground khi cần độ ổn định cao, tắt battery optimization cho Termux và tránh để hệ thống đóng ứng dụng khi thiếu RAM.
 
+## Quy trình làm addon (học từ cái giá của sisi-layout)
+
+> **Cảnh nghèo rút kinh nghiệm**: đừng bao giờ nghĩ ra một addon mới, viết thẳng vào trong
+> `Core/wwwroot/` hoặc module chính (`SISI/`, `LampaWeb/`, …), push lên `main`, rồi để
+> `setup-termux.sh --sync` tự kéo nó về cho mọi người. Thử nghiệm thế này từng phá hỏng
+> hàng loạt cài đặt (curl 404, layout vỡ, plugin registry bị lệch) và phải gỡ từng dòng
+> trong khi người dùng đã sync phải bản lỗi.
+
+### Workflow đúng
+
+1. **Viết addon như một file `.js` độc lập** trong một thư mục ngoài repo (ví dụ
+   `~/lampac-dev/my-addon.js`), tham khảo cách các addon Lampa chuẩn hoạt động
+   (`component: 'setting'`, không đụng global CSS, không chèn class tùy tiện vào
+   `body`).
+2. **Test cục bộ trên máy mình trước**: copy file `.js` vào thư mục plugin của Lampa
+   bằng tay, mở URL `http://127.0.0.1:9118` và chạy trong vài ngày ở các màn hình
+   khác nhau (chính, phụ, tìm kiếm, bookmark, history, TV, player) để bắt lỗi bố cục.
+   Không test 5 phút rồi push.
+3. **Chỉ khi chạy ổn cả tuần trên máy mình** mới cân nhắc nhét vào repo chính. Lúc đó
+   vẫn không chèn thẳng vào layout mặc định của Lampa/SISI — giữ addon là một module
+   riêng, tắt theo mặc định, người dùng bật lên trong Cài đặt (Settings → Addons) khi
+   họ muốn thử.
+4. **Không thêm addon đang dev vào `setup-termux.sh --sync`** cho đến khi addon ổn định
+   và đã nằm ngoài giai đoạn thử nghiệm. File trong loop `curl … --sync` được tải
+   xuống *tất cả* người dùng ở lần update kế tiếp — dù họ có bật addon hay không —
+   nên một link 404 ở đó là hỏng cả bước sync của mọi người.
+5. **Khi cần bỏ / thu hồi addon**: nhớ kiểm tra và xoá đồng bộ ở 3 chỗ — file addon
+   chính, dòng đăng ký trong `ApiController.cs`/`SisiApi.cs`, và **2 vòng lặp curl
+   trong `setup-termux.sh`** (block `install_custom_modules()` và block `--sync-all`).
+   Thiếu một chỗ là `curl 404` làm toang người khác.
+
+### Cách cài addon thử nghiệm an toàn (không đụng root repo)
+
+Không cần sửa code C# / build lại / đợi script sync. Cách đơn giản nhất:
+
+```bash
+# Copy file .js của addon vào thư mục plugins của LampaWeb trong Ubuntu
+proot-distro login ubuntu -- bash -c 'mkdir -p /root/lampac/module/LampaWeb/plugins && cat > /root/lampac/module/LampaWeb/plugins/my-addon.js' <<'JS'
+// nội dung addon ở đây
+Lampa.Plugins.add(function(){ this.add = function(){ console.log("my addon loaded"); }; });
+JS
+
+# Khởi động lại Lampac
+lampac restart
+```
+
+Sau đó vào Lampa → Settings → Plugins → gõ URL
+`http://127.0.0.1:9118/my-addon.js` để bật addon. Addon nào làm vỡ giao diện thì
+xoá file `.js` đi và restart là mọi thứ trở lại bình thường — **không bao giờ**
+phải `git reset` hay clone lại cả repo chỉ vì một addon hỏng.
+
 ## Lưu ý an toàn
 
 - Đổi mật khẩu mặc định `lampac`.
