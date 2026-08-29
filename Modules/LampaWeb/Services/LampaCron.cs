@@ -119,6 +119,12 @@ public static class LampaCron
                         Directory.Delete($"wwwroot/{targetDirectory}", true);
                 }
             }
+
+            // The frontend archive can be installed after setup-termux --sync,
+            // or replace custom files during a later automatic update. Reapply
+            // the maintained language and HLS runtime every cron pass.
+            InstallVietnameseLanguage();
+            InstallHlsRuntime();
         }
         catch (Exception ex)
         {
@@ -128,5 +134,46 @@ public static class LampaCron
         {
             Volatile.Write(ref _updatingDb, 0);
         }
+    }
+
+    static void InstallVietnameseLanguage()
+    {
+        string source = Path.Combine(ModInit.modpath, "lang", "vi.js");
+        if (!File.Exists(source) || !File.Exists("wwwroot/lampa-main/app.min.js"))
+            return;
+
+        string langDirectory = "wwwroot/lampa-main/lang";
+        Directory.CreateDirectory(langDirectory);
+
+        string target = Path.Combine(langDirectory, "vi.js");
+        if (!File.Exists(target) || CrypTo.md5File(source) != CrypTo.md5File(target))
+            File.Copy(source, target, true);
+
+        // meta.js is the source registry; app.min.js is what Lampa actually
+        // boots, because webpack inlines meta.languages. Patch both.
+        LampaVietnamese.PatchFile(Path.Combine(langDirectory, "meta.js"));
+        LampaVietnamese.PatchFile("wwwroot/lampa-main/app.min.js");
+    }
+
+    static void InstallHlsRuntime()
+    {
+        string source = Path.Combine(ModInit.modpath, "vendor", "hls", "hls.js");
+        string frontendRoot = "wwwroot/lampa-main";
+        if (!File.Exists(source) || !File.Exists(Path.Combine(frontendRoot, "app.min.js")))
+            return;
+
+        // Lampa intentionally spells this directory `vender`.
+        string targetDirectory = Path.Combine(frontendRoot, "vender", "hls");
+        Directory.CreateDirectory(targetDirectory);
+
+        string target = Path.Combine(targetDirectory, "hls.js");
+        if (File.Exists(target) && CrypTo.md5File(source) == CrypTo.md5File(target))
+            return;
+
+        // Replace atomically so a browser cannot receive half of the 600 KB
+        // bundle while LampaCron is refreshing the frontend.
+        string temporary = target + ".tmp";
+        File.Copy(source, temporary, true);
+        File.Move(temporary, target, true);
     }
 }

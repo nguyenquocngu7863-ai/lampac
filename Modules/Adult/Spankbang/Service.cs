@@ -116,17 +116,17 @@ public static class SpankbangTo
         {
             new MenuItem()
             {
-                title = "Поиск",
+                title = "Tìm kiếm",
                 search_on = "search_on",
                 playlist_url = $"{host}/sbg",
             },
             new MenuItem()
             {
-                title = $"Сортировка: {(string.IsNullOrWhiteSpace(sort) ? "новое" : sort)}",
+                title = $"Sắp xếp: {(string.IsNullOrWhiteSpace(sort) ? "mới" : sort)}",
                 playlist_url = "submenu",
                 submenu = new List<MenuItem>(3)
                 {
-                    new("Новое", $"{host}/sbg"),
+                    new("Mới", $"{host}/sbg"),
                     new("Трендовое", $"{host}/sbg?sort=trending_videos"),
                     new("Популярное", $"{host}/sbg?sort=most_popular")
                 }

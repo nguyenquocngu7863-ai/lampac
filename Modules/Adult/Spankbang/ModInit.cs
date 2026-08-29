@@ -40,12 +40,26 @@ public class ModInit : IModuleLoaded, IModuleSisi
 
     void updateConf()
     {
-        conf = ModuleInvoke.Init("Spankbang", new SisiSettings("Spankbang", "https://ru.spankbang.com")
+        const string site = "https://ru.spankbang.com";
+
+        conf = ModuleInvoke.Init("Spankbang", new SisiSettings("Spankbang", site)
         {
             httpversion = 2,
             displayindex = 16,
             rch_access = "apk,cors,web",
-            stream_access = "apk,cors,web"
+            stream_access = "apk,cors,web",
+            streamproxy = true,
+            headers = HeadersModel.Init(
+                ("referer", site + "/")
+            ).ToDictionary(),
+            headers_stream = HeadersModel.Init(
+                ("Referer", site + "/"),
+                ("Origin", site),
+                ("Accept", "*/*")
+            ).ToDictionary()
         });
+
+        // CDN MP4 is referer-locked; inner Android player cannot send Referer.
+        conf.streamproxy = true;
     }
 }

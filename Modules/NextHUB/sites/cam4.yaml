@@ -6,14 +6,21 @@ stream_access: apk,cors,web
 host: https://ru4.cam4.com
 priorityBrowser: http
 cache_time: 2
+streamproxy: true
+rchstreamproxy: web
+headers_stream:
+  User-Agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+  Referer: "{host}/"
+  Origin: "{host}"
+  Accept: "*/*"
 
 menu:
   categories:
-    Все: ""
-    Девушки: female?page={page}
-    Пары: couple?page={page}
-    Парни: male?page={page}
-    Трансы: transgender?page={page}
+    Tất cả: ""
+    Nữ: female?page={page}
+    Cặp đôi: couple?page={page}
+    Nam: male?page={page}
+    Chuyển giới: transgender?page={page}
 
 list:
   uri: "?page={page}"

@@ -1,0 +1,1136 @@
+using Microsoft.AspNetCore.Mvc;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using Shared;
+using Shared.Attributes;
+using Shared.Models.Base;
+using Shared.Models.Templates;
+using Shared.Services;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text.RegularExpressions;
+using System.Threading.Tasks;
+using System.Web;
+
+namespace K20;
+
+public sealed class K20Controller : BaseOnlineController<ModuleConf>
+{
+    public K20Controller() : base(ModInit.conf) { }
+
+    [HttpGet, Staticache(manually: true)]
+    [Route("lite/k20")]
+    public async Task<ActionResult> Index(
+        string stremio_id,
+        string id,
+        string imdb_id,
+        long tmdb_id,
+        long kinopoisk_id,
+        string title,
+        string original_title,
+        string original_language,
+        string source,
+        string stream_source,
+        int serial = 0,
+        short s = -1,
+        short e = -1,
+        bool play = false,
+        bool rjson = false
+    )
+    {
+        if (await IsRequestBlocked(rch: false, rch_check: !play))
+            return badInitMsg;
+
+        bool isSeries = serial == 1;
+        string addonId = await ResolveStremioId(
+            stremio_id,
+            id,
+            imdb_id,
+            tmdb_id,
+            source,
+            isSeries
+        );
+
+        if (string.IsNullOrWhiteSpace(addonId))
+        {
+            return OnError(
+                "K20 requires a valid IMDb id. A TMDB id is converted through TMDB external_ids; if no exact IMDb mapping exists, K20 is not queried.",
+                400
+            );
+        }
+
+        if (isSeries && s <= 0)
+        {
+            return await Seasons(
+                addonId,
+                title,
+                original_title,
+                tmdb_id
+            );
+        }
+
+        if (isSeries && e <= 0)
+        {
+            return await Episodes(
+                addonId,
+                title,
+                original_title,
+                tmdb_id,
+                s
+            );
+        }
+
+        if (isSeries)
+            return await EpisodeResponse(addonId, title, original_title, s, e, play);
+
+        string type = "movie";
+        List<K20StreamItem> allStreams = await GetStreams(type, addonId);
+        if (allStreams.Count == 0)
+            return OnError("No direct HTTP streams returned by K20", 502);
+
+        List<K20StreamItem> streams = string.IsNullOrWhiteSpace(stream_source)
+            ? allStreams
+            : allStreams
+                .Where(i => SourceGroupName(i).Equals(stream_source, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+        if (streams.Count == 0)
+            return OnError("No streams for the selected K20 source", 404);
+
+        if (play)
+            return RedirectToPlay(BuildVideoEndpoint(streams[0]));
+
+        VoiceTpl sourceFilter = BuildSourceFilter(
+            allStreams,
+            addonId,
+            title,
+            original_title,
+            stream_source
+        );
+
+        return ContentTpl(BuildMovieTemplate(streams, title, original_title, sourceFilter));
+    }
+
+    [HttpGet, Staticache(manually: true)]
+    [Route("lite/k20/video")]
+    // Keep the original media extension visible to Lampa. MKV is used by the
+    // client plug-in as the opt-in GStreamer hook; m3u8/mp4 lets Lampa select
+    // its normal HLS/native player instead of treating a redirect as unknown.
+    [Route("lite/k20/file.mkv")]
+    [Route("lite/k20/file.m3u8")]
+    [Route("lite/k20/file.mp4")]
+    public async Task<ActionResult> Video(string u, string h, bool play = true)
+    {
+        if (await IsRequestBlocked(rch: false, rch_check: false))
+            return badInitMsg;
+
+        if (string.IsNullOrWhiteSpace(u))
+            return OnError("Missing K20 stream URL", 400);
+
+        string streamUrl;
+        try
+        {
+            streamUrl = DecryptQuery(u);
+        }
+        catch
+        {
+            streamUrl = null;
+        }
+
+        if (!IsHttpUrl(streamUrl))
+            return OnError("Invalid K20 stream URL", 400);
+
+        List<HeadersModel> headers = DecodeHeaders(h);
+        string output = HostStreamProxy(streamUrl, headers);
+
+        if (string.IsNullOrWhiteSpace(output) ||
+            (!IsHttpUrl(output) && !output.Contains("/proxy/", StringComparison.OrdinalIgnoreCase)))
+        {
+            return OnError("Unable to prepare K20 stream", 502);
+        }
+
+        // The normal /video endpoint keeps HLS/MP4 direct. The /file.mkv
+        // alias intentionally retains the MKV suffix before this redirect, so
+        // gst.js can send a selected MKV through GStreamer when that plug-in
+        // is enabled. With gst disabled, the same endpoint simply redirects
+        // to the source/proxy for VLC/direct playback.
+        return RedirectToPlay(output);
+    }
+
+    [HttpGet, Staticache(manually: true)]
+    [Route("lite/k20/episode")]
+    public async Task<ActionResult> Episode(
+        string stremio_id,
+        string title,
+        string original_title,
+        short s,
+        short e,
+        bool play = false
+    )
+    {
+        if (await IsRequestBlocked(rch: false, rch_check: !play))
+            return badInitMsg;
+
+        if (string.IsNullOrWhiteSpace(stremio_id))
+            return OnError("Missing Stremio series id", 400);
+
+        string addonId = await ResolveStremioId(
+            stremio_id,
+            id: null,
+            imdbId: null,
+            tmdbId: 0,
+            source: null,
+            isSeries: true
+        );
+
+        if (string.IsNullOrWhiteSpace(addonId))
+            return OnError("K20 requires a valid IMDb series id", 400);
+
+        return await EpisodeResponse(addonId, title, original_title, s, e, play);
+    }
+
+    async Task<ActionResult> EpisodeResponse(
+        string addonId,
+        string title,
+        string original_title,
+        short season,
+        short episode,
+        bool play
+    )
+    {
+        if (season <= 0 || episode <= 0)
+            return OnError("Stremio episode requires season and episode", 400);
+
+        List<K20StreamItem> streams = await GetStreams(
+            "series",
+            $"{addonId}:{season}:{episode}",
+            expectedSeason: season
+        );
+
+        if (streams.Count == 0)
+            return OnError("No direct HTTP streams returned by K20", 502);
+
+        var video = BuildVideoResponse(
+            streams,
+            title,
+            original_title,
+            season,
+            episode
+        );
+
+        if (play)
+            return RedirectToPlay(video.firstLink);
+
+        return ContentTo(video.json);
+    }
+
+    async Task<ActionResult> Seasons(
+        string addonId,
+        string title,
+        string original_title,
+        long tmdb_id
+    )
+    {
+        long tvId = ResolveTmdbId(addonId, tmdb_id);
+        if (tvId <= 0 && !IsImdbId(addonId))
+            return OnError("Series season list requires a TMDB or IMDb id", 400);
+
+        List<(int Number, int EpisodeCount)> seasons = await GetSeasonRows(addonId, tvId);
+        if (seasons.Count == 0)
+            return OnError("Unable to load series seasons", 502);
+
+        var tpl = new SeasonTpl(seasons.Count);
+
+        foreach (var seasonInfo in seasons)
+        {
+            tpl.Append(
+                $"Season {seasonInfo.Number}",
+                BuildIndexUrl(addonId, title, original_title, serial: 1, season: seasonInfo.Number),
+                seasonInfo.Number
+            );
+        }
+
+        return ContentTpl(tpl);
+    }
+
+    async Task<ActionResult> Episodes(
+        string addonId,
+        string title,
+        string original_title,
+        long tmdb_id,
+        short season
+    )
+    {
+        long tvId = ResolveTmdbId(addonId, tmdb_id);
+        if ((tvId <= 0 && !IsImdbId(addonId)) || season <= 0)
+            return OnError("Series episode list requires a TMDB or IMDb id and season", 400);
+
+        List<(int Number, string Name)> episodes = await GetEpisodeRows(addonId, tvId, season);
+        if (episodes.Count == 0)
+            return OnError("Unable to load series episodes", 502);
+
+        var tpl = new EpisodeTpl(episodes.Count);
+
+        foreach (var episodeInfo in episodes)
+        {
+            int number = episodeInfo.Number;
+            if (number <= 0 || number > short.MaxValue)
+                continue;
+
+            string episodeName = episodeInfo.Name;
+            string name = string.IsNullOrWhiteSpace(episodeName)
+                ? $"Episode {number}"
+                : $"{number}. {episodeName}";
+
+            string link = BuildEpisodeUrl(
+                addonId,
+                title,
+                original_title,
+                season,
+                (short)number
+            );
+
+            string streamLink = BuildEpisodeUrl(
+                addonId,
+                title,
+                original_title,
+                season,
+                (short)number,
+                play: true
+            );
+
+            tpl.Append(
+                name,
+                title ?? original_title,
+                season,
+                (short)number,
+                link,
+                "call",
+                streamlink: streamLink
+            );
+        }
+
+        return ContentTpl(tpl);
+    }
+
+    async Task<JObject> GetTmdb(string path)
+    {
+        string apiKey = CoreInit.conf?.cub?.api_key;
+        if (string.IsNullOrWhiteSpace(apiKey))
+            return null;
+
+        string uri = $"https://api.themoviedb.org/3/{path}?api_key={HttpUtility.UrlEncode(apiKey)}&language=en-US";
+        string cacheKey = $"k20:tmdb:{path}";
+
+        return await InvokeCache(
+            cacheKey,
+            TimeSpan.FromHours(6),
+            () => Http.Get<JObject>(
+                uri,
+                timeoutSeconds: 8,
+                proxy: proxy
+            )
+        );
+    }
+
+    async Task<List<(int Number, int EpisodeCount)>> GetSeasonRows(string addonId, long tvId)
+    {
+        var result = new List<(int Number, int EpisodeCount)>();
+
+        JObject tmdb = tvId > 0
+            ? await GetTmdb($"tv/{tvId}")
+            : null;
+        if (tmdb?["seasons"] is JArray seasons)
+        {
+            foreach (JToken token in seasons)
+            {
+                int number = token.Value<int?>("season_number") ?? 0;
+                int episodeCount = token.Value<int?>("episode_count") ?? 0;
+                if (number > 0 && episodeCount > 0)
+                    result.Add((number, episodeCount));
+            }
+        }
+
+        if (result.Count > 0)
+            return result;
+
+        // Some installations do not have a TMDB API key. Cinemeta is only a
+        // metadata fallback; stream URLs still come exclusively from the
+        // configured Stremio add-on.
+        JObject cinemeta = await GetCinemeta(addonId);
+        if (cinemeta?["meta"]?["videos"] is not JArray videos)
+            return result;
+
+        var counts = new Dictionary<int, int>();
+        foreach (JToken token in videos)
+        {
+            int number = token.Value<int?>("season") ?? 0;
+            int episode = token.Value<int?>("episode") ?? 0;
+            if (number <= 0 || episode <= 0)
+                continue;
+
+            counts[number] = counts.TryGetValue(number, out int count)
+                ? Math.Max(count, episode)
+                : episode;
+        }
+
+        return counts
+            .OrderBy(i => i.Key)
+            .Select(i => (i.Key, i.Value))
+            .ToList();
+    }
+
+    async Task<List<(int Number, string Name)>> GetEpisodeRows(
+        string addonId,
+        long tvId,
+        short season
+    )
+    {
+        var result = new List<(int Number, string Name)>();
+
+        JObject tmdb = tvId > 0
+            ? await GetTmdb($"tv/{tvId}/season/{season}")
+            : null;
+        if (tmdb?["episodes"] is JArray episodes)
+        {
+            foreach (JToken token in episodes)
+            {
+                int number = token.Value<int?>("episode_number") ?? 0;
+                if (number > 0)
+                    result.Add((number, token.Value<string>("name")));
+            }
+        }
+
+        if (result.Count > 0)
+            return result;
+
+        JObject cinemeta = await GetCinemeta(addonId);
+        if (cinemeta?["meta"]?["videos"] is not JArray videos)
+            return result;
+
+        foreach (JToken token in videos)
+        {
+            int tokenSeason = token.Value<int?>("season") ?? 0;
+            int number = token.Value<int?>("episode") ?? 0;
+            if (tokenSeason == season && number > 0)
+                result.Add((number, token.Value<string>("name") ?? token.Value<string>("title")));
+        }
+
+        return result
+            .OrderBy(i => i.Number)
+            .ToList();
+    }
+
+    async Task<JObject> GetCinemeta(string addonId)
+    {
+        if (string.IsNullOrWhiteSpace(addonId) ||
+            !addonId.StartsWith("tt", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        string uri = $"https://v3-cinemeta.strem.io/meta/series/{Uri.EscapeDataString(addonId)}.json";
+        return await InvokeCache(
+            $"k20:cinemeta:{addonId}",
+            TimeSpan.FromHours(6),
+            () => Http.Get<JObject>(uri, timeoutSeconds: 8, proxy: proxy)
+        );
+    }
+
+    async Task<List<K20StreamItem>> GetStreams(string type, string addonId, short expectedSeason = 0)
+    {
+        var result = new List<K20StreamItem>();
+
+        if (!Uri.TryCreate(init.manifest, UriKind.Absolute, out Uri manifestUri) ||
+            manifestUri.Scheme is not ("http" or "https"))
+        {
+            Serilog.Log.Warning("K20 manifest URL is invalid: {Manifest}", init.manifest);
+            return result;
+        }
+
+        string relativePath = $"stream/{type}/{Uri.EscapeDataString(addonId)}.json";
+        string endpoint = new Uri(manifestUri, relativePath).AbsoluteUri;
+        string cacheKey = $"k20:streams:{init.manifest}:{type}:{addonId}";
+        int timeoutSeconds = Math.Clamp(init.timeoutSeconds, 5, 120);
+
+        JObject root = await InvokeCache(
+            cacheKey,
+            TimeSpan.FromMinutes(5),
+            () => Http.Get<JObject>(
+                endpoint,
+                timeoutSeconds: timeoutSeconds,
+                proxy: proxy
+            )
+        );
+
+        if (root?["streams"] is not JArray streams)
+            return result;
+
+        int maxStreams = Math.Clamp(init.maxStreams, 1, 200);
+
+        foreach (JToken token in streams)
+        {
+            if (result.Count >= maxStreams || token is not JObject stream)
+                break;
+
+            // K20 can return a stream from a different season even though the
+            // requested Stremio id contains S:E. Never play a labelled mismatch.
+            if (expectedSeason > 0 && !MatchesExpectedSeason(stream, expectedSeason))
+                continue;
+
+            K20StreamItem item = ReadStream(stream);
+            if (item != null)
+                result.Add(item);
+        }
+
+        return result;
+    }
+
+    static bool MatchesExpectedSeason(JObject stream, short expectedSeason)
+    {
+        string group = stream["behaviorHints"]?.Value<string>("bingeGroup") ?? string.Empty;
+        string title = stream.Value<string>("title") ?? string.Empty;
+        string text = $"{group} {title}";
+
+        // K20 currently emits groups such as `...-phan-3`; other providers
+        // commonly use season-3, mua-3 or s03. If there is no season marker,
+        // retain the stream because there is no reliable mismatch to reject.
+        Match match = Regex.Match(
+            text,
+            @"(?:phan|season|mua|mùa|s)[\s_-]*0*(\d+)(?:$|[^0-9])",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant
+        );
+
+        return !match.Success ||
+            !int.TryParse(match.Groups[1].Value, out int actualSeason) ||
+            actualSeason == expectedSeason;
+    }
+
+    static K20StreamItem ReadStream(JObject stream)
+    {
+        string rawUrl = stream.Value<string>("url");
+        if (string.IsNullOrWhiteSpace(rawUrl))
+            return null;
+
+        var headers = ReadHeaders(stream);
+        int separator = rawUrl.IndexOf('|');
+        if (separator > 0)
+        {
+            AddPipeHeaders(rawUrl[(separator + 1)..], headers);
+            rawUrl = rawUrl[..separator];
+        }
+
+        rawUrl = rawUrl.Trim();
+        if (!IsHttpUrl(rawUrl))
+            return null;
+
+        string name = Compact(stream.Value<string>("name"));
+        string rawTitle = stream.Value<string>("title") ?? string.Empty;
+        string rawDescription = stream.Value<string>("description") ?? string.Empty;
+        string title = Compact(rawTitle);
+        string metadata = $"{name} {rawTitle} {rawDescription}";
+        string quality = FindQuality(metadata);
+        string format = DetectFormat(rawUrl, metadata);
+        SubtitleTpl subtitles = ReadSubtitles(stream);
+
+        // File hosts often return an opaque download path while Stremio marks
+        // the item as notWebReady. Prefer the file player for that case so
+        // Lampa does not try to load an extensionless redirect as a generic
+        // HTML5 video. Explicit m3u8/mp4 markers above still win.
+        bool notWebReady = stream["behaviorHints"]?["notWebReady"]?.Value<bool>() == true;
+        if (format == null && notWebReady)
+            format = "mkv";
+
+        return new K20StreamItem(
+            rawUrl,
+            name,
+            title,
+            quality,
+            format,
+            subtitles,
+            headers.Count > 0 ? headers : null
+        );
+    }
+
+    static List<HeadersModel> ReadHeaders(JObject stream)
+    {
+        var result = new List<HeadersModel>();
+        JObject behaviorHints = stream["behaviorHints"] as JObject;
+        JObject proxyHeaders = behaviorHints?["proxyHeaders"] as JObject;
+        JObject requestHeaders = proxyHeaders?["request"] as JObject;
+
+        if (requestHeaders == null)
+            requestHeaders = stream["headers"] as JObject;
+
+        if (requestHeaders == null)
+            return result;
+
+        foreach (JProperty property in requestHeaders.Properties())
+        {
+            if (!AllowedHeader(property.Name))
+                continue;
+
+            string value = property.Value.Type == JTokenType.String
+                ? property.Value.Value<string>()
+                : null;
+
+            if (!string.IsNullOrWhiteSpace(value))
+                result.Add(new HeadersModel(property.Name, value));
+        }
+
+        return result;
+    }
+
+    static SubtitleTpl ReadSubtitles(JObject stream)
+    {
+        if (stream["subtitles"] is not JArray subtitles)
+            return null;
+
+        var result = new SubtitleTpl(subtitles.Count);
+        foreach (JToken token in subtitles)
+        {
+            string url = token.Value<string>("url");
+            if (!IsHttpUrl(url))
+                continue;
+
+            string lang = token.Value<string>("lang") ??
+                token.Value<string>("language") ??
+                "und";
+
+            string label = lang.ToLowerInvariant() switch
+            {
+                "vie" or "vi" => "Tiếng Việt",
+                "eng" or "en" => "English",
+                "rus" or "ru" => "Русский",
+                _ => lang.ToUpperInvariant()
+            };
+
+            result.Append(label, url);
+        }
+
+        return result.IsEmpty ? null : result;
+    }
+
+    static void AddPipeHeaders(string value, List<HeadersModel> headers)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return;
+
+        var query = HttpUtility.ParseQueryString(value);
+        foreach (string key in query)
+        {
+            if (!AllowedHeader(key))
+                continue;
+
+            string headerValue = query[key];
+            if (!string.IsNullOrWhiteSpace(headerValue) &&
+                headers.All(i => !i.name.Equals(key, StringComparison.OrdinalIgnoreCase)))
+            {
+                headers.Add(new HeadersModel(key, headerValue));
+            }
+        }
+    }
+
+    static bool AllowedHeader(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return false;
+
+        string normalized = name.ToLowerInvariant();
+        return normalized is not ("host" or "connection" or "content-length" or "accept-encoding" or "range");
+    }
+
+    List<HeadersModel> DecodeHeaders(string encrypted)
+    {
+        if (string.IsNullOrWhiteSpace(encrypted))
+            return new List<HeadersModel>();
+
+        try
+        {
+            string json = DecryptQuery(encrypted);
+            return JsonConvert.DeserializeObject<List<HeadersModel>>(json)
+                ?? new List<HeadersModel>();
+        }
+        catch
+        {
+            return new List<HeadersModel>();
+        }
+    }
+
+    MovieTpl BuildMovieTemplate(
+        List<K20StreamItem> streams,
+        string title,
+        string original_title,
+        VoiceTpl sourceFilter
+    )
+    {
+        var tpl = new MovieTpl(title, original_title, sourceFilter, streams.Count);
+        var labels = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+        // Keep every returned file as a card. The source buttons above the
+        // list provide grouping/filtering, while same-resolution releases are
+        // not collapsed into a single quality entry.
+        foreach (K20StreamItem stream in streams)
+        {
+            string source = SourceGroupName(stream);
+            string label = source;
+            if (!string.IsNullOrWhiteSpace(stream.Quality))
+                label += $" • {stream.Quality}";
+
+            labels.TryGetValue(label, out int count);
+            count++;
+            labels[label] = count;
+            if (count > 1)
+                label += $" #{count}";
+
+            tpl.Append(
+                label,
+                BuildVideoEndpoint(stream),
+                "play",
+                quality: stream.Quality,
+                subtitles: stream.Subtitles,
+                details: Compact(stream.Title)
+            );
+        }
+
+        return tpl;
+    }
+
+    VoiceTpl BuildSourceFilter(
+        List<K20StreamItem> streams,
+        string addonId,
+        string title,
+        string original_title,
+        string selectedSource
+    )
+    {
+        var groups = new List<string>();
+        var known = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (K20StreamItem stream in streams)
+        {
+            string source = SourceGroupName(stream);
+            if (known.Add(source))
+                groups.Add(source);
+        }
+
+        if (groups.Count == 0)
+            return null;
+
+        var filter = new VoiceTpl(groups.Count);
+        for (int index = 0; index < groups.Count; index++)
+        {
+            string source = groups[index];
+            bool active = string.IsNullOrWhiteSpace(selectedSource)
+                ? index == 0
+                : source.Equals(selectedSource, StringComparison.OrdinalIgnoreCase);
+
+            filter.Append(
+                source,
+                active,
+                BuildIndexUrl(
+                    addonId,
+                    title,
+                    original_title,
+                    serial: 0,
+                    streamSource: source
+                )
+            );
+        }
+
+        return filter;
+    }
+
+    (string json, string firstLink) BuildVideoResponse(
+        List<K20StreamItem> streams,
+        string title,
+        string original_title,
+        short season,
+        short episode
+    )
+    {
+        var quality = new StreamQualityTpl();
+        var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (K20StreamItem stream in streams)
+        {
+            string key = stream.Quality ?? "auto";
+            string source = SourceGroupName(stream);
+            if (!string.IsNullOrWhiteSpace(source))
+                key += $" • {source}";
+
+            if (!keys.Add(key))
+            {
+                key = $"{key} #{keys.Count + 1}";
+                while (!keys.Add(key))
+                    key += "#";
+            }
+
+            quality.Append(BuildVideoEndpoint(stream, selectLink: true), key);
+        }
+
+        StreamQualityDto first = quality.Firts();
+        SubtitleTpl subtitles = streams
+            .Select(i => i.Subtitles)
+            .FirstOrDefault(i => i != null && !i.IsEmpty);
+        string name = title ?? original_title ?? "K20";
+        if (season > 0 && episode > 0)
+            name += $" S{season:00}E{episode:00}";
+
+        string json = VideoTpl.ToJson(
+            "play",
+            first.link,
+            name,
+            streamquality: quality,
+            subtitles: subtitles,
+            hls_manifest_timeout: 120000,
+            httpContext: HttpContext
+        );
+
+        return (json, first.link);
+    }
+
+    string BuildVideoEndpoint(K20StreamItem stream, bool selectLink = false)
+    {
+        string route = stream.Format switch
+        {
+            "mkv" => "file.mkv",
+            "m3u8" => "file.m3u8",
+            "mp4" => "file.mp4",
+            _ => "video"
+        };
+
+        string endpoint = $"{host}/lite/k20/{route}?u={HttpUtility.UrlEncode(EncryptQuery(stream.Url))}";
+
+        if (stream.Headers != null && stream.Headers.Count > 0)
+        {
+            string json = JsonConvert.SerializeObject(stream.Headers);
+            endpoint += $"&h={HttpUtility.UrlEncode(EncryptQuery(json))}";
+        }
+
+        if (selectLink)
+            endpoint += "&k20_select=1";
+
+        return accsArgs(endpoint + "&play=true");
+    }
+
+    string BuildEpisodeUrl(
+        string addonId,
+        string title,
+        string original_title,
+        short season,
+        short episode,
+        bool play = false
+    )
+    {
+        string query =
+            $"stremio_id={HttpUtility.UrlEncode(addonId)}" +
+            $"&title={HttpUtility.UrlEncode(title)}" +
+            $"&original_title={HttpUtility.UrlEncode(original_title)}" +
+            $"&s={season}&e={episode}";
+
+        if (play)
+            query += "&play=true";
+
+        return accsArgs($"{host}/lite/k20/episode?{query}");
+    }
+
+    string BuildIndexUrl(
+        string addonId,
+        string title,
+        string original_title,
+        int serial,
+        int season = -1,
+        int episode = -1,
+        string streamSource = null,
+        bool play = false
+    )
+    {
+        string query =
+            $"stremio_id={HttpUtility.UrlEncode(addonId)}" +
+            $"&title={HttpUtility.UrlEncode(title)}" +
+            $"&original_title={HttpUtility.UrlEncode(original_title)}" +
+            $"&serial={serial}";
+
+        if (season > 0)
+            query += $"&s={season}";
+        if (episode > 0)
+            query += $"&e={episode}";
+        if (!string.IsNullOrWhiteSpace(streamSource))
+            query += $"&stream_source={HttpUtility.UrlEncode(streamSource)}";
+        if (play)
+            query += "&play=true";
+
+        return accsArgs($"{host}/lite/k20?{query}");
+    }
+
+    async Task<string> ResolveStremioId(
+        string stremioId,
+        string id,
+        string imdbId,
+        long tmdbId,
+        string source,
+        bool isSeries
+    )
+    {
+        // K20's current manifest accepts `tt...` ids, not the generic
+        // `tmdb:...` prefix. Never send a raw TMDB id to the add-on: some of
+        // its upstream Vietnamese catalogs may fall back to a title search and
+        // that is exactly how a wrong movie can be returned.
+        var imdbIds = new List<string>();
+        foreach (string candidate in new[] { imdbId, stremioId, id })
+        {
+            string normalized = NormalizeImdbId(candidate);
+            if (!string.IsNullOrWhiteSpace(normalized) &&
+                !imdbIds.Contains(normalized, StringComparer.OrdinalIgnoreCase))
+            {
+                imdbIds.Add(normalized);
+            }
+        }
+
+        long inputTmdbId = ResolveInputTmdbId(stremioId, id, tmdbId, source);
+
+        if (imdbIds.Count > 1)
+        {
+            Serilog.Log.Warning(
+                "K20 rejected conflicting IMDb ids: {Ids}",
+                string.Join(",", imdbIds)
+            );
+            return null;
+        }
+
+        string imdb = imdbIds.FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(imdb))
+        {
+            // When both ids are present, verify that Lampa's IMDb and TMDB
+            // records point to the same title. If TMDB is temporarily
+            // unavailable, keep the already supplied IMDb id; it is still the
+            // canonical id understood by K20.
+            if (inputTmdbId > 0)
+            {
+                JObject externalIds = await GetTmdb(
+                    $"{(isSeries ? "tv" : "movie")}/{inputTmdbId}/external_ids"
+                );
+                string mappedImdb = NormalizeImdbId(externalIds?.Value<string>("imdb_id"));
+                if (!string.IsNullOrWhiteSpace(mappedImdb) &&
+                    !mappedImdb.Equals(imdb, StringComparison.OrdinalIgnoreCase))
+                {
+                    Serilog.Log.Warning(
+                        "K20 rejected mismatched title ids: TMDB {TmdbId} maps to {MappedImdb}, request supplied {Imdb}",
+                        inputTmdbId,
+                        mappedImdb,
+                        imdb
+                    );
+                    return null;
+                }
+            }
+
+            return imdb;
+        }
+
+        if (inputTmdbId <= 0)
+            return null;
+
+        // Resolve TMDB -> IMDb once, then use only the exact IMDb id in the
+        // Stremio stream URL. If the mapping is missing, fail closed rather
+        // than asking an upstream catalog to guess by title.
+        JObject mappedExternalIds = await GetTmdb(
+            $"{(isSeries ? "tv" : "movie")}/{inputTmdbId}/external_ids"
+        );
+        string resolvedImdb = NormalizeImdbId(
+            mappedExternalIds?.Value<string>("imdb_id")
+        );
+
+        if (string.IsNullOrWhiteSpace(resolvedImdb))
+        {
+            Serilog.Log.Warning(
+                "K20 could not resolve TMDB {TmdbId} to an IMDb id; stream lookup skipped",
+                inputTmdbId
+            );
+        }
+
+        return resolvedImdb;
+    }
+
+    static long ResolveInputTmdbId(
+        string stremioId,
+        string id,
+        long tmdbId,
+        string source
+    )
+    {
+        if (tmdbId > 0)
+            return tmdbId;
+
+        foreach (string candidate in new[] { stremioId, id })
+        {
+            if (string.IsNullOrWhiteSpace(candidate))
+                continue;
+
+            string value = candidate.Trim();
+            if (value.StartsWith("tmdb:", StringComparison.OrdinalIgnoreCase) &&
+                long.TryParse(value[5..], out long prefixedId) &&
+                prefixedId > 0)
+            {
+                return prefixedId;
+            }
+        }
+
+        if (source is "tmdb" or "cub" &&
+            long.TryParse(id, out long numericId) &&
+            numericId > 0)
+        {
+            return numericId;
+        }
+
+        return 0;
+    }
+
+    static string NormalizeImdbId(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        value = value.Trim();
+        if (!IsImdbId(value))
+            return null;
+
+        return value.ToLowerInvariant();
+    }
+
+    static bool IsImdbId(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value) ||
+            !value.StartsWith("tt", StringComparison.OrdinalIgnoreCase) ||
+            value.Length <= 2)
+        {
+            return false;
+        }
+
+        for (int index = 2; index < value.Length; index++)
+        {
+            if (!char.IsDigit(value[index]))
+                return false;
+        }
+
+        return true;
+    }
+
+    static long ResolveTmdbId(string addonId, long tmdbId)
+    {
+        if (tmdbId > 0)
+            return tmdbId;
+
+        if (!string.IsNullOrWhiteSpace(addonId) &&
+            addonId.StartsWith("tmdb:", StringComparison.OrdinalIgnoreCase) &&
+            long.TryParse(addonId[5..], out long parsed))
+        {
+            return parsed;
+        }
+
+        return 0;
+    }
+
+    static bool IsHttpUrl(string value)
+    {
+        return Uri.TryCreate(value, UriKind.Absolute, out Uri uri) &&
+            uri.Scheme is "http" or "https";
+    }
+
+    static string DetectFormat(string url, string metadata)
+    {
+        string value;
+        try
+        {
+            value = Uri.UnescapeDataString($"{url} {metadata}");
+        }
+        catch
+        {
+            value = $"{url} {metadata}";
+        }
+
+        if (Regex.IsMatch(value, @"\.mkv(?:$|[?#&\s])|\bmatroska\b", RegexOptions.IgnoreCase))
+            return "mkv";
+
+        if (Regex.IsMatch(value, @"\.m3u8(?:$|[?#&\s])|\bm3u8\b|\bHLS(?:\s+Stream)?\b", RegexOptions.IgnoreCase))
+            return "m3u8";
+
+        if (Regex.IsMatch(value, @"\.mp4(?:$|[?#&\s])|\bmp4\b", RegexOptions.IgnoreCase))
+            return "mp4";
+
+        return null;
+    }
+
+    static string FindQuality(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        Match match = Regex.Match(
+            value,
+            @"(?<!\d)(2160|1440|1080|720|576|480|360|240|144)p?(?!\d)",
+            RegexOptions.IgnoreCase
+        );
+
+        if (match.Success)
+            return $"{match.Groups[1].Value}p";
+
+        return Regex.IsMatch(value, @"\b(?:4k|uhd)\b", RegexOptions.IgnoreCase)
+            ? "2160p"
+            : null;
+    }
+
+    static string SourceGroupName(K20StreamItem stream)
+    {
+        // K20 puts the source name in the stream title when available:
+        // `🔗 Extractor from Source`. Prefer the source name so FSL, PixelDrain,
+        // and similar links for one provider are grouped together.
+        string title = Compact(stream.Title);
+        Match sourceMatch = Regex.Match(
+            title ?? string.Empty,
+            @"(?:^|\s)🔗\s*(?<extractor>.+?)(?:\s+from\s+(?<source>[^\r\n]+))?$",
+            RegexOptions.IgnoreCase
+        );
+
+        if (sourceMatch.Success)
+        {
+            string source = Compact(
+                sourceMatch.Groups["source"].Success
+                    ? sourceMatch.Groups["source"].Value
+                    : sourceMatch.Groups["extractor"].Value
+            );
+
+            if (!string.IsNullOrWhiteSpace(source))
+                return source;
+        }
+
+        string name = Compact(stream.Name);
+        if (string.IsNullOrWhiteSpace(name))
+            return "K20";
+
+        Match quality = Regex.Match(
+            name,
+            @"(?<!\d)(2160|1440|1080|720|576|480|360|240|144)p?(?!\d)",
+            RegexOptions.IgnoreCase
+        );
+
+        if (!quality.Success)
+            quality = Regex.Match(name, @"\b(?:4k|uhd)\b", RegexOptions.IgnoreCase);
+
+        if (quality.Success)
+            name = name[..quality.Index];
+
+        name = Regex.Replace(name, @"\s*[•|·\-]+\s*$", "").Trim();
+        return string.IsNullOrWhiteSpace(name) ? "K20" : name;
+    }
+
+    static string Compact(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        string result = Regex.Replace(value, @"\s+", " ").Trim();
+        return result.Length > 180 ? result[..180] : result;
+    }
+}

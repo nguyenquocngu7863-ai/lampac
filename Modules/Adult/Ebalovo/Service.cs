@@ -131,17 +131,17 @@ public static class EbalovoTo
         {
             new MenuItem()
             {
-                title = "Поиск",
+                title = "Tìm kiếm",
                 search_on = "search_on",
                 playlist_url = url,
             },
             new MenuItem()
             {
-                title = $"Сортировка: {(string.IsNullOrEmpty(sort) ? "новинки" : sort)}",
+                title = $"Sắp xếp: {(string.IsNullOrEmpty(sort) ? "mới nhất" : sort)}",
                 playlist_url = "submenu",
                 submenu = new List<MenuItem>(3)
                 {
-                    new("Новинки", $"{url}?c={c}"),
+                    new("Mới nhất", $"{url}?c={c}"),
                     new("Лучшее", $"{url}?c={c}&sort=porno-online"),
                     new("Популярное", $"{url}?c={c}&sort=xxx-top")
                 }
@@ -150,7 +150,7 @@ public static class EbalovoTo
 
         var catmenu = new List<MenuItem>(140)
         {
-            new("Все", $"{url}?sort={sort}"),
+            new("Tất cả", $"{url}?sort={sort}"),
             new("CFNM", $"{url}?sort={sort}&c=cfnm"),
             new("pov", $"{url}?sort={sort}&c=pov"),
             new("Анал", $"{url}?sort={sort}&c=anal-videos"),
@@ -279,7 +279,7 @@ public static class EbalovoTo
 
         menu.Add(new MenuItem()
         {
-            title = $"Категория: {catmenu.FirstOrDefault(i => i.playlist_url.EndsWith($"&c={c}"))?.title ?? "все"}",
+            title = $"Danh mục: {catmenu.FirstOrDefault(i => i.playlist_url.EndsWith($"&c={c}"))?.title ?? "tất cả"}",
             playlist_url = "submenu",
             submenu = catmenu
         });

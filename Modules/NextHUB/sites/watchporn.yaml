@@ -4,6 +4,7 @@ displayname: WatchPorn
 rch_access: apk,cors
 stream_access: apk,cors
 rchstreamproxy: web, apk,cors
+streamproxy: true
 host: https://watchporn.to
 priorityBrowser: http
 headers_stream:
@@ -17,9 +18,9 @@ menu:
     cat: "{host}/categories/{cat}/{page}/"
     catsort: '{host}/categories/{cat}/?mode=async&function=get_block&block_id=list_videos_common_videos_list&sort_by={sort.Replace("top-rated", "rating").Replace("most-popular", "video_viewed")}&from={page}'
   sort:
-    Новинки: ""
-    Лучшее: top-rated
-    Популярнаe: most-popular
+    Mới nhất: ""
+    Hay nhất: top-rated
+    Phổ biến: most-popular
   categories:
     format: categories/{cat}/{page}/
     ManyVids: manyvids

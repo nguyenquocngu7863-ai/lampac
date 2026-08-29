@@ -220,7 +220,7 @@ public static class XvideosTo
         {
             new MenuItem()
             {
-                title = "Поиск",
+                title = "Tìm kiếm",
                 search_on = "search_on",
                 playlist_url = url,
             }
@@ -228,12 +228,12 @@ public static class XvideosTo
 
         var menusort = new MenuItem()
         {
-            title = $"Сортировка: {(sort == "like" ? "Понравившиеся" : sort == "top" ? "Лучшие" : "Новое")}",
+            title = $"Sắp xếp: {(sort == "like" ? "Đã thích" : sort == "top" ? "Tốt nhất" : "Mới")}",
             playlist_url = "submenu",
             submenu = new List<MenuItem>(2)
             {
-                new("Новое", $"{url}?c={c}"),
-                new("Лучшие", $"{url}?c={c}&sort=top")
+                new("Mới", $"{url}?c={c}"),
+                new("Tốt nhất", $"{url}?c={c}&sort=top")
             }
         };
 
@@ -241,7 +241,7 @@ public static class XvideosTo
         {
             menusort.submenu.Add(new MenuItem()
             {
-                title = "Понравившиеся",
+                title = "Đã thích",
                 playlist_url = $"{url}?c={c}&sort=like"
             });
         }
@@ -250,13 +250,13 @@ public static class XvideosTo
         {
             menu.Add(new MenuItem()
             {
-                title = $"Ориентация: {(plugin == "xdsgay" ? "Геи" : plugin == "xdssml" ? "Трансы" : "Гетеро")}",
+                title = $"Xu hướng: {(plugin == "xdsgay" ? "Đồng tính nam" : plugin == "xdssml" ? "Chuyển giới" : "Dị tính")}",
                 playlist_url = "submenu",
                 submenu = new List<MenuItem>(3)
                 {
-                    new("Гетеро", $"{host}/xds"),
-                    new("Геи", $"{host}/xdsgay"),
-                    new("Трансы", $"{host}/xdssml")
+                    new("Dị tính", $"{host}/xds"),
+                    new("Đồng tính nam", $"{host}/xdsgay"),
+                    new("Chuyển giới", $"{host}/xdssml")
                 }
             });
         }
@@ -265,7 +265,7 @@ public static class XvideosTo
         {
             var submenu = new List<MenuItem>(40)
             {
-                new("Все", url),
+                new("Tất cả", url),
                 new("Азиат", $"{url}?sort={sort}&c=Asian_Woman-32"),
                 new("Анал", $"{url}?sort={sort}&c=Anal-12"),
                 new("Арабки", $"{url}?sort={sort}&c=Arab-159"),
@@ -307,7 +307,7 @@ public static class XvideosTo
 
             menu.Add(new MenuItem()
             {
-                title = $"Категория: {submenu.FirstOrDefault(i => i.playlist_url.EndsWith($"c={c}"))?.title ?? "все"}",
+                title = $"Danh mục: {submenu.FirstOrDefault(i => i.playlist_url.EndsWith($"c={c}"))?.title ?? "tất cả"}",
                 playlist_url = "submenu",
                 submenu = submenu
             });

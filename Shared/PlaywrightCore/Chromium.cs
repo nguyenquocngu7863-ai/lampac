@@ -99,11 +99,27 @@ public class Chromium : PlaywrightBase, IDisposable
                             {
                                 executablePath = File.Exists(".playwright/chrome-linux/chrome")
                                     ? ".playwright/chrome-linux/chrome"
-                                    : "/usr/bin/chromium";
+                                    : File.Exists("/usr/bin/google-chrome-stable")
+                                        ? "/usr/bin/google-chrome-stable"
+                                        : "/usr/bin/chromium";
+                                break;
+                            }
+                        case Architecture.Arm64:
+                            {
+                                // Playwright does not bundle the regular Linux Chromium
+                                // binary for every ARM64 release. Prefer an ARM64 browser
+                                // supplied by the host OS instead of rejecting the platform.
+                                executablePath = File.Exists(".playwright/chrome-linux-arm64/chrome")
+                                    ? ".playwright/chrome-linux-arm64/chrome"
+                                    : File.Exists("/usr/bin/google-chrome-stable")
+                                        ? "/usr/bin/google-chrome-stable"
+                                        : File.Exists("/usr/bin/chromium")
+                                            ? "/usr/bin/chromium"
+                                            : "/usr/bin/chromium-browser";
                                 break;
                             }
                         default:
-                            Console.WriteLine("PlaywChromiumright: Architecture unknown");
+                            Console.WriteLine("Chromium: Architecture unknown");
                             return;
                     }
                 }

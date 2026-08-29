@@ -1,4 +1,4 @@
-﻿using GStreamer.Models;
+using GStreamer.Models;
 using Shared.Services;
 using Shared.Services.Hybrid;
 using Shared.Services.Utilities;
@@ -31,7 +31,7 @@ public static class GService
     );
 
     #region GetOrAdd
-    public static async Task<TaskResult> GetOrAdd(string sourceUrl, string uid, int audio = 0)
+    public static async Task<TaskResult> GetOrAdd(string sourceUrl, string uid, int audio = 0, string session = null)
     {
         if (string.IsNullOrEmpty(sourceUrl) || string.IsNullOrEmpty(uid))
             return new(null, "uid");
@@ -39,14 +39,13 @@ public static class GService
         var hash = Fnv1a.Hash(sourceUrl);
         Fnv1a.Append(ref hash, uid);
         Fnv1a.Append(ref hash, audio);
+        if (!string.IsNullOrWhiteSpace(session))
+            Fnv1a.Append(ref hash, session);
 
         ulong id = hash.H1;
 
-        if (tasks.TryGetValue(id, out var task) && !task.IsDead)
-        {
-            task.UpdateLastActive();
+        if (TryGetReusableTask(id, out var task))
             return new(task, null);
-        }
 
         var ownWaiter = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var waiter = waiters.GetOrAdd(id, ownWaiter);
@@ -67,11 +66,8 @@ public static class GService
         {
             try
             {
-                if (tasks.TryGetValue(id, out task) && !task.IsDead)
-                {
-                    task.UpdateLastActive();
+                if (TryGetReusableTask(id, out task))
                     return new(task, null);
-                }
 
                 sourceUrl = Regex.Replace(sourceUrl, "/stream/[^\\?]+", "/stream");
 
@@ -238,6 +234,43 @@ public static class GService
         }
     }
     #endregion
+
+    static bool TryGetReusableTask(ulong id, out GStask task)
+    {
+        task = null;
+
+        if (!tasks.TryGetValue(id, out var existing))
+            return false;
+
+        // An EOS task has already consumed the source. Reusing its HLS cache
+        // for a second playback starts the client at a dead pipeline instead
+        // of decoding the file again. Treat it exactly like a dead task and
+        // create a fresh GStreamer task on the next /gst/add.
+        if (!existing.IsDead && !existing.IsEos)
+        {
+            existing.UpdateLastActive();
+            task = existing;
+            return true;
+        }
+
+        lock (taskAddLock)
+        {
+            if (tasks.TryGetValue(id, out var current) &&
+                ReferenceEquals(current, existing) &&
+                tasks.TryRemove(id, out var stale))
+            {
+                Serilog.Log.Information(
+                    "Removing stale GStreamer task before replay. TaskId={TaskId}, IsDead={IsDead}, IsEos={IsEos}",
+                    id,
+                    stale.IsDead,
+                    stale.IsEos
+                );
+                stale.Dispose();
+            }
+        }
+
+        return false;
+    }
 
     #region Get
     public static GStask Get(ulong id)

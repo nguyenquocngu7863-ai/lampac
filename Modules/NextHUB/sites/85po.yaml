@@ -1,0 +1,88 @@
+enable: true
+displayindex: 6
+displayname: 85PO
+rch_access: apk,cors
+stream_access: apk,cors
+host: https://www.85po.com
+priorityBrowser: chrome
+streamproxy: true
+headers_stream:
+  User-Agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"
+  referer: "{host}/"
+  accept: "*/*"
+
+menu:
+  sort:
+    Mới nhất: ""
+    Phổ biến: most-popular/{page}/
+    Đánh giá cao: top-rated/{page}/
+  categories:
+    format: tags/{cat}/{page}/
+    Tự quay: zi-pai
+    Đài Loan: tai-wan
+    Nhật Bản: ri-ben
+    Cặp đôi: qing-lv
+    Khẩu giao: kou-jiao
+    Ngực lớn: ju-ru
+    Ngực to: da-nai
+    Mông đẹp: mei-tun
+    Thủ dâm: zi-wei
+    Squirt: pen-shui
+    Quan hệ: zuo-ai
+    Cởi đồ: tuo-yi
+    Khỏa thân: quan-luo
+    Đồ lót: nei-yi2
+    Có lông: duo-mao
+    Trên giường: chuang-shang
+    Gợi cảm: sao
+
+list:
+  firstpage: latest-updates/
+  uri: latest-updates/{page}/
+
+search:
+  uri: search/{search}/{page}/
+
+contentParse:
+  nodes: //div[contains(concat(' ', normalize-space(@class), ' '), ' item ')]
+  name:
+    node: .//a
+    attribute: title
+  href:
+    node: .//a[contains(@href, '/v/')]
+    attribute: href
+  img:
+    node: .//img
+    attributes: ["data-original", "data-src", "src"]
+  duration:
+    node: .//*[contains(@class, 'duration')]
+
+view:
+  related: true
+  bindingToIP: true
+  eval: |
+    string link = null;
+    foreach (string q in new string[] { "_1080p", "_720p", "_480p", "_360p" })
+    {
+        link = Regex.Match(html, $"(https?://[^/]+/get_file/[^'\\\"\\s]+{q}\\.mp4[^'\\\"\\s]*)", RegexOptions.IgnoreCase).Groups[1].Value;
+        if (!string.IsNullOrEmpty(link))
+            break;
+    }
+    if (string.IsNullOrEmpty(link))
+    {
+        foreach (string q in new string[] { "alt_url5", "alt_url4", "alt_url3", "alt_url2", "alt_url", "url" })
+        {
+            string l = Regex.Match(html, $"video_{q}:\\s*'([^']+)'", RegexOptions.IgnoreCase).Groups[1].Value;
+            if (!string.IsNullOrEmpty(l) && l.Contains("/get_file/"))
+            {
+                link = l;
+                break;
+            }
+        }
+    }
+    if (string.IsNullOrEmpty(link))
+        link = Regex.Match(html, "(https?://[^/]+/get_file/[^'\\\"\\s]+\\.mp4[^'\\\"\\s]*)", RegexOptions.IgnoreCase).Groups[1].Value;
+    if (string.IsNullOrEmpty(link))
+        return null;
+    link = link.Replace("&amp;", "&").Replace("function/0/", "");
+    return link;

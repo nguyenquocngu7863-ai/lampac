@@ -18,6 +18,7 @@
       ru: 'Клубничка',
       en: 'Strawberry',
       uk: 'Полуничка',
+      vi: 'Nội dung 18+',
       zh: '草莓'
     }
   });
@@ -44,7 +45,7 @@
     var controller = Lampa.Controller.enabled().name;
     var content = sisiModalHtml(text, id);
     Lampa.Modal.open({
-      title: 'Доступ ограничен',
+      title: 'Quyền truy cập bị hạn chế',
       html: $(content),
       size: 'medium',
       onBack: function onBack() {
@@ -67,6 +68,15 @@
     }
 
     return url;
+  }
+
+  // Android WebView advertises native HLS, so Lampa's inner player skips
+  // hls.js (`use program hls: false`). Chaturbate LL-HLS and similar live
+  // playlists then fail with MEDIA_ERR_SRC_NOT_SUPPORTED.
+  function applyHlsType(data) {
+    if (!data || data.hls_type) return;
+    var url = data.url;
+    if (typeof url === 'string' && /\.m3u8?(?:$|[?#])/i.test(url)) data.hls_type = 'hlsjs';
   }
 
   function play(element) {
@@ -113,6 +123,7 @@
           quality: qualitys,
           headers: data.headers_stream
         };
+        applyHlsType(video);
         Lampa.Player.play(video);
 
         if (recomends.length) {
@@ -160,6 +171,7 @@
         url_reserve: Api.account(qualityDefault(element.qualitys_proxy) || element.video_reserve || '', true),
         quality: element.qualitys
       };
+      applyHlsType(video);
       Lampa.Player.play(video);
       Lampa.Player.playlist([video]);
       Lampa.Player.callback(function() {
@@ -248,19 +260,19 @@
   function menu$2(target, card_data) {
     if (!card_data.bookmark) return;
     var cm = [{
-      title: !card_data.bookmark.uid ? 'В закладки' : 'Удалить из закладок'
+      title: !card_data.bookmark.uid ? 'Thêm vào dấu trang' : 'Xóa khỏi dấu trang'
     }];
 
     if (card_data.history_uid) {
       cm.push({
-        title: 'Удалить из истории',
+        title: 'Xóa khỏi lịch sử',
         history: true
       });
     }
 
     if (card_data.related) {
       cm.push({
-        title: 'Похожие',
+        title: 'Tương tự',
         related: true
       });
     }
@@ -274,32 +286,32 @@
 
     if (Lampa.Platform.is('android') && Lampa.Storage.field('player') !== 'inner') {
       cm.push({
-        title: 'Плеер Lampa',
+        title: 'Trình phát Lampa',
         lampaplayer: true
       });
     }
 
     Lampa.Select.show({
-      title: 'Меню',
+      title: 'Trình đơn',
       items: cm,
       onSelect: function onSelect(m) {
         if (m.model) {
           Lampa.Activity.push({
             url: Defined.localhost.replace('/sisi', '') + '/' + card_data.model.uri,
-            title: 'Модель - ' + card_data.model.name,
+            title: 'Người mẫu - ' + card_data.model.name,
             component: 'sisi_view_' + Defined.use_api,
             page: 1
           });
         } else if (m.related) {
           Lampa.Activity.push({
             url: card_data.video + '&related=true',
-            title: 'Похожие - ' + card_data.title,
+            title: 'Tương tự - ' + card_data.title,
             component: 'sisi_view_' + Defined.use_api,
             page: 1
           });
         } else if (m.history) {
           Api.history(card_data, function(status) {
-            Lampa.Noty.show('Успешно');
+            Lampa.Noty.show('Thành công');
           });
           Lampa.Controller.toggle('content');
         } else if (m.lampaplayer) {
@@ -307,7 +319,7 @@
           play(card_data);
         } else {
           Api.bookmark(card_data, !card_data.bookmark.uid, function(status) {
-            Lampa.Noty.show('Успешно');
+            Lampa.Noty.show('Thành công');
           });
           Lampa.Controller.toggle('content');
         }
@@ -421,11 +433,11 @@
     menu.forEach(function (m) {
       var spl = m.title.split(':');
       m.title = spl[0].trim();
-      if (spl[1]) m.subtitle = Lampa.Utils.capitalizeFirstLetter(spl[1].trim().replace(/all/i, 'Любой'));
+      if (spl[1]) m.subtitle = Lampa.Utils.capitalizeFirstLetter(spl[1].trim().replace(/all/i, 'Bất kỳ'));
 
       if (m.submenu) {
         m.submenu.forEach(function (s) {
-          s.title = Lampa.Utils.capitalizeFirstLetter(s.title.trim().replace(/all/i, 'Любой'));
+          s.title = Lampa.Utils.capitalizeFirstLetter(s.title.trim().replace(/all/i, 'Bất kỳ'));
         });
       }
     });
@@ -462,12 +474,12 @@
 
     if (search) {
       Lampa.Arrays.insert(items, 0, {
-        title: 'Найти',
+        title: 'Tìm',
         onSelect: function onSelect() {
           $('body').addClass('ambience--enable');
           Lampa.Input.edit(
             {
-              title: 'Поиск',
+              title: 'Tìm kiếm',
               value: '',
               free: true,
               nosave: true
@@ -480,7 +492,7 @@
                 var separator = search.playlist_url.indexOf('?') !== -1 ? '&' : '?';
                 Lampa.Activity.push({
                   url: search.playlist_url + separator + 'search=' + encodeURIComponent(value),
-                  title: 'Поиск - ' + value,
+                  title: 'Tìm kiếm - ' + value,
                   component: 'sisi_view_' + Defined.use_api,
                   search_start: search,
                   page: 1
@@ -493,7 +505,7 @@
     }
 
     Lampa.Select.show({
-      title: 'Фильтр',
+      title: 'Bộ lọc',
       items: items,
       onBack: function onBack() {
         Lampa.Controller.toggle('content');
@@ -917,7 +929,7 @@
             this.build(data);
 
             if (!data.results.length && object.url.indexOf('/bookmarks') !== -1) {
-              Lampa.Noty.show('Удерживайте ОК на видео для добавления в закладки.', {
+              Lampa.Noty.show('Giữ OK trên video để thêm vào dấu trang.', {
                 time: 10000
               });
             }
@@ -942,7 +954,7 @@
   }
 
   var Search = {
-    title: 'Клубничка',
+    title: 'Nội dung 18+',
     search: function search(params, oncomplite) {
       network.timeout(REQUEST_TIMEOUT);
       network.silent(
@@ -977,7 +989,7 @@
       var url = Lampa.Utils.addUrlComponent(params.data.url, 'search=' + encodeURIComponent(params.query));
       Lampa.Activity.push({
         url: url,
-        title: 'Поиск - ' + params.query,
+        title: 'Tìm kiếm - ' + params.query,
         component: 'sisi_view_' + Defined.use_api,
         page: 2
       });
@@ -1070,7 +1082,7 @@
   function sisiModalHtml(text, boxMac) {
     return [
       '<div class="about">',
-      '  <div>' + (text || 'Добавьте идентификатор устройства в init.conf') + '</div>',
+      '  <div>' + (text || 'Hãy thêm mã thiết bị vào init.conf') + '</div>',
       '  <div class="about__contacts">',
       '    <div>',
       '      <small>unic_id</small><br>',
@@ -1159,8 +1171,8 @@
           "default": true
         },
         field: {
-          name: 'Предпросмотр',
-          description: 'Показывать предпросмотр при наведение на карточку'
+          name: 'Xem trước',
+          description: 'Hiện bản xem trước khi chọn thẻ nội dung'
         },
         onRender: function onRender(item) {}
       });
@@ -1173,8 +1185,8 @@
           "default": true
         },
         field: {
-          name: 'История',
-          description: 'Сохранять историю просмотров'
+          name: 'Lịch sử',
+          description: 'Lưu lịch sử xem'
         },
         onRender: function onRender(item) {}
       });
@@ -1201,13 +1213,13 @@
         Lampa.ParentalControl.query(function() {
           Api.menu(function(data) {
             // let items = [{
-            //     title: 'Все'
+            //     title: 'Tất cả'
             // }]
             var items = [];
 
             if ({push_all} && (Defined.use_api !== 'pwa' || Lampa.Platform.is('android'))) {
               items.push({
-                title: 'Все'
+                title: 'Tất cả'
               });
             }
 
@@ -1216,7 +1228,7 @@
             });
             items = items.concat(data);
             Lampa.Select.show({
-              title: 'Сайты',
+              title: 'Trang nguồn',
               items: items,
               onSelect: function onSelect(a) {
                 if (a.playlist_url) {

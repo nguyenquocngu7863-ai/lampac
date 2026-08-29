@@ -29,7 +29,7 @@
 
   window.lampa_settings.disable_features = window.lampa_settings.disable_features || {};
   window.lampa_settings.disable_features.dmca = true;           // шлет нахер правообладателей - on
-  window.lampa_settings.disable_features.ads = true;            // Вспомогатиленые сервисы на подписку према
+  window.lampa_settings.disable_features.ads = true;            // Вспомогательные сервисы на подписку према
   window.lampa_settings.disable_features.reactions = false;     // cub реакции
   window.lampa_settings.disable_features.discuss = false;       // cub комментарии
   window.lampa_settings.disable_features.ai = false;            // cub AI-поиск
@@ -45,9 +45,75 @@
   
   {lampainit-invc}
 
+  // Sync the native plugin list ({initiale}) on EVERY launch.
+  // Previously this ran only once per client (guarded by lampac_initiale),
+  // so plugins added on the server later never reached already-connected
+  // devices. The url-dedup check below makes repeated syncing harmless.
+  function syncPlugins() {
+    var plugins = Lampa.Plugins.get() || [];
+
+    // One controlled migration after the duplicate-plugin incident: retain a
+    // backup of every client entry, remove only old Lampac-hosted add-ons, then
+    // add the current server list below in its declared order. Third-party
+    // plugin URLs (for example jsDelivr) are never touched.
+    var resetKey = 'lampac_plugin_reset_20260823_v2';
+    if (Lampa.Storage.get(resetKey, 'false') !== 'true') {
+      Lampa.Storage.set('lampac_plugins_backup_20260823', plugins);
+      var lampacPluginPath = /\/(?:dlna|tracks|transcoding|tmdbproxy|cubproxy|online|online-compact|vietnamese|jackett|watchtogether|catalog|dorama|subsense-auto|subsense|subfinder|stremiosub|adminpanel|gst|sisi|startpage|sync|timecode|bookmark|ts|backup)\.js(?:[?#]|$)/i;
+      var subtitlePluginPath = /\/(?:subsense-auto|subsense|subfinder|stremiosub)\.js(?:[?#]|$)/i;
+      plugins.forEach(function (plugin) {
+        var url = plugin && plugin.url || '';
+        // Also remove old raw/GitHub subtitle URLs. They are legacy copies
+        // that otherwise run before the newly selected built-in provider.
+        if ((url.indexOf(window.location.origin + '/') === 0 && lampacPluginPath.test(url)) || subtitlePluginPath.test(url)) {
+          Lampa.Plugins.remove(plugin);
+        }
+      });
+      Lampa.Storage.set(resetKey, 'true');
+      plugins = Lampa.Plugins.get() || [];
+    }
+
+    // Collapse duplicate URLs through Lampa's own registry API.
+    // Plugins.get() only returns an array copy; splice() does not remove entries
+    // from Lampa's live _loaded registry on Android.
+    var knownUrls = {};
+    var remove = [];
+    plugins.forEach(function (plugin) {
+      var url = plugin && plugin.url || '';
+      if (!url || knownUrls[url]) remove.push(plugin);
+      else knownUrls[url] = true;
+    });
+    remove.forEach(function (plugin) {
+      Lampa.Plugins.remove(plugin);
+    });
+
+    // Re-read after remove() because it updates Lampa's internal registry.
+    plugins = Lampa.Plugins.get() || [];
+    knownUrls = {};
+    plugins.forEach(function (plugin) {
+      if (plugin && plugin.url) knownUrls[plugin.url] = true;
+    });
+
+    var plugins_add = {initiale};
+    var plugins_push = [];
+    plugins_add.forEach(function(plugin) {
+      if (plugin && plugin.url && !knownUrls[plugin.url]) {
+        Lampa.Plugins.add(plugin);
+        knownUrls[plugin.url] = true;
+        plugins_push.push(plugin.url);
+      }
+    });
+
+    if (plugins_push.length) Lampa.Utils.putScript(plugins_push, function() {}, function() {}, function() {}, true);
+    return plugins_push.length > 0;
+  }
+
   var timer = setInterval(function() {
     if (typeof Lampa !== 'undefined') {
       clearInterval(timer);
+
+      // Language selection is user-controlled in Settings → Interface.
+      // Do not force `vi`: Lampa must load the complete standalone vi.js first.
 	  
       if (lampainit_invc)
         lampainit_invc.appload();
@@ -78,11 +144,17 @@
     }
   }, 200);
 
+
   function start() {
     {deny}
 	
-    if (lampainit_invc) lampainit_invc.appready();
-    if (Lampa.Storage.get('lampac_initiale', 'false')) return;
+    // Always sync plugins first, even on already-initialized clients
+    syncPlugins();
+
+    if (Lampa.Storage.get('lampac_initiale', 'false')) {
+      if (lampainit_invc) lampainit_invc.first_initiale();
+      return;
+    }
 
     Lampa.Storage.set('lampac_initiale', 'true');
     Lampa.Storage.set('source', 'cub');
@@ -96,25 +168,6 @@
     Lampa.Storage.set('jackett_key', '1');
     Lampa.Storage.set('parser_torrent_type', 'jackett');
 
-    var plugins = Lampa.Plugins.get();
-
-    var plugins_add = {initiale};
-
-    var plugins_push = [];
-
-    plugins_add.forEach(function(plugin) {
-      if (!plugins.find(function(a) {
-          return a.url == plugin.url;
-        })) {
-        Lampa.Plugins.add(plugin);
-        Lampa.Plugins.save();
-
-        plugins_push.push(plugin.url);
-      }
-    });
-
-    if (plugins_push.length) Lampa.Utils.putScript(plugins_push, function() {}, function() {}, function() {}, true);
-	
     if (lampainit_invc)
       lampainit_invc.first_initiale();
 

@@ -1,4 +1,4 @@
-﻿using Shared;
+using Shared;
 using Shared.Models.AppConf;
 using Shared.Models.Events;
 using Shared.Models.Module;

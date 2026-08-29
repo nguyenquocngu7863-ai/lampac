@@ -7,11 +7,12 @@ host: https://hot.noodlemagazine.com
 #stream_access: web,apk,cors
 qualitys_proxy: true
 streamproxy_preview: true
+geostreamproxy: ["ALL"]
 
 menu:
   sort:
-    Новинки: ""
-    Популярное: popular/week?p={page}
+    Mới nhất: ""
+    Phổ biến: popular/week?p={page}
 
 list:
   uri: home?p={page}
@@ -41,4 +42,4 @@ view:
   related: true
   viewsource: true
   regexMatch:
-    pattern: '"file":"(https://cdn\.pvvstream\.pro/[^"]+)"'
+    pattern: '"file":"([^"]+)"'

@@ -7,6 +7,8 @@
 #   bash setup-termux.sh            # install & run
 #   bash setup-termux.sh --install  # install only
 #   bash setup-termux.sh --run      # run only (skip install)
+#   bash setup-termux.sh --sync     # curl only the latest patch files (fast)
+#   bash setup-termux.sh --sync-all # repair browser runtime + apply every custom module
 #   bash setup-termux.sh --update   # update to latest release
 #
 set -euo pipefail
@@ -16,10 +18,14 @@ set -euo pipefail
 LAMPAC_DIR="$HOME/lampac"
 LISTEN_PORT="${LAMPAC_PORT:-9118}"
 ROOT_PASSWORD="${LAMPAC_PASSWD:-lampac}"
+# Custom modules maintained in this repository. Override when using a private fork.
+CUSTOM_SOURCE_BASE="${LAMPAC_CUSTOM_SOURCE_BASE:-https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main}"
 
 MODE=""
 [[ "${1:-}" == "--install" ]] && MODE="install"
 [[ "${1:-}" == "--run" ]]    && MODE="run"
+[[ "${1:-}" == "--sync" ]]   && MODE="sync"
+[[ "${1:-}" == "--sync-all" ]] && MODE="sync-all"
 [[ "${1:-}" == "--update" ]] && MODE="update"
 [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]] && { MODE="help"; }
 
@@ -57,6 +63,8 @@ show_help() {
     printf "${BOLD}Options:${RESET}\n"
     printf "  ${GREEN}--install${RESET}    Install proot-distro + Ubuntu + .NET + Lampac\n"
     printf "  ${GREEN}--run${RESET}        Run Lampac (skip install)\n"
+    printf "  ${GREEN}--sync${RESET}       Curl only the latest patch files (fast, no Chrome/hls.js)\n"
+    printf "  ${GREEN}--sync-all${RESET}   Repair browser runtime + apply every custom module\n"
     printf "  ${GREEN}--update${RESET}     Update Lampac to latest release\n"
     printf "  ${GREEN}--help${RESET}       Show this help\n\n"
     printf "${BOLD}Environment:${RESET}\n"
@@ -70,7 +78,17 @@ show_help() {
     printf "  bash setup-termux.sh\n\n"
     printf "  ${DIM}# Custom port${RESET}\n"
     printf "  LAMPAC_PORT=8080 bash setup-termux.sh\n\n"
-    printf "  ${DIM}# Update${RESET}\n"
+    printf "  ${DIM}# Apply only the latest patch files (fast)${RESET}\n"
+    printf "  bash setup-termux.sh --sync\n\n"
+    printf "  ${DIM}# Re-apply every custom module + browser runtime${RESET}\n"
+    printf "  bash setup-termux.sh --sync-all\n\n"
+
+    printf "  ${DIM}# Install optional local services${RESET}\n"
+    printf "  aio install\n"
+    printf "  jackett install\n"
+    printf "  lampac start\n\n"
+
+    printf "  ${DIM}# Update Lampac${RESET}\n"
     printf "  bash setup-termux.sh --update\n\n"
 }
 
@@ -132,7 +150,11 @@ install_lampac_in_ubuntu() {
         set -euo pipefail
         export DEBIAN_FRONTEND=noninteractive
         apt-get update -qq
-        apt-get install -y -qq curl wget unzip libicu-dev libssl-dev > /dev/null 2>&1
+        apt-get install -y -qq curl wget unzip libicu-dev libssl-dev \
+            gstreamer1.0-tools libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 \
+            gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
+            gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly \
+            gstreamer1.0-libav ocl-icd-libopencl1 > /dev/null 2>&1
 
         DOTNET_DIR="/opt/dotnet"
         if [[ ! -x "$DOTNET_DIR/dotnet" ]] || ! "$DOTNET_DIR/dotnet" --list-runtimes 2>/dev/null | grep -q "Microsoft.AspNetCore.App 10"; then
@@ -215,15 +237,41 @@ install_lampac_in_ubuntu() {
     \"SkipModules\": [
       \"Catalog\", \"DLNA\", \"Tracks\", \"Transcoding\", \"WebLog\",
       \"CacheMedia\", \"ProxyLimiter\", \"ForkPlayerXML\", \"MsxNative\",
-      \"TelegramAuth\", \"TelegramAuthBot\", \"GStreamer\"
+      \"TelegramAuth\", \"TelegramAuthBot\"
     ],
     \"LoadModules\": [\".*\"]
   },
-  \"chromium\": { \"enable\": false },
+  \"gst\": {
+    \"enable\": true,
+    \"hdr_to_sdr\": false,
+    \"useGpu\": false,
+    \"hardwareAcceleration\": false
+  },
+  \"Jackett\": {
+    \"enable\": true,
+    \"url\": \"\",
+    \"port\": 9117,
+    \"api_key\": \"\",
+    \"proxy_downloads\": true
+  },
+  \"disableEng\": true,
+  \"chromium\": {
+    \"enable\": true,
+    \"Headless\": true,
+    \"executablePath\": \"/usr/bin/google-chrome-stable\",
+    \"Args\": [
+      \"--no-sandbox\",
+      \"--disable-setuid-sandbox\",
+      \"--disable-dev-shm-usage\",
+      \"--disable-gpu\"
+    ],
+    \"context\": { \"keepopen\": false, \"min\": 0, \"max\": 1 }
+  },
   \"firefox\":  { \"enable\": false },
   \"rch\":      { \"enable\": false },
   \"WAF\":      { \"enable\": false },
   \"accsdb\":   { \"enable\": false },
+  \"serverproxy\": { \"enable\": true, \"verifyip\": false },
   \"serilog\":  false,
   \"LampaWeb\": {
     \"widgets\": { \"samsung\": false, \"lg\": false }
@@ -236,6 +284,452 @@ CONF
         echo \"  Config ready\"
     "
     ok "Config ready"
+}
+
+# ─── Browser runtime, Termux profile + custom modules ────────────────────────
+
+install_chromium_in_ubuntu() {
+    info "Checking Chrome/Chromium for browser-backed sources..."
+
+    if proot-distro login ubuntu -- bash -c 'test -x /usr/bin/google-chrome-stable || test -x /usr/bin/chromium'; then
+        ok "Chrome/Chromium executable found"
+        return 0
+    fi
+
+    if proot-distro login ubuntu -- bash -c '
+        set -euo pipefail
+        export DEBIAN_FRONTEND=noninteractive
+        arch=$(dpkg --print-architecture)
+        case "$arch" in
+            arm64) url="https://dl.google.com/linux/direct/google-chrome-stable_current_arm64.deb" ;;
+            amd64) url="https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb" ;;
+            *) echo "Unsupported Debian architecture: $arch" >&2; exit 2 ;;
+        esac
+        apt-get update -qq
+        apt-get install -y -qq ca-certificates curl
+        curl -fL --retry 3 "$url" -o /tmp/google-chrome.deb
+        apt-get install -y /tmp/google-chrome.deb
+        rm -f /tmp/google-chrome.deb
+    '; then
+        ok "Chrome installed for Mirage/Phantom/Spectre"
+    else
+        warn "Could not install Chrome automatically; browser-backed sources remain unavailable"
+        return 0
+    fi
+}
+
+ensure_runtime_config() {
+    info "Applying Termux runtime configuration (ENG sources disabled)..."
+
+    proot-distro login ubuntu -- bash -c '
+        set -euo pipefail
+        file=/root/lampac/init.conf
+        [ -f "$file" ] || exit 0
+
+        # Repair a common manual-edit typo and keep GStreamer available.
+        sed -i "s/^[[:space:]]*}:,/  },/" "$file"
+        sed -i "s/\"GStreamer\",[[:space:]]*//g; s/,[[:space:]]*\"GStreamer\"//g" "$file"
+
+        # New installs default to disabled ENG sources, but preserve an
+        # explicit user choice on existing installations.
+        if ! grep -q "^[[:space:]]*\"disableEng\"[[:space:]]*:" "$file"; then
+            if grep -q "^[[:space:]]*\"listen\"[[:space:]]*:" "$file"; then
+                sed -i "/^[[:space:]]*\"listen\"[[:space:]]*:/i\  \"disableEng\": true," "$file"
+            else
+                echo "  warning: could not add disableEng automatically"
+            fi
+        fi
+
+        # Materialize the local Jackett section in init.conf so AdminPanel can
+        # edit it. Catalog-only keys are displayed as "missing" until they
+        # exist in either init.conf or current.conf.
+        if ! grep -q "^[[:space:]]*\"Jackett\"[[:space:]]*:" "$file"; then
+            if grep -q "^[[:space:]]*\"listen\"[[:space:]]*:" "$file"; then
+                sed -i "/^[[:space:]]*\"listen\"[[:space:]]*:/i\\  \"Jackett\": { \"enable\": true, \"url\": \"\", \"port\": 9117, \"api_key\": \"\", \"proxy_downloads\": true }," "$file"
+            else
+                echo "  warning: could not add Jackett section automatically"
+            fi
+        fi
+
+        # Repair only the exact one-line Chromium setting written by older
+        # versions of this Termux script. It accidentally disabled Mirage,
+        # Phantom and Spectre together with ENG sources. A normal/detailed
+        # user-managed Chromium section is left untouched.
+        if [ -x /usr/bin/google-chrome-stable ]; then
+            browser=/usr/bin/google-chrome-stable
+        elif [ -x /usr/bin/chromium ]; then
+            browser=/usr/bin/chromium
+        else
+            browser=""
+        fi
+
+        if grep -q "^[[:space:]]*\"chromium\"[[:space:]]*:[[:space:]]*{[[:space:]]*\"enable\"[[:space:]]*:[[:space:]]*false[[:space:]]*}[[:space:]]*,[[:space:]]*$" "$file"; then
+            if [ -n "$browser" ]; then
+                sed -i "/^[[:space:]]*\"chromium\"[[:space:]]*:[[:space:]]*{[[:space:]]*\"enable\"[[:space:]]*:[[:space:]]*false[[:space:]]*}[[:space:]]*,[[:space:]]*$/c\\  \"chromium\": {\n    \"enable\": true,\n    \"Headless\": true,\n    \"executablePath\": \"$browser\",\n    \"Args\": [\"--no-sandbox\", \"--disable-setuid-sandbox\", \"--disable-dev-shm-usage\", \"--disable-gpu\"],\n    \"context\": { \"keepopen\": false, \"min\": 0, \"max\": 1 }\n  }," "$file"
+                echo "  [chromium] repaired legacy disable; Mirage/Phantom/Spectre enabled"
+            else
+                echo "  [chromium] warning: legacy disable found but no Chrome/Chromium executable exists"
+            fi
+        fi
+
+        # Validate only when Chromium is enabled. disableEng is intentionally
+        # independent and does not disable browser-backed Russian sources.
+        chromium_block=$(sed -n "/^[[:space:]]*\"chromium\"[[:space:]]*:/,/^[[:space:]]*},[[:space:]]*$/p" "$file")
+        if [ -n "$browser" ] && printf "%s\n" "$chromium_block" | grep -q "\"enable\"[[:space:]]*:[[:space:]]*true"; then
+            if timeout 60 "$browser" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --dump-dom https://example.com 2>/dev/null | grep -q "Example Domain"; then
+                echo "  [chromium] self-test OK"
+            elif timeout 60 "$browser" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --no-zygote --single-process --dump-dom https://example.com 2>/dev/null | grep -q "Example Domain"; then
+                sed -i "/^[[:space:]]*\"chromium\"[[:space:]]*:/,/^[[:space:]]*},[[:space:]]*$/s#\"Args\"[[:space:]]*:[^]]*]#\"Args\": [\"--no-sandbox\", \"--disable-setuid-sandbox\", \"--disable-dev-shm-usage\", \"--disable-gpu\", \"--no-zygote\", \"--single-process\"]#" "$file"
+                echo "  [chromium] self-test fixed with proot renderer flags"
+            else
+                echo "  [chromium] WARNING: executable exists but headless rendering failed"
+            fi
+        fi
+
+        if [ -f /root/lampac/init.yaml ]; then
+            echo "  warning: init.yaml also exists and may override init.conf"
+        fi
+    '
+
+    ok "Runtime configuration applied; existing ENG/Chromium choices preserved"
+}
+
+# Patch original Lampa files with Vietnamese. Keep this OUT of bash -c "..." —
+# the language strings contain double quotes and would terminate that script.
+# meta.js is the source registry; app.min.js is what Lampa boots (webpack
+# inlines meta.languages). Native loadLang then fetches lang/vi.js.
+patch_vietnamese_language() {
+    info "Registering Vietnamese in original Lampa files (vi.js, meta.js, app.min.js)..."
+    proot-distro login ubuntu -- bash -s <<'VI_LANG'
+set -euo pipefail
+src=/root/lampac/module/LampaWeb/lang/vi.js
+root=/root/lampac/wwwroot/lampa-main
+langdir="$root/lang"
+mkdir -p "$langdir"
+if [ -f "$src" ]; then
+    cp "$src" "$langdir/vi.js"
+fi
+entry='vi: { code: "vi", name: "Tiếng Việt", lang_choice_title: "Chào mừng", lang_choice_subtitle: "Chọn ngôn ngữ của bạn" }, '
+patch_registry() {
+    local file="$1"
+    [ -f "$file" ] || return 0
+    if grep -qF 'Tiếng Việt' "$file"; then
+        return 0
+    fi
+    awk -v entry="$entry" '
+      BEGIN { done = 0 }
+      {
+        if (!done && match($0, /languages[[:space:]]*:[[:space:]]*\{/)) {
+          sub(/languages[[:space:]]*:[[:space:]]*\{/, "& " entry)
+          done = 1
+        }
+        print
+      }
+    ' "$file" > "$file.tmp"
+    mv "$file.tmp" "$file"
+}
+patch_registry "$langdir/meta.js"
+patch_registry "$root/app.min.js"
+VI_LANG
+    ok "Vietnamese registered in lang/vi.js, lang/meta.js and app.min.js"
+}
+
+
+# --sync pulls only the files from the latest patch. Update this list when
+# shipping a small fix so Termux does not re-download Chrome, hls.js, or
+# every custom module. Use --sync-all for a full refresh.
+sync_latest_modules() {
+    info "Syncing latest patch files only (NextHUB 85PO playback)..."
+
+    proot-distro login ubuntu -- bash -c "
+        set -euo pipefail
+        base=\"${CUSTOM_SOURCE_BASE}\"
+        stamp=\$(date +%s)
+        pull() {
+            src=\"\$1\"
+            dest=\"\$2\"
+            dir=\$(dirname \"\$dest\")
+            if [ ! -d \"\$dir\" ]; then
+                echo \"  [sync] skip (missing dir): \$dest\"
+                return 0
+            fi
+            curl -fSL --retry 3 \"\$base/\$src?cb=\$stamp\" -o \"\$dest.tmp\"
+            mv \"\$dest.tmp\" \"\$dest\"
+            echo \"  [sync] \$dest\"
+        }
+        nexthub=/root/lampac/module/NextHUB
+        if [ -d \"\$nexthub/sites\" ]; then
+            pull Modules/NextHUB/sites/85po.yaml \"\$nexthub/sites/85po.yaml\"
+        fi
+        if [ -d \"\$nexthub/Controllers\" ]; then
+            pull Modules/NextHUB/Controllers/ViewController.cs \"\$nexthub/Controllers/ViewController.cs\"
+        fi
+    "
+
+    ok "Latest patch files applied"
+}
+
+install_custom_modules() {
+    info "Installing custom KKPhim/K20/VsMov/WebStreamr/Open Directory/Sootio/AIOStreams/CineWave/GStreamer module files..."
+
+    proot-distro login ubuntu -- bash -c "
+        set -euo pipefail
+
+        # NguonC is retired. Remove leftovers so the dynamic module loader does
+        # not load the broken provider again. VsMov is installed below.
+        rm -rf /root/lampac/module/OnlineVN/NguonC
+
+        kkbase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineVN/KKPhim\"
+        kktarget=/root/lampac/module/OnlineVN/KKPhim
+        mkdir -p \"\$kktarget\"
+        for file in Controller.cs Model.cs ModInit.cs manifest.json; do
+            curl -fSL --retry 3 \"\$kkbase/\$file\" -o \"\$kktarget/\$file\"
+        done
+
+        k20base=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineVN/K20\"
+        k20target=/root/lampac/module/OnlineVN/K20
+        mkdir -p \"\$k20target\"
+        for file in Controller.cs Model.cs ModInit.cs manifest.json; do
+            curl -fSL --retry 3 \"\$k20base/\$file\" -o \"\$k20target/\$file\"
+        done
+
+        vsmovbase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineVN/VsMov\"
+        vsmovtarget=/root/lampac/module/OnlineVN/VsMov
+        mkdir -p \"\$vsmovtarget\"
+        for file in Controller.cs Model.cs ModInit.cs manifest.json; do
+            curl -fSL --retry 3 \"\$vsmovbase/\$file\" -o \"\$vsmovtarget/\$file\"
+        done
+
+        webbase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineENG/WebStreamr\"
+        webtarget=/root/lampac/module/OnlineENG/WebStreamr
+        mkdir -p \"\$webtarget\"
+        for file in Controller.cs Model.cs ModInit.cs manifest.json; do
+            curl -fSL --retry 3 \"\$webbase/\$file\" -o \"\$webtarget/\$file\"
+        done
+
+        opendirectorybase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineENG/OpenDirectory\"
+        opendirectorytarget=/root/lampac/module/OnlineENG/OpenDirectory
+        mkdir -p \"\$opendirectorytarget\"
+        for file in Controller.cs Model.cs ModInit.cs manifest.json; do
+            curl -fSL --retry 3 \"\$opendirectorybase/\$file\" -o \"\$opendirectorytarget/\$file\"
+        done
+
+        sootiobase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineENG/Sootio\"
+        sootiotarget=/root/lampac/module/OnlineENG/Sootio
+        mkdir -p \"\$sootiotarget\"
+        for file in Controller.cs Model.cs ModInit.cs manifest.json; do
+            curl -fSL --retry 3 \"\$sootiobase/\$file\" -o \"\$sootiotarget/\$file\"
+        done
+
+        aiobase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineENG/AIOStreams\"
+        aiotarget=/root/lampac/module/OnlineENG/AIOStreams
+        mkdir -p \"\$aiotarget\"
+        for file in Controller.cs Model.cs ModInit.cs manifest.json; do
+            curl -fSL --retry 3 \"\$aiobase/\$file\" -o \"\$aiotarget/\$file\"
+        done
+
+        # Custom Online (Lampa client) plugin: wrapped info rows + full titles.
+        onlinebase=\"${CUSTOM_SOURCE_BASE}/Online\"
+        onlinetarget=/root/lampac/module/Online
+        mkdir -p \"\$onlinetarget\"
+        curl -fSL --retry 3 \"\$onlinebase/plugin.js\" -o \"\$onlinetarget/plugin.js\"
+
+        cwbase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineENG/CineWave\"
+        cwtarget=/root/lampac/module/OnlineENG/CineWave
+        mkdir -p \"\$cwtarget\"
+        for file in Controller.cs Model.cs ModInit.cs manifest.json; do
+            curl -fSL --retry 3 \"\$cwbase/\$file\" -o \"\$cwtarget/\$file\"
+        done
+
+        curl -fSL --retry 3 \"${CUSTOM_SOURCE_BASE}/aioctl.sh\" -o /root/aioctl.sh
+        curl -fSL --retry 3 \"${CUSTOM_SOURCE_BASE}/jackettctl.sh\" -o /root/jackettctl.sh
+        chmod +x /root/aioctl.sh /root/jackettctl.sh
+
+        # NextHUB site definitions change more often than release binaries.
+        # Keep the known fixed definitions in sync so an update cannot leave
+        # the retired sex-studentki.live domain in the runtime tree.
+        syncstamp=\$(date +%s)
+        nexthubrootbase=\"${CUSTOM_SOURCE_BASE}/Modules/NextHUB\"
+        nexthubroottarget=/root/lampac/module/NextHUB
+        nexthubtarget=\"\$nexthubroottarget/sites\"
+        if [ -d \"\$nexthubtarget\" ]; then
+            for file in 24rolika.yaml 24video.yaml 3movs.yaml 85po.yaml analdin.yaml batsa.yaml beeg.yaml bigboss.yaml brazzrus.yaml cam4.yaml crocotube.yaml ebasos.yaml ebun.yaml familyporn.yaml fapguru.yaml film-adult.yaml fpo.yaml gayporntube.yaml hellporno.yaml hochutv.yaml huyamba.yaml jopaonline.yaml lenkino.yaml lenporno.yaml noodlemagazine.yaml oxax.yaml perfektdamen.yaml porn4days.yaml porndig.yaml pornhub.yaml pornk.yaml porno365.yaml porno666.yaml pornoakt.yaml pornobolt.yaml pornobriz.yaml pornokaef.yaml pornone.yaml pornve.yaml prostoporno.yaml rusporno.yaml rusvideos.yaml sex-studentki.yaml sexporno.yaml sexxxxhub.yaml sosushka.yaml trahkino.yaml uporno.yaml veporn.yaml vporno.yaml vtrahe.yaml vtrahetv.yaml watchporn.yaml xasiat.yaml xozilla.yaml xxxperevod.yaml yaeby.yaml youjizz.yaml; do
+                curl -fSL --retry 3 \"\$nexthubrootbase/sites/\$file?cb=\$syncstamp\" -o \"\$nexthubtarget/\$file.tmp\"
+                mv \"\$nexthubtarget/\$file.tmp\" \"\$nexthubtarget/\$file\"
+            done
+            for file in CategoryVi.cs manifest.json; do
+                curl -fSL --retry 3 \"\$nexthubrootbase/\$file\" -o \"\$nexthubroottarget/\$file.tmp\"
+                mv \"\$nexthubroottarget/\$file.tmp\" \"\$nexthubroottarget/\$file\"
+            done
+            curl -fSL --retry 3 \"\$nexthubrootbase/Controllers/ListController.cs\" -o \"\$nexthubroottarget/Controllers/ListController.cs.tmp\"
+            mv \"\$nexthubroottarget/Controllers/ListController.cs.tmp\" \"\$nexthubroottarget/Controllers/ListController.cs\"
+            curl -fSL --retry 3 \"\$nexthubrootbase/Controllers/ViewController.cs\" -o \"\$nexthubroottarget/Controllers/ViewController.cs.tmp\"
+            mv \"\$nexthubroottarget/Controllers/ViewController.cs.tmp\" \"\$nexthubroottarget/Controllers/ViewController.cs\"
+        fi
+
+        # Keep Eporner playback behind Lampac's proxy so its CDN receives the
+        # web Referer/Origin headers instead of rejecting the Android player.
+        epornerbase=\"${CUSTOM_SOURCE_BASE}/Modules/Adult/Eporner\"
+        epornertarget=/root/lampac/module/Adult/Eporner
+        if [ -d \"\$epornertarget\" ]; then
+            for file in Controller.cs ModInit.cs Service.cs; do
+                curl -fSL --retry 3 \"\$epornerbase/\$file\" -o \"\$epornertarget/\$file.tmp\"
+                mv \"\$epornertarget/\$file.tmp\" \"\$epornertarget/\$file\"
+            done
+        fi
+
+        # SISI is maintained as translated source instead of a DOM category
+        # translator, preventing category rules from touching video titles.
+        sisitarget=/root/lampac/module/SISI/plugins
+        if [ -d \"\$sisitarget\" ]; then
+            for file in sisi.js startpage.js; do
+                curl -fSL --retry 3 \"${CUSTOM_SOURCE_BASE}/SISI/plugins/\$file\" -o \"\$sisitarget/\$file.tmp\"
+                mv \"\$sisitarget/\$file.tmp\" \"\$sisitarget/\$file\"
+            done
+        fi
+
+        for adultmodule in BongaCams Chaturbate Ebalovo Eporner HQporner PornHub Porntrex Runetki Spankbang Xhamster Xnxx Xvideos XvideosRED; do
+            adulttarget=\"/root/lampac/module/Adult/\$adultmodule\"
+            if [ -d \"\$adulttarget\" ]; then
+                curl -fSL --retry 3 \"${CUSTOM_SOURCE_BASE}/Modules/Adult/\$adultmodule/Service.cs?cb=\$syncstamp\" -o \"\$adulttarget/Service.cs.tmp\"
+                mv \"\$adulttarget/Service.cs.tmp\" \"\$adulttarget/Service.cs\"
+            fi
+        done
+
+        # Keep Chaturbate resolver files synchronized as well as its translated
+        # Service.cs. This also restores the stable direct-HLS implementation
+        # after experimental resolver changes.
+        chaturbatebase=\"${CUSTOM_SOURCE_BASE}/Modules/Adult/Chaturbate\"
+        chaturbatetarget=/root/lampac/module/Adult/Chaturbate
+        if [ -d \"\$chaturbatetarget\" ]; then
+            for file in Controller.cs ModInit.cs; do
+                curl -fSL --retry 3 \"\$chaturbatebase/\$file?cb=\$syncstamp\" -o \"\$chaturbatetarget/\$file.tmp\"
+                mv \"\$chaturbatetarget/\$file.tmp\" \"\$chaturbatetarget/\$file\"
+            done
+        fi
+
+        for adultmodinit in BongaCams Runetki Spankbang Ebalovo; do
+            adulttarget=\"/root/lampac/module/Adult/\$adultmodinit\"
+            if [ -d \"\$adulttarget\" ]; then
+                curl -fSL --retry 3 \"${CUSTOM_SOURCE_BASE}/Modules/Adult/\$adultmodinit/ModInit.cs?cb=\$syncstamp\" -o \"\$adulttarget/ModInit.cs.tmp\"
+                mv \"\$adulttarget/ModInit.cs.tmp\" \"\$adulttarget/ModInit.cs\"
+            fi
+        done
+
+        # Videasy is the first ENG resolver under isolated repair. Sync only
+        # this provider; `disableEng` remains globally enabled.
+        videasybase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineENG/Videasy\"
+        videasytarget=/root/lampac/module/OnlineENG/Videasy
+        if [ -d \"\$videasytarget\" ]; then
+            for file in Controller.cs ModInit.cs; do
+                curl -fSL --retry 3 \"\$videasybase/\$file?cb=\$syncstamp\" -o \"\$videasytarget/\$file.tmp\"
+                mv \"\$videasytarget/\$file.tmp\" \"\$videasytarget/\$file\"
+            done
+        fi
+
+        vidsrcbase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineENG/VidSrc\"
+        vidsrctarget=/root/lampac/module/OnlineENG/VidSrc
+        if [ -d \"\$vidsrctarget\" ]; then
+            for file in Controller.cs ModInit.cs; do
+                curl -fSL --retry 3 \"\$vidsrcbase/\$file?cb=\$syncstamp\" -o \"\$vidsrctarget/\$file.tmp\"
+                mv \"\$vidsrctarget/\$file.tmp\" \"\$vidsrctarget/\$file\"
+            done
+        fi
+
+        vidlinkbase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineENG/VidLink\"
+        vidlinktarget=/root/lampac/module/OnlineENG/VidLink
+        if [ -d \"\$vidlinktarget\" ]; then
+            for file in Controller.cs ModInit.cs; do
+                curl -fSL --retry 3 \"\$vidlinkbase/\$file?cb=\$syncstamp\" -o \"\$vidlinktarget/\$file.tmp\"
+                mv \"\$vidlinktarget/\$file.tmp\" \"\$vidlinktarget/\$file\"
+            done
+        fi
+
+        mapplebase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineENG/Mapple4K\"
+        mappletarget=/root/lampac/module/OnlineENG/Mapple4K
+        mkdir -p \"\$mappletarget\"
+        for file in Controller.cs ModInit.cs manifest.json README.md; do
+            curl -fSL --retry 3 \"\$mapplebase/\$file?cb=\$syncstamp\" -o \"\$mappletarget/\$file.tmp\"
+            mv \"\$mappletarget/\$file.tmp\" \"\$mappletarget/\$file\"
+        done
+
+        for proxymodule in CubProxy TmdbProxy; do
+            proxytarget=\"/root/lampac/module/Proxy/\$proxymodule\"
+            if [ -d \"\$proxytarget\" ]; then
+                curl -fSL --retry 3 \"${CUSTOM_SOURCE_BASE}/Modules/Proxy/\$proxymodule/Controller.cs\" -o \"\$proxytarget/Controller.cs.tmp\"
+                mv \"\$proxytarget/Controller.cs.tmp\" \"\$proxytarget/Controller.cs\"
+            fi
+        done
+
+        gstbase=\"${CUSTOM_SOURCE_BASE}/Modules/GStreamer\"
+        gsttarget=/root/lampac/module/GStreamer
+        mkdir -p \"\$gsttarget/Services\" \"\$gsttarget/plugins\"
+        for file in Controller.cs Services/GService.cs Services/GStask.cs Services/HdrToneMappingBackend.cs Services/GStask.Pipeline.cs Services/GStask.Producer.cs plugins/gst.js; do
+            curl -fSL --retry 3 \"\$gstbase/\$file\" -o \"\$gsttarget/\$file\"
+        done
+
+        # LampaWeb is a dynamic module. Sync its controller, plugin model and
+        # subtitle assets, otherwise a release can serve an old plugin list or
+        # miss the selected built-in subtitle provider.
+        webtarget=/root/lampac/module/LampaWeb
+        mkdir -p \"\$webtarget/Controllers\" \"\$webtarget/Models\" \"\$webtarget/Services\" \"\$webtarget/plugins\" \"\$webtarget/lang\"
+        webbase=\"${CUSTOM_SOURCE_BASE}/Modules/LampaWeb\"
+        for file in Controllers/ApiController.cs ModInit.cs Models/InitPlugins.cs Services/LampaCron.cs Services/LampaVietnamese.cs lang/vi.js plugins/lampainit.js plugins/jackett.js plugins/online-compact.js plugins/vietnamese.js plugins/subsense-auto.js plugins/subsense.js plugins/subfinder.js plugins/stremiosub.js plugins/adminpanel.js; do
+            curl -fSL --retry 3 \"\$webbase/\$file\" -o \"\$webtarget/\$file\"
+        done
+
+        mkdir -p \"\$webtarget/vendor/hls\"
+        for file in hls.js LICENSE; do
+            curl -fSL --retry 3 \"\$webbase/vendor/hls/\$file?cb=\$syncstamp\" -o \"\$webtarget/vendor/hls/\$file.tmp\"
+            mv \"\$webtarget/vendor/hls/\$file.tmp\" \"\$webtarget/vendor/hls/\$file\"
+        done
+        if [ -f /root/lampac/wwwroot/lampa-main/app.min.js ]; then
+            mkdir -p /root/lampac/wwwroot/lampa-main/vender/hls
+            cp \"\$webtarget/vendor/hls/hls.js\" /root/lampac/wwwroot/lampa-main/vender/hls/hls.js.tmp
+            mv /root/lampac/wwwroot/lampa-main/vender/hls/hls.js.tmp /root/lampac/wwwroot/lampa-main/vender/hls/hls.js
+        fi
+
+        # base.conf is part of the published app, not the dynamic module.
+        # Sync it too so default LampaWeb subtitle flags match the controller
+        # and do not remain stuck at an older release's defaults.
+        curl -fSL --retry 3 \"${CUSTOM_SOURCE_BASE}/config/base.conf\" -o /root/lampac/base.conf
+
+        # Some release archives already contain lampa-main, so LampaCron sees
+        # no update to perform and never makes its usual lampainit.js injection.
+        # Ensure the page opened at http://PHONE_IP:9118/ always boots Lampac's
+        # configured built-in plugins (ts, gst, subtitles, etc.).
+        webindex=/root/lampac/wwwroot/lampa-main/index.html
+        if [ -f \"\$webindex\" ] && ! grep -q 'src=\"/lampainit.js\"' \"\$webindex\"; then
+            sed -i 's#</body>#<script src=\"/lampainit.js\"></script></body>#' \"\$webindex\"
+        fi
+
+        # Copy vi.js now; meta.js is patched after this bash -c so Vietnamese
+        # strings do not break the surrounding double-quoted script.
+        langdir=/root/lampac/wwwroot/lampa-main/lang
+        mkdir -p \"\$langdir\"
+        cp \"\$webtarget/lang/vi.js\" \"\$langdir/vi.js\"
+
+        # The AdminPanel is protected by the Lampac root password. If it is
+        # already installed/enabled, keep its Vietnamese UI in sync too.
+        adminbase=\"${CUSTOM_SOURCE_BASE}/Modules/AdminPanel\"
+        adminstamp=\$(date +%s)
+        for admintarget in /root/lampac/module/AdminPanel /root/lampac/mods/AdminPanel; do
+            [ -d \"\$admintarget\" ] || continue
+            for file in AdminPanelController.cs ConfigSectionGroups.cs ModInit.cs manifest.json auth.html index.html; do
+                curl -fSL --retry 3 \"\$adminbase/\$file?cb=\$adminstamp\" -o \"\$admintarget/\$file.tmp\"
+                mv \"\$admintarget/\$file.tmp\" \"\$admintarget/\$file\"
+            done
+            if ! grep -q 'src-adult-nexthub' \"\$admintarget/ConfigSectionGroups.cs\"; then
+                echo \"  [admin] ERROR: downloaded grouping is stale: \$admintarget\" >&2
+                exit 1
+            fi
+            echo \"  [admin] synced and verified: \$admintarget\"
+        done
+    "
+
+    patch_vietnamese_language
+
+    ok "Custom Online, NextHUB, AIOStreams, GStreamer and LampaWeb files installed; removed retired NguonC"
 }
 
 # ─── Step 4: Create launcher scripts (inside Ubuntu!) ────────────────────────
@@ -268,6 +762,17 @@ export PATH="$DOTNET_DIR:$PATH"
 export DOTNET_CLI_TELEMETRY_OPTOUT=1
 export DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
 
+GST_SCANNER=$(find /usr/lib /usr/libexec -type f -name gst-plugin-scanner -perm -111 2>/dev/null | head -n 1 || true)
+if [[ -n "$GST_SCANNER" ]]; then
+    export GST_PLUGIN_SCANNER="$GST_SCANNER"
+fi
+
+# AIOStreams remains in the Lampac lifecycle. Jackett is intentionally managed
+# separately with `jackett start|stop` so its performance impact is measurable.
+if [[ -x /root/aioctl.sh && -f /root/aiostreams/.env ]]; then
+    /root/aioctl.sh start || true
+fi
+
 cd "$LAMPAC_DIR"
 exec dotnet Core.dll
 LAUNCHER
@@ -284,9 +789,15 @@ case "${1:-}" in
         ;;
     stop)
         pkill -f 'proot.*Core.dll' 2>/dev/null && echo "Lampac stopped" || echo "Lampac not running"
+        if proot-distro login ubuntu -- test -d /root/aiostreams 2>/dev/null; then
+            proot-distro login ubuntu -- bash /root/aioctl.sh stop 2>/dev/null || true
+        fi
         ;;
     status)
         pgrep -f 'proot.*Core.dll' > /dev/null 2>&1 && echo "Lampac is running" || echo "Lampac not running"
+        if proot-distro login ubuntu -- test -d /root/aiostreams 2>/dev/null; then
+            proot-distro login ubuntu -- bash /root/aioctl.sh status 2>/dev/null || true
+        fi
         ;;
     config)
         proot-distro login ubuntu -- bash -c 'nano /root/lampac/init.conf'
@@ -298,6 +809,8 @@ case "${1:-}" in
             echo "  Lampac NextGen"
             echo "  ─────────────────────────────────"
             echo "  Local:    http://localhost:$PORT"
+            echo "  Jackett:  http://localhost:9117/UI/Dashboard"
+            echo "  AIO:      http://localhost:3002/stremio/configure"
             echo "  Config:   /root/lampac/init.conf (inside Ubuntu)"
             echo "  Start:    lampac start"
             echo "  Stop:     lampac stop"
@@ -330,8 +843,302 @@ case "${1:-}" in
             cp /tmp/init.conf.bak /root/lampac/ 2>/dev/null || true
             cp /tmp/passwd.bak /root/lampac/ 2>/dev/null || true
             rm -f /tmp/*.bak
+
+            # Re-apply the lightweight Termux profile. ENG providers remain
+            # paused; AIOStreams and Jackett have independent lifecycles.
+            file=/root/lampac/init.conf
+            if [ -f "$file" ]; then
+                sed -i "s/^[[:space:]]*}:,/  },/" "$file"
+                sed -i "s/\"GStreamer\",[[:space:]]*//g; s/,[[:space:]]*\"GStreamer\"//g" "$file"
+                if ! grep -q "^[[:space:]]*\"disableEng\"[[:space:]]*:" "$file" && grep -q "^[[:space:]]*\"listen\"[[:space:]]*:" "$file"; then
+                    sed -i "/^[[:space:]]*\"listen\"[[:space:]]*:/i\  \"disableEng\": true," "$file"
+                fi
+                if ! grep -q "^[[:space:]]*\"Jackett\"[[:space:]]*:" "$file" && grep -q "^[[:space:]]*\"listen\"[[:space:]]*:" "$file"; then
+                    sed -i "/^[[:space:]]*\"listen\"[[:space:]]*:/i\  \"Jackett\": { \"enable\": true, \"url\": \"\", \"port\": 9117, \"api_key\": \"\", \"proxy_downloads\": true }," "$file"
+                fi
+            fi
+
+            # NguonC is retired; VsMov is synced below.
+            rm -rf /root/lampac/module/OnlineVN/NguonC
+
+            base="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/Modules/OnlineVN/KKPhim"
+
+            base="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/Modules/OnlineVN/KKPhim"
+            target=/root/lampac/module/OnlineVN/KKPhim
+            mkdir -p "$target"
+            for file in Controller.cs Model.cs ModInit.cs manifest.json; do
+                curl -fSL --retry 3 "$base/$file" -o "$target/$file"
+            done
+
+            k20base="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/Modules/OnlineVN/K20"
+
+            k20base="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/Modules/OnlineVN/K20"
+            k20target=/root/lampac/module/OnlineVN/K20
+            mkdir -p "$k20target"
+            for file in Controller.cs Model.cs ModInit.cs manifest.json; do
+                curl -fSL --retry 3 "$k20base/$file" -o "$k20target/$file"
+            done
+
+            vsmovbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/Modules/OnlineVN/VsMov"
+
+            vsmovbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/Modules/OnlineVN/VsMov"
+            vsmovtarget=/root/lampac/module/OnlineVN/VsMov
+            mkdir -p "$vsmovtarget"
+            for file in Controller.cs Model.cs ModInit.cs manifest.json; do
+                curl -fSL --retry 3 "$vsmovbase/$file" -o "$vsmovtarget/$file"
+            done
+
+            webbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/Modules/OnlineENG/WebStreamr"
+
+            webbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/Modules/OnlineENG/WebStreamr"
+            webtarget=/root/lampac/module/OnlineENG/WebStreamr
+            mkdir -p "$webtarget"
+            for file in Controller.cs Model.cs ModInit.cs manifest.json; do
+                curl -fSL --retry 3 "$webbase/$file" -o "$webtarget/$file"
+            done
+
+            opendirectorybase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/Modules/OnlineENG/OpenDirectory"
+
+            opendirectorybase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/Modules/OnlineENG/OpenDirectory"
+            opendirectorytarget=/root/lampac/module/OnlineENG/OpenDirectory
+            mkdir -p "$opendirectorytarget"
+            for file in Controller.cs Model.cs ModInit.cs manifest.json; do
+                curl -fSL --retry 3 "$opendirectorybase/$file" -o "$opendirectorytarget/$file"
+            done
+
+            sootiobase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/Modules/OnlineENG/Sootio"
+
+            sootiobase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/Modules/OnlineENG/Sootio"
+            sootiotarget=/root/lampac/module/OnlineENG/Sootio
+            mkdir -p "$sootiotarget"
+            for file in Controller.cs Model.cs ModInit.cs manifest.json; do
+                curl -fSL --retry 3 "$sootiobase/$file" -o "$sootiotarget/$file"
+            done
+
+            aiobase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/Modules/OnlineENG/AIOStreams"
+
+            aiobase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/Modules/OnlineENG/AIOStreams"
+            aiotarget=/root/lampac/module/OnlineENG/AIOStreams
+            mkdir -p "$aiotarget"
+            for file in Controller.cs Model.cs ModInit.cs manifest.json; do
+                curl -fSL --retry 3 "$aiobase/$file" -o "$aiotarget/$file"
+            done
+
+            # Custom Online (Lampa client) plugin: wrapped info rows + full titles.
+            onlinebase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/Online"
+            onlinetarget=/root/lampac/module/Online
+            mkdir -p "$onlinetarget"
+            curl -fSL --retry 3 "$onlinebase/plugin.js" -o "$onlinetarget/plugin.js"
+
+            curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/aioctl.sh" -o /root/aioctl.sh
+            chmod +x /root/aioctl.sh
+
+            # Keep the dynamic LampaWeb subtitle/plugin selector in sync after
+            # replacing a release archive.
+            webbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/Modules/LampaWeb"
+
+            cwbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/Modules/OnlineENG/CineWave"
+            cwtarget=/root/lampac/module/OnlineENG/CineWave
+            mkdir -p "$cwtarget"
+            for file in Controller.cs Model.cs ModInit.cs manifest.json; do
+                curl -fSL --retry 3 "$cwbase/$file" -o "$cwtarget/$file"
+            done
+            curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/aioctl.sh" -o /root/aioctl.sh
+            curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/jackettctl.sh" -o /root/jackettctl.sh
+            chmod +x /root/aioctl.sh /root/jackettctl.sh
+
+            syncstamp=$(date +%s)
+            nexthubrootbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/Modules/NextHUB"
+            nexthubroottarget=/root/lampac/module/NextHUB
+            nexthubtarget="$nexthubroottarget/sites"
+            if [ -d "$nexthubtarget" ]; then
+                for file in 24rolika.yaml 24video.yaml 3movs.yaml 85po.yaml analdin.yaml batsa.yaml beeg.yaml bigboss.yaml brazzrus.yaml cam4.yaml crocotube.yaml ebasos.yaml ebun.yaml familyporn.yaml fapguru.yaml film-adult.yaml fpo.yaml gayporntube.yaml hellporno.yaml hochutv.yaml huyamba.yaml jopaonline.yaml lenkino.yaml lenporno.yaml noodlemagazine.yaml oxax.yaml perfektdamen.yaml porn4days.yaml porndig.yaml pornhub.yaml pornk.yaml porno365.yaml porno666.yaml pornoakt.yaml pornobolt.yaml pornobriz.yaml pornokaef.yaml pornone.yaml pornve.yaml prostoporno.yaml rusporno.yaml rusvideos.yaml sex-studentki.yaml sexporno.yaml sexxxxhub.yaml sosushka.yaml trahkino.yaml uporno.yaml veporn.yaml vporno.yaml vtrahe.yaml vtrahetv.yaml watchporn.yaml xasiat.yaml xozilla.yaml xxxperevod.yaml yaeby.yaml youjizz.yaml; do
+                    curl -fSL --retry 3 "$nexthubrootbase/sites/$file?cb=$syncstamp" -o "$nexthubtarget/$file.tmp"
+                    mv "$nexthubtarget/$file.tmp" "$nexthubtarget/$file"
+                done
+                for file in CategoryVi.cs manifest.json; do
+                    curl -fSL --retry 3 "$nexthubrootbase/$file" -o "$nexthubroottarget/$file.tmp"
+                    mv "$nexthubroottarget/$file.tmp" "$nexthubroottarget/$file"
+                done
+                curl -fSL --retry 3 "$nexthubrootbase/Controllers/ListController.cs" -o "$nexthubroottarget/Controllers/ListController.cs.tmp"
+                mv "$nexthubroottarget/Controllers/ListController.cs.tmp" "$nexthubroottarget/Controllers/ListController.cs"
+                curl -fSL --retry 3 "$nexthubrootbase/Controllers/ViewController.cs" -o "$nexthubroottarget/Controllers/ViewController.cs.tmp"
+                mv "$nexthubroottarget/Controllers/ViewController.cs.tmp" "$nexthubroottarget/Controllers/ViewController.cs"
+            fi
+
+            epornerbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/Modules/Adult/Eporner"
+            epornertarget=/root/lampac/module/Adult/Eporner
+            if [ -d "$epornertarget" ]; then
+                for file in Controller.cs ModInit.cs Service.cs; do
+                    curl -fSL --retry 3 "$epornerbase/$file" -o "$epornertarget/$file.tmp"
+                    mv "$epornertarget/$file.tmp" "$epornertarget/$file"
+                done
+            fi
+
+            sisitarget=/root/lampac/module/SISI/plugins
+            if [ -d "$sisitarget" ]; then
+                for file in sisi.js startpage.js; do
+                    curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/SISI/plugins/$file" -o "$sisitarget/$file.tmp"
+                    mv "$sisitarget/$file.tmp" "$sisitarget/$file"
+                done
+            fi
+
+            for adultmodule in BongaCams Chaturbate Ebalovo Eporner HQporner PornHub Porntrex Runetki Spankbang Xhamster Xnxx Xvideos XvideosRED; do
+                adulttarget="/root/lampac/module/Adult/$adultmodule"
+                if [ -d "$adulttarget" ]; then
+                    curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/Modules/Adult/$adultmodule/Service.cs?cb=$syncstamp" -o "$adulttarget/Service.cs.tmp"
+                    mv "$adulttarget/Service.cs.tmp" "$adulttarget/Service.cs"
+                fi
+            done
+
+            chaturbatebase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/Modules/Adult/Chaturbate"
+            chaturbatetarget=/root/lampac/module/Adult/Chaturbate
+            if [ -d "$chaturbatetarget" ]; then
+                for file in Controller.cs ModInit.cs; do
+                    curl -fSL --retry 3 "$chaturbatebase/$file?cb=$syncstamp" -o "$chaturbatetarget/$file.tmp"
+                    mv "$chaturbatetarget/$file.tmp" "$chaturbatetarget/$file"
+                done
+            fi
+
+            for adultmodinit in BongaCams Runetki Spankbang Ebalovo; do
+                adulttarget="/root/lampac/module/Adult/$adultmodinit"
+                if [ -d "$adulttarget" ]; then
+                    curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/Modules/Adult/$adultmodinit/ModInit.cs?cb=$syncstamp" -o "$adulttarget/ModInit.cs.tmp"
+                    mv "$adulttarget/ModInit.cs.tmp" "$adulttarget/ModInit.cs"
+                fi
+            done
+
+            videasybase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/Modules/OnlineENG/Videasy"
+            videasytarget=/root/lampac/module/OnlineENG/Videasy
+            if [ -d "$videasytarget" ]; then
+                for file in Controller.cs ModInit.cs; do
+                    curl -fSL --retry 3 "$videasybase/$file?cb=$syncstamp" -o "$videasytarget/$file.tmp"
+                    mv "$videasytarget/$file.tmp" "$videasytarget/$file"
+                done
+            fi
+
+            vidsrcbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/Modules/OnlineENG/VidSrc"
+            vidsrctarget=/root/lampac/module/OnlineENG/VidSrc
+            if [ -d "$vidsrctarget" ]; then
+                for file in Controller.cs ModInit.cs; do
+                    curl -fSL --retry 3 "$vidsrcbase/$file?cb=$syncstamp" -o "$vidsrctarget/$file.tmp"
+                    mv "$vidsrctarget/$file.tmp" "$vidsrctarget/$file"
+                done
+            fi
+
+            vidlinkbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/Modules/OnlineENG/VidLink"
+            vidlinktarget=/root/lampac/module/OnlineENG/VidLink
+            if [ -d "$vidlinktarget" ]; then
+                for file in Controller.cs ModInit.cs; do
+                    curl -fSL --retry 3 "$vidlinkbase/$file?cb=$syncstamp" -o "$vidlinktarget/$file.tmp"
+                    mv "$vidlinktarget/$file.tmp" "$vidlinktarget/$file"
+                done
+            fi
+
+            mapplebase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/Modules/OnlineENG/Mapple4K"
+            mappletarget=/root/lampac/module/OnlineENG/Mapple4K
+            mkdir -p "$mappletarget"
+            for file in Controller.cs ModInit.cs manifest.json README.md; do
+                curl -fSL --retry 3 "$mapplebase/$file?cb=$syncstamp" -o "$mappletarget/$file.tmp"
+                mv "$mappletarget/$file.tmp" "$mappletarget/$file"
+            done
+
+            for proxymodule in CubProxy TmdbProxy; do
+                proxytarget="/root/lampac/module/Proxy/$proxymodule"
+                if [ -d "$proxytarget" ]; then
+                    curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/Modules/Proxy/$proxymodule/Controller.cs" -o "$proxytarget/Controller.cs.tmp"
+                    mv "$proxytarget/Controller.cs.tmp" "$proxytarget/Controller.cs"
+                fi
+            done
+
+            # Keep the dynamic LampaWeb subtitle/plugin selector in sync after
+            # replacing a release archive.
+            webbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/Modules/LampaWeb"
+            webtarget=/root/lampac/module/LampaWeb
+            mkdir -p "$webtarget/Controllers" "$webtarget/Models" "$webtarget/Services" "$webtarget/plugins" "$webtarget/lang"
+            for file in Controllers/ApiController.cs ModInit.cs Models/InitPlugins.cs Services/LampaCron.cs Services/LampaVietnamese.cs lang/vi.js plugins/lampainit.js plugins/jackett.js plugins/online-compact.js plugins/vietnamese.js plugins/subsense-auto.js plugins/subsense.js plugins/subfinder.js plugins/stremiosub.js plugins/adminpanel.js; do
+                curl -fSL --retry 3 "$webbase/$file" -o "$webtarget/$file"
+            done
+            curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/config/base.conf" -o /root/lampac/base.conf
+
+            gstbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/Modules/GStreamer"
+
+
+            mkdir -p "$webtarget/vendor/hls"
+            for file in hls.js LICENSE; do
+                curl -fSL --retry 3 "$webbase/vendor/hls/$file?cb=$syncstamp" -o "$webtarget/vendor/hls/$file.tmp"
+                mv "$webtarget/vendor/hls/$file.tmp" "$webtarget/vendor/hls/$file"
+            done
+            if [ -f /root/lampac/wwwroot/lampa-main/app.min.js ]; then
+                mkdir -p /root/lampac/wwwroot/lampa-main/vender/hls
+                cp "$webtarget/vendor/hls/hls.js" /root/lampac/wwwroot/lampa-main/vender/hls/hls.js.tmp
+                mv /root/lampac/wwwroot/lampa-main/vender/hls/hls.js.tmp /root/lampac/wwwroot/lampa-main/vender/hls/hls.js
+            fi
+
+            langdir=/root/lampac/wwwroot/lampa-main/lang
+            mkdir -p "$langdir"
+            cp "$webtarget/lang/vi.js" "$langdir/vi.js"
+
+            curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/config/base.conf" -o /root/lampac/base.conf
+
+            gstbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/Modules/GStreamer"
+            gsttarget=/root/lampac/module/GStreamer
+            mkdir -p "$gsttarget/Services" "$gsttarget/plugins"
+            for file in Controller.cs Services/GService.cs Services/GStask.cs Services/HdrToneMappingBackend.cs Services/GStask.Pipeline.cs Services/GStask.Producer.cs plugins/gst.js; do
+                curl -fSL --retry 3 "$gstbase/$file" -o "$gsttarget/$file"
+            done
+
+            admintarget=/root/lampac/module/AdminPanel
+            if [ -d "$admintarget" ]; then
+                adminbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/Modules/AdminPanel"
+
+            adminbase="https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/Modules/AdminPanel"
+            adminstamp=$(date +%s)
+            for admintarget in /root/lampac/module/AdminPanel /root/lampac/mods/AdminPanel; do
+                [ -d "$admintarget" ] || continue
+                for file in AdminPanelController.cs ConfigSectionGroups.cs ModInit.cs manifest.json auth.html index.html; do
+                    curl -fSL --retry 3 "$adminbase/$file?cb=$adminstamp" -o "$admintarget/$file.tmp"
+                    mv "$admintarget/$file.tmp" "$admintarget/$file"
+                done
+                if ! grep -q src-adult-nexthub "$admintarget/ConfigSectionGroups.cs"; then
+                    echo "  [admin] ERROR: downloaded grouping is stale: $admintarget" >&2
+                    exit 1
+                fi
+                echo "  [admin] synced and verified: $admintarget"
+            done
             echo "Update complete!"
         '
+        proot-distro login ubuntu -- bash -s <<'VI_LANG'
+set -euo pipefail
+src=/root/lampac/module/LampaWeb/lang/vi.js
+root=/root/lampac/wwwroot/lampa-main
+langdir="$root/lang"
+mkdir -p "$langdir"
+if [ -f "$src" ]; then
+    cp "$src" "$langdir/vi.js"
+fi
+entry='vi: { code: "vi", name: "Tiếng Việt", lang_choice_title: "Chào mừng", lang_choice_subtitle: "Chọn ngôn ngữ của bạn" }, '
+patch_registry() {
+    local file="$1"
+    [ -f "$file" ] || return 0
+    if grep -qF 'Tiếng Việt' "$file"; then
+        return 0
+    fi
+    awk -v entry="$entry" '
+      BEGIN { done = 0 }
+      {
+        if (!done && match($0, /languages[[:space:]]*:[[:space:]]*\{/)) {
+          sub(/languages[[:space:]]*:[[:space:]]*\{/, "& " entry)
+          done = 1
+        }
+        print
+      }
+    ' "$file" > "$file.tmp"
+    mv "$file.tmp" "$file"
+}
+patch_registry "$langdir/meta.js"
+patch_registry "$root/app.min.js"
+VI_LANG
         ;;
     *)
         echo "Usage: lampac {start|stop|status|config|info|update}"
@@ -341,12 +1148,86 @@ case "${1:-}" in
         echo "  status  — Check if running"
         echo "  config  — Edit config (init.conf)"
         echo "  info    — Show URL and port"
-        echo "  update  — Update to latest release"
+        echo "  update  — Update release and restore custom modules"
         ;;
 esac
 SHORTCUT
     chmod +x "$PREFIX/bin/lampac"
     ok "Shortcut 'lampac' command ready"
+
+    cat > "$PREFIX/bin/aio" <<'AIO_SHORTCUT'
+#!/usr/bin/env bash
+if ! proot-distro login ubuntu -- test -x /root/aioctl.sh 2>/dev/null; then
+    echo "AIO controller is not installed yet. Run: bash setup-termux.sh --sync-all"
+    exit 1
+fi
+case "${1:-info}" in
+    install|update|start|stop|restart|status|info|config|logs|log|build-log|install-log|diagnose)
+        proot-distro login ubuntu -- bash /root/aioctl.sh "$@"
+        ;;
+    *)
+        echo "Usage: aio {install|update|start|stop|restart|status|info|config|logs|build-log|diagnose}"
+        exit 2
+        ;;
+esac
+AIO_SHORTCUT
+    chmod +x "$PREFIX/bin/aio"
+    ok "Shortcut 'aio' command ready"
+
+    cat > "$PREFIX/bin/jackett" <<'JACKETT_SHORTCUT'
+#!/usr/bin/env bash
+if ! proot-distro login ubuntu -- test -x /root/jackettctl.sh 2>/dev/null; then
+    echo "Jackett controller is not installed yet. Run: bash setup-termux.sh --sync-all"
+    exit 1
+fi
+guest() {
+    proot-distro login ubuntu -- bash /root/jackettctl.sh "$@"
+}
+
+start_detached() {
+    # A normal transient proot login kills background children when it exits.
+    # Keep a detached host-side proot supervisor alive for standalone Jackett.
+    nohup proot-distro login --no-kill-on-exit ubuntu -- \
+        bash /root/jackettctl.sh start \
+        >"$HOME/.jackett-proot.log" 2>&1 </dev/null &
+
+    for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do
+        sleep 1
+        if guest status >/dev/null 2>&1; then
+            guest status
+            return 0
+        fi
+    done
+
+    echo "Jackett did not stay online; recent logs:"
+    guest logs || cat "$HOME/.jackett-proot.log" 2>/dev/null || true
+    return 1
+}
+
+case "${1:-info}" in
+    start)
+        start_detached
+        ;;
+    restart)
+        guest stop || true
+        start_detached
+        ;;
+    install|update)
+        proot-distro login ubuntu -- env JACKETT_AUTOSTART=0 \
+            bash /root/jackettctl.sh "$@"
+        start_detached
+        ;;
+    stop|status|info|logs|log)
+        guest "$@"
+        ;;
+    *)
+        echo "Usage: jackett {install|update|start|stop|restart|status|info|logs}"
+        exit 2
+        ;;
+esac
+JACKETT_SHORTCUT
+    chmod +x "$PREFIX/bin/jackett"
+    ok "Shortcut 'jackett' command ready"
 }
 
 # ─── Run Lampac ──────────────────────────────────────────────────────────────
@@ -374,6 +1255,27 @@ main() {
     case "$MODE" in
         "run")
             run_lampac
+            ;;
+        "sync")
+            if ! proot-distro login ubuntu -- test -f /root/lampac/Core.dll 2>/dev/null; then
+                err "Lampac not installed. Run: bash setup-termux.sh --install"
+                exit 1
+            fi
+
+            sync_latest_modules
+            ok "Latest patch applied. Restart with: lampac stop && lampac start"
+            ;;
+        "sync-all")
+            if ! proot-distro login ubuntu -- test -f /root/lampac/Core.dll 2>/dev/null; then
+                err "Lampac not installed. Run: bash setup-termux.sh --install"
+                exit 1
+            fi
+
+            install_chromium_in_ubuntu
+            ensure_runtime_config
+            install_custom_modules
+            create_launcher
+            ok "Custom modules + browser/runtime settings applied"
             ;;
         "update")
             info "Updating Lampac inside Ubuntu..."
@@ -403,12 +1305,19 @@ main() {
                 rm -f /tmp/*.bak
                 echo "Update complete!"
             '
+            install_chromium_in_ubuntu
+            ensure_runtime_config
+            install_custom_modules
+            create_launcher
             ok "Done!"
             ;;
         *)
             install_termux_deps
             install_ubuntu
             install_lampac_in_ubuntu
+            install_chromium_in_ubuntu
+            ensure_runtime_config
+            install_custom_modules
             create_launcher
 
             echo ""
@@ -421,6 +1330,10 @@ main() {
             info "  lampac config  — Edit config"
             info "  lampac info    — Show URL & port"
             info "  lampac update  — Update to latest"
+            info "  aio install      — Install AIOStreams locally (port 3002)"
+            info "  jackett install  — Install Jackett locally (port 9117)"
+            info "  lampac start     — Start Lampac + AIOStreams"
+            info "  jackett start    — Start Jackett separately when needed"
             echo ""
 
             read -rp "  Start Lampac now? [Y/n]: " answer
