@@ -110,7 +110,7 @@ curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/se
 lampac stop && lampac start
 ```
 
-List file của `--sync` nằm trong `sync_latest_modules()` của script; mỗi patch sẽ thay list này. Bản vá hiện tại kéo `Modules/NextHUB/Controllers/ViewController.cs` (sửa phát video KVS). Không dùng `--sync` khi cần LampaWeb, tiếng Việt lõi, hoặc Jackett/AIO controller.
+List file của `--sync` nằm trong `sync_latest_modules()` của script; mỗi patch sẽ thay list này. Bản vá hiện tại kéo `Modules/LampaWeb/plugins/online-compact.js` (poster vuông 1:1 trong danh sách nguồn Online trên màn hình nhỏ, thay vì poster dọc 2:3). Không dùng `--sync` khi cần đồng bộ tiếng Việt lõi, Chrome, hls.js hoặc Jackett/AIO controller.
 
 ### Sync đầy đủ — mọi module tuỳ biến + runtime trình duyệt
 

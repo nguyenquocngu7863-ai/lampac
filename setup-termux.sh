@@ -446,7 +446,7 @@ VI_LANG
 # shipping a small fix so Termux does not re-download Chrome, hls.js, or
 # every custom module. Use --sync-all for a full refresh.
 sync_latest_modules() {
-    info "Syncing latest patch files only (NextHUB playback controller)..."
+    info "Syncing latest patch files only (online-compact square poster)..."
 
     proot-distro login ubuntu -- bash -c "
         set -euo pipefail
@@ -475,34 +475,13 @@ sync_latest_modules() {
         rm -f /root/lampac/module/NextHUB/sites/85po.yaml \
               /root/lampac/mods/NextHUB/sites/85po.yaml
 
-            csrc="${CUSTOM_SOURCE_BASE}"
-            KKBase="$csrc/Modules/OnlineVN/KKPhim"
-            K20Base="$csrc/Modules/OnlineVN/K20"
-            VsMovBase="$csrc/Modules/OnlineVN/VsMov"
-            WebBase="$csrc/Modules/OnlineENG/WebStreamr"
-            SootioBase="$csrc/Modules/OnlineENG/Sootio"
-            AioBase="$csrc/Modules/OnlineENG/AIOStreams"
-            VideasyBase="$csrc/Modules/OnlineENG/Videasy"
-            VidSrcBase="$csrc/Modules/OnlineENG/VidSrc"
-            VidLinkBase="$csrc/Modules/OnlineENG/VidLink"
-            NextHubRootBase="$csrc/Modules/NextHUB"
-            EpornerBase="$csrc/Modules/Adult/Eporner"
-            ChaturbateBase="$csrc/Modules/Adult/Chaturbate"
-            ProxyBase="$csrc/Modules/Proxy"
-            LampaWebBase="$csrc/Modules/LampaWeb"
-            GstBase="$csrc/Modules/GStreamer"
-            AdminBase="$csrc/Modules/AdminPanel"
-            SisiApiUrl="$csrc/SISI/SisiApi.cs"
-            SisiPlugBase="$csrc/SISI/plugins"
-            OnlineBase="$csrc/Online"
-            AioCtlUrl="$csrc/aioctl.sh"
-            JackettCtlUrl="$csrc/jackettctl.sh"
-            BaseConfUrl="$csrc/config/base.conf"
-
-        nexthub=/root/lampac/module/NextHUB
-        if [ -d \"\$nexthub/Controllers\" ]; then
-            pull Modules/NextHUB/Controllers/ViewController.cs \"\$nexthub/Controllers/ViewController.cs\"
-        fi
+        # Latest patch: online-compact.js — square 1:1 poster on mobile list.
+        # mods/ overrides module/, so keep both copies in sync when present.
+        for lampaweb in /root/lampac/module/LampaWeb /root/lampac/mods/LampaWeb; do
+            if [ -d \"\$lampaweb/plugins\" ]; then
+                pull Modules/LampaWeb/plugins/online-compact.js \"\$lampaweb/plugins/online-compact.js\"
+            fi
+        done
     "
 
     ok "Latest patch files applied"
@@ -863,9 +842,9 @@ case "${1:-}" in
         echo "  Git branch  : $cur"
         echo "  Source base : $base"
         echo ""
-        echo "  Đổi nhánh vĩnh viễn (ví dụ sang nhánh arena/01a04d3e-lampac):"
-        echo "    cd ~/lampac && git fetch origin && git checkout arena/01a04d3e-lampac"
-        echo "    echo 'export LAMPAC_CUSTOM_SOURCE_BASE=https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04d3e-lampac' >> ~/.bashrc"
+        echo "  Đổi nhánh vĩnh viễn (ví dụ sang nhánh arena/01a04e63-lampac):"
+        echo "    cd ~/lampac && git fetch origin && git checkout arena/01a04e63-lampac"
+        echo "    echo 'export LAMPAC_CUSTOM_SOURCE_BASE=https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04e63-lampac' >> ~/.bashrc"
         echo "    source ~/.bashrc && lampac sync && lampac restart"
         echo ""
         ;;

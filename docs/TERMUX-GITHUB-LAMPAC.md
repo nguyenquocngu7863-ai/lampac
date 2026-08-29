@@ -49,7 +49,7 @@ Không dùng `git reset --hard` nếu chưa chắc chắn, vì lệnh này có t
 Trong phiên làm việc của agent, branch cố định là:
 
 ```text
-arena/01a04ba6-lampac
+arena/01a04e63-lampac
 ```
 
 Quy trình chuẩn sau khi có commit:
@@ -58,14 +58,14 @@ Quy trình chuẩn sau khi có commit:
 cd ~/lampac
 git add -A
 git commit -m "mo-ta-ngan-gon-thay-doi"
-git push origin arena/01a04ba6-lampac
+git push origin arena/01a04e63-lampac
 ```
 
 Nếu branch đã được agent push lên GitHub rồi thì chỉ cần lấy branch mới nhất:
 
 ```bash
-git fetch origin arena/01a04ba6-lampac
-git log --oneline origin/arena/01a04ba6-lampac -5
+git fetch origin arena/01a04e63-lampac
+git log --oneline origin/arena/01a04e63-lampac -5
 ```
 
 ## 4. Đưa branch agent vào `main`
@@ -76,10 +76,10 @@ Dùng đúng **hai dòng** dưới đây. Remote branch của agent là nguồn;
 
 ```bash
 git fetch origin
-git push --force-with-lease origin origin/arena/01a04ba6-lampac:main
+git push --force-with-lease origin origin/arena/01a04e63-lampac:main
 ```
 
-`origin/arena/01a04ba6-lampac` là dữ liệu nguồn, còn `:main` là branch đích. `--force-with-lease` chỉ cho phép cập nhật nếu `main` trên remote vẫn đúng phiên bản đã fetch; nó an toàn hơn `--force`. Sau lệnh này, `main` sẽ nhận commit mới nhất của branch agent, ví dụ `11a24fde`.
+`origin/arena/01a04e63-lampac` là dữ liệu nguồn, còn `:main` là branch đích. `--force-with-lease` chỉ cho phép cập nhật nếu `main` trên remote vẫn đúng phiên bản đã fetch; nó an toàn hơn `--force`. Sau lệnh này, `main` sẽ nhận commit mới nhất của branch agent, ví dụ `11a24fde`.
 
 Không dùng các hướng dẫn `git switch main`, `git checkout main` hoặc merge qua local `main` cho quy trình này; chúng dễ bị chặn khi `setup-termux.sh` đang có thay đổi local hoặc khi clone chưa tạo local branch `main`.
 
@@ -208,7 +208,7 @@ Lỗi này xảy ra khi clone chưa có local branch `main`. Không cần tạo 
 
 ```bash
 git fetch origin
-git push --force-with-lease origin origin/arena/01a04ba6-lampac:main
+git push --force-with-lease origin origin/arena/01a04e63-lampac:main
 ```
 
 ### `bash: ...setup-termux-latest.sh: No such file or directory`
