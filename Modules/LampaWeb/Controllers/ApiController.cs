@@ -672,7 +672,6 @@ public class ApiController : BaseController
             if (ModInit.conf.initPlugins.sisi)
             {
                 plugins.Add(new("{localhost}/sisi.js", 1, "Клубничка", "lampac"));
-                plugins.Add(new("{localhost}/sisi-layout.js", 1, "18+ / SISI — интерфейс", "lampac"));
                 plugins.Add(new("{localhost}/startpage.js", 1, "Стартовая страница", "lampac"));
             }
 
