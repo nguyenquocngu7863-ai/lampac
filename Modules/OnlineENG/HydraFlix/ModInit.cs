@@ -49,7 +49,7 @@ public class ModInit : IModuleLoaded, IModuleOnline
         /// <summary>
         /// https://www.hydraflix.cc
         /// </summary>
-        conf = ModuleInvoke.Init("Hydraflix", new OnlinesSettings("Hydraflix", "https://vidfast.vc")
+        conf = ModuleInvoke.Init("Hydraflix", new OnlinesSettings("Hydraflix", "https://vidfast.pro")
         {
             displayindex = 1000,
             streamproxy = true,
