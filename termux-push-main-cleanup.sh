@@ -6,7 +6,8 @@
 #   git clone --depth 1 --branch arena/01a04b3e-lampac https://github.com/nguyenquocngu7863-ai/lampac.git
 #   cd lampac
 #   DRY_RUN=1 bash termux-push-main-cleanup.sh     # xem trước, không đụng gì
-#   bash termux-push-main-cleanup.sh               # làm thật
+#   bash termux-push-main-cleanup.sh               # làm thật (an toàn: backup + merge main)
+#   FAST=1 bash termux-push-main-cleanup.sh        # ghi đè main bằng bản này + xoá nhánh cũ
 #
 # Cờ (đặt trước lệnh):
 #   DRY_RUN=1          chỉ in ra những gì sẽ làm
@@ -14,6 +15,9 @@
 #                      (LƯU Ý: làm vậy là xoá nhánh mà phiên Arena đang theo dõi)
 #   SKIP_MAIN_MERGE=1  không merge origin/main -> mất lampa-en.js, buộc force-push
 #   DO_BACKUP=0        bỏ bước sao lưu (không nên)
+#   FAST=1             = DO_BACKUP=0 + SKIP_MAIN_MERGE=1 + FORCE=1: ghi đè main bằng
+#                      bản hiện tại và xoá sạch nhánh cũ, không vòng vo (khi main
+#                      chỉ để trưng và mấy nhánh cũ bỏ đi)
 set -uo pipefail
 
 REPO="nguyenquocngu7863-ai/lampac"
@@ -21,6 +25,9 @@ ONLY_MAIN="${ONLY_MAIN:-0}"
 SKIP_MAIN_MERGE="${SKIP_MAIN_MERGE:-0}"
 DO_BACKUP="${DO_BACKUP:-1}"
 DRY_RUN="${DRY_RUN:-0}"
+FORCE="${FORCE:-0}"
+
+if [ "${FAST:-0}" = "1" ]; then DO_BACKUP=0; SKIP_MAIN_MERGE=1; FORCE=1; fi
 
 run() { if [ "$DRY_RUN" = "1" ]; then echo "  [dry-run] $*"; else "$@"; fi; }
 
@@ -118,8 +125,13 @@ if [ "$SKIP_MAIN_MERGE" != "1" ]; then
 fi
 
 # --------------------------------------------- 7. push lên main (+ nhánh hiện tại)
-echo "Push HEAD -> main"
-run git push origin "HEAD:refs/heads/main" || {
+# FORCE=1 (FAST=1 bật tự động) -> --force-with-lease: main cũ bị ghi đè, MẤT lampa-en.js
+# của commit 16d8bc6 mà chỉ main có. Muốn giữ thì chạy chế độ thường (merge, ff-push).
+[ "$SKIP_MAIN_MERGE" = "1" ] && FORCE=1
+PUSH_OPTS=""
+[ "$FORCE" = "1" ] && PUSH_OPTS="--force-with-lease"
+echo "Push HEAD -> main ${PUSH_OPTS:-(fast-forward)}"
+run git push $PUSH_OPTS origin "HEAD:refs/heads/main" || {
   echo "Bị từ chối (non-fast-forward). Kiểm tra: git log --oneline HEAD..origin/main"
   echo "Nếu chắc chắn ghi đè (MẤT lampa-en.js): git push --force-with-lease origin HEAD:main"
   exit 1
