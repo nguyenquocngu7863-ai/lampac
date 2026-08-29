@@ -586,6 +586,11 @@ install_custom_modules() {
 
         # SISI is maintained as translated source instead of a DOM category
         # translator, preventing category rules from touching video titles.
+        sisimodtarget=/root/lampac/module/SISI
+        if [ -d \"\$sisimodtarget\" ]; then
+            curl -fSL --retry 3 \"${CUSTOM_SOURCE_BASE}/SISI/SisiApi.cs\" -o \"\$sisimodtarget/SisiApi.cs.tmp\"
+            mv \"\$sisimodtarget/SisiApi.cs.tmp\" \"\$sisimodtarget/SisiApi.cs\"
+        fi
         sisitarget=/root/lampac/module/SISI/plugins
         if [ -d \"\$sisitarget\" ]; then
             for file in sisi.js sisi-layout.js startpage.js; do
@@ -978,6 +983,11 @@ case "${1:-}" in
                 done
             fi
 
+            sisimodtarget=/root/lampac/module/SISI
+            if [ -d "$sisimodtarget" ]; then
+                curl -fSL --retry 3 "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/SISI/SisiApi.cs" -o "$sisimodtarget/SisiApi.cs.tmp"
+                mv "$sisimodtarget/SisiApi.cs.tmp" "$sisimodtarget/SisiApi.cs"
+            fi
             sisitarget=/root/lampac/module/SISI/plugins
             if [ -d "$sisitarget" ]; then
                 for file in sisi.js sisi-layout.js startpage.js; do
