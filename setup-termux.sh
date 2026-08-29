@@ -1367,7 +1367,7 @@ install_subaddon() {
     "
     ok "Self-hosted subtitle addon installed on :7000"
 
-    cat > "\$PREFIX/bin/subaddon" <<'SUB_SHORTCUT'
+    cat > "$PREFIX/bin/subaddon" <<'SUB_SHORTCUT'
 #!/usr/bin/env bash
 if ! proot-distro login ubuntu -- test -x /root/subaddonctl.sh 2>/dev/null; then
     echo "SubAddon controller not installed yet. Run: bash setup-termux.sh --sync-all"
@@ -1383,7 +1383,7 @@ case "\${1:-status}" in
         ;;
 esac
 SUB_SHORTCUT
-    chmod +x "\$PREFIX/bin/subaddon"
+    chmod +x "$PREFIX/bin/subaddon"
     ok "Shortcut 'subaddon' command ready"
 }
 
