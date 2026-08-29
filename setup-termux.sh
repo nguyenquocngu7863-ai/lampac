@@ -359,6 +359,18 @@ ensure_runtime_config() {
             fi
         fi
 
+        # Materialize SubFinder block so the self-hosted subtitle addon has
+        # somewhere to read subdl_api_key/subsource_api_key from. Keys are
+        # empty by default; user fills them with `lampac config`.
+        if ! grep -q "^[[:space:]]*\"SubFinder\"[[:space:]]*:" "$file"; then
+            if grep -q "^[[:space:]]*\"listen\"[[:space:]]*:" "$file"; then
+                sed -i "/^[[:space:]]*\"listen\"[[:space:]]*:/i\\  \"SubFinder\": { \"subdl_api_key\": \"\", \"subsource_api_key\": \"\" },
+" "$file"
+            else
+                echo "  warning: could not add SubFinder section automatically"
+            fi
+        fi
+
         # Materialize the local Jackett section in init.conf so AdminPanel can
         # edit it. Catalog-only keys are displayed as "missing" until they
         # exist in either init.conf or current.conf.
