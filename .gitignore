@@ -370,4 +370,4 @@ healthchecksdb
 # Allow GStreamer portable runtime bin
 !/Modules/GStreamer/
 !/Modules/GStreamer/gst-libs/
-!/Modules/GStreamer/gst-libs/**
+!/Modules/GStreamer/gst-libs/**.test-compact/
