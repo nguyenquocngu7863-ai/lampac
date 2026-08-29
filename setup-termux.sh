@@ -347,18 +347,6 @@ ensure_runtime_config() {
             fi
         fi
 
-        # Materialize SubFinder block so the self-hosted subtitle addon has
-        # somewhere to read subdl_api_key/subsource_api_key from. Keys are
-        # empty by default; user fills them with `lampac config`.
-        if ! grep -q "^[[:space:]]*\"SubFinder\"[[:space:]]*:" "$file"; then
-            if grep -q "^[[:space:]]*\"listen\"[[:space:]]*:" "$file"; then
-                sed -i "/^[[:space:]]*\"listen\"[[:space:]]*:/i\\  \"SubFinder\": { \"subdl_api_key\": \"\", \"subsource_api_key\": \"\" },
-" "$file"
-            else
-                echo "  warning: could not add SubFinder section automatically"
-            fi
-        fi
-
         # Materialize the local Jackett section in init.conf so AdminPanel can
         # edit it. Catalog-only keys are displayed as "missing" until they
         # exist in either init.conf or current.conf.
@@ -509,7 +497,6 @@ sync_latest_modules() {
             OnlineBase="$csrc/Online"
             AioCtlUrl="$csrc/aioctl.sh"
             JackettCtlUrl="$csrc/jackettctl.sh"
-            SubaddonCtlUrl="$csrc/subaddonctl.sh"
             BaseConfUrl="$csrc/config/base.conf"
 
         nexthub=/root/lampac/module/NextHUB
@@ -590,13 +577,6 @@ install_custom_modules() {
         curl -fSL --retry 3 \"${CUSTOM_SOURCE_BASE}/aioctl.sh\" -o /root/aioctl.sh
         curl -fSL --retry 3 \"${CUSTOM_SOURCE_BASE}/jackettctl.sh\" -o /root/jackettctl.sh
         chmod +x /root/aioctl.sh /root/jackettctl.sh
-        curl -fSL --retry 3 \"${CUSTOM_SOURCE_BASE}/subaddonctl.sh\" -o /root/subaddonctl.sh
-        curl -fSL --retry 3 \"${CUSTOM_SOURCE_BASE}/scripts/stremio-sub-addon/package.json\" -o /root/stremio-sub-addon/package.json.tmp && mv /root/stremio-sub-addon/package.json.tmp /root/stremio-sub-addon/package.json
-        curl -fSL --retry 3 \"${CUSTOM_SOURCE_BASE}/scripts/stremio-sub-addon/server.js\" -o /root/stremio-sub-addon/server.js.tmp && mv /root/stremio-sub-addon/server.js.tmp /root/stremio-sub-addon/server.js
-        chmod +x /root/subaddonctl.sh
-        mkdir -p /root/stremio-sub-addon
-        cd /root/stremio-sub-addon && npm install --omit=dev --no-audit --no-fund --loglevel=error
-        if [ -x /root/subaddonctl.sh ]; then /root/subaddonctl.sh restart || true; fi
 
         # NextHUB site definitions change more often than release binaries.
         # Keep the known fixed definitions in sync so an update cannot leave
@@ -826,11 +806,6 @@ if [[ -x /root/aioctl.sh && -f /root/aiostreams/.env ]]; then
     /root/aioctl.sh start || true
 fi
 
-# Self-hosted Stremio subtitle addon (SubDL + SubSource with own API keys)
-if [[ -x /root/subaddonctl.sh ]]; then
-    /root/subaddonctl.sh start || true
-fi
-
 cd "$LAMPAC_DIR"
 exec dotnet Core.dll
 LAUNCHER
@@ -903,7 +878,6 @@ case "${1:-}" in
             echo "  Local:    http://localhost:$PORT"
             echo "  Jackett:  http://localhost:9117/UI/Dashboard"
             echo "  AIO:      http://localhost:3002/stremio/configure"
-            echo "  SubAddon: http://localhost:7000/manifest.json  (SubDL+SubSource, khong bi rare-limit)"
             echo "  Config:   /root/lampac/init.conf (inside Ubuntu)"
             echo "  Start:    lampac start"
             echo "  Stop:     lampac stop"
@@ -1021,13 +995,6 @@ case "${1:-}" in
             curl -fSL --retry 3 "$AioCtlUrl" -o /root/aioctl.sh
             curl -fSL --retry 3 "$JackettCtlUrl" -o /root/jackettctl.sh
             chmod +x /root/aioctl.sh /root/jackettctl.sh
-            mkdir -p /root/stremio-sub-addon
-            curl -fSL --retry 3 "$SubaddonCtlUrl" -o /root/subaddonctl.sh
-            curl -fSL --retry 3 "$csrc/scripts/stremio-sub-addon/package.json" -o /root/stremio-sub-addon/package.json
-            curl -fSL --retry 3 "$csrc/scripts/stremio-sub-addon/server.js" -o /root/stremio-sub-addon/server.js
-            chmod +x /root/subaddonctl.sh
-            cd /root/stremio-sub-addon && npm install --omit=dev --no-audit --no-fund --loglevel=error
-            [ -x /root/subaddonctl.sh ] && /root/subaddonctl.sh restart || true
 
             syncstamp=$(date +%s)
             nexthubrootbase="$NextHubRootBase"
@@ -1308,97 +1275,6 @@ JACKETT_SHORTCUT
     ok "Shortcut 'jackett' command ready"
 }
 
-# ─── Self-hosted Stremio Subtitle addon (SubDL + SubSource) ──────────────────
-# Installs a tiny Node app inside /root/stremio-sub-addon that proxies SubDL
-# and SubSource API calls using the user's own API keys (read from init.conf),
-# so Lampa doesn't hit the shared subdl.strem.top/subsource.strem.top hosts
-# that share a single API key with everyone and trigger rare-limit errors.
-
-install_node_in_ubuntu() {
-    info "Ensuring Node.js 22 is available in Ubuntu (for self-hosted subtitle addon)..."
-    proot-distro login ubuntu -- bash -c '
-        set -euo pipefail
-        export DEBIAN_FRONTEND=noninteractive
-        # Make sure minimal deps exist (NodeSource setup calls `which`, Ubuntu proot can miss debianutils)
-        apt-get update -qq
-        apt-get install -y -qq curl ca-certificates debianutils >/dev/null 2>&1
-
-        if command -v node >/dev/null 2>&1 && node -v 2>/dev/null | grep -q "^v2[2-9]\."; then
-            echo "  Node.js $(node -v) already installed"
-            exit 0
-        fi
-        echo "  Installing Node.js 22 from NodeSource..."
-        curl -fsSL https://deb.nodesource.com/setup_22.x -o /tmp/nodesource.sh
-        bash /tmp/nodesource.sh >/dev/null 2>&1
-        apt-get install -y -qq nodejs >/dev/null 2>&1
-        rm -f /tmp/nodesource.sh
-        # Make sure npm can reach the registry even in the constrained proot DNS
-        npm config set fund false >/dev/null 2>&1 || true
-        npm config set audit false >/dev/null 2>&1 || true
-        echo "  Node.js $(node -v), npm $(npm -v) installed"
-    '
-    ok "Node.js 22 ready inside Ubuntu"
-}
-
-install_subaddon() {
-    info "Installing self-hosted Stremio SubDL+SubSource addon..."
-
-    proot-distro login ubuntu -- bash -c "
-        set -euo pipefail
-        csrc=\"${CUSTOM_SOURCE_BASE}\"
-        target=/root/stremio-sub-addon
-        mkdir -p \"\$target\"
-
-        # 1) pull server code + package.json
-        for f in package.json server.js; do
-            curl -fSL --retry 3 \"\$csrc/scripts/stremio-sub-addon/\$f\" -o \"\$target/\$f\"
-        done
-
-        # 2) pull the controller script
-        curl -fSL --retry 3 \"\$csrc/subaddonctl.sh\" -o /root/subaddonctl.sh
-        chmod +x /root/subaddonctl.sh
-
-        # 3) npm install once
-        echo \"  npm install for stremio-sub-addon...\"
-        cd \"\$target\"
-        npm install --omit=dev --no-audit --no-fund --loglevel=error
-
-        # 4) patch stremiosub.js -> local addon, drop public subdl.strem.top/subsource.strem.top
-        for webroot in /root/lampac/wwwroot/lampa-main /root/lampac/module/LampaWeb/wwwroot /root/lampac/wwwroot; do
-            f=\"\$webroot/plugins/stremiosub.js\"
-            [ -f \"\$f\" ] || continue
-            sed -i \"s|var SUBDL_BASE = .*|var SUBDL_BASE = \\\"http://127.0.0.1:7000/manifest.json\\\";|\" \"\$f\"
-            sed -i \"s|var SUBSOURCE_BASE = .*|// SUBSOURCE_BASE removed; local addon aggregates SubDL+SubSource|\" \"\$f\"
-            sed -i \"/searchAddon.*SUBSOURCE_BASE/d\" \"\$f\"
-            echo \"  patched stremiosub.js -> 127.0.0.1:7000\"
-            break
-        done
-
-        # 5) start the addon (idempotent)
-        /root/subaddonctl.sh start || true
-    "
-    ok "Self-hosted subtitle addon installed on :7000"
-
-    cat > "$PREFIX/bin/subaddon" <<'SUB_SHORTCUT'
-#!/usr/bin/env bash
-if ! proot-distro login ubuntu -- test -x /root/subaddonctl.sh 2>/dev/null; then
-    echo "SubAddon controller not installed yet. Run: bash setup-termux.sh --sync-all"
-    exit 1
-fi
-case "\${1:-status}" in
-    start|stop|restart|status|logs|log)
-        proot-distro login ubuntu -- /root/subaddonctl.sh "\$@"
-        ;;
-    *)
-        echo "Usage: subaddon {start|stop|restart|status|logs}"
-        exit 2
-        ;;
-esac
-SUB_SHORTCUT
-    chmod +x "$PREFIX/bin/subaddon"
-    ok "Shortcut 'subaddon' command ready"
-}
-
 # ─── Run Lampac ──────────────────────────────────────────────────────────────
 
 run_lampac() {
@@ -1444,8 +1320,6 @@ main() {
             ensure_runtime_config
             install_custom_modules
             create_launcher
-            install_node_in_ubuntu
-            install_subaddon
             ok "Custom modules + browser/runtime settings applied"
             ;;
         "update")
@@ -1480,8 +1354,6 @@ main() {
             ensure_runtime_config
             install_custom_modules
             create_launcher
-            install_node_in_ubuntu
-            install_subaddon
             ok "Done!"
             ;;
         *)
@@ -1492,8 +1364,6 @@ main() {
             ensure_runtime_config
             install_custom_modules
             create_launcher
-            install_node_in_ubuntu
-            install_subaddon
 
             echo ""
             ok "Installation complete!"
