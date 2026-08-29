@@ -172,21 +172,9 @@ install_lampac_in_ubuntu() {
             echo "  .NET 10 already installed"
         fi
         ln -sf "$DOTNET_DIR/dotnet" /usr/local/bin/dotnet 2>/dev/null || true
-
-        # Node.js 22 (for self-hosted stremio-sub addon)
-        if ! command -v node >/dev/null 2>&1 || ! node -v 2>/dev/null | grep -q "^v2[2-9]\."; then
-            echo "  Installing Node.js 22 for self-hosted subtitle addon..."
-            curl -fsSL https://deb.nodesource.com/setup_22.x -o /tmp/nodesource.sh
-            bash /tmp/nodesource.sh >/dev/null 2>&1
-            apt-get install -y -qq nodejs >/dev/null 2>&1
-            rm -f /tmp/nodesource.sh
-            echo "  Node.js $(node -v) installed"
-        else
-            echo "  Node.js $(node -v) already installed"
-        fi
         echo "OK"
     '
-    ok ".NET 10 + Node.js 22 ready inside Ubuntu"
+    ok ".NET 10 runtime ready inside Ubuntu"
 
     info "Downloading Lampac NextGen release..."
     proot-distro login ubuntu -- bash -c '
@@ -607,7 +595,7 @@ install_custom_modules() {
         curl -fSL --retry 3 \"${CUSTOM_SOURCE_BASE}/scripts/stremio-sub-addon/server.js\" -o /root/stremio-sub-addon/server.js.tmp && mv /root/stremio-sub-addon/server.js.tmp /root/stremio-sub-addon/server.js
         chmod +x /root/subaddonctl.sh
         mkdir -p /root/stremio-sub-addon
-        if [ -d /root/stremio-sub-addon/node_modules ]; then cd /root/stremio-sub-addon && npm install --omit=dev --no-audit --no-fund >/dev/null 2>&1 || true; fi
+        cd /root/stremio-sub-addon && npm install --omit=dev --no-audit --no-fund --loglevel=error
         if [ -x /root/subaddonctl.sh ]; then /root/subaddonctl.sh restart || true; fi
 
         # NextHUB site definitions change more often than release binaries.
@@ -1038,7 +1026,7 @@ case "${1:-}" in
             curl -fSL --retry 3 "$csrc/scripts/stremio-sub-addon/package.json" -o /root/stremio-sub-addon/package.json
             curl -fSL --retry 3 "$csrc/scripts/stremio-sub-addon/server.js" -o /root/stremio-sub-addon/server.js
             chmod +x /root/subaddonctl.sh
-            if [ -d /root/stremio-sub-addon/node_modules ]; then cd /root/stremio-sub-addon && npm install --omit=dev --no-audit --no-fund >/dev/null 2>&1 || true; fi
+            cd /root/stremio-sub-addon && npm install --omit=dev --no-audit --no-fund --loglevel=error
             [ -x /root/subaddonctl.sh ] && /root/subaddonctl.sh restart || true
 
             syncstamp=$(date +%s)
@@ -1326,6 +1314,32 @@ JACKETT_SHORTCUT
 # so Lampa doesn't hit the shared subdl.strem.top/subsource.strem.top hosts
 # that share a single API key with everyone and trigger rare-limit errors.
 
+install_node_in_ubuntu() {
+    info "Ensuring Node.js 22 is available in Ubuntu (for self-hosted subtitle addon)..."
+    proot-distro login ubuntu -- bash -c '
+        set -euo pipefail
+        export DEBIAN_FRONTEND=noninteractive
+        # Make sure minimal deps exist (NodeSource setup calls `which`, Ubuntu proot can miss debianutils)
+        apt-get update -qq
+        apt-get install -y -qq curl ca-certificates debianutils >/dev/null 2>&1
+
+        if command -v node >/dev/null 2>&1 && node -v 2>/dev/null | grep -q "^v2[2-9]\."; then
+            echo "  Node.js $(node -v) already installed"
+            exit 0
+        fi
+        echo "  Installing Node.js 22 from NodeSource..."
+        curl -fsSL https://deb.nodesource.com/setup_22.x -o /tmp/nodesource.sh
+        bash /tmp/nodesource.sh >/dev/null 2>&1
+        apt-get install -y -qq nodejs >/dev/null 2>&1
+        rm -f /tmp/nodesource.sh
+        # Make sure npm can reach the registry even in the constrained proot DNS
+        npm config set fund false >/dev/null 2>&1 || true
+        npm config set audit false >/dev/null 2>&1 || true
+        echo "  Node.js $(node -v), npm $(npm -v) installed"
+    '
+    ok "Node.js 22 ready inside Ubuntu"
+}
+
 install_subaddon() {
     info "Installing self-hosted Stremio SubDL+SubSource addon..."
 
@@ -1345,11 +1359,9 @@ install_subaddon() {
         chmod +x /root/subaddonctl.sh
 
         # 3) npm install once
-        if [ ! -d \"\$target/node_modules\" ]; then
-            echo \"  npm install for stremio-sub-addon...\"
-            cd \"\$target\"
-            npm install --omit=dev --no-audit --no-fund >/dev/null 2>&1
-        fi
+        echo \"  npm install for stremio-sub-addon...\"
+        cd \"\$target\"
+        npm install --omit=dev --no-audit --no-fund --loglevel=error
 
         # 4) patch stremiosub.js -> local addon, drop public subdl.strem.top/subsource.strem.top
         for webroot in /root/lampac/wwwroot/lampa-main /root/lampac/module/LampaWeb/wwwroot /root/lampac/wwwroot; do
@@ -1432,6 +1444,7 @@ main() {
             ensure_runtime_config
             install_custom_modules
             create_launcher
+            install_node_in_ubuntu
             install_subaddon
             ok "Custom modules + browser/runtime settings applied"
             ;;
@@ -1467,6 +1480,7 @@ main() {
             ensure_runtime_config
             install_custom_modules
             create_launcher
+            install_node_in_ubuntu
             install_subaddon
             ok "Done!"
             ;;
@@ -1478,6 +1492,7 @@ main() {
             ensure_runtime_config
             install_custom_modules
             create_launcher
+            install_node_in_ubuntu
             install_subaddon
 
             echo ""
