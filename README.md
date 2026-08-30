@@ -13,9 +13,7 @@ Bản hướng dẫn này dành cho cách chạy Lampac trên **Android qua Term
 
 ## Cài đặt nhanh
 
-> Đang **test** trên nhánh **`arena/01a05241-lampac`**. `--sync` mặc định curl từ nhánh này (`LAMPAC_CUSTOM_SOURCE_BASE`). Ổn rồi sẽ merge.
->
-> Nhánh 63 (`arena/01a04e63-lampac`) là bản trước đó. Đừng clone `main`.
+> Nhánh mới nhất: **`arena/01a04e63-lampac`**. Đừng clone `main` — `main` đang chậm hơn và thiếu bản vá mới.
 
 Mở Termux, tải script rồi chạy:
 
@@ -633,10 +631,6 @@ Muốn 100% tiếng Việt lõi, mở giao diện Lampac `http://IP:9118` (file 
 Khi người dùng tự chọn `vi`, overlay đồng bộ `tmdb_lang=vi` để tiêu đề, mô tả và thể loại lấy từ TMDB bằng tiếng Việt. Riêng request ảnh dùng `include_image_language=en,null`, ưu tiên logo English/ngôn ngữ trung lập vì TMDB thường không có logo `vi`.
 
 Online và addon thông thường tiếp tục dùng catalog overlay. Riêng SISI được Việt hóa trực tiếp trong `SISI/plugins/*.js` và menu `Modules/Adult/*/Service.cs` để không dịch nhầm tiêu đề video. NextHUB: YAML site Nga đã đổi nhãn sort/category sang tiếng Việt (slug/host/parse giữ nguyên); tube quốc tế chỉ đổi nhãn sort tiếng Nga. `CategoryVi.cs` vẫn dịch nhãn Cyrillic còn lại theo slug lúc server dựng menu; tên playlist/video không đi qua bộ dịch này. Khi upstream update SISI/NextHUB, merge source và giữ catalog Việt tương ứng.
-
-## Player xoay ngang trên điện thoại
-
-Plugin built-in `/player-landscape.js` được bật mặc định qua `LampaWeb.initPlugins.playerLandscape`. Khi phát video trên điện thoại, plugin khóa màn hình ngang (và fullscreen nếu trình duyệt cho phép); tắt player thì trả lại dọc. TV không bị đụng. Có thể bật/tắt trong **Settings → Interface → Player xoay ngang**.
 
 ## Giao diện Online gọn trên điện thoại
 

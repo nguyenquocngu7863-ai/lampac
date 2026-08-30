@@ -638,9 +638,6 @@ public class ApiController : BaseController
             if (ModInit.conf.initPlugins.onlineCompact)
                 plugins.Add(new("{localhost}/online-compact.js", 1, "Online Compact", "lampac"));
 
-            if (ModInit.conf.initPlugins.playerLandscape)
-                plugins.Add(new("{localhost}/player-landscape.js", 1, "Player xoay ngang", "lampac"));
-
             if (ModInit.conf.initPlugins.watch_together)
                 plugins.Add(new("{localhost}/watchtogether.js", 1, "Watch Together", "lampac"));
 
@@ -896,9 +893,6 @@ public class ApiController : BaseController
             if (ModInit.conf.initPlugins.onlineCompact)
                 send("online-compact", false);
 
-            if (ModInit.conf.initPlugins.playerLandscape)
-                send("player-landscape", false);
-
             if (ModInit.conf.initPlugins.watch_together)
                 send("watchtogether", false);
 
@@ -1054,15 +1048,6 @@ public class ApiController : BaseController
     {
         SetHeadersNoCache();
         string plugin = FileCache.ReadAllText($"{ModInit.modpath}/plugins/online-compact.js", "online-compact.js");
-        return ContentTo(plugin, "application/javascript; charset=utf-8");
-    }
-
-    [HttpGet, AllowAnonymous]
-    [Route("player-landscape.js")]
-    public ActionResult PlayerLandscapeJs()
-    {
-        SetHeadersNoCache();
-        string plugin = FileCache.ReadAllText($"{ModInit.modpath}/plugins/player-landscape.js", "player-landscape.js");
         return ContentTo(plugin, "application/javascript; charset=utf-8");
     }
 

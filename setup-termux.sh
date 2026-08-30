@@ -19,7 +19,7 @@ LAMPAC_DIR="$HOME/lampac"
 LISTEN_PORT="${LAMPAC_PORT:-9118}"
 ROOT_PASSWORD="${LAMPAC_PASSWD:-lampac}"
 # Custom modules maintained in this repository. Override when using a private fork.
-CUSTOM_SOURCE_BASE="${LAMPAC_CUSTOM_SOURCE_BASE:-https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05241-lampac}"
+CUSTOM_SOURCE_BASE="${LAMPAC_CUSTOM_SOURCE_BASE:-https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04e63-lampac}"
 
 MODE=""
 [[ "${1:-}" == "--install" ]] && MODE="install"
@@ -71,7 +71,7 @@ show_help() {
     printf "  ${CYAN}LAMPAC_PORT${RESET}     Listen port (default: 9118)\n"
     printf "  ${CYAN}LAMPAC_PASSWD${RESET}   Root password (default: lampac)\n"
     printf "  ${CYAN}LAMPAC_CUSTOM_SOURCE_BASE${RESET} Raw-git base URL for --sync/--sync-all\n"
-    printf "                      (default: .../lampac/arena/01a05241-lampac;\n"
+    printf "                      (default: .../lampac/arena/01a04e63-lampac;\n"
     printf "                      không dùng main — nhánh đó đang chậm hơn)\n\n"
     printf "${BOLD}How it works:${RESET}\n"
     printf "  This script installs Lampac inside proot-distro Ubuntu.\n"
@@ -446,7 +446,7 @@ VI_LANG
 # shipping a small fix so Termux does not re-download Chrome, hls.js, or
 # every custom module. Use --sync-all for a full refresh.
 sync_latest_modules() {
-    info "Syncing latest patch files only (player landscape + sisi-restyle)..."
+    info "Syncing latest patch files only (stale-subtitle fix + sisi-restyle)..."
 
     proot-distro login ubuntu -- bash -c "
         set -euo pipefail
@@ -473,11 +473,11 @@ sync_latest_modules() {
                /root/lampac/mods/OnlineENG/Mapple4K \
                /root/lampac/mods/OnlineENG/OpenDirectory
         rm -f /root/lampac/module/NextHUB/sites/85po.yaml \
-              /root/lampac/mods/NextHUB/sites/85po.yaml
+              /root/lampac/mods/NextHUB/sites/85po.yaml \
+              /root/lampac/module/LampaWeb/plugins/player-landscape.js \
+              /root/lampac/mods/LampaWeb/plugins/player-landscape.js
 
         # Latest patch:
-        #  - player-landscape.js: lock phone to landscape while Lampa player
-        #    is open; restore portrait on destroy.
         #  - subtitle plugins: never reuse the previous film's lastMovie for
         #    SISI/adult playback or when the playing title does not match, and
         #    drop late subtitle downloads after switching to another video.
@@ -487,7 +487,6 @@ sync_latest_modules() {
         for lampaweb in /root/lampac/module/LampaWeb /root/lampac/mods/LampaWeb; do
             if [ -d \"\$lampaweb/plugins\" ]; then
                 pull Modules/LampaWeb/plugins/online-compact.js \"\$lampaweb/plugins/online-compact.js\"
-                pull Modules/LampaWeb/plugins/player-landscape.js \"\$lampaweb/plugins/player-landscape.js\"
                 pull Modules/LampaWeb/plugins/lampainit.js \"\$lampaweb/plugins/lampainit.js\"
                 pull Modules/LampaWeb/plugins/stremiosub.js \"\$lampaweb/plugins/stremiosub.js\"
                 pull Modules/LampaWeb/plugins/subfinder.js \"\$lampaweb/plugins/subfinder.js\"
@@ -712,7 +711,7 @@ install_custom_modules() {
         webtarget=/root/lampac/module/LampaWeb
         mkdir -p \"\$webtarget/Controllers\" \"\$webtarget/Models\" \"\$webtarget/Services\" \"\$webtarget/plugins\" \"\$webtarget/lang\"
         webbase=\"${CUSTOM_SOURCE_BASE}/Modules/LampaWeb\"
-        for file in Controllers/ApiController.cs ModInit.cs Models/InitPlugins.cs Services/LampaCron.cs Services/LampaVietnamese.cs lang/vi.js plugins/lampainit.js plugins/jackett.js plugins/online-compact.js plugins/player-landscape.js plugins/vietnamese.js plugins/subsense-auto.js plugins/subsense.js plugins/subfinder.js plugins/stremiosub.js plugins/autotracks.js plugins/adminpanel.js; do
+        for file in Controllers/ApiController.cs ModInit.cs Models/InitPlugins.cs Services/LampaCron.cs Services/LampaVietnamese.cs lang/vi.js plugins/lampainit.js plugins/jackett.js plugins/online-compact.js plugins/vietnamese.js plugins/subsense-auto.js plugins/subsense.js plugins/subfinder.js plugins/stremiosub.js plugins/autotracks.js plugins/adminpanel.js; do
             curl -fSL --retry 3 \"\$webbase/\$file\" -o \"\$webtarget/\$file\"
         done
 
@@ -865,14 +864,14 @@ case "${1:-}" in
         ;;
     branch)
         cur="$(cd "$(dirname "$0")" && git branch --show-current 2>/dev/null || echo unknown)"
-        base="${LAMPAC_CUSTOM_SOURCE_BASE:-default (arena/01a05241-lampac)}"
+        base="${LAMPAC_CUSTOM_SOURCE_BASE:-default (arena/01a04e63-lampac)}"
         echo ""
         echo "  Git branch  : $cur"
         echo "  Source base : $base"
         echo ""
         echo "  Nhánh mới nhất (không dùng main):"
-        echo "    cd ~/lampac && git fetch origin && git checkout arena/01a05241-lampac"
-        echo "    echo 'export LAMPAC_CUSTOM_SOURCE_BASE=https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05241-lampac' >> ~/.bashrc"
+        echo "    cd ~/lampac && git fetch origin && git checkout arena/01a04e63-lampac"
+        echo "    echo 'export LAMPAC_CUSTOM_SOURCE_BASE=https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04e63-lampac' >> ~/.bashrc"
         echo "    source ~/.bashrc && lampac sync && lampac restart"
         echo ""
         ;;
@@ -1110,7 +1109,7 @@ case "${1:-}" in
             webbase="$LampaWebBase"
             webtarget=/root/lampac/module/LampaWeb
             mkdir -p "$webtarget/Controllers" "$webtarget/Models" "$webtarget/Services" "$webtarget/plugins" "$webtarget/lang"
-            for file in Controllers/ApiController.cs ModInit.cs Models/InitPlugins.cs Services/LampaCron.cs Services/LampaVietnamese.cs lang/vi.js plugins/lampainit.js plugins/jackett.js plugins/online-compact.js plugins/player-landscape.js plugins/vietnamese.js plugins/subsense-auto.js plugins/subsense.js plugins/subfinder.js plugins/stremiosub.js plugins/autotracks.js plugins/adminpanel.js; do
+            for file in Controllers/ApiController.cs ModInit.cs Models/InitPlugins.cs Services/LampaCron.cs Services/LampaVietnamese.cs lang/vi.js plugins/lampainit.js plugins/jackett.js plugins/online-compact.js plugins/vietnamese.js plugins/subsense-auto.js plugins/subsense.js plugins/subfinder.js plugins/stremiosub.js plugins/autotracks.js plugins/adminpanel.js; do
                 curl -fSL --retry 3 "$webbase/$file" -o "$webtarget/$file"
             done
             curl -fSL --retry 3 "$BaseConfUrl" -o /root/lampac/base.conf
