@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -26,9 +27,45 @@ public class AdminPanelController : BaseController
     [Route("/adminpanel/auth")]
     public ActionResult Auth()
     {
+        if (Request.Cookies.TryGetValue("accspasswd", out var passwd) &&
+            passwd == CoreInit.rootPasswd)
+        {
+            return Redirect("/adminpanel");
+        }
+
         var path = Path.Combine(ModInit.modpath, "auth.html");
         var html = System.IO.File.ReadAllText(path, Encoding.UTF8);
         return Content(html, "text/html; charset=utf-8");
+    }
+
+    [HttpPost]
+    [AllowAnonymous]
+    [Route("/adminpanel/auth")]
+    public ActionResult AuthLogin(string password, string remember)
+    {
+        if (!string.IsNullOrEmpty(password))
+            password = password.Replace("\n", "").Replace("\r", "").Replace("\t", "").Replace(" ", "");
+
+        if (string.IsNullOrEmpty(password) || password != CoreInit.rootPasswd)
+            return Redirect("/adminpanel/auth?error=1");
+
+        bool keep = remember is "1" or "on" or "true";
+        var options = new CookieOptions
+        {
+            Path = "/",
+            SameSite = SameSiteMode.Lax,
+            Secure = Request.IsHttps,
+            HttpOnly = true,
+            IsEssential = true
+        };
+        if (keep)
+        {
+            options.Expires = DateTimeOffset.UtcNow.AddYears(10);
+            options.MaxAge = TimeSpan.FromDays(3650);
+        }
+
+        Response.Cookies.Append("accspasswd", password, options);
+        return Redirect("/adminpanel");
     }
 
     [HttpGet]

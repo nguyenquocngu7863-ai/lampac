@@ -260,6 +260,32 @@
       color: var(--text-faint);
     }
 
+    .auth-remember {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-2);
+      font-size: var(--text-xs);
+      color: var(--text-muted);
+      user-select: none;
+    }
+
+    .auth-remember input {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--accent);
+    }
+
+    .auth-error {
+      display: none;
+      font-size: var(--text-xs);
+      color: #ef6b6b;
+      margin: calc(var(--sp-2) * -1) 0 var(--sp-2);
+    }
+
+    .auth-error.is-visible {
+      display: block;
+    }
+
     .btn {
       font: inherit;
       font-size: var(--text-xs);
@@ -332,12 +358,17 @@
     <main class="auth-main">
       <div class="auth-card">
         <h1>Đăng nhập</h1>
-        <p class="lead">Nhập mật khẩu để vào bảng điều khiển. Phiên đăng nhập được lưu trong cookie 180 ngày.</p>
-        <form class="auth-form" id="loginForm">
+        <p class="lead">Nhập mật khẩu root (file <code>passwd</code>). Tick ghi nhớ thì máy này không hỏi lại.</p>
+        <form class="auth-form" id="loginForm" method="post" action="/adminpanel/auth">
           <div class="auth-field">
             <label for="password">Mật khẩu</label>
             <input type="password" id="password" name="password" placeholder="Mật khẩu" required autocomplete="current-password" />
           </div>
+          <p class="auth-error" id="authError">Sai mật khẩu.</p>
+          <label class="auth-remember">
+            <input type="checkbox" name="remember" value="1" checked />
+            Ghi nhớ đăng nhập trên máy này
+          </label>
           <button type="submit" class="btn btn-primary">Đăng nhập</button>
         </form>
       </div>
@@ -384,15 +415,73 @@
         }
       });
 
-      $('#loginForm').addEventListener('submit', function (e) {
-        e.preventDefault();
-        var password = $('#password').value;
-        var maxAge = 60 * 60 * 24 * 180;
+      var STORE_KEY = 'lampac-accspasswd';
+      var maxAge = 60 * 60 * 24 * 365 * 10;
+
+      function setClientCookie(password) {
         document.cookie = 'accspasswd=' + encodeURIComponent(password) +
           '; max-age=' + maxAge +
           '; path=/; SameSite=Lax' +
           (window.isSecureContext ? '; Secure' : '');
-        window.location.href = '/adminpanel';
+      }
+
+      if (/[?&]error=/.test(location.search)) {
+        var err = $('#authError');
+        if (err) err.classList.add('is-visible');
+        try { sessionStorage.setItem('lampac-auth-tried', '1'); } catch (e) { }
+      } else {
+        try {
+          var saved = localStorage.getItem(STORE_KEY);
+          if (saved && !sessionStorage.getItem('lampac-auth-tried')) {
+            sessionStorage.setItem('lampac-auth-tried', '1');
+            setClientCookie(saved);
+            window.location.replace('/adminpanel');
+            return;
+          }
+        } catch (e) { }
+      }
+
+      $('#loginForm').addEventListener('submit', function (e) {
+        e.preventDefault();
+        var password = $('#password').value;
+        var rememberEl = $('#loginForm input[name="remember"]');
+        var keep = !rememberEl || rememberEl.checked;
+        var btn = $('#loginForm button[type="submit"]');
+        if (btn) btn.disabled = true;
+
+        function rememberClient() {
+          if (keep) {
+            setClientCookie(password);
+            try { localStorage.setItem(STORE_KEY, password); } catch (err) { }
+          } else {
+            try { localStorage.removeItem(STORE_KEY); } catch (err) { }
+          }
+        }
+
+        function goAdmin() {
+          rememberClient();
+          window.location.replace('/adminpanel');
+        }
+
+        function goError() {
+          if (btn) btn.disabled = false;
+          window.location.replace('/adminpanel/auth?error=1');
+        }
+
+        var body = new URLSearchParams();
+        body.set('password', password);
+        if (keep) body.set('remember', '1');
+
+        fetch('/adminpanel/auth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: body.toString(),
+          credentials: 'same-origin'
+        }).then(function (r) {
+          if ((r.url || '').indexOf('error=') !== -1)
+            return goError();
+          goAdmin();
+        }).catch(goAdmin);
       });
     })();
   </script>

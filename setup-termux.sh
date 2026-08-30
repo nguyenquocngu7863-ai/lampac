@@ -446,7 +446,7 @@ VI_LANG
 # shipping a small fix so Termux does not re-download Chrome, hls.js, or
 # every custom module. Use --sync-all for a full refresh.
 sync_latest_modules() {
-    info "Syncing latest patch files only (xasiat vi + sisi-restyle)..."
+    info "Syncing latest patch files only (admin remember-password + xasiat vi)..."
 
     proot-distro login ubuntu -- bash -c "
         set -euo pipefail
@@ -515,6 +515,12 @@ sync_latest_modules() {
             fi
             if [ -d \"\$nexthub\" ]; then
                 pull Modules/NextHUB/CategoryVi.cs \"\$nexthub/CategoryVi.cs\"
+            fi
+        done
+        for admin in /root/lampac/module/AdminPanel /root/lampac/mods/AdminPanel; do
+            if [ -d \"\$admin\" ]; then
+                pull Modules/AdminPanel/AdminPanelController.cs \"\$admin/AdminPanelController.cs\"
+                pull Modules/AdminPanel/auth.html \"\$admin/auth.html\"
             fi
         done
     "
