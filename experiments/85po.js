@@ -4,18 +4,21 @@
  * Plugin thử nghiệm lấy phim từ https://www.85po.com cho Lampa.
  * Nếu chạy ổn sẽ chuyển thành module SISI chính thức phía server.
  *
- * Cách hoạt động:
- *  - Thêm nút "85PO" vào menu trái của Lampa
- *  - Danh mục: Mới nhất / Phổ biến / Đánh giá cao / Thể loại / Tìm kiếm
- *  - Trang HTML của 85po được tải qua proxy CORS (mặc định cors.eu.org,
- *    đổi được trong Cài đặt -> 85PO)
- *  - Link video mp4 (get_file) được bóc trực tiếp từ trang xem;
- *    có thể khai báo "Stream proxy prefix" để phát qua proxy của server
- *    Lampac (ví dụ: http://IP:9118/media/stream/<token>/)
+ * Link video (get_file) của 85po BỊ KHÓA THEO IP: link sinh ra cho IP nào
+ * thì chỉ IP đó phát được. Vì vậy plugin dùng chính server Lampac làm proxy
+ * cho CẢ HAI bước — tải trang HTML (qua /corseu) và phát video (qua /media)
+ * — để hai bước cùng một IP server.
  *
- * Cài đặt -> 85PO:
- *  - Proxy CORS      : prefix gắn trước URL trang web khi tải HTML
- *  - Stream proxy    : prefix gắn trước URL mp4 khi phát (rỗng = phát thẳng)
+ * Yêu cầu server (làm MỘT lần trong Termux):
+ *   proot-distro login ubuntu -- bash -c '
+ *     cd /root/lampac
+ *     grep -q "CorsMedia" init.conf || sed -i "0,/{/s//{\n  \"CorsMedia\": { \"tokens\": [\"lampac\"] },\n  \"Corseu\": { \"tokens\": [\"lampac\"] },/" init.conf
+ *   '
+ *   lampac stop && lampac start
+ *
+ * Plugin tự tìm địa chỉ server Lampac từ danh sách plugin đã cài (online.js,
+ * lampainit.js...). Token mặc định: "lampac". Cả hai đổi được trong
+ * Cài đặt -> 85PO.
  */
 (function () {
   'use strict';
@@ -26,8 +29,10 @@
   var HOST = 'https://www.85po.com';
   var COMPONENT = '85po';
   var SET_COMPONENT = '85po';
+  var SET_SERVER = '85po_server';
+  var SET_TOKEN = '85po_token';
   var SET_PROXY = '85po_cors_proxy';
-  var SET_STREAM = '85po_stream_proxy';
+  var DEFAULT_TOKEN = 'lampac';
   var DEFAULT_PROXY = 'https://cors.eu.org/';
 
   // ───────────────────────── helpers ─────────────────────────
@@ -37,13 +42,37 @@
     return v === undefined || v === null ? def : v;
   }
 
-  function corsProxy() {
-    var p = (storage(SET_PROXY, DEFAULT_PROXY) + '').trim();
-    return p;
+  function getToken() {
+    return (storage(SET_TOKEN, DEFAULT_TOKEN) + '').trim();
   }
 
-  function streamProxy() {
-    return (storage(SET_STREAM, '') + '').trim();
+  function fallbackProxy() {
+    return (storage(SET_PROXY, DEFAULT_PROXY) + '').trim();
+  }
+
+  // Tìm địa chỉ server Lampac:
+  //  1. Người dùng tự điền trong Cài đặt -> 85PO
+  //  2. Quét danh sách plugin đã cài, lấy origin của online.js/lampainit.js...
+  //  3. Origin của trang hiện tại (khi Lampa mở từ http://IP:9118)
+  function detectServer() {
+    var manual = (storage(SET_SERVER, '') + '').trim().replace(/\/+$/, '');
+    if (manual) return manual;
+
+    try {
+      var plugins = (Lampa.Plugins && Lampa.Plugins.get()) || [];
+      for (var i = 0; i < plugins.length; i++) {
+        var u = ((plugins[i] && plugins[i].url) || '') + '';
+        if (/^https?:\/\//i.test(u) && /\/(lampainit|online|online-compact|sisi|vietnamese|gst|ts)\.js/i.test(u)) {
+          return u.replace(/^(https?:\/\/[^\/]+).*$/i, '$1');
+        }
+      }
+    } catch (e) {}
+
+    try {
+      if (/^https?:$/i.test(window.location.protocol)) return window.location.origin;
+    } catch (e) {}
+
+    return '';
   }
 
   function pageUrl(path, page) {
@@ -52,14 +81,31 @@
     return HOST + '/' + path.replace('{page}', page + '');
   }
 
+  // Tải HTML: ưu tiên server Lampac (/corseu), lỗi thì thử proxy công cộng
   function fetchHtml(url, ok, fail) {
     var network = new Lampa.Reguest();
     network.timeout(20000);
-    network.silent(corsProxy() + url, function (str) {
-      ok(str + '');
-    }, function () {
-      fail();
-    }, false, { dataType: 'text' });
+
+    var server = detectServer();
+    var token = getToken();
+
+    function viaPublic() {
+      var p = fallbackProxy();
+      if (!p) return fail();
+      network.silent(p + url, function (str) { ok(str + '', false); }, function () { fail(); }, false, { dataType: 'text' });
+    }
+
+    if (server && token) {
+      var target = server + '/corseu?auth_token=' + encodeURIComponent(token) + '&url=' + encodeURIComponent(url);
+      network.silent(target, function (str) {
+        ok(str + '', true);
+      }, function () {
+        viaPublic();
+      }, false, { dataType: 'text' });
+    } else {
+      viaPublic();
+    }
+
     return network;
   }
 
@@ -142,7 +188,7 @@
       Lampa.Loading.stop();
     });
 
-    fetchHtml(element.url, function (html) {
+    fetchHtml(element.url, function (html, viaServer) {
       Lampa.Loading.stop();
       var link = extractVideo(html);
 
@@ -151,8 +197,19 @@
         return;
       }
 
-      var sp = streamProxy();
-      if (sp) link = sp + encodeURIComponent(link);
+      var server = detectServer();
+      var token = getToken();
+
+      if (viaServer && server && token) {
+        // Phát qua proxy server Lampac: cùng IP với bước tải HTML,
+        // kèm Referer để qua chặn hotlink.
+        var headers = JSON.stringify({ referer: HOST + '/' });
+        link = server + '/media?auth_token=' + encodeURIComponent(token) +
+          '&type=stream&url=' + encodeURIComponent(link) +
+          '&headers=' + encodeURIComponent(headers);
+      } else {
+        Lampa.Noty.show('85PO: chưa nối được server Lampac — phát thẳng, có thể lỗi do link khóa IP');
+      }
 
       Lampa.Player.play({
         url: link,
@@ -163,7 +220,7 @@
       Lampa.Player.playlist([]);
     }, function () {
       Lampa.Loading.stop();
-      Lampa.Noty.show('85PO: không tải được trang video (kiểm tra proxy CORS)');
+      Lampa.Noty.show('85PO: không tải được trang video (kiểm tra Cài đặt -> 85PO)');
     });
   }
 
@@ -195,7 +252,7 @@
         comp.build(items, first);
       }, function () {
         waiting = false;
-        if (first) comp.empty('Không tải được danh sách. Kiểm tra "Proxy CORS" trong Cài đặt -> 85PO.');
+        if (first) comp.empty('Không tải được danh sách. Kiểm tra Cài đặt -> 85PO (server/token hoặc proxy dự phòng).');
       });
     }
 
@@ -394,19 +451,28 @@
 
     Lampa.SettingsApi.addParam({
       component: SET_COMPONENT,
-      param: { name: SET_PROXY, type: 'input', values: '', default: DEFAULT_PROXY },
+      param: { name: SET_SERVER, type: 'input', values: '', default: '' },
       field: {
-        name: 'Proxy CORS',
-        description: 'Prefix gắn trước URL khi tải trang 85po. Mặc định: ' + DEFAULT_PROXY
+        name: 'Server Lampac',
+        description: 'Để trống = tự tìm. Chỉ điền khi tự động không được, ví dụ: http://192.168.1.5:9118'
       }
     });
 
     Lampa.SettingsApi.addParam({
       component: SET_COMPONENT,
-      param: { name: SET_STREAM, type: 'input', values: '', default: '' },
+      param: { name: SET_TOKEN, type: 'input', values: '', default: DEFAULT_TOKEN },
       field: {
-        name: 'Stream proxy prefix',
-        description: 'Phát video qua proxy server Lampac, ví dụ: http://IP:9118/media/stream/TOKEN/ — để trống thì phát thẳng link mp4.'
+        name: 'Token proxy',
+        description: 'Token của CorsMedia/Corseu trong init.conf. Mặc định: lampac'
+      }
+    });
+
+    Lampa.SettingsApi.addParam({
+      component: SET_COMPONENT,
+      param: { name: SET_PROXY, type: 'input', values: '', default: DEFAULT_PROXY },
+      field: {
+        name: 'Proxy CORS dự phòng',
+        description: 'Chỉ dùng khi không nối được server (xem danh sách vẫn được, phát video có thể lỗi vì link khóa IP).'
       }
     });
   }

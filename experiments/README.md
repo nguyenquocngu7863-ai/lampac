@@ -11,12 +11,22 @@ SISI chính thức phía server:
 - Nút **85PO** trong menu trái của Lampa
 - Danh mục: Mới nhất / Phổ biến / Đánh giá cao / 12 thể loại / Tìm kiếm
 - Lưới video 16:9 có badge thời lượng, cuộn xuống tự tải trang tiếp
-- HTML tải qua proxy CORS (mặc định `https://cors.eu.org/`, đổi được)
-- Tự bóc link mp4 `get_file` chất lượng cao nhất (2160p → 360p)
-- Cài đặt → **85PO**:
-  - **Proxy CORS** — prefix tải trang web
-  - **Stream proxy prefix** — phát video qua proxy server Lampac
-    (ví dụ `http://IP:9118/media/stream/TOKEN/`), để trống thì phát thẳng
+- **Link video của 85po bị khóa theo IP** → plugin dùng chính server Lampac
+  làm proxy cho cả hai bước: tải HTML qua `/corseu`, phát video qua `/media`
+  (cùng một IP server nên link hợp lệ)
+- Tự tìm địa chỉ server Lampac từ danh sách plugin đã cài; token mặc định
+  `lampac`; đổi được trong Cài đặt → **85PO**
+
+### Bật proxy trên server (làm MỘT lần trong Termux)
+
+```bash
+proot-distro login ubuntu -- bash -c '
+  cd /root/lampac
+  grep -q "\"CorsMedia\"" init.conf || sed -i "0,/{/s//{\n  \"CorsMedia\": { \"tokens\": [\"lampac\"] },\n  \"Corseu\": { \"tokens\": [\"lampac\"] },/" init.conf
+  grep -n "CorsMedia\|Corseu" init.conf
+'
+lampac stop && lampac start
+```
 
 ### Cài qua jsDelivr
 
