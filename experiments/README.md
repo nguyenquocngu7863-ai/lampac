@@ -3,36 +3,21 @@
 Thư mục chứa các plugin JS thử nghiệm, **không** được nhét vào root release hay
 danh sách sync của `setup-termux.sh`. Nạp trực tiếp qua CDN jsDelivr khi muốn thử.
 
-## 85po.js
+## 85po.js (ĐÃ GỠ — thử nghiệm thất bại)
 
-Plugin thử nghiệm lấy phim từ `85po.com` — nếu chạy ổn sẽ chuyển thành module
-SISI chính thức phía server:
+Plugin lấy phim từ `85po.com` đã bị gỡ sau 2 vòng thử nghiệm. Lý do kỹ thuật
+(ghi lại để không lặp lại):
 
-- Nút **85PO** trong menu trái của Lampa
-- Danh mục: Mới nhất / Phổ biến / Đánh giá cao / 12 thể loại / Tìm kiếm
-- Lưới video 16:9 có badge thời lượng, cuộn xuống tự tải trang tiếp
-- **Link video của 85po bị khóa theo IP** → plugin dùng chính server Lampac
-  làm proxy cho cả hai bước: tải HTML qua `/corseu`, phát video qua `/media`
-  (cùng một IP server nên link hợp lệ)
-- Tự tìm địa chỉ server Lampac từ danh sách plugin đã cài; token mặc định
-  `lampac`; đổi được trong Cài đặt → **85PO**
-
-### Bật proxy trên server (làm MỘT lần trong Termux)
-
-```bash
-proot-distro login ubuntu -- bash -c '
-  cd /root/lampac
-  grep -q "\"CorsMedia\"" init.conf || sed -i "0,/{/s//{\n  \"CorsMedia\": { \"tokens\": [\"lampac\"] },\n  \"Corseu\": { \"tokens\": [\"lampac\"] },/" init.conf
-  grep -n "CorsMedia\|Corseu" init.conf
-'
-lampac stop && lampac start
-```
-
-### Cài qua jsDelivr
-
-```text
-https://cdn.jsdelivr.net/gh/nguyenquocngu7863-ai/lampac@arena/01a04e63-lampac/experiments/85po.js
-```
+- Link video `get_file` của 85po **khóa theo IP người xin link** — link sinh
+  cho IP nào thì chỉ IP đó phát được.
+- Vòng 1: tải HTML qua proxy công cộng (cors.eu.org) rồi phát thẳng →
+  "no supported source" vì link thuộc IP của proxy.
+- Vòng 2: tải HTML qua `/corseu` + phát qua `/media` của chính server Lampac
+  (cùng một IP) → server nhận đúng request nhưng vẫn không phát được trên
+  thiết bị thật.
+- Kết luận: muốn hỗ trợ 85po phải viết module SISI C# phía server (bóc link
+  và stream trong cùng một tiến trình, kèm ProxyLink). Không làm bằng JS
+  thuần phía client.
 
 ## sisi-restyle.js
 
