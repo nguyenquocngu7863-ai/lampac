@@ -4,7 +4,7 @@
  * Plugin thử nghiệm thay đổi bố cục và poster của danh sách SISI:
  *  - Poster 16:9 bo góc lớn, ảnh phủ kín khung (object-fit cover)
  *  - Tiêu đề nằm DƯỚI poster như bố cục gốc (giữ nguyên size font gốc)
- *  - Badge thời lượng/chất lượng nổi trên poster
+ *  - Badge thời lượng/chất lượng giữ nguyên kiểu mặc định của Lampa
  *  - Lưới mặc định: 2 cột (điện thoại dọc) / 3 cột / 4 cột (màn lớn)
  *  - Người dùng tự chọn số CỘT và số HÀNG hiển thị trong Cài đặt
  *
@@ -81,9 +81,6 @@
       '  padding-bottom: 56.25% !important;', /* 16:9 */
       '  margin-bottom: .7em !important;',
       '  border-radius: 1.1em !important;',
-      '  overflow: hidden !important;',
-      '  -webkit-transform: translateZ(0);',
-      '  transform: translateZ(0);',
       '}',
       'body.sisi-restyle .card.card--collection .card__img {',
       '  border-radius: 1.1em !important;',
@@ -93,20 +90,9 @@
       '  object-fit: cover !important;',
       '}',
       // Tiêu đề: nằm dưới poster như gốc, KHÔNG đổi font — không override.
-      // ── badge thời lượng / chất lượng nổi trên poster ──────────────
-      'body.sisi-restyle .card.card--collection .card__view .card__quality {',
-      '  position: absolute !important;',
-      '  top: .55em !important;',
-      '  right: .55em !important;',
-      '  left: auto !important;',
-      '  bottom: auto !important;',
-      '  background: rgba(0,0,0,.72) !important;',
-      '  color: #fff !important;',
-      '  padding: .25em .5em !important;',
-      '  border-radius: .55em !important;',
-      '  font-size: .78em !important;',
-      '  z-index: 3 !important;',
-      '}',
+      // Badge thời lượng/chất lượng: giữ NGUYÊN kiểu mặc định của Lampa
+      // (nền vàng, nhô ra mép trái poster) — không override, và không dùng
+      // overflow hidden trên card__view để badge không bị cắt.
       // ── viền focus bám theo bo góc mới ─────────────────────────────
       'body.sisi-restyle .card.card--collection.focus .card__view::after,',
       'body.sisi-restyle .card.card--collection.hover .card__view::after {',
@@ -159,7 +145,7 @@
       },
       field: {
         name: 'SISI kiểu mới (thử nghiệm)',
-        description: 'Poster 16:9 bo góc lớn, badge nổi trên poster, tiêu đề bên dưới như gốc.'
+        description: 'Poster 16:9 bo góc lớn, tiêu đề và badge giữ kiểu mặc định.'
       },
       onChange: function () {
         setTimeout(apply, 0);

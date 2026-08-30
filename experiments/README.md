@@ -9,7 +9,7 @@ Thay đổi bố cục + poster của danh sách SISI:
 
 - Poster 16:9 bo góc lớn, ảnh phủ kín khung
 - Tiêu đề nằm dưới poster như bố cục gốc (không đổi font)
-- Badge thời lượng/chất lượng nổi trên poster
+- Badge thời lượng/chất lượng giữ nguyên kiểu mặc định của Lampa
 - Lưới tự động: 2 cột (điện thoại dọc) / 3 cột / 4 cột (màn lớn)
 - Cài đặt riêng cho người dùng (Cài đặt → Giao diện):
   - **SISI kiểu mới (thử nghiệm)** — bật/tắt toàn bộ
