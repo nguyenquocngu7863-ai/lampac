@@ -229,3 +229,27 @@ Kiểm tra theo thứ tự:
 2. Chạy `setup-termux.sh --sync-all` hoặc xoá thủ công theo mục 6.
 3. Chạy `lampac stop` rồi `lampac start`.
 4. Thoát hẳn và mở lại ứng dụng Lampa để xoá cache WebView.
+
+### Plugin mới báo `404 Lỗi` trong Tiện ích mở rộng
+
+Đã dính thật ngày 2026-08-30 với `autotracks.js`. Nguyên nhân: patch thêm
+**file mới** nhưng máy chạy `--sync` bằng **script cũ** (tải từ trước khi
+patch). Danh sách file cần kéo nằm bên trong chính `setup-termux.sh`, nên
+script cũ kéo được `ApiController.cs` mới (server đăng ký plugin, Lampa thấy
+tên plugin) nhưng không kéo file `.js` mới → server trả 404.
+
+Cách xử lý và phòng ngừa — **luôn tải lại script trước khi sync**, gộp một lệnh:
+
+```bash
+curl -fsSL "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/setup-termux.sh?cb=$(date +%s)" -o ~/setup-termux-branch.sh \
+  && bash ~/setup-termux-branch.sh --sync && lampac stop && lampac start
+```
+
+Thay `main` bằng branch agent (kèm `LAMPAC_CUSTOM_SOURCE_BASE=...` trước
+`bash`) khi test bản chưa merge. Xác minh nhanh sau khi sync:
+
+```bash
+proot-distro login ubuntu -- bash -c 'curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:9118/autotracks.js'
+```
+
+`200` là file đã được serve; `404` nghĩa là file chưa về đúng chỗ.

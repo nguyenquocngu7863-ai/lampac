@@ -83,6 +83,21 @@ Quy trình đầy đủ giữa Termux, GitHub và bản Lampac đang chạy nằ
 
 Có **ba lệnh**. Script trên điện thoại tự chứa danh sách file, nên sau mỗi bản vá phải tải lại `setup-termux.sh` một lần rồi mới sync — nếu không, `--sync` vẫn dùng list cũ.
 
+> ⚠️ **Điểm yếu quy trình (đã dính thật — 2026-08-30):** patch thêm **file mới**
+> (ví dụ `autotracks.js`) mà chạy `--sync` bằng script cũ thì script kéo được
+> `ApiController.cs` mới (đăng ký plugin) nhưng **không kéo file js mới** →
+> Lampa hiện plugin với trạng thái **404 Lỗi**. Triệu chứng: thẻ plugin trong
+> Tiện ích mở rộng báo `404`. Cách phòng: **luôn tải lại script trước khi
+> sync**, gộp thành một lệnh duy nhất:
+>
+> ```bash
+> curl -fsSL "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/setup-termux.sh?cb=$(date +%s)" -o setup-termux.sh \
+>   && bash setup-termux.sh --sync && lampac stop && lampac start
+> ```
+>
+> (thay `main` bằng branch agent khi test bản chưa merge; `?cb=` để né cache
+> của raw.githubusercontent.com)
+
 ```bash
 # Bước 0 — lấy script mới (làm một lần sau mỗi patch)
 curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/setup-termux.sh -o setup-termux.sh
