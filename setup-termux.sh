@@ -446,7 +446,7 @@ VI_LANG
 # shipping a small fix so Termux does not re-download Chrome, hls.js, or
 # every custom module. Use --sync-all for a full refresh.
 sync_latest_modules() {
-    info "Syncing latest patch files only (sisi-restyle integration)..."
+    info "Syncing latest patch files only (stale-subtitle fix + sisi-restyle)..."
 
     proot-distro login ubuntu -- bash -c "
         set -euo pipefail
@@ -475,14 +475,21 @@ sync_latest_modules() {
         rm -f /root/lampac/module/NextHUB/sites/85po.yaml \
               /root/lampac/mods/NextHUB/sites/85po.yaml
 
-        # Latest patch: sisi-restyle.js becomes a built-in SISI plugin
-        # (served at /sisi-restyle.js, auto-registered when initPlugins.sisi
-        # is on). Also keeps online-compact.js current.
+        # Latest patch:
+        #  - subtitle plugins: never reuse the previous film's lastMovie for
+        #    SISI/adult playback or when the playing title does not match, and
+        #    drop late subtitle downloads after switching to another video.
+        #  - sisi-restyle.js as a built-in SISI plugin (served at
+        #    /sisi-restyle.js, auto-registered when initPlugins.sisi is on).
         # mods/ overrides module/, so keep both copies in sync when present.
         for lampaweb in /root/lampac/module/LampaWeb /root/lampac/mods/LampaWeb; do
             if [ -d \"\$lampaweb/plugins\" ]; then
                 pull Modules/LampaWeb/plugins/online-compact.js \"\$lampaweb/plugins/online-compact.js\"
                 pull Modules/LampaWeb/plugins/lampainit.js \"\$lampaweb/plugins/lampainit.js\"
+                pull Modules/LampaWeb/plugins/stremiosub.js \"\$lampaweb/plugins/stremiosub.js\"
+                pull Modules/LampaWeb/plugins/subfinder.js \"\$lampaweb/plugins/subfinder.js\"
+                pull Modules/LampaWeb/plugins/subsense.js \"\$lampaweb/plugins/subsense.js\"
+                pull Modules/LampaWeb/plugins/subsense-auto.js \"\$lampaweb/plugins/subsense-auto.js\"
             fi
             if [ -d \"\$lampaweb/Controllers\" ]; then
                 pull Modules/LampaWeb/Controllers/ApiController.cs \"\$lampaweb/Controllers/ApiController.cs\"

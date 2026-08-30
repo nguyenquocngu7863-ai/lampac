@@ -84,6 +84,54 @@
     return String(value || '').trim().toLowerCase();
   }
 
+  /* ── Guards against stale-movie subtitles ──
+   * lastMovie is only a fallback for players that do not pass params.movie
+   * (torrents, online.js). SISI/adult players also omit movie, so without
+   * these checks the previous film's subtitles get attached to them. */
+  function inSisiContext() {
+    try {
+      var activity = Lampa.Activity && Lampa.Activity.active && Lampa.Activity.active();
+      return !!(activity && typeof activity.component === 'string' && activity.component.indexOf('sisi') === 0);
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function normalizeTitle(value) {
+    return String(value || '')
+      .toLowerCase()
+      .replace(/[\.\-_:;,!?'"“”‘’\/\\\[\]\(\)\{\}\+]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function titleMatchesMovie(movie, playTitle) {
+    var play = normalizeTitle(playTitle);
+    if (!play) return true; // no title to compare — keep legacy behaviour
+
+    var candidates = [movie.title, movie.name, movie.original_title, movie.original_name];
+    for (var i = 0; i < candidates.length; i++) {
+      var candidate = normalizeTitle(candidates[i]);
+      if (candidate && candidate.length >= 2 && (play.indexOf(candidate) >= 0 || candidate.indexOf(play) >= 0))
+        return true;
+    }
+    return false;
+  }
+
+  function resolvePlaybackMovie(params) {
+    if (params && params.movie) return params.movie;
+    if (!lastMovie) return null;
+    if (inSisiContext()) {
+      log('adult/SISI playback — skipping lastMovie fallback');
+      return null;
+    }
+    if (params && !titleMatchesMovie(lastMovie, params.title)) {
+      log('play title does not match lastMovie — skipping subtitles for', params.title);
+      return null;
+    }
+    return lastMovie;
+  }
+
   function positiveNumber(value) {
     var number = parseInt(value, 10);
     return isFinite(number) && number > 0 ? number : null;
@@ -571,15 +619,28 @@
 
     var origPlay = Lampa.Player.play;
     Lampa.Player.play = function(params) {
-      var movie = (params && params.movie) || lastMovie;
+      var movie = resolvePlaybackMovie(params);
       var season = params && params.season !== undefined
         ? params.season
         : movie && movie.season;
       var episode = params && params.episode !== undefined
         ? params.episode
         : movie && movie.episode;
-      var info = playbackInfo(movie, season, episode);
-      var state = info ? beginPlayback(info, params) : null;
+      var info = movie ? playbackInfo(movie, season, episode) : null;
+      var state;
+
+      if (info) {
+        state = beginPlayback(info, params);
+      } else {
+        // New playback with no identifiable movie: drop the previous state so
+        // the 'ready' listener cannot resurrect the last film's subtitles.
+        state = null;
+        if (activePlayback) {
+          if (activePlayback.attachTimer) clearTimeout(activePlayback.attachTimer);
+          activePlayback.destroyed = true;
+          activePlayback = null;
+        }
+      }
 
       var result;
       try {
