@@ -3,15 +3,19 @@
  * ---------------------------
  * Plugin thử nghiệm thay đổi bố cục và poster của danh sách SISI:
  *  - Poster 16:9 bo góc lớn, ảnh phủ kín khung (object-fit cover)
- *  - Tiêu đề đè lên đáy poster với dải gradient (không còn chiếm chỗ dưới card)
- *  - Lưới: 2 cột trên điện thoại dọc, 3 cột màn nhỏ ngang, 4 cột màn lớn
+ *  - Tiêu đề nằm DƯỚI poster như bố cục gốc (giữ nguyên size font gốc)
  *  - Badge thời lượng/chất lượng nổi trên poster
- *  - Viền focus bám sát bo góc mới
+ *  - Lưới mặc định: 2 cột (điện thoại dọc) / 3 cột / 4 cột (màn lớn)
+ *  - Người dùng tự chọn số CỘT và số HÀNG hiển thị trong Cài đặt
  *
  * Chỉ tác động khi activity hiện tại là component của SISI (sisi_view_*,
  * sisi_main_*, ...) — các màn hình khác của Lampa giữ nguyên.
  *
- * Bật/tắt trong: Cài đặt -> Giao diện -> "SISI kiểu mới (thử nghiệm)".
+ * Cài đặt -> Giao diện:
+ *  - "SISI kiểu mới (thử nghiệm)": bật/tắt toàn bộ
+ *  - "SISI: số cột": Tự động / 2..5 cột
+ *  - "SISI: số hàng trên màn hình": Tự động (16:9) / 2..4 hàng
+ *    (chọn số hàng thì poster co giãn chiều cao để đủ N hàng trong một màn)
  */
 (function () {
   'use strict';
@@ -20,13 +24,20 @@
   window.sisi_restyle_plugin = true;
 
   var settingName = 'sisi_restyle';
+  var settingCols = 'sisi_restyle_cols';
+  var settingRows = 'sisi_restyle_rows';
   var styleId = 'sisi-restyle-style';
   var bodyClass = 'sisi-restyle';
 
+  function storageGet(name, def) {
+    if (!window.Lampa || !Lampa.Storage) return def;
+    var v = Lampa.Storage.get(name, def);
+    return v === undefined || v === null || v === '' ? def : v + '';
+  }
+
   function enabled() {
-    if (!window.Lampa || !Lampa.Storage) return true;
-    var value = Lampa.Storage.get(settingName, 'true');
-    return value !== false && value !== 'false';
+    var value = storageGet(settingName, 'true');
+    return value !== 'false';
   }
 
   function inSisi() {
@@ -40,7 +51,20 @@
 
   function apply() {
     if (!document.body) return;
-    document.body.classList.toggle(bodyClass, enabled() && inSisi());
+
+    var active = enabled() && inSisi();
+    var cols = storageGet(settingCols, 'auto');
+    var rows = storageGet(settingRows, 'auto');
+
+    document.body.classList.toggle(bodyClass, active);
+    document.body.classList.toggle('sisi-cols-fixed', active && cols !== 'auto');
+    document.body.classList.toggle('sisi-rows-fixed', active && rows !== 'auto');
+
+    if (active && cols !== 'auto') document.body.style.setProperty('--sisi-cols', cols);
+    else document.body.style.removeProperty('--sisi-cols');
+
+    if (active && rows !== 'auto') document.body.style.setProperty('--sisi-rows', rows);
+    else document.body.style.removeProperty('--sisi-rows');
   }
 
   function installStyle() {
@@ -49,13 +73,13 @@
     var style = document.createElement('style');
     style.id = styleId;
     style.textContent = [
-      // ── card + poster ──────────────────────────────────────────────
+      // ── poster 16:9 bo góc lớn ─────────────────────────────────────
       'body.sisi-restyle .card.card--collection {',
       '  padding-bottom: 1.1em !important;',
       '}',
       'body.sisi-restyle .card.card--collection .card__view {',
       '  padding-bottom: 56.25% !important;', /* 16:9 */
-      '  margin-bottom: 0 !important;',
+      '  margin-bottom: .7em !important;',
       '  border-radius: 1.1em !important;',
       '  overflow: hidden !important;',
       '  -webkit-transform: translateZ(0);',
@@ -68,40 +92,9 @@
       '  -o-object-fit: cover !important;',
       '  object-fit: cover !important;',
       '}',
-      // ── tiêu đề đè lên đáy poster với gradient ─────────────────────
-      'body.sisi-restyle .card.card--collection {',
-      '  position: relative !important;',
-      '}',
-      'body.sisi-restyle .card.card--collection .card__title {',
-      '  position: absolute !important;',
-      '  left: 0 !important;',
-      '  right: 0 !important;',
-      '  bottom: 1.1em !important;', /* trùng padding-bottom của card */
-      '  margin: 0 !important;',
-      '  padding: 1.6em .7em .55em !important;',
-      '  font-size: 1.05em !important;',
-      '  line-height: 1.25 !important;',
-      '  max-height: none !important;',
-      '  display: -webkit-box !important;',
-      '  -webkit-box-orient: vertical !important;',
-      '  -webkit-line-clamp: 2 !important;',
-      '  line-clamp: 2 !important;',
-      '  overflow: hidden !important;',
-      '  color: #fff !important;',
-      '  text-shadow: 0 1px 2px rgba(0,0,0,.8) !important;',
-      '  background: -webkit-linear-gradient(top, rgba(0,0,0,0) 0%, rgba(0,0,0,.55) 45%, rgba(0,0,0,.88) 100%) !important;',
-      '  background: linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,.55) 45%, rgba(0,0,0,.88) 100%) !important;',
-      '  border-bottom-left-radius: 1.1em !important;',
-      '  border-bottom-right-radius: 1.1em !important;',
-      '  z-index: 2 !important;',
-      '  pointer-events: none !important;',
-      '}',
-      // Tuổi/mô tả phụ dưới card không còn chỗ -> ẩn
-      'body.sisi-restyle .card.card--collection .card__age {',
-      '  display: none !important;',
-      '}',
+      // Tiêu đề: nằm dưới poster như gốc, KHÔNG đổi font — không override.
       // ── badge thời lượng / chất lượng nổi trên poster ──────────────
-      'body.sisi-restyle .card.card--collection .card__quality {',
+      'body.sisi-restyle .card.card--collection .card__view .card__quality {',
       '  position: absolute !important;',
       '  top: .55em !important;',
       '  right: .55em !important;',
@@ -129,18 +122,24 @@
       'body.sisi-restyle .sisi-video-preview video {',
       '  border-radius: 1.1em !important;',
       '}',
-      // ── lưới: 2 cột dọc / 3 cột nhỏ ngang / 4 cột lớn ──────────────
+      // ── lưới TỰ ĐỘNG: 2 cột dọc / 3 cột nhỏ ngang / 4 cột lớn ─────
       'body.sisi-restyle .card.card--collection { width: 25% !important; }',
       '@media screen and (max-width: 991px) {',
       '  body.sisi-restyle .card.card--collection { width: 33.333% !important; }',
       '}',
       '@media screen and (orientation: portrait) and (max-width: 720px) {',
       '  body.sisi-restyle .card.card--collection { width: 50% !important; }',
-      '  body.sisi-restyle .card.card--collection .card__title { font-size: 1em !important; }',
       '}',
-      '@media screen and (orientation: portrait) and (max-width: 390px) {',
-      '  body.sisi-restyle .card.card--collection { width: 50% !important; }',
-      '  body.sisi-restyle .card.card--collection .card__title { font-size: .95em !important; }',
+      // ── số CỘT do người dùng chọn (đè lên lưới tự động) ────────────
+      'body.sisi-restyle.sisi-cols-fixed .card.card--collection {',
+      '  width: calc(100% / var(--sisi-cols, 3)) !important;',
+      '}',
+      // ── số HÀNG do người dùng chọn: poster co chiều cao để đủ ──────
+      //    N hàng (poster + tiêu đề) trong một màn hình
+      'body.sisi-restyle.sisi-rows-fixed .card.card--collection .card__view {',
+      '  padding-bottom: 0 !important;',
+      '  height: calc((100vh - 9em) / var(--sisi-rows, 3) - 4.6em) !important;',
+      '  min-height: 6em !important;',
       '}'
     ].join('\n');
     document.head.appendChild(style);
@@ -160,7 +159,52 @@
       },
       field: {
         name: 'SISI kiểu mới (thử nghiệm)',
-        description: 'Poster 16:9 bo góc lớn, tiêu đề đè gradient trên poster, lưới 2 cột ở màn dọc.'
+        description: 'Poster 16:9 bo góc lớn, badge nổi trên poster, tiêu đề bên dưới như gốc.'
+      },
+      onChange: function () {
+        setTimeout(apply, 0);
+      }
+    });
+
+    Lampa.SettingsApi.addParam({
+      component: 'interface',
+      param: {
+        name: settingCols,
+        type: 'select',
+        values: {
+          auto: 'Tự động',
+          2: '2 cột',
+          3: '3 cột',
+          4: '4 cột',
+          5: '5 cột'
+        },
+        default: 'auto'
+      },
+      field: {
+        name: 'SISI: số cột',
+        description: 'Số cột của lưới video SISI. Tự động: 2 cột màn dọc, 3-4 cột màn ngang.'
+      },
+      onChange: function () {
+        setTimeout(apply, 0);
+      }
+    });
+
+    Lampa.SettingsApi.addParam({
+      component: 'interface',
+      param: {
+        name: settingRows,
+        type: 'select',
+        values: {
+          auto: 'Tự động (16:9)',
+          2: '2 hàng',
+          3: '3 hàng',
+          4: '4 hàng'
+        },
+        default: 'auto'
+      },
+      field: {
+        name: 'SISI: số hàng trên màn hình',
+        description: 'Ép đủ N hàng card trong một màn hình (poster co giãn chiều cao). Tự động: giữ tỉ lệ 16:9.'
       },
       onChange: function () {
         setTimeout(apply, 0);
@@ -187,7 +231,7 @@
 
     if (Lampa.Storage && Lampa.Storage.listener) {
       Lampa.Storage.listener.follow('change', function (event) {
-        if (event.name === settingName) apply();
+        if (event.name === settingName || event.name === settingCols || event.name === settingRows) apply();
       });
     }
 
