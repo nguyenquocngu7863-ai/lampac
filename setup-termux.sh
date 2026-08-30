@@ -490,6 +490,7 @@ sync_latest_modules() {
                 pull Modules/LampaWeb/plugins/subfinder.js \"\$lampaweb/plugins/subfinder.js\"
                 pull Modules/LampaWeb/plugins/subsense.js \"\$lampaweb/plugins/subsense.js\"
                 pull Modules/LampaWeb/plugins/subsense-auto.js \"\$lampaweb/plugins/subsense-auto.js\"
+                pull Modules/LampaWeb/plugins/autotracks.js \"\$lampaweb/plugins/autotracks.js\"
             fi
             if [ -d \"\$lampaweb/Controllers\" ]; then
                 pull Modules/LampaWeb/Controllers/ApiController.cs \"\$lampaweb/Controllers/ApiController.cs\"
@@ -708,7 +709,7 @@ install_custom_modules() {
         webtarget=/root/lampac/module/LampaWeb
         mkdir -p \"\$webtarget/Controllers\" \"\$webtarget/Models\" \"\$webtarget/Services\" \"\$webtarget/plugins\" \"\$webtarget/lang\"
         webbase=\"${CUSTOM_SOURCE_BASE}/Modules/LampaWeb\"
-        for file in Controllers/ApiController.cs ModInit.cs Models/InitPlugins.cs Services/LampaCron.cs Services/LampaVietnamese.cs lang/vi.js plugins/lampainit.js plugins/jackett.js plugins/online-compact.js plugins/vietnamese.js plugins/subsense-auto.js plugins/subsense.js plugins/subfinder.js plugins/stremiosub.js plugins/adminpanel.js; do
+        for file in Controllers/ApiController.cs ModInit.cs Models/InitPlugins.cs Services/LampaCron.cs Services/LampaVietnamese.cs lang/vi.js plugins/lampainit.js plugins/jackett.js plugins/online-compact.js plugins/vietnamese.js plugins/subsense-auto.js plugins/subsense.js plugins/subfinder.js plugins/stremiosub.js plugins/autotracks.js plugins/adminpanel.js; do
             curl -fSL --retry 3 \"\$webbase/\$file\" -o \"\$webtarget/\$file\"
         done
 
@@ -1106,7 +1107,7 @@ case "${1:-}" in
             webbase="$LampaWebBase"
             webtarget=/root/lampac/module/LampaWeb
             mkdir -p "$webtarget/Controllers" "$webtarget/Models" "$webtarget/Services" "$webtarget/plugins" "$webtarget/lang"
-            for file in Controllers/ApiController.cs ModInit.cs Models/InitPlugins.cs Services/LampaCron.cs Services/LampaVietnamese.cs lang/vi.js plugins/lampainit.js plugins/jackett.js plugins/online-compact.js plugins/vietnamese.js plugins/subsense-auto.js plugins/subsense.js plugins/subfinder.js plugins/stremiosub.js plugins/adminpanel.js; do
+            for file in Controllers/ApiController.cs ModInit.cs Models/InitPlugins.cs Services/LampaCron.cs Services/LampaVietnamese.cs lang/vi.js plugins/lampainit.js plugins/jackett.js plugins/online-compact.js plugins/vietnamese.js plugins/subsense-auto.js plugins/subsense.js plugins/subfinder.js plugins/stremiosub.js plugins/autotracks.js plugins/adminpanel.js; do
                 curl -fSL --retry 3 "$webbase/$file" -o "$webtarget/$file"
             done
             curl -fSL --retry 3 "$BaseConfUrl" -o /root/lampac/base.conf

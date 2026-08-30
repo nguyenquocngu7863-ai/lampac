@@ -660,6 +660,9 @@ public class ApiController : BaseController
             else if (ModInit.conf.initPlugins.stremiosub)
                 plugins.Add(new("{localhost}/stremiosub.js", 1, "StremioSub — SubDL + SubSource", "lampac"));
 
+            if (ModInit.conf.initPlugins.autotracks)
+                plugins.Add(new("{localhost}/autotracks.js", 1, "Auto Tracks — audio/sub tự chọn", "lampac"));
+
             if (ModInit.conf.initPlugins.adminpanel)
                 plugins.Add(new("{localhost}/adminpanel.js", 1, "Admin Panel", "lampac"));
 
@@ -875,6 +878,9 @@ public class ApiController : BaseController
             if (ModInit.conf.initPlugins.adminpanel)
                 send("adminpanel", false);
 
+            if (ModInit.conf.initPlugins.autotracks)
+                send("autotracks", false);
+
             if (ModInit.conf.initPlugins.jackett)
                 send("jackett", false);
 
@@ -1042,6 +1048,15 @@ public class ApiController : BaseController
     {
         SetHeadersNoCache();
         string plugin = FileCache.ReadAllText($"{ModInit.modpath}/plugins/online-compact.js", "online-compact.js");
+        return ContentTo(plugin, "application/javascript; charset=utf-8");
+    }
+
+    [HttpGet, AllowAnonymous]
+    [Route("autotracks.js")]
+    public ActionResult AutoTracksJs()
+    {
+        SetHeadersNoCache();
+        string plugin = FileCache.ReadAllText($"{ModInit.modpath}/plugins/autotracks.js", "autotracks.js");
         return ContentTo(plugin, "application/javascript; charset=utf-8");
     }
 

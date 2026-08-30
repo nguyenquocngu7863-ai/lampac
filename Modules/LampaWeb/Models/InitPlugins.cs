@@ -64,6 +64,10 @@ public class InitPlugins
     /// <summary>Loads the stable Stremio SubDL/SubSource provider.</summary>
     public bool stremiosub { get; set; } = true;
 
+    /// <summary>Auto-selects the preferred audio (default English) and subtitle
+    /// (default Vietnamese) track when the player loads track lists.</summary>
+    public bool autotracks { get; set; } = true;
+
     /// <summary>Shows a protected AdminPanel shortcut in Lampa Settings.</summary>
     public bool adminpanel { get; set; } = true;
 
