@@ -455,7 +455,7 @@
       return result;
     };
 
-    log('plugin da khoi dong, cho phat phim...');
+    log('plugin da khoi dong (v20260830 stale-sub-fix), cho phat phim...');
   }
 
   // Wait for Lampa to be ready

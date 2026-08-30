@@ -684,7 +684,7 @@
       });
     }
 
-    log('plugin ready');
+    log('plugin ready (v20260830 stale-sub-fix)');
   }
 
   function waitForLampa() {

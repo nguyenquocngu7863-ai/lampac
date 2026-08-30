@@ -300,7 +300,7 @@
     return result;
   };
 
-  log('plugin da load, cho phat phim...');
+  log('plugin da load (v20260830 stale-sub-fix), cho phat phim...');
 
   window.SubSensePlugin = {
     fetch: fetchSubs,
