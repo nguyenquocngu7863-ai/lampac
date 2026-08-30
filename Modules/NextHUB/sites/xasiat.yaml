@@ -15,19 +15,19 @@ menu:
     Phổ biến: most-popular/{page}/
   categories:
     format: tags/{cat}/{page}/
-    Азиатки: asian
-    Японское: japanese
-    Китайское: chinese
-    Корейское: korean
-    Тайское: thai
-    Вьетнамское: vietnamese
-    Индийское: indian
-    Подростки 18+: teen-18
-    Любительское: amateur
-    Домашнее: homemade
-    Минет: blowjob
-    Анал: anal
-    Хентай: hentai
+    Châu Á: asian
+    Nhật Bản: japanese
+    Trung Quốc: chinese
+    Hàn Quốc: korean
+    Thái Lan: thai
+    Việt Nam: vietnamese
+    Ấn Độ: indian
+    18+: teen-18
+    Nghiệp dư: amateur
+    Tại nhà: homemade
+    Khẩu giao: blowjob
+    Hậu môn: anal
+    Hentai: hentai
 
 list:
   uri: latest-updates/{page}/

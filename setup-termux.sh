@@ -446,7 +446,7 @@ VI_LANG
 # shipping a small fix so Termux does not re-download Chrome, hls.js, or
 # every custom module. Use --sync-all for a full refresh.
 sync_latest_modules() {
-    info "Syncing latest patch files only (stale-subtitle fix + sisi-restyle)..."
+    info "Syncing latest patch files only (xasiat vi + sisi-restyle)..."
 
     proot-distro login ubuntu -- bash -c "
         set -euo pipefail
@@ -507,6 +507,14 @@ sync_latest_modules() {
             fi
             if [ -d \"\$sisimod/plugins\" ]; then
                 pull SISI/plugins/sisi-restyle.js \"\$sisimod/plugins/sisi-restyle.js\"
+            fi
+        done
+        for nexthub in /root/lampac/module/NextHUB /root/lampac/mods/NextHUB; do
+            if [ -d \"\$nexthub/sites\" ]; then
+                pull Modules/NextHUB/sites/xasiat.yaml \"\$nexthub/sites/xasiat.yaml\"
+            fi
+            if [ -d \"\$nexthub\" ]; then
+                pull Modules/NextHUB/CategoryVi.cs \"\$nexthub/CategoryVi.cs\"
             fi
         done
     "
