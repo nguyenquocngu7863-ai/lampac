@@ -13,11 +13,13 @@ Bản hướng dẫn này dành cho cách chạy Lampac trên **Android qua Term
 
 ## Cài đặt nhanh
 
+> Nhánh mới nhất: **`arena/01a04e63-lampac`**. Đừng clone `main` — `main` đang chậm hơn và thiếu bản vá mới.
+
 Mở Termux, tải script rồi chạy:
 
 ```bash
 pkg update -y && pkg install -y git curl
-git clone --depth 1 --branch main https://github.com/nguyenquocngu7863-ai/lampac.git
+git clone --depth 1 --branch arena/01a04e63-lampac https://github.com/nguyenquocngu7863-ai/lampac.git
 cd lampac
 bash setup-termux.sh --install
 ```
@@ -91,17 +93,55 @@ Có **ba lệnh**. Script trên điện thoại tự chứa danh sách file, nê
 > sync**, gộp thành một lệnh duy nhất:
 >
 > ```bash
-> curl -fsSL "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/setup-termux.sh?cb=$(date +%s)" -o setup-termux.sh \
+> curl -fsSL "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04e63-lampac/setup-termux.sh?cb=$(date +%s)" -o setup-termux.sh \
 >   && bash setup-termux.sh --sync && lampac stop && lampac start
 > ```
 >
-> (thay `main` bằng branch agent khi test bản chưa merge; `?cb=` để né cache
-> của raw.githubusercontent.com)
+> (`?cb=` để né cache của raw.githubusercontent.com.)
+>
+> **Clone nhánh chưa đủ.** `--sync` / `--sync-all` / `--update` curl file từ
+> `LAMPAC_CUSTOM_SOURCE_BASE`, không phải từ `git branch` đang checkout.
+> Mặc định hiện tại: nhánh `arena/01a04e63-lampac`. Đừng dùng `main`.
 
 ```bash
 # Bước 0 — lấy script mới (làm một lần sau mỗi patch)
-curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/setup-termux.sh -o setup-termux.sh
+curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04e63-lampac/setup-termux.sh -o setup-termux.sh
 ```
+
+### `LAMPAC_CUSTOM_SOURCE_BASE` — nguồn file khi sync
+
+`git clone` / `git pull` chỉ cập nhật repo Termux (`~/lampac`). Bản Lampac đang chạy trong Ubuntu (`/root/lampac`) được vá bằng curl, lấy URL gốc từ biến này.
+
+Mặc định trong script:
+
+```text
+https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04e63-lampac
+```
+
+Kiểm tra đang trỏ đâu:
+
+```bash
+lampac branch
+```
+
+Dùng **một lần** (nhánh agent mới hơn 63, hoặc fork riêng):
+
+```bash
+LAMPAC_CUSTOM_SOURCE_BASE='https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04e63-lampac' \
+  bash setup-termux.sh --sync
+lampac stop && lampac start
+```
+
+Gắn **vĩnh viễn** trong Termux:
+
+```bash
+echo "export LAMPAC_CUSTOM_SOURCE_BASE=https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04e63-lampac" >> ~/.bashrc
+source ~/.bashrc
+lampac branch
+bash setup-termux.sh --sync && lampac stop && lampac start
+```
+
+Phải khớp **hai chỗ**: URL tải `setup-termux.sh` và `LAMPAC_CUSTOM_SOURCE_BASE`. Chỉ đổi một bên thì script mới vẫn kéo file từ nhánh cũ (hoặc ngược lại).
 
 | Lệnh | Khi nào dùng | Tải gì |
 |---|---|---|
@@ -121,7 +161,7 @@ lampac stop && lampac start
 Hoặc một lệnh (vẫn nên tải script mới trước):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/setup-termux.sh | bash -s -- --sync
+curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04e63-lampac/setup-termux.sh | bash -s -- --sync
 lampac stop && lampac start
 ```
 
@@ -207,7 +247,7 @@ proot-distro login ubuntu -- bash -lc '
 Không cần clone Git:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/setup-termux.sh \
+curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04e63-lampac/setup-termux.sh \
   | bash -s -- --update
 ```
 
@@ -613,7 +653,7 @@ curl -s http://127.0.0.1:9118/lampainit.js | grep -oE 'StremioSub[^" ]*|stremios
 Nếu lệnh không in ra `stremiosub.js`, đồng bộ đầy đủ LampaWeb rồi khởi động lại:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/setup-termux.sh | bash -s -- --sync-all
+curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04e63-lampac/setup-termux.sh | bash -s -- --sync-all
 lampac stop
 lampac start
 ```
@@ -811,7 +851,7 @@ proot-distro login ubuntu -- bash -lc '
   mkdir -p /root/lampac-backups
   [ -f /root/lampac/init.conf ] && cp -a /root/lampac/init.conf /root/lampac-backups/init.conf.before-recovery
   [ -f /root/lampac/passwd ] && cp -a /root/lampac/passwd /root/lampac-backups/passwd.before-recovery
-  curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/config/termux-recovery.init.conf \
+  curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04e63-lampac/config/termux-recovery.init.conf \
     -o /root/lampac/init.conf
 '
 ```

@@ -7,7 +7,7 @@ Tài liệu này ghi lại quy trình làm việc khi sửa mã nguồn trên Gi
 > - Repository mã nguồn: thường là `~/lampac` ở phía Termux.
 > - Bản Lampac đang chạy: nằm bên trong Ubuntu proot tại `/root/lampac`.
 >
-> `git pull` chỉ cập nhật mã nguồn trong repository; nó **không tự cập nhật** bản Lampac đang chạy. Muốn cập nhật bản đang chạy, cần chạy `setup-termux.sh --sync` hoặc `--sync-all`.
+> `git pull` chỉ cập nhật mã nguồn trong repository; nó **không tự cập nhật** bản Lampac đang chạy. Muốn cập nhật bản đang chạy, cần chạy `setup-termux.sh --sync` hoặc `--sync-all`. Các lệnh đó curl file từ `LAMPAC_CUSTOM_SOURCE_BASE` (mặc định nhánh `arena/01a04e63-lampac`), không phải từ `git branch` đang checkout.
 
 ## 1. Cài mới từ GitHub
 
@@ -15,17 +15,20 @@ Tài liệu này ghi lại quy trình làm việc khi sửa mã nguồn trên Gi
 pkg update -y
 pkg install -y git curl
 
-git clone --depth 1 --branch main https://github.com/nguyenquocngu7863-ai/lampac.git
+git clone --depth 1 --branch arena/01a04e63-lampac https://github.com/nguyenquocngu7863-ai/lampac.git
 cd ~/lampac
 bash setup-termux.sh --install
 ```
+
+Nhánh mới nhất là `arena/01a04e63-lampac`. Không clone `main` — `main` đang chậm hơn.
 
 Nếu thư mục đã tồn tại:
 
 ```bash
 cd ~/lampac
 git status
-git pull --ff-only origin main
+git fetch origin arena/01a04e63-lampac
+git pull --ff-only origin arena/01a04e63-lampac
 ```
 
 ## 2. Các lệnh Git thường dùng
@@ -93,7 +96,7 @@ Không cần switch branch để cập nhật bản Lampac đang chạy. Nếu c
 
 ```bash
 cd ~/lampac
-curl -fL "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/setup-termux.sh" -o "$HOME/setup-termux-latest.sh"
+curl -fL "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04e63-lampac/setup-termux.sh" -o "$HOME/setup-termux-latest.sh"
 
 lampac stop || true
 bash "$HOME/setup-termux-latest.sh" --sync-all
@@ -113,7 +116,7 @@ lampac stop && lampac start
 Không checkout đè file local. Tải một bản script mới vào thư mục Home, không dùng `/tmp`:
 
 ```bash
-curl -fL "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/setup-termux.sh" -o "$HOME/setup-termux-latest.sh"
+curl -fL "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04e63-lampac/setup-termux.sh" -o "$HOME/setup-termux-latest.sh"
 ls -l "$HOME/setup-termux-latest.sh"
 chmod +x "$HOME/setup-termux-latest.sh"
 
@@ -225,7 +228,7 @@ Nếu không có file, tải lại bằng lệnh `curl -fL ... -o "$HOME/setup-t
 
 Kiểm tra theo thứ tự:
 
-1. Đảm bảo commit đã được đưa vào `main` trên GitHub.
+1. Đảm bảo commit đã nằm trên nhánh `arena/01a04e63-lampac` trên GitHub (không chờ `main`).
 2. Chạy `setup-termux.sh --sync-all` hoặc xoá thủ công theo mục 6.
 3. Chạy `lampac stop` rồi `lampac start`.
 4. Thoát hẳn và mở lại ứng dụng Lampa để xoá cache WebView.
@@ -241,12 +244,24 @@ tên plugin) nhưng không kéo file `.js` mới → server trả 404.
 Cách xử lý và phòng ngừa — **luôn tải lại script trước khi sync**, gộp một lệnh:
 
 ```bash
-curl -fsSL "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/main/setup-termux.sh?cb=$(date +%s)" -o ~/setup-termux-branch.sh \
+curl -fsSL "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04e63-lampac/setup-termux.sh?cb=$(date +%s)" -o ~/setup-termux-branch.sh \
   && bash ~/setup-termux-branch.sh --sync && lampac stop && lampac start
 ```
 
-Thay `main` bằng branch agent (kèm `LAMPAC_CUSTOM_SOURCE_BASE=...` trước
-`bash`) khi test bản chưa merge. Xác minh nhanh sau khi sync:
+Lệnh trên đã trỏ nhánh mới nhất `arena/01a04e63-lampac`. Không thay bằng `main`.
+
+**Clone/`git pull` chưa đủ.** `--sync` curl file từ `LAMPAC_CUSTOM_SOURCE_BASE`
+(mặc định cùng nhánh 63). Khi test nhánh agent khác, phải khớp cả URL tải
+script **và** custom base:
+
+```bash
+export LAMPAC_CUSTOM_SOURCE_BASE='https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04e63-lampac'
+curl -fsSL "$LAMPAC_CUSTOM_SOURCE_BASE/setup-termux.sh?cb=$(date +%s)" -o ~/setup-termux-branch.sh
+bash ~/setup-termux-branch.sh --sync
+lampac stop && lampac start
+```
+
+Xem đang trỏ đâu: `lampac branch`. Xác minh nhanh sau khi sync:
 
 ```bash
 proot-distro login ubuntu -- bash -c 'curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:9118/autotracks.js'
