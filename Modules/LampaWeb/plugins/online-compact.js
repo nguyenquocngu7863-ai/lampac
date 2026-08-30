@@ -29,16 +29,16 @@
       //
       // Design (mirrors the landscape card):
       //  - fixed card height -> every card identical, no stretching
-      //  - exactly two text lines: title (1 line, ellipsis) and
-      //    info+quality (1 line, ellipsis) -> text never wraps
+      //  - three text lines total: title (1 line, ellipsis) and the
+      //    info/description block on exactly TWO lines (clamped)
       //  - square 1:1 poster: width == card height, stretched to the
       //    card's full height and flush with the card's left/top/bottom
       //    edges (no gap, corners clipped by the card's own radius)
       '@media screen and (orientation: portrait) {',
       '  body.lampac-online-compact .online-prestige--full {',
-      '    height: 9em !important;',
-      '    min-height: 9em !important;',
-      '    max-height: 9em !important;',
+      '    height: 10.4em !important;',
+      '    min-height: 10.4em !important;',
+      '    max-height: 10.4em !important;',
       '    align-items: stretch !important;',
       '    border-radius: .35em !important;',
       '    overflow: hidden !important;',
@@ -49,9 +49,9 @@
       // Poster: width equals the card height, height stretches to 100% of
       // the card -> always a perfect square glued to the card edges.
       '  body.lampac-online-compact .online-prestige--full .online-prestige__img {',
-      '    width: 9em !important;',
-      '    min-width: 9em !important;',
-      '    max-width: 9em !important;',
+      '    width: 10.4em !important;',
+      '    min-width: 10.4em !important;',
+      '    max-width: 10.4em !important;',
       '    height: auto !important;',
       '    min-height: 0 !important;',
       '    max-height: none !important;',
@@ -107,30 +107,34 @@
       '  body.lampac-online-compact .online-prestige--full .online-prestige__timeline {',
       '    margin: .5em 0 !important;',
       '  }',
-      // Text line 2: info left + quality right on ONE row, like landscape.
-      // The info block is cut with ellipsis instead of wrapping.
+      // Description block: info left + quality right. The info text gets
+      // exactly TWO lines (clamped with ellipsis) so the card never grows,
+      // and two lines of metadata are always visible.
       '  body.lampac-online-compact .online-prestige--full .online-prestige__footer {',
       '    display: flex !important;',
       '    flex-wrap: nowrap !important;',
-      '    align-items: center !important;',
+      '    align-items: flex-start !important;',
       '    justify-content: space-between !important;',
       '    min-width: 0 !important;',
       '    gap: .8em !important;',
       '  }',
       '  body.lampac-online-compact .online-prestige--full .online-prestige__info {',
-      '    display: block !important;',
+      '    display: -webkit-box !important;',
+      '    -webkit-box-orient: vertical !important;',
+      '    -webkit-line-clamp: 2 !important;',
+      '    line-clamp: 2 !important;',
       '    flex: 1 1 auto !important;',
       '    min-width: 0 !important;',
-      '    white-space: nowrap !important;',
+      '    white-space: normal !important;',
       '    overflow: hidden !important;',
       '    text-overflow: ellipsis !important;',
       '    font-size: 1em !important;',
-      '    line-height: 1.3 !important;',
-      '    max-height: none !important;',
+      '    line-height: 1.35 !important;',
+      '    max-height: 2.7em !important;',
       '  }',
       '  body.lampac-online-compact .online-prestige--full .online-prestige__info > * {',
       '    display: inline !important;',
-      '    white-space: nowrap !important;',
+      '    white-space: normal !important;',
       '    overflow: visible !important;',
       '  }',
       '  body.lampac-online-compact .online-prestige--full .online-prestige__quality {',
@@ -154,32 +158,34 @@
       // Phone-sized portrait: smaller fixed card, poster follows card height.
       '@media screen and (orientation: portrait) and (max-width: 720px) {',
       '  body.lampac-online-compact .online-prestige--full {',
-      '    height: 7.4em !important;',
-      '    min-height: 7.4em !important;',
-      '    max-height: 7.4em !important;',
+      '    height: 8.8em !important;',
+      '    min-height: 8.8em !important;',
+      '    max-height: 8.8em !important;',
       '  }',
       '  body.lampac-online-compact .online-prestige--full .online-prestige__img {',
-      '    width: 7.4em !important;',
-      '    min-width: 7.4em !important;',
-      '    max-width: 7.4em !important;',
+      '    width: 8.8em !important;',
+      '    min-width: 8.8em !important;',
+      '    max-width: 8.8em !important;',
       '  }',
       '  body.lampac-online-compact .online-prestige--full .online-prestige__title {',
       '    font-size: 1.3em !important;',
       '  }',
       '  body.lampac-online-compact .online-prestige--full .online-prestige__info {',
       '    font-size: .95em !important;',
+      '    line-height: 1.35 !important;',
+      '    max-height: 2.7em !important;',
       '  }',
       '}',
       '@media screen and (orientation: portrait) and (max-width: 390px) {',
       '  body.lampac-online-compact .online-prestige--full {',
-      '    height: 6.6em !important;',
-      '    min-height: 6.6em !important;',
-      '    max-height: 6.6em !important;',
+      '    height: 8em !important;',
+      '    min-height: 8em !important;',
+      '    max-height: 8em !important;',
       '  }',
       '  body.lampac-online-compact .online-prestige--full .online-prestige__img {',
-      '    width: 6.6em !important;',
-      '    min-width: 6.6em !important;',
-      '    max-width: 6.6em !important;',
+      '    width: 8em !important;',
+      '    min-width: 8em !important;',
+      '    max-width: 8em !important;',
       '  }',
       '  body.lampac-online-compact .online-prestige--full .online-prestige__body {',
       '    padding: .7em .85em !important;',
@@ -203,7 +209,7 @@
       },
       field: {
         name: 'Danh sách Online gọn',
-        description: 'Chế độ dọc: card cao cố định 2 dòng chữ, poster vuông dính viền như chế độ ngang.'
+        description: 'Chế độ dọc: card cao cố định, mô tả đúng 2 dòng, poster vuông dính viền như chế độ ngang.'
       },
       onChange: function () {
         setTimeout(apply, 0);
