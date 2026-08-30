@@ -97,26 +97,6 @@
     }
   }
 
-  function normalizeTitle(value) {
-    return String(value || '')
-      .toLowerCase()
-      .replace(/[\.\-_:;,!?'"“”‘’\/\\\[\]\(\)\{\}\+]+/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-  }
-
-  function titleMatchesMovie(movie, playTitle) {
-    var play = normalizeTitle(playTitle);
-    if (!play) return true; // no title to compare — keep legacy behaviour
-
-    var candidates = [movie.title, movie.name, movie.original_title, movie.original_name];
-    for (var i = 0; i < candidates.length; i++) {
-      var candidate = normalizeTitle(candidates[i]);
-      if (candidate && candidate.length >= 2 && (play.indexOf(candidate) >= 0 || candidate.indexOf(play) >= 0))
-        return true;
-    }
-    return false;
-  }
 
   function resolvePlaybackMovie(params) {
     if (params && params.movie) return params.movie;
@@ -125,10 +105,9 @@
       log('adult/SISI playback — skipping lastMovie fallback');
       return null;
     }
-    if (params && !titleMatchesMovie(lastMovie, params.title)) {
-      log('play title does not match lastMovie — skipping subtitles for', params.title);
-      return null;
-    }
+    // NOTE: no title comparison here. Online sources often play with a
+    // localized/release title that never matches lastMovie's TMDB names,
+    // which would wrongly skip subtitles for the correct film.
     return lastMovie;
   }
 
@@ -684,7 +663,7 @@
       });
     }
 
-    log('plugin ready (v20260830 stale-sub-fix)');
+    log('plugin ready (v20260830b no-title-guard)');
   }
 
   function waitForLampa() {

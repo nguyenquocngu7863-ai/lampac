@@ -48,26 +48,6 @@
     }
   }
 
-  function normalizeTitle(value) {
-    return String(value || '')
-      .toLowerCase()
-      .replace(/[\.\-_:;,!?'"“”‘’\/\\\[\]\(\)\{\}\+]+/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-  }
-
-  function titleMatchesMovie(movie, playTitle) {
-    var play = normalizeTitle(playTitle);
-    if (!play) return true; // không có tiêu đề để so — giữ hành vi cũ
-
-    var candidates = [movie.title, movie.name, movie.original_title, movie.original_name];
-    for (var i = 0; i < candidates.length; i++) {
-      var candidate = normalizeTitle(candidates[i]);
-      if (candidate && candidate.length >= 2 && (play.indexOf(candidate) >= 0 || candidate.indexOf(play) >= 0))
-        return true;
-    }
-    return false;
-  }
 
   function resolvePlaybackMovie(params) {
     if (params && params.movie) return params.movie;
@@ -76,10 +56,9 @@
       log('phat noi dung SISI/adult — khong dung lastMovie, bo qua sub');
       return null;
     }
-    if (params && !titleMatchesMovie(lastMovie, params.title)) {
-      log('tieu de dang phat khong khop phim truoc — bo qua sub:', params.title);
-      return null;
-    }
+    // LUU Y: khong so tieu de o day. Nguon online hay phat voi ten
+    // viet hoa/ten release khong trung ten TMDB cua lastMovie, so se
+    // chan nham phim DUNG.
     return lastMovie;
   }
 
@@ -126,7 +105,7 @@
       return result;
     };
 
-    log('plugin da khoi dong (v20260830 stale-sub-fix), cho phat phim...');
+    log('plugin da khoi dong (v20260830b no-title-guard), cho phat phim...');
   }
 
   function ensureJSZip(callback) {
