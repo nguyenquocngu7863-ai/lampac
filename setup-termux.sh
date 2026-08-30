@@ -446,7 +446,7 @@ VI_LANG
 # shipping a small fix so Termux does not re-download Chrome, hls.js, or
 # every custom module. Use --sync-all for a full refresh.
 sync_latest_modules() {
-    info "Syncing latest patch files only (online-compact portrait card)..."
+    info "Syncing latest patch files only (sisi-restyle integration)..."
 
     proot-distro login ubuntu -- bash -c "
         set -euo pipefail
@@ -475,13 +475,25 @@ sync_latest_modules() {
         rm -f /root/lampac/module/NextHUB/sites/85po.yaml \
               /root/lampac/mods/NextHUB/sites/85po.yaml
 
-        # Latest patch: online-compact.js — portrait-only compact card:
-        # fixed height, 1-line description + 1-line file info, square 1:1
-        # poster flush with the card edges. Landscape keeps stock layout.
+        # Latest patch: sisi-restyle.js becomes a built-in SISI plugin
+        # (served at /sisi-restyle.js, auto-registered when initPlugins.sisi
+        # is on). Also keeps online-compact.js current.
         # mods/ overrides module/, so keep both copies in sync when present.
         for lampaweb in /root/lampac/module/LampaWeb /root/lampac/mods/LampaWeb; do
             if [ -d \"\$lampaweb/plugins\" ]; then
                 pull Modules/LampaWeb/plugins/online-compact.js \"\$lampaweb/plugins/online-compact.js\"
+                pull Modules/LampaWeb/plugins/lampainit.js \"\$lampaweb/plugins/lampainit.js\"
+            fi
+            if [ -d \"\$lampaweb/Controllers\" ]; then
+                pull Modules/LampaWeb/Controllers/ApiController.cs \"\$lampaweb/Controllers/ApiController.cs\"
+            fi
+        done
+        for sisimod in /root/lampac/module/SISI /root/lampac/mods/SISI; do
+            if [ -d \"\$sisimod\" ]; then
+                pull SISI/SisiApi.cs \"\$sisimod/SisiApi.cs\"
+            fi
+            if [ -d \"\$sisimod/plugins\" ]; then
+                pull SISI/plugins/sisi-restyle.js \"\$sisimod/plugins/sisi-restyle.js\"
             fi
         done
     "
@@ -602,7 +614,7 @@ install_custom_modules() {
         sisitarget=/root/lampac/module/SISI/plugins
         if [ -d \"\$sisitarget\" ]; then
             rm -f \"\$sisitarget/sisi-layout.js\" \"\$sisitarget/sisi-layout.js.tmp\"
-            for file in sisi.js startpage.js; do
+            for file in sisi.js startpage.js sisi-restyle.js; do
                 curl -fSL --retry 3 \"${CUSTOM_SOURCE_BASE}/SISI/plugins/\$file\" -o \"\$sisitarget/\$file.tmp\"
                 mv \"\$sisitarget/\$file.tmp\" \"\$sisitarget/\$file\"
             done
@@ -1013,7 +1025,7 @@ case "${1:-}" in
             sisitarget=/root/lampac/module/SISI/plugins
             if [ -d "$sisitarget" ]; then
                 rm -f "$sisitarget/sisi-layout.js" "$sisitarget/sisi-layout.js.tmp"
-                for file in sisi.js startpage.js; do
+                for file in sisi.js startpage.js sisi-restyle.js; do
                     curl -fSL --retry 3 "$SisiPlugBase/$file" -o "$sisitarget/$file.tmp"
                     mv "$sisitarget/$file.tmp" "$sisitarget/$file"
                 done

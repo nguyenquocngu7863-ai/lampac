@@ -673,6 +673,7 @@ public class ApiController : BaseController
             {
                 plugins.Add(new("{localhost}/sisi.js", 1, "Клубничка", "lampac"));
                 plugins.Add(new("{localhost}/startpage.js", 1, "Стартовая страница", "lampac"));
+                plugins.Add(new("{localhost}/sisi-restyle.js", 1, "SISI Restyle", "lampac"));
             }
 
             if (ModInit.conf.initPlugins.sync)
@@ -888,6 +889,7 @@ public class ApiController : BaseController
             {
                 send("sisi", true);
                 send("startpage", false);
+                send("sisi-restyle", false);
             }
 
             if (ModInit.conf.initPlugins.sync)

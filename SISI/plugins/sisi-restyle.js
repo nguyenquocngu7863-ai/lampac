@@ -1,7 +1,8 @@
 /*
- * SISI Restyle (experimental)
- * ---------------------------
- * Plugin thử nghiệm thay đổi bố cục và poster của danh sách SISI:
+ * SISI Restyle
+ * ------------
+ * Plugin tích hợp sẵn (serve tại /sisi-restyle.js, tự đăng ký khi
+ * initPlugins.sisi bật) thay đổi bố cục và poster của danh sách SISI:
  *  - Poster 16:9 bo góc lớn, ảnh phủ kín khung (object-fit cover)
  *  - Tiêu đề nằm DƯỚI poster như bố cục gốc (giữ nguyên size font gốc)
  *  - Badge thời lượng/chất lượng giữ nguyên kiểu mặc định của Lampa
