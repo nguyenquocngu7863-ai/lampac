@@ -446,7 +446,7 @@ VI_LANG
 # shipping a small fix so Termux does not re-download Chrome, hls.js, or
 # every custom module. Use --sync-all for a full refresh.
 sync_latest_modules() {
-    info "Syncing latest patch files only (online-compact square poster)..."
+    info "Syncing latest patch files only (online-compact portrait card)..."
 
     proot-distro login ubuntu -- bash -c "
         set -euo pipefail
@@ -475,7 +475,9 @@ sync_latest_modules() {
         rm -f /root/lampac/module/NextHUB/sites/85po.yaml \
               /root/lampac/mods/NextHUB/sites/85po.yaml
 
-        # Latest patch: online-compact.js — square 1:1 poster on mobile list.
+        # Latest patch: online-compact.js — portrait-only compact card:
+        # fixed height, 1-line description + 1-line file info, square 1:1
+        # poster flush with the card edges. Landscape keeps stock layout.
         # mods/ overrides module/, so keep both copies in sync when present.
         for lampaweb in /root/lampac/module/LampaWeb /root/lampac/mods/LampaWeb; do
             if [ -d \"\$lampaweb/plugins\" ]; then
