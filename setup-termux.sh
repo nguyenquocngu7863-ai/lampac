@@ -494,6 +494,9 @@ sync_latest_modules() {
             if [ -d \"\$lampaweb/Controllers\" ]; then
                 pull Modules/LampaWeb/Controllers/ApiController.cs \"\$lampaweb/Controllers/ApiController.cs\"
             fi
+            if [ -d \"\$lampaweb/Models\" ]; then
+                pull Modules/LampaWeb/Models/InitPlugins.cs \"\$lampaweb/Models/InitPlugins.cs\"
+            fi
         done
         for sisimod in /root/lampac/module/SISI /root/lampac/mods/SISI; do
             if [ -d \"\$sisimod\" ]; then

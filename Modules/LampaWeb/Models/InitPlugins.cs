@@ -37,6 +37,10 @@ public class InitPlugins
 
     public bool sisi { get; set; }
 
+    /// <summary>Loads the SISI restyle plugin (16:9 grid, user rows/cols).
+    /// Safe without SISI: it only styles sisi_* activities.</summary>
+    public bool sisiRestyle { get; set; } = true;
+
     public bool torrserver { get; set; }
 
     public bool backup { get; set; }

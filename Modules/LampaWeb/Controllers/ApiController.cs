@@ -673,8 +673,13 @@ public class ApiController : BaseController
             {
                 plugins.Add(new("{localhost}/sisi.js", 1, "Клубничка", "lampac"));
                 plugins.Add(new("{localhost}/startpage.js", 1, "Стартовая страница", "lampac"));
-                plugins.Add(new("{localhost}/sisi-restyle.js", 1, "SISI Restyle", "lampac"));
             }
+
+            // Independent of initPlugins.sisi: the restyle plugin is inert
+            // outside sisi_* activities, and SISI itself is often loaded from
+            // a manual/external URL rather than the sisi flag above.
+            if (ModInit.conf.initPlugins.sisiRestyle)
+                plugins.Add(new("{localhost}/sisi-restyle.js", 1, "SISI Restyle", "lampac"));
 
             if (ModInit.conf.initPlugins.sync)
                 plugins.Add(new("{localhost}/sync.js", 1, "Синхронизация", "lampac"));
@@ -889,8 +894,10 @@ public class ApiController : BaseController
             {
                 send("sisi", true);
                 send("startpage", false);
-                send("sisi-restyle", false);
             }
+
+            if (adult && ModInit.conf.initPlugins.sisiRestyle)
+                send("sisi-restyle", false);
 
             if (ModInit.conf.initPlugins.sync)
                 send("sync", true);
