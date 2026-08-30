@@ -24,6 +24,9 @@ public class InitPlugins
     /// <summary>Loads compact responsive styles for Online result cards.</summary>
     public bool onlineCompact { get; set; } = true;
 
+    /// <summary>Locks the phone to landscape while the Lampa player is open.</summary>
+    public bool playerLandscape { get; set; } = true;
+
     /// <summary>Loads the persistent Vietnamese localization overlay after addons.</summary>
     public bool vietnamese { get; set; } = true;
 

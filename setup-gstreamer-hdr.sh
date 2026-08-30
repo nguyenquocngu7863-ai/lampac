@@ -9,7 +9,7 @@ WORK_ROOT="${GSTREAMER_HDR_WORK_ROOT:-/root/gst-hdrtonemap-build}"
 FFMPEG_VERSION="${FFMPEG_VERSION:-8.0.3}"
 ZIMG_VERSION="${ZIMG_VERSION:-3.0.6}"
 JOBS="${JOBS:-2}"
-SOURCE_BASE="${LAMPAC_CUSTOM_SOURCE_BASE:-https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04e63-lampac}"
+SOURCE_BASE="${LAMPAC_CUSTOM_SOURCE_BASE:-https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05241-lampac}"
 
 printf '\n==> Installing GStreamer HDR build dependencies in Ubuntu\n'
 
