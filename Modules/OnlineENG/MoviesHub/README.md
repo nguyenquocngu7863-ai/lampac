@@ -48,17 +48,34 @@ GStreamer. Vì vậy:
 bằng `.mkv` (nó cắt query trước: `url.split('#')[0].split('?')[0]` rồi `/\.mkv$/`). Không có `.mkv`
 trong path thì Lampa phát bằng player thường = mất E-AC3/DDP 5.1 ("mất tiếng"). Query dán thoải mái.
 
-1. **`method:"call"` bắt buộc trả JSON.** Đặt `play=true` mặc định ⇒ route mà Lampa gọi bằng `call`
-   trả 302 ⇒ Lampa theo redirect, nhận nguyên xác file mkv rồi cố parse JSON ⇒ **chết mọi link**.
-   Nên `play=false` là mặc định, `/video` luôn trả JSON.
-2. **Không tự ý nhét link đã resolve vào `/proxy/{token}`.** Token làm mất đuôi `.mkv` trong path
-   (gst hết bắt) và thêm một hop không cần thiết cho file tiến bộ. Mặc định phát link trần;
-   `PlayUrl` chỉ proxy khi bật `"streamproxy": true` cho đúng section nguồn đó trong `init.conf`.
+1. **`method:"call"` bắt buộc trả JSON.** Đặt `play=true` mặc định cho route mà Lampa gọi bằng
+   `call` ⇒ nó trả 302 ⇒ Lampa theo redirect, nhận nguyên xác file mkv rồi cố parse JSON ⇒ chết mọi
+   link. Bài học: hoặc là JSON, hoặc là đừng dùng `call`.
+2. **Mọi url đưa cho player phải qua `accsArgs()`.** Đây là lý do thật khiến link đã resolve đúng mà
+   vẫn "Không play được": url player tự fetch là `/lite/...` của Lampac, và nếu thiếu token access thì
+   `AccsDbInvk` chặn. Bản `v14` bọc `accsArgs` cho `stream:` nhưng quên chỗ player cần nhất.
+   Bằng chứng là chính Sootio: `BuildVideoEndpoint()` trả `accsArgs(endpoint + "&play=true")` và
+   `BuildMovieTemplate()` gắn `method:"play"` (Sootio/Controller.cs:858 và :857) — Sootio **cũng**
+   đi qua `/lite/sootio/file.mkv` (Controller.cs:116-158), không phải em bày ra.
 
-Đi được cả hai vì JSON trả về có `url` trỏ về **chính route `file.mkv?…&play=true`** của module
-(self-reference một hop): path vẫn kết thúc `.mkv` ⇒ gst.js bật GStreamer ⇒ GStreamer gọi lại route
-đó ⇒ gặp 302 ⇒ theo về link trần. `RouteFor(label,url)` chọn `file.mp4` khi tên file là mp4 (mp4 thì
-player thường lo được, không phải remux vô ích).
+**Hợp đồng hiện tại (v15)** — một nút = một url, không JSON, không proxy:
+
+```
+MovieTpl.Append(nhãn, accsArgs("{host}/lite/{plugin}/file.mkv?src=…&label=…&play=true"), "play",
+                details: host);                       // EpisodeTpl likewise
+VideoCore:  ResolveHub(...) -> link trần verbatim -> RedirectToPlay(link)   // 302, không /proxy
+```
+
+Tức là: path phải giữ `.mkv` (cho gst.js) và phải có token (cho player) — còn byte thì Lampac không
+chạm vào, 302 thẳng sang link mà extractor vừa trả. `RouteFor(label,url)` chọn `file.mp4` khi tên
+file là mp4 (mp4 thì player thường lo được, khỏi remux). `PlayUrl` chỉ proxy khi bật
+`"streamproxy": true` cho đúng section trong `init.conf`.
+
+`Clean()`/`NormalizeUrl()`: link presigned của HubCloud nằm trong `href` của HTML nên có khi còn
+nguyên `&amp;`; để nguyên thì R2 nhận tham số `amp;X-Amz-Credential` → 400/403 → "Không play được".
+`Clean()` chữa `&amp;`/nháy bọc ngoài, `NormalizeUrl()` thêm `%20` cho khoảng trắng (ClearStreamUri
+cắt url ở space). **Không** round-trip qua `Uri.AbsoluteUri`: query presigned (X-Amz-Signature) lệch
+một ký tự là chết.
 
 Kiểm chứng trên máy: `"gst": { "enable": true }` trong `init.conf`, plugin `http://<host>:9118/gst.js`
 đã đăng ký trong Lampa, và `curl -s http://127.0.0.1:9118/gst/status` phải thấy task khi đang phát.
@@ -112,6 +129,7 @@ Referer theo đúng origin đó. Đặt một host cố định = 403 cho các m
 | `moviesdrive: play … [direct]` / `[proxy]` | `[direct]` = phát thẳng link extractor (mặc định). `[proxy]` = link đang đi qua `/proxy/{token}` vì init.conf bật `streamproxy` cho section đó — path sẽ mất `.mkv` nên GStreamer không bật |
 | `movieshub: bỏ N nút gdflix/gdlink/go2link khỏi menu` | nguồn vẫn trả link chết, CollectionCore chặn ở cổ chai cuối |
 | `movies4u: nhãn thiếu chất lượng: 'hubcloud.cx' (heading='' nút='…')` | heading khối không bắt được ⇒ selector `download-links-div`/`downloads-btns-div` đã đổi; xem `classes=` ở dòng ngay trên để biết site dùng class gì |
+| `movieshub: link có ký tự rác (&amp; / nháy / space) — đã sửa…` | HTML lọt vào link, module tự chữa; vẫn 403 thì gửi em đúng dòng này |
 | `movies4u: 0 bài ứng viên` | **WP `?s=` không index href**, nên không bao giờ tìm được bằng IMDb id — module đã chuyển sang tìm tên+năm (qua TMDB); nếu vẫn 0 thì domain đổi hoặc bài không tồn tại |
 | `moviesdrive: bài: … a=0` | trang bài viết không có anchor nào → bị chặn/redirect, không phải selector sai |
 | `moviesdrive: 0 link file-host \| hosts=hubcloud.foo:12 t.me:3 …` | bộ lọc đúng nhưng site đặt link ở host lạ → gửi em nguyên dòng `hosts=` |
@@ -216,8 +234,11 @@ giá trị qua `HrefValue(m)` (ba nhóm `d`/`s`/`n`, không dùng trùng tên nh
   và viết marker mới vào message commit. Đây là cách duy nhất để log tự chứng minh máy anh đang chạy
   bản nào, vì module không để dll lại trên đĩa.
 
-- Không đổi `method:"call"` sang trả 302; không bọc link đã resolve vào `HostStreamProxy` rồi đưa
-  cho player (xem `## Phát qua GStreamer`).
+- Không đổi `method:"call"` sang trả 302, và ngược lại: nút phát thì dùng `method:"play"` chứ không
+  `call`. Không bọc link đã resolve vào `HostStreamProxy` rồi đưa cho player. **Mọi** url mà player
+  tự fetch phải đi qua `accsArgs(...)` (xem `## Phát qua GStreamer`).
+- Sau mỗi commit sửa module: đổi `Build` (hiện `v15-play-302`) và nhắc marker trong message commit,
+  vì đó là cách duy nhất log tự chứng minh máy đang chạy bản nào (module compile trong bộ nhớ).
 
 ## Bẫy đã né sẵn (đều là bài học từ VidCore, đọc trước khi sửa)
 

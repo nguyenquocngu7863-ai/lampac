@@ -53,7 +53,7 @@ public abstract class HubController : BaseENGController
     /// hash, phải đánh tay: mỗi commit sửa MoviesHub là đổi chuỗi này (luật trong README). Log ra
     /// marker khác = máy đang compile bản cũ -> dừng việc sửa code, kéo lại từ commit đó.
     /// </summary>
-    protected const string Build = "v14-json-direct";
+    protected const string Build = "v15-play-302";
 
     /// <summary>
     /// Host mà module này không thể tự chơi: gdflix/gdlink/go2link bị Cloudflare js challenge,
@@ -64,13 +64,50 @@ public abstract class HubController : BaseENGController
         => Regex.IsMatch(url ?? "", @"(?i)gdflix|gdlink|go2link");
 
     /// <summary>
-    /// Escape link trước khi đưa cho player. Bằng chứng phải làm: Shared/Controllers/BaseController.cs
-    /// cắt url ở KÝ TỰ TRẮNG đầu tiên (ClearStreamUri, và RedirectToPlay làm url.Split(" ")[0]), nên
-    /// ".../drive/Movie 4K.mkv" chưa escape sẽ thành ".../drive/Movie". Uri.AbsoluteUri biến khoảng
-    /// trắng thành %20 mà giữ nguyên query (link r2 presigned có query rất dài, không được mất).
+    /// Dọn link TRƯỚC KHI dùng, chỉ những gì bắt buộc:
+    ///  - &amp;amp; -> &amp; : link presigned của HubCloud nằm trong href của HTML nên nhiều khi còn
+    ///    nguyên entity; để nguyên thì R2 nhận tham số "amp;X-Amz-Credential" -> 400/403 -> Lampa báo
+    ///    "Không play được". Chữa ở đây vì log sẽ im lặng nếu chỉ chữa một đường.
+    ///  - khoảng trắng -> %20: ClearStreamUri/RedirectToPlay của Shared CẮT url ở khoảng trắng đầu
+    ///    tiên, nên ".../Movie 4K.mkv" sẽ thành ".../Movie".
+    /// Không dùng Uri.AbsoluteUri để "escape" như bản trước: round-trip qua Uri có thể đổi cách mã
+    /// hóa query, mà query của link presigned (X-Amz-Signature/Credential) chạm vào là chết.
+    /// </summary>
+    protected static string Clean(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+            return url;
+
+        string c = url.Trim().Trim('"', '\'', '`', '<', '>');
+
+        while (c.Contains("&amp;", StringComparison.OrdinalIgnoreCase))
+            c = c.Replace("&amp;", "&", StringComparison.OrdinalIgnoreCase);
+
+        c = c.Replace("&#038;", "&").Replace("&#38;", "&").Replace("%252F", "%2F");
+
+        return c;
+    }
+
+    /// <summary>
+    /// Clean() + đổi khoảng trắng thành %20 (player và ClearStreamUri không chịu được space). Không
+    /// có gì khác: link presigned mà bị "chuẩn hóa" thêm (Uri.AbsoluteUri, escape lại query) là
+    /// X-Amz-Signature lệch một ký tự cũng thành 403.
     /// </summary>
     protected static string NormalizeUrl(string url)
-        => url != null && Uri.TryCreate(url.Trim(), UriKind.Absolute, out Uri u) ? u.AbsoluteUri : url?.Trim();
+    {
+        string raw = url?.Trim() ?? "";
+        string c = Clean(url);
+
+        if (string.IsNullOrEmpty(c))
+            return c;
+
+        c = c.Replace(" ", "%20");
+
+        if (c != raw)
+            Console.WriteLine($"movieshub: link có ký tự rác (&amp; / nháy / space) — đã sửa, nếu player vẫn 403 thì gửi em dòng này: {Cut(c)}");
+
+        return c;
+    }
 
     #region collection: mỗi link một nút nguồn
     protected async Task<ActionResult> CollectionCore(string source, bool checksearch, long id, long tmdb_id, string imdb_id, string title, string original_title, byte serial, short s, bool rjson)
@@ -138,10 +175,14 @@ public abstract class HubController : BaseENGController
 
             foreach (HubEntry item in shown.Where(x => x.Episode > 0))
             {
-                string link = $"{host}/lite/{plugin}/{RouteFor(item.Label, item.Url)}?src={Enc(item.Url)}&label={Enc(item.Label)}&s={item.Season}&e={item.Episode}";
+                // method:"play" + accsArgs — sao chép Sootio (Controller.cs:116-158 + BuildVideoEndpoint
+                // :858 + BuildMovieTemplate:857 "play"): url đi thẳng vào player, Lampac 302 sang link
+                // trần. KHÔNG dùng "call" (JSON) vì player sẽ phải tự gọi /lite mà không có token access
+                // của accsArgs -> Lampac chặn -> "Không play được" dù link r2 vẫn tốt.
+                string link = accsArgs($"{host}/lite/{plugin}/{RouteFor(item.Label, item.Url)}?src={Enc(Clean(item.Url))}&label={Enc(item.Label)}&s={item.Season}&e={item.Episode}&play=true");
 
-                etpl.Append(item.Label, title ?? original_title, item.Season, item.Episode, link, "call",
-                            streamlink: accsArgs($"{link}&play=true"));
+                etpl.Append(item.Label, title ?? original_title, item.Season, item.Episode, link, "play",
+                            streamlink: link);
             }
 
             if (etpl.IsEmpty)
@@ -154,9 +195,10 @@ public abstract class HubController : BaseENGController
 
         foreach (HubEntry item in shown)
         {
-            string link = $"{host}/lite/{plugin}/{RouteFor(item.Label, item.Url)}?src={Enc(item.Url)}&label={Enc(item.Label)}";
+            string link = accsArgs($"{host}/lite/{plugin}/{RouteFor(item.Label, item.Url)}?src={Enc(Clean(item.Url))}&label={Enc(item.Label)}&play=true");
 
-            mtpl.Append(item.Label, link, "call", stream: accsArgs($"{link}&play=true"));
+            mtpl.Append(item.Label, link, "play", stream: link,
+                        details: TryCreate(item.Url, out Uri u) ? u.Host : null);
         }
 
         if (mtpl.IsEmpty)
@@ -245,7 +287,7 @@ public abstract class HubController : BaseENGController
         // là extractor resolve lại — link r2 presigned hết hạn sau ~1 giờ mà lưu lại là toi.
         return ContentTo(VideoTpl.ToJson(
             "play",
-            $"{host}/lite/{init.plugin.ToLowerAndTrim()}/{RouteFor(label, direct)}?src={Enc(link)}&label={Enc(label)}&play=true",
+            accsArgs($"{host}/lite/{init.plugin.ToLowerAndTrim()}/{RouteFor(label, direct)}?src={Enc(Clean(link))}&label={Enc(label)}&play=true"),
             label,
             quality: first.Label,
             vast: init.vast,
