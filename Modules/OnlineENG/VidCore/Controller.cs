@@ -254,10 +254,38 @@ public class VidCoreController : BaseENGController
                     return null;
                 }
 
-                string streamCipher = await PostCipher($"{streamBase}/{data}", headers);
+                // payload rỗng KHÔNG cố định theo server (Orbit chết ở TV nhưng sống ở movie,
+                // Prime ngược lại) -> host/enc-dec trả rỗng khi bị 5 request cùng lúc.
+                // Thử lại có backoff, rẻ hơn nhiều so với mất cả server 4K.
+                string streamCipher = null;
+                for (int attempt = 1; attempt <= 3; attempt++)
+                {
+                    streamCipher = await PostCipher($"{streamBase}/{data}", headers);
+                    if (!string.IsNullOrWhiteSpace(streamCipher))
+                        break;
+
+                    if (attempt < 3)
+                        await Task.Delay(500 * attempt);
+                }
+
                 if (string.IsNullOrWhiteSpace(streamCipher))
                 {
-                    Console.WriteLine($"VidCore: {Show(name)} stream payload empty");
+                    // `Premiere 4K` và `Horizon` chết giống nhau ở cả movie lẫn TV trong khi
+                    // Orbit/Prime chỉ hỏng một lượt -> không phải server chết, mà là cách gọi.
+                    // Thêm một đường GET: vài server chỉ nhận GET, có server trả thẳng URL.
+                    streamCipher = await httpHydra.Get($"{streamBase}/{data}", addheaders: headers, statusCodeOK: false);
+
+                    string direct2 = streamCipher?.Trim();
+                    if (IsHttpUrl(direct2))
+                    {
+                        Console.WriteLine($"VidCore: {Show(name)} ok (GET trả URL thẳng)");
+                        return new ResolvedStream(direct2, $"VidCore · {Show(name)}", headers);
+                    }
+                }
+
+                if (string.IsNullOrWhiteSpace(streamCipher))
+                {
+                    Console.WriteLine($"VidCore: {Show(name)} stream payload empty (3 lần POST + 1 GET)");
                     return null;
                 }
 
@@ -281,7 +309,22 @@ public class VidCoreController : BaseENGController
             }
         }
 
-        var answered = await Task.WhenAll(servers.Select(server => FetchServer(server)));
+        using System.Threading.SemaphoreSlim gate = new(2);
+
+        async Task<ResolvedStream> Guarded(JToken server)
+        {
+            await gate.WaitAsync();
+            try
+            {
+                return await FetchServer(server);
+            }
+            finally
+            {
+                gate.Release();
+            }
+        }
+
+        var answered = await Task.WhenAll(servers.Select(server => Guarded(server)));
 
         var resolved = new List<ResolvedStream>(servers.Count);
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -456,26 +499,46 @@ public class VidCoreController : BaseENGController
     async Task<string> DecJson(string url, string cipher, List<HeadersModel> headers)
     {
         string body = JsonConvert.SerializeObject(new { text = cipher });
+        string raw = null;
 
-        using (var content = new System.Net.Http.StringContent(body, System.Text.Encoding.UTF8, "application/json"))
+        for (int attempt = 1; attempt <= 3; attempt++)
         {
-            string raw = await Http.Post(
-                url,
-                content,
-                encoding: System.Text.Encoding.UTF8,
-                timeoutSeconds: init.httptimeout,
-                headers: headers,
-                proxy: proxy,
-                httpversion: init.httpversion,
-                statusCodeOK: false,
-                useDefaultHeaders: false);
+            using (var content = new System.Net.Http.StringContent(body, System.Text.Encoding.UTF8, "application/json"))
+            {
+                raw = await Http.Post(
+                    url,
+                    content,
+                    encoding: System.Text.Encoding.UTF8,
+                    timeoutSeconds: init.httptimeout,
+                    headers: headers,
+                    proxy: proxy,
+                    httpversion: init.httpversion,
+                    statusCodeOK: false,
+                    useDefaultHeaders: false);
+            }
 
-            if (!string.IsNullOrWhiteSpace(raw) && !raw.Contains("Expected body", StringComparison.OrdinalIgnoreCase))
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                // rỗng = rớt kết nối / 500 phía enc-dec, KHÔNG phải "mày gửi sai content-type".
+                // Bản trước chỗ này nhảy sang form-urlencoded nên mới sinh ra 400 giả.
+                if (attempt < 3)
+                {
+                    await Task.Delay(400 * attempt);
+                    continue;
+                }
+
+                break;
+            }
+
+            if (!raw.Contains("Expected body", StringComparison.OrdinalIgnoreCase))
                 return raw;
 
-            Console.WriteLine($"VidCore: dec JSON bị từ chối, thử form-urlencoded | {Preview(raw)}");
+            // enc-dec nói thẳng là không nhận JSON body -> form-urlencoded mới là đường đúng.
+            Console.WriteLine("VidCore: dec từ chối JSON body, chuyển sang form-urlencoded");
+            return await httpHydra.Post(url, "text=" + Uri.EscapeDataString(cipher), addheaders: headers, statusCodeOK: false);
         }
 
+        Console.WriteLine($"VidCore: dec không trả gì sau 3 lần thử, thử form-urlencoded | {Preview(raw)}");
         return await httpHydra.Post(url, "text=" + Uri.EscapeDataString(cipher), addheaders: headers, statusCodeOK: false);
     }
 
