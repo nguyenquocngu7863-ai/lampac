@@ -265,12 +265,6 @@ public abstract class HubController : BaseENGController
             }
         }
 
-        if (blocked)
-        {
-            Console.WriteLine($"{Log(source)} trang file-host rỗng/blocked {Cut(url)} — host đổi hoặc Cloudflare challenge");
-            return found;
-        }
-
         // (d) Trang file của HubCloud/GDFlix là app JS: HTML không chứa link tải, và đó chính là
         //     tình huống trong log thiết bị ("len=20070, head=<title>(Movies4u.Foo).Mutiny.2026.
         //     480p...mkv</title>" — có tên file, không có url). Engine này có 2 cửa:
@@ -320,7 +314,9 @@ public abstract class HubController : BaseENGController
                 return await ResolveHub(source, via, label, depth + 1);
             }
 
-            var middle = [.. Links(html).Select(x => Absolute(x.Href, url))
+            // C# 12 KHÔNG suy được kiểu cho collection expression khi đích là var (CS9176) —
+            // phải ghi List<string> tường minh.
+            List<string> middle = [.. Links(html).Select(x => Absolute(x.Href, url))
                                        .Where(u => IsHubHost(u) || IsGdHost(u) || IsMediaPath(u))
                                        .Distinct(StringComparer.OrdinalIgnoreCase)];
 
@@ -336,9 +332,17 @@ public abstract class HubController : BaseENGController
             }
 
             if (blocked)
-                Console.WriteLine($"{Log(source)} trang trung gian {Cut(url)} không đọc được, không có link HubCloud/GDFlix");
+                Console.WriteLine($"{Log(source)} trang trung gian {Cut(url)} không đọc được (blocked), không có link HubCloud/GDFlix");
             else if (middle.Count == 0)
                 Console.WriteLine($"{Log(source)} trang trung gian {Cut(url)} có {Links(html).Count} anchor nhưng không có link HubCloud/GDFlix | hosts={HostHistogram(html, url)}");
+        }
+
+        // Trang chia sẻ đọc được mà không còn cách nào khác. Để (m) chạy TRƯỚC cả khi blocked vì
+        // Http.GetLocation vẫn theo được 302 trên trang mà httpHydra coi là challenge.
+        if (blocked)
+        {
+            Console.WriteLine($"{Log(source)} trang file-host rỗng/blocked {Cut(url)} — host đổi hoặc Cloudflare challenge");
+            return found;
         }
 
         if (depth == 0)
