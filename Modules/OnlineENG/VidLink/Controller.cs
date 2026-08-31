@@ -22,7 +22,10 @@ namespace VidLink;
 public class VidLinkController : BaseENGController
 {
     const string PlayerOrigin = "https://vidlink.pro";
+    const string CdnOrigin = "https://filmboom.top";
     const string EncDecUrl = "https://enc-dec.app/api/enc-vidlink";
+    const string CsUserAgent =
+        "Mozilla/5.0 (Linux; Android 11; Mi 9T Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/95.0.4638.69 Mobile Safari/537.36 EdgA/95.0.1020.48";
 
     static readonly byte[] BoxKey = Convert.FromHexString(
         "c75136c5668bbfe65a7ecad431a745db68b5f381555b38d8f6c699449cf11fcd"
@@ -64,10 +67,13 @@ public class VidLinkController : BaseENGController
         var qualities = new StreamQualityTpl(resolved.Count);
         foreach (ResolvedStream item in resolved)
         {
-            // VidLink / StreamPlay / Streamflix all treat the API as HLS
-            // (`stream.playlist`). Lampa only enables hls.js for *.m3u8, so a
-            // media.mp4 play URL always hits HTML5 → "no supported source".
-            qualities.Append(PlaylistLink(item.Url), item.Label);
+            // CSX: type m3u8 / URL .m3u8 → HLS (hls.js). Else progressive MP4
+            // with filmboom.top headers. Lampa only uses hls.js for *.m3u8.
+            bool playlist = item.Hls || LooksLikeHls(item.Url);
+            qualities.Append(
+                playlist ? PlaylistLink(item.Url) : MediaLink(item.Url, ".mp4"),
+                item.Label
+            );
         }
 
         if (qualities.IsEmpty)
@@ -129,7 +135,7 @@ public class VidLinkController : BaseENGController
     async Task<List<ResolvedStream>> Resolve(long tmdbId, short season, short episode)
     {
         string mediaType = season > 0 ? "tv" : "movie";
-        string memKey = $"vidlink:play5:{mediaType}:{tmdbId}:{season}:{episode}";
+        string memKey = $"vidlink:play6:{mediaType}:{tmdbId}:{season}:{episode}";
         if (hybridCache.TryGetValue(memKey, out List<ResolvedStream> cached) && cached?.Count > 0)
             return cached;
 
@@ -157,16 +163,17 @@ public class VidLinkController : BaseENGController
         var headers = ApiHeaders();
         int timeout = Math.Clamp(init.httptimeout > 0 ? init.httptimeout : 20, 8, 40);
 
+        // CSX uses enc-dec.app first, then GET /api/b/movie|tv/{token} (no multiLang).
         var tokens = new List<string>(2);
-        string local = EncryptToken(tmdbId.ToString());
-        if (!string.IsNullOrWhiteSpace(local))
-            tokens.Add(local);
-
         string remote = await EncryptTokenRemote(tmdbId, headers, timeout);
-        if (!string.IsNullOrWhiteSpace(remote) &&
-            !tokens.Exists(i => string.Equals(i, remote, StringComparison.Ordinal)))
-        {
+        if (!string.IsNullOrWhiteSpace(remote))
             tokens.Add(remote);
+
+        string local = EncryptToken(tmdbId.ToString());
+        if (!string.IsNullOrWhiteSpace(local) &&
+            !tokens.Exists(i => string.Equals(i, local, StringComparison.Ordinal)))
+        {
+            tokens.Add(local);
         }
 
         foreach (string token in tokens)
@@ -175,22 +182,25 @@ public class VidLinkController : BaseENGController
                 ? $"api/b/tv/{Uri.EscapeDataString(token)}/{season}/{Math.Max(episode, (short)1)}"
                 : $"api/b/movie/{Uri.EscapeDataString(token)}";
 
-            string url = $"{init.host.TrimEnd('/')}/{path}?multiLang=1";
-            JToken root = await Http.Get<JToken>(
-                url,
-                timeoutSeconds: timeout,
-                httpversion: 2,
-                headers: headers,
-                statusCodeOK: false,
-                proxy: proxy
-            );
-
-            List<ResolvedStream> streams = await FinalizeStreams(ReadStreams(root));
-            if (streams.Count > 0)
+            foreach (string extra in new[] { "", "?multiLang=1" })
             {
-                int hls = streams.FindAll(i => i.Hls).Count;
-                Console.WriteLine($"VidLink: {streams.Count} HTTP streams ({tmdbId}), hls={hls}");
-                return streams;
+                string url = $"{init.host.TrimEnd('/')}/{path}{extra}";
+                JToken root = await Http.Get<JToken>(
+                    url,
+                    timeoutSeconds: timeout,
+                    httpversion: 2,
+                    headers: headers,
+                    statusCodeOK: false,
+                    proxy: proxy
+                );
+
+                List<ResolvedStream> streams = await FinalizeStreams(ReadStreams(root));
+                if (streams.Count > 0)
+                {
+                    int hls = streams.FindAll(i => i.Hls).Count;
+                    Console.WriteLine($"VidLink: {streams.Count} HTTP streams ({tmdbId}), hls={hls}");
+                    return streams;
+                }
             }
         }
 
@@ -244,7 +254,10 @@ public class VidLinkController : BaseENGController
         foreach (ResolvedStream item in streams)
         {
             ProbeResult probe = null;
-            if (working != null)
+            if (item.Headers?.Count > 0)
+                probe = await ProbeUrl(item.Url, item.Headers);
+
+            if (probe is not { Ok: true } && working != null)
                 probe = await ProbeUrl(item.Url, working);
 
             if (probe is not { Ok: true })
@@ -276,8 +289,8 @@ public class VidLinkController : BaseENGController
             // through /proxy with Origin / no-redirect. Playlist() retries.
             result.Add(item with
             {
-                Hls = !LooksLikeProgressive(item.Url),
-                Headers = StreamHeaders()
+                Hls = item.Hls || LooksLikeHls(item.Url),
+                Headers = item.Headers?.Count > 0 ? item.Headers : StreamHeaders()
             });
         }
 
@@ -621,6 +634,27 @@ public class VidLinkController : BaseENGController
 
     IEnumerable<List<HeadersModel>> HeaderVariants(string url)
     {
+        // CSX default CDN headers are filmboom.top, not vidlink.pro.
+        yield return HeadersModel.Init(
+            ("User-Agent", CsUserAgent),
+            ("Referer", CdnOrigin + "/"),
+            ("Origin", CdnOrigin),
+            ("Accept", "*/*")
+        );
+
+        yield return HeadersModel.Init(
+            ("User-Agent", Http.UserAgent),
+            ("Referer", CdnOrigin + "/"),
+            ("Origin", CdnOrigin),
+            ("Accept", "*/*")
+        );
+
+        yield return HeadersModel.Init(
+            ("User-Agent", Http.UserAgent),
+            ("Referer", CdnOrigin + "/"),
+            ("Accept", "*/*")
+        );
+
         yield return HeadersModel.Init(
             ("User-Agent", Http.UserAgent),
             ("Referer", PlayerOrigin + "/"),
@@ -640,6 +674,7 @@ public class VidLinkController : BaseENGController
             yield return HeadersModel.Init(
                 ("User-Agent", Http.UserAgent),
                 ("Referer", origin + "/"),
+                ("Origin", origin),
                 ("Accept", "*/*")
             );
         }
@@ -677,12 +712,19 @@ public class VidLinkController : BaseENGController
 
                 string qurl = FirstString(qobj, "url", "file", "playlist", "src");
                 string qtype = FirstString(qobj, "type") ?? type;
-                TryAdd(qurl, string.IsNullOrWhiteSpace(label) ? quality.Name : $"{label} {quality.Name}", result, seen, qtype);
+                TryAdd(
+                    qurl,
+                    string.IsNullOrWhiteSpace(label) ? quality.Name : $"{label} {quality.Name}",
+                    result,
+                    seen,
+                    qtype,
+                    ReadHeaders(qobj)
+                );
             }
         }
 
         string url = FirstString(obj, "playlist", "file", "url", "src", "link");
-        TryAdd(url, label, result, seen, type);
+        TryAdd(url, label, result, seen, type, ReadHeaders(obj));
 
         foreach (JProperty property in obj.Properties())
         {
@@ -695,7 +737,7 @@ public class VidLinkController : BaseENGController
         }
     }
 
-    void TryAdd(string url, string label, List<ResolvedStream> result, HashSet<string> seen, string type)
+    void TryAdd(string url, string label, List<ResolvedStream> result, HashSet<string> seen, string type, List<HeadersModel> headers = null)
     {
         if (string.IsNullOrWhiteSpace(url) ||
             !Uri.TryCreate(url, UriKind.Absolute, out Uri uri) ||
@@ -719,8 +761,26 @@ public class VidLinkController : BaseENGController
         if (result.Exists(i => i.Label.Equals(quality, StringComparison.OrdinalIgnoreCase)))
             quality += $" #{result.Count + 1}";
 
-        var headers = hls ? StreamHeaders() : FileHeaders();
-        result.Add(new ResolvedStream(url, quality, headers, hls));
+        result.Add(new ResolvedStream(url, quality, headers?.Count > 0 ? headers : StreamHeaders(), hls));
+    }
+
+    static List<HeadersModel> ReadHeaders(JObject obj)
+    {
+        if (obj?["headers"] is not JObject map)
+            return null;
+
+        var list = new List<HeadersModel>();
+        foreach (JProperty property in map.Properties())
+        {
+            if (property.Value?.Type != JTokenType.String)
+                continue;
+
+            string value = property.Value.Value<string>();
+            if (!string.IsNullOrWhiteSpace(property.Name) && !string.IsNullOrWhiteSpace(value))
+                list.Add(new HeadersModel(property.Name, value));
+        }
+
+        return list.Count > 0 ? list : null;
     }
 
     static string FirstString(JObject obj, params string[] names)
@@ -760,9 +820,8 @@ public class VidLinkController : BaseENGController
         if (LooksLikeHls(url))
             return true;
 
-        // VidLink's documented API is HLS. A missing type + no video
-        // extension is treated as a playlist so Lampa uses hls.js.
-        return !LooksLikeProgressive(url);
+        // CSX: only type m3u8 or URL .m3u8 is HLS; otherwise INFER (probe).
+        return false;
     }
 
     static bool LooksLikeHls(string url)
@@ -861,19 +920,19 @@ public class VidLinkController : BaseENGController
     List<HeadersModel> ApiHeaders()
     {
         return HeadersModel.Init(
-            ("User-Agent", Http.UserAgent),
+            ("User-Agent", CsUserAgent),
+            ("Connection", "keep-alive"),
             ("Referer", PlayerOrigin + "/"),
-            ("Origin", PlayerOrigin),
-            ("Accept", "application/json, text/plain, */*")
+            ("Origin", PlayerOrigin)
         );
     }
 
     List<HeadersModel> StreamHeaders()
     {
-        // Origin on CDN GETs is a common 403. Referer is enough for most edges.
         return HeadersModel.Init(
-            ("User-Agent", Http.UserAgent),
-            ("Referer", PlayerOrigin + "/"),
+            ("User-Agent", CsUserAgent),
+            ("Referer", CdnOrigin + "/"),
+            ("Origin", CdnOrigin),
             ("Accept", "*/*")
         );
     }

@@ -20,7 +20,7 @@ Nguồn ENG `https://vidlink.pro`. Resolver mặc định là **HTTP** (token XS
 
 ## HTTP
 
-API VidLink trả HLS (`stream.playlist`, `type: hls`) — Streamflix/Phisher cũng lấy field này. Lampac luôn đưa player URL `/lite/vidlink/playlist.m3u8?uri=` (hls.js). Playlist viết lại segment qua `/lite/vidlink/media.ts?uri=` (không `/proxy/`). Không đưa `.mp4` cho HTML5.
+CSX `invokeVidlink`: token `enc-dec.app/api/enc-vidlink`, JSON `stream.qualities` (360/720/1080). HLS khi `type=m3u8` hoặc URL `.m3u8` → `/lite/vidlink/playlist.m3u8?uri=`. Còn lại MP4 → `/lite/vidlink/media.mp4?uri=` với header CDN **`filmboom.top`** (không vidlink.pro). Segment không đi `/proxy/`.
 
 | Route | Việc |
 |-------|------|
