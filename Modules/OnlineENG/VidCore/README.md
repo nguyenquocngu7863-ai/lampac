@@ -46,8 +46,13 @@ bị loại, không kéo cả dãy (mỗi server một `try/catch`).
 - `apihost` là điểm **phụ thuộc bên thứ ba**. `enc-dec.app` còn sống (kiểm tra 2026-08-31)
   nhưng chính nó đã **gỡ** `/api/enc-mapple` và làm chết nguồn Mapple + provider nuvio.
   Đổi `apihost` sang instance tự chạy là hết phụ thuộc.
-- `enabled` (trong init.conf, khác `enable` của manifest): `true` để VidCore **vẫn hiện khi
-  `disableEng: true`** — giống VidLink.
+- `enable` (mặc định `true` ngay trong `ModInit`, không cần viết section `VidCore`): đây là
+  công tắc mà `IsRequestBlockedRchOrDisable` đọc — tắt nó thì mọi request trả 403 **không log**.
+  Muốn tắt nguồn: `"VidCore": { "enable": false }`.
+- `enabled` (mặc định `true`): khác `enable`. `enabled` chỉ quyết định VidCore có **xuất hiện
+  trong danh sách Online** khi `disableEng: true` hay không. Hai cái độc lập, và ModInit của
+  mọi nguồn ENG chỉ set `enabled` — VidCore set cả hai, vì `base.conf` để `disableEng: true`
+  mà `init.conf` thì không có section cho module mới.
 - `streamproxy` bắt buộc bật: stream cần `Referer` mà APK Lampa không gửi.
 - Phụ đề (`result.tracks[]`) chưa nối vào `VideoTpl.subtitles`; StremioSub lo phần đó.
 

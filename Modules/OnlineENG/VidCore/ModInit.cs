@@ -62,6 +62,15 @@ public class ModInit : IModuleLoaded, IModuleOnline
             rhub = false,
             httptimeout = 25,
             streamproxy = true,
+
+            // enable = true: đây là GIÁ TRỊ MẶC ĐỊNH của module, không phải bản ghi đè.
+            // ModuleInvoke.Init hợp nhất section trong init.conf lên trên nó, nên anh
+            // vẫn tắt được bằng "VidCore": { "enable": false }. Nếu không có dòng này
+            // thì khi base.conf để disableEng:true, init.conf chưa có section VidCore
+            // => BaseSettings.enable = false => IsRequestBlockedRchOrDisable trả
+            // OnError("disable", 403) và KHÔNG in log nào (nguồn vẫn hiện trong
+            // danh sách vì Invoke() chỉ cần conf.enabled == true).
+            enable = true,
             enabled = true
         });
 

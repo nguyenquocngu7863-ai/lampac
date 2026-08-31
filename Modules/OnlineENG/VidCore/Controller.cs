@@ -56,10 +56,19 @@ public class VidCoreController : BaseENGController
         SetHeadersNoCache();
 
         if (await IsRequestBlocked(rch: false, rch_check: !play))
-            return badInitMsg;
+        {
+            // Đường này trước đây im lặng 100%: 403 mà không có dòng log nào, nên
+            // "nguồn hiện mà bấm không ra gì" không thể chẩn đoán được.
+            Console.WriteLine($"VidCore: blocked (enable={init.enable}, rip={init.rip})");
+            return badInitMsg ?? OnError("disable", gbcache: false, statusCode: 403);
+        }
 
         if (id <= 0)
+        {
+            // Lampa không truyền lên tmdb id -> không có gì để resolve. Cũng im lặng.
+            Console.WriteLine("VidCore: id<=0 (không có TMDB id trong request)");
             return OnError();
+        }
 
         List<ResolvedStream> resolved;
         try
