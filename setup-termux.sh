@@ -939,8 +939,8 @@ case "${1:-}" in
         # FIX (2026-08-31): khối inline trước đây tham chiếu $KKBase / $VideasyBase /
         # $LampaWebBase / $BaseConfUrl … — 22 biến không hề được định nghĩa trong
         # script, nên mọi URL curl sinh ra đều thiếu host ("curl: (3) URL rejected:
-        # No host part") và `set -euo pipefail` làm dừng cả lệnh update. Bản gốc đã
-        # được lưu ở notes/setup-termux.update-block.old.sh.
+        # No host part") và `set -euo pipefail` làm dừng cả lệnh update. Bản gốc còn
+        # trong git show 8ed1ad8:setup-termux.sh (dòng 924-1192).
         # --update ở CLI đã hoán đổi release rồi gọi install_custom_modules() với
         # ${CUSTOM_SOURCE_BASE} được nội suy đúng, nên chỉ cần delegate (giống sync).
         bash "$(dirname "$0")/setup-termux.sh" --update || exit 1

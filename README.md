@@ -77,7 +77,7 @@ lampac update    # Cập nhật Lampac và đồng bộ lại thiết lập tu�
 > No host part`) và `set -euo pipefail` dừng ngay lệnh đầu tiên ⇒ lệnh update không đồng bộ được module nào.
 > Nay `lampac update` delegate thẳng `bash setup-termux.sh --update` (giống cách `lampac sync` /
 > `lampac sync-all` đang làm), tức đi qua `install_custom_modules()` nơi `${CUSTOM_SOURCE_BASE}`
-> được nội suy đúng. Khối cũ còn ở `notes/setup-termux.update-block.old.sh` nếu cần đối chiếu.
+> được nội suy đúng. Khối cũ không còn trong tree; đối chiếu bằng `git show 8ed1ad8:setup-termux.sh` (dòng 924-1192).
 
 Lệnh `lampac start` in ra địa chỉ local, địa chỉ mạng LAN và cổng đang dùng. Thông thường bạn truy cập từ thiết bị khác cùng Wi-Fi qua:
 
