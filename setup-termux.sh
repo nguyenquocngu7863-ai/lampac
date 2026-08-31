@@ -533,6 +533,19 @@ sync_latest_modules() {
             fi
         done
 
+        # MoviesHub cung duoc sync o day: lampac sync la du de cap nhat 2 nguoi nay.
+        movieshubtarget=/root/lampac/module/OnlineENG/MoviesHub
+        mkdir -p \"\$movieshubtarget\"
+        for movieshubfile in manifest.json ModInit.cs HubController.cs MoviesDriveController.cs Movies4UController.cs; do
+            if curl -fsSL --retry 3 \"\$base/Modules/OnlineENG/MoviesHub/\$movieshubfile?cb=\$stamp\" -o \"/tmp/movieshub-\$movieshubfile\"; then
+                mv \"/tmp/movieshub-\$movieshubfile\" \"\$movieshubtarget/\$movieshubfile\"
+                echo \"  [sync] movieshub/\$movieshubfile\"
+            else
+                rm -f \"/tmp/movieshub-\$movieshubfile\"
+                echo \"  [sync] movieshub: bo qua \$movieshubfile (nguon khong co)\"
+            fi
+        done
+
         for sisimod in /root/lampac/module/SISI /root/lampac/mods/SISI; do
             if [ -d \"\$sisimod\" ]; then
                 pull SISI/SisiApi.cs \"\$sisimod/SisiApi.cs\"
@@ -617,6 +630,20 @@ install_custom_modules() {
             else
                 rm -f \"/tmp/vidcore-\$vidcorefile\"
                 echo \"  [vidcore] bo qua \$vidcorefile - khong co tren nguon: kiem tra LAMPAC_CUSTOM_SOURCE_BASE\"
+            fi
+        done
+
+        # MoviesHub = MoviesDrive + Movies4U + resolver HubCloud/GDrive dung chung (5 file tree).
+        movieshubbase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineENG/MoviesHub\"
+        movieshubtarget=/root/lampac/module/OnlineENG/MoviesHub
+        for movieshubfile in manifest.json ModInit.cs HubController.cs MoviesDriveController.cs Movies4UController.cs; do
+            if curl -fsSL --retry 3 \"\$movieshubbase/\$movieshubfile?cb=\$syncstamp\" -o \"/tmp/movieshub-\$movieshubfile\"; then
+                mkdir -p \"\$movieshubtarget\"
+                mv \"/tmp/movieshub-\$movieshubfile\" \"\$movieshubtarget/\$movieshubfile\"
+                echo \"  [movieshub] \$movieshubfile\"
+            else
+                rm -f \"/tmp/movieshub-\$movieshubfile\"
+                echo \"  [movieshub] bo qua \$movieshubfile - khong co tren nguon: kiem tra LAMPAC_CUSTOM_SOURCE_BASE\"
             fi
         done
 

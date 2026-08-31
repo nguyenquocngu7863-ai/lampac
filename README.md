@@ -887,6 +887,24 @@ rm -rf /root/lampac/module/OnlineENG/VidCore     # module này không có trong 
 bash setup-termux.sh --sync-all && lampac stop && lampac start
 ```
 
+## Nguồn MoviesHub (MoviesDrive + Movies4U — HubCloud/Google Drive)
+
+`Modules/OnlineENG/MoviesHub` chứa **hai** nguồn file-host trong một module vì chúng dùng
+chung một resolver (HubCloud `…/drive/<id>` và Google Drive) — xem
+[`Modules/OnlineENG/MoviesHub/README.md`](Modules/OnlineENG/MoviesHub/README.md) để biết
+luồng, selector và cách đọc log.
+
+| Route | Nguồn |
+|---|---|
+| `lite/moviesdrive[/video]` | search theo IMDb id → link HubCloud theo quality (có 4K ở phim mới) |
+| `lite/movies4u[/video]` | WordPress search `?s=` + `Cookie: xla=s4t` → `div.download-links-div` |
+
+Cả hai được `install_custom_modules()` (khối `--install` / `--sync-all` / `--update`) và
+`sync_latest_modules()` (`lampac sync`) chép xuống, nằm cạnh khối VidCore ở **đầu** hàm để
+không bị các khối `curl -f` phía sau cắt ngang. **Trạng thái: chưa có log thiết bị** — vòng
+test đầu tiên sẽ cho biết selector còn đúng không; module in đếm ở mọi bước nên một lần chạy
+là đủ kết luận.
+
 ## Trạng thái nguồn ENG và Mirage
 
 Bản cài Termux mặc định dùng `disableEng: true` để ẩn nhóm ENG, nhưng Chromium được bật với đường dẫn rõ ràng `/usr/bin/google-chrome-stable`; các nguồn browser-backed khác vẫn có thể dùng Playwright. `--sync-all`/`--update` không nên ghi đè lựa chọn `disableEng` hoặc section Chromium chi tiết của người dùng. Muốn hiện nguồn ENG, đổi `disableEng` thành `false`. AIOStreams vẫn hoạt động độc lập khi section `AIOStreams` có `enable: true` và manifest hợp lệ.
