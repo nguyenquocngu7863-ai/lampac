@@ -478,11 +478,7 @@ sync_latest_modules() {
               /root/lampac/mods/LampaWeb/plugins/player-landscape.js
 
         # Latest patch:
-        #  - subtitle plugins: never reuse the previous film's lastMovie for
-        #    SISI/adult playback or when the playing title does not match, and
-        #    drop late subtitle downloads after switching to another video.
-        #  - sisi-restyle.js as a built-in SISI plugin (served at
-        #    /sisi-restyle.js, auto-registered when initPlugins.sisi is on).
+        #  - VidLink HTTP resolver (no Playwright) — Controller.cs + ModInit.cs
         # mods/ overrides module/, so keep both copies in sync when present.
         for lampaweb in /root/lampac/module/LampaWeb /root/lampac/mods/LampaWeb; do
             if [ -d \"\$lampaweb/plugins\" ]; then
@@ -508,6 +504,12 @@ sync_latest_modules() {
                     pull Modules/Proxy/\$proxymodule/Controller.cs \"\$proxy/Controller.cs\"
                 fi
             done
+        done
+        for vidlink in /root/lampac/module/OnlineENG/VidLink /root/lampac/mods/OnlineENG/VidLink; do
+            if [ -d \"\$vidlink\" ]; then
+                pull Modules/OnlineENG/VidLink/Controller.cs \"\$vidlink/Controller.cs\"
+                pull Modules/OnlineENG/VidLink/ModInit.cs \"\$vidlink/ModInit.cs\"
+            fi
         done
         for sisimod in /root/lampac/module/SISI /root/lampac/mods/SISI; do
             if [ -d \"\$sisimod\" ]; then
