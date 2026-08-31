@@ -276,64 +276,148 @@ public class Movies4UController : HubController
 
     async Task CollectEpisodes(string html, string postUrl, List<HeadersModel> headers, short season, List<HubEntry> into)
     {
-        var blocks = DivBlocks(html, "downloads-btns-div", 20);
-        var block = blocks.FirstOrDefault(b => SeasonNumber(b.Heading) == season);
+        // Movies4U đặt link theo NHÓM cho từng mùa: mỗi "Season 4 [Hindi ORG. + Multi Audio]
+        // 1080p [900MB/E]" là một heading + một nút DOWNLOAD LINKS dẫn sang trang riêng (ảnh chụp
+        // của người dùng: 480p/720p/1080p/1080p-4GB/2160p cho cùng Season 4). Trước đây em chỉ lấy
+        // Links[0] của khối mùa => MỌI tập đúng 1 link, và mất hết bản khác. Giờ: trả phiếu nhóm cho
+        // CollectionCore dựng màn hình chọn (?g=N), và khi đã chọn thì chỉ dịch trang của nhóm đó.
+        List<(string Heading, string Url)> groups = GroupsForSeason(html, postUrl, season);
 
-        if (block.Links == null || block.Links.Count == 0)
+        if (groups.Count == 0)
         {
-            Console.WriteLine($"{Tag} không có khối Season {season}, thử khối đầu tiên (blocks={blocks.Count})");
-            block = blocks.Count > 0 ? blocks[0] : default;
-        }
-
-        if (block.Links == null || block.Links.Count == 0)
-            return;
-
-        string packUrl = Absolute(Unescape(block.Links[0].Url), postUrl);
-
-        // Khối mùa có thể chứa thẳng link từng tập (không có trang pack riêng).
-        string packHtml = LooksLikeFileHost(packUrl) ? null : await GetPage(packUrl, headers);
-
-        if (block.Heading == null && packHtml == null)
-            return;
-
-        if (packHtml == null)
-        {
-            if (LooksLikeFileHost(packUrl))
-            {
-                into.Add(new HubEntry(QualityLabel($"Mùa {season}", packUrl), packUrl, season, 0));
-                return;
-            }
-
-            Console.WriteLine($"{Tag} trang pack mùa {season} rỗng {Cut(packUrl)}");
+            Console.WriteLine($"{Tag} mùa {season}: không thấy nhóm release nào | classes={ClassHistogram(html)} | hosts={HostHistogram(html, postUrl)}");
             return;
         }
 
-        var epBlocks = DivBlocks(packHtml, "downloads-btns-div", 40);
+        if (ReleaseGroup <= 0 && groups.Count > 1)
+        {
+            foreach ((string head, string url) in groups)
+                into.Add(new HubEntry(head, url, season, 0, head));
+
+            return;   // chưa tải trang nhóm nào cả — để người dùng chọn đã
+        }
+
+        int pick = ReleaseGroup > 0 ? Math.Min((int)ReleaseGroup, groups.Count) - 1 : 0;
+        string groupUrl = groups[pick].Url;
+
+        // Nhóm trỏ thẳng file-host (bài đơn giản không có trang trung gian)
+        if (LooksLikeFileHost(groupUrl))
+        {
+            into.Add(new HubEntry(QualityLabel($"Mùa {season} · {groups[pick].Heading}", groupUrl), groupUrl, season, 0, groups[pick].Heading));
+            return;
+        }
+
+        string inner = await GetPage(groupUrl, headers);
+
+        if (string.IsNullOrWhiteSpace(inner))
+        {
+            Console.WriteLine($"{Tag} trang nhóm '{Cut(groups[pick].Heading)}' rỗng/blocked {Cut(groupUrl)}");
+            return;
+        }
+
+        var epBlocks = DivBlocks(inner, "downloads-btns-div", 80);
+        int links = 0;
 
         for (int i = 0; i < epBlocks.Count; i++)
         {
             short ep = EpisodeNumber(epBlocks[i].Heading);
+
             if (ep <= 0)
                 ep = (short)(i + 1);
 
-            int taken = 0;
-
-            foreach ((string label, string url) in epBlocks[i].Links)
+            // MỌI host trong cùng một tập (trước đây chặn ở 2): tập có 3 link thì vào streamquality
+            // hết, người dùng chọn host ngay trong danh sách tập (README: biến thể được phép ở TẬP,
+            // cái bị cấm là nhét link phim lẻ vào menu chất lượng).
+            foreach ((string label, string raw) in epBlocks[i].Links.Take(6))
             {
-                string abs = Absolute(Unescape(url), packUrl);
+                string abs = Absolute(Unescape(raw), groupUrl);
 
                 if (!LooksLikeFileHost(abs) || DeadHost(abs))
                     continue;
 
-                into.Add(new HubEntry($"Ep {ep} · {QualityLabel(label, abs)}", abs, season, ep));
-
-                if (++taken >= 2)
-                    break;
+                into.Add(new HubEntry($"Ep {ep} · {QualityLabel(label, abs)}", abs, season, ep, groups[pick].Heading));
+                links++;
             }
         }
 
-        if (into.Count == 0)
-            Console.WriteLine($"{Tag} pack {Cut(packUrl)} có {epBlocks.Count} khối nhưng không có file-host nào");
+        if (links == 0)
+        {
+            // Dự phòng: nhóm không bọc tập trong downloads-btns-div -> mọi file-host là một tập, theo thứ tự
+            short n = 0;
+
+            foreach ((string label, string url, int _) in Anchors(inner, groupUrl, 60))
+            {
+                if (!LooksLikeFileHost(url) || DeadHost(url))
+                    continue;
+
+                into.Add(new HubEntry($"Ep {++n} · {QualityLabel(label, url)}", url, season, n, groups[pick].Heading));
+                links++;
+            }
+
+            if (links > 0)
+                Console.WriteLine($"{Tag} mùa {season}: không có downloads-btns-div, đánh số theo thứ tự anchor -> {links} tập");
+        }
+
+        Console.WriteLine($"{Tag} mùa {season} nhóm {pick + 1}/{groups.Count} '{Cut(groups[pick].Heading)}': {epBlocks.Count} khối, {links} link");
+
+        if (links == 0)
+            Console.WriteLine($"{Tag} nhóm đã chọn không có file-host | len={inner.Length} a={Regex.Matches(inner, "(?i)<a[^>]+href=").Count} hosts={HostHistogram(inner, groupUrl)} classes={ClassHistogram(inner)}");
+    }
+
+    /// <summary>Mọi nhóm release của một mùa. Ưu tiên khối `download-links-div` có heading nhắc đúng
+    /// mùa; nếu bài không dùng cấu trúc đó thì lấy mọi nút "DOWNLOAD LINKS" mà heading phía trước
+    /// nhắc mùa. Không giả định một khối một mùa — Seasons 1-4 thường nằm rải cùng một bài.</summary>
+    List<(string Heading, string Url)> GroupsForSeason(string html, string postUrl, short season)
+    {
+        var groups = new List<(string Heading, string Url)>();
+
+        foreach (var b in DivBlocks(html, "download-links-div", 40))
+        {
+            if (!SeasonHeadingMatches(b.Heading, season))
+                continue;
+
+            foreach ((string label, string raw) in b.Links)
+            {
+                string url = Absolute(Unescape(raw), postUrl);
+
+                if (!url.StartsWith("http", StringComparison.OrdinalIgnoreCase) || groups.Any(x => x.Url == url))
+                    continue;
+
+                groups.Add((string.IsNullOrWhiteSpace(b.Heading) ? label : b.Heading, url));
+            }
+        }
+
+        if (groups.Count > 0)
+            return groups;
+
+        foreach (Match m in Regex.Matches(html ?? "", AnchorPattern))
+        {
+            string url = Absolute(Unescape(HrefValue(m)), postUrl);
+
+            if (!url.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (!Regex.IsMatch(Plain(m.Groups["t"].Value), @"(?i)download\s*-?\s*link"))
+                continue;
+
+            string head = NearestHeadingBefore(html, m.Index);
+
+            if (!SeasonHeadingMatches(head, season) || groups.Any(x => x.Url == url))
+                continue;
+
+            groups.Add((string.IsNullOrWhiteSpace(head) ? $"Nhóm {groups.Count + 1}" : head, url));
+        }
+
+        return groups;
+    }
+
+    /// <summary>Heading có nhắc mùa đang xem không? Heading không nhắc mùa nào (bài chỉ có 1 mùa) thì
+    /// coi là thuộc mùa đang xem — nhờ vậy series một mùa không bị trả 0 nhóm.</summary>
+    static bool SeasonHeadingMatches(string heading, short season)
+    {
+        short n = SeasonNumber(heading);
+
+        return n <= 0 || n == season;
     }
 
     static short SeasonNumber(string text)

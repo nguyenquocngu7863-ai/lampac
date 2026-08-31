@@ -30,8 +30,13 @@ public abstract class HubController : BaseENGController
 {
     protected sealed record HubStream(string Url, string Label, List<HeadersModel> Headers);
 
-    /// <summary>Một link file-host mà nguồn tìm thấy. Season/Episode = 0 với phim lẻ.</summary>
-    protected sealed record HubEntry(string Label, string Url, short Season, short Episode);
+    /// <summary>
+    /// Một link file-host mà nguồn tìm thấy. Season/Episode = 0 với phim lẻ.
+    /// Group = NHÃN nhóm release (chỉ series Movies4U dùng): "Season 4 [Hindi ORG. + Multi Audio]
+    /// 1080p [900MB/E]". Tập hợp Group của một mùa = danh sách nhóm cho tầng chọn trước khi liệt kê
+    /// tập; entry có Episode==0 && Group!=null là PHIẾU NHÓM, không phải link chơi được.
+    /// </summary>
+    protected sealed record HubEntry(string Label, string Url, short Season, short Episode, string Group = null);
 
     protected HubController(OnlinesSettings conf) : base(conf)
     {
@@ -53,7 +58,12 @@ public abstract class HubController : BaseENGController
     /// hash, phải đánh tay: mỗi commit sửa MoviesHub là đổi chuỗi này (luật trong README). Log ra
     /// marker khác = máy đang compile bản cũ -> dừng việc sửa code, kéo lại từ commit đó.
     /// </summary>
-    protected const string Build = "v15b-urifix";
+    protected const string Build = "v16-series-groups";
+
+    /// <summary>Nhóm release được chọn qua ?g= (0 = chưa chọn). Đặt tên đầy đủ vì nếu gọi là
+    /// <c>Group</c> thì nó che kiểu System.Text.RegularExpressions.Group đang dùng trong
+    /// HrefValue()/Links() -> CS0118, error compile, Lampac không boot.</summary>
+    protected short ReleaseGroup { get; private set; }
 
     /// <summary>
     /// Host mà module này không thể tự chơi: gdflix/gdlink/go2link bị Cloudflare js challenge,
@@ -123,6 +133,13 @@ public abstract class HubController : BaseENGController
             return badInitMsg ?? OnError("disable", gbcache: false, statusCode: 403);
         }
 
+        // g = số thứ tự nhóm release của MÙA ĐANG XEM (?s=4&g=2). 0 = chưa chọn. Chỉ nguồn series
+        // (Movies4U) đặt Group cho entry, MoviesDrive không có nên không bao giờ vào nhánh chọn.
+        // Phải đặt TRƯỚC khi gọi Collect: nguồn cần biết để chỉ fetch đúng một trang nhóm, thay vì
+        // tải cả 5 trang của 5 nhóm cho một lần mở mùa.
+        short.TryParse(HttpContext.Request.Query["g"], out short gs);
+        ReleaseGroup = gs;
+
         long tmdbId = tmdb_id > 0 ? tmdb_id : id;
 
         if (tmdbId <= 0)
@@ -171,22 +188,62 @@ public abstract class HubController : BaseENGController
                 return ContentTpl(seasons);
             }
 
+            // == tầng chọn nhóm release (giống PidTor: chọn "Mùa: 1" rồi mới đến bản phát) ==
+            // Một mùa của Movies4U có nhiều nhóm (720p [600MB/E], 1080p [900MB/E], 2160p 4K
+            // [6GB/E]…). Trước đây nguồn chỉ đưa nhóm ĐẦU => mỗi tập đúng 1 link, mất hết bản khác.
+            List<string> groups = [.. shown.Where(x => x.Episode == 0 && !string.IsNullOrWhiteSpace(x.Group))
+                                           .Select(x => x.Group)
+                                           .Distinct()];
+
+            if (ReleaseGroup <= 0 && groups.Count > 1)
+            {
+                Console.WriteLine($"{Log(source)} mùa {s} có {groups.Count} nhóm release — đưa màn hình chọn (g=1..{groups.Count})");
+
+                var chooser = new SeasonTpl();
+
+                for (int i = 0; i < groups.Count; i++)
+                    chooser.Append(groups[i], $"{host}/lite/{plugin}?id={tmdbId}&imdb_id={imdb_id}&serial=1&rjson={rjson}&s={s}&g={i + 1}", s);
+
+                return ContentTpl(chooser);
+            }
+
+            if (ReleaseGroup > 0 && groups.Count > 0)
+            {
+                string want = groups[Math.Min((int)ReleaseGroup, groups.Count) - 1];
+                int had = shown.Count;
+
+                shown = [.. shown.Where(x => x.Episode == 0 || string.IsNullOrWhiteSpace(x.Group) || x.Group == want)];
+
+                Console.WriteLine($"{Log(source)} mùa {s}: nhóm '{Cut(want)}' còn {shown.Count} link (đổ {had - shown.Count} link của nhóm khác)");
+            }
+
             var etpl = new EpisodeTpl();
 
-            foreach (HubEntry item in shown.Where(x => x.Episode > 0))
+            // Một tập trong nhóm có thể có mấy host -> MỘT nút, các host còn lại là biến thể
+            // (streamquality). Nhét biến thể vào TẬP là chuẩn của Lampa; luật "mỗi link một nút,
+            // không nhét vào chất lượng" chỉ áp cho menu PHIM LẺ (MovieTpl) — xem README.
+            foreach (var grp in shown.Where(x => x.Episode > 0).GroupBy(x => (x.Season, x.Episode)))
             {
-                // method:"play" + accsArgs — sao chép Sootio (Controller.cs:116-158 + BuildVideoEndpoint
-                // :858 + BuildMovieTemplate:857 "play"): url đi thẳng vào player, Lampac 302 sang link
-                // trần. KHÔNG dùng "call" (JSON) vì player sẽ phải tự gọi /lite mà không có token access
-                // của accsArgs -> Lampac chặn -> "Không play được" dù link r2 vẫn tốt.
-                string link = accsArgs($"{host}/lite/{plugin}/{RouteFor(item.Label, item.Url)}?src={Enc(Clean(item.Url))}&label={Enc(item.Label)}&s={item.Season}&e={item.Episode}&play=true");
+                List<HubEntry> variants = [.. grp];
+                HubEntry first = variants[0];
+                string link = PlayLink(plugin, first);
+                StreamQualityTpl sq = null;
 
-                etpl.Append(item.Label, title ?? original_title, item.Season, item.Episode, link, "play",
-                            streamlink: link);
+                if (variants.Count > 1)
+                {
+                    sq = new StreamQualityTpl();
+
+                    foreach (HubEntry v in variants)
+                        sq.Append(PlayLink(plugin, v), v.Label);
+                }
+
+                etpl.Append(first.Label + (variants.Count > 1 ? $" · {variants.Count} host" : ""),
+                            title ?? original_title, first.Season, first.Episode, link, "play",
+                            streamquality: sq, streamlink: link);
             }
 
             if (etpl.IsEmpty)
-                Console.WriteLine($"{Log(source)} mùa {s} không có tập nào (entries={entries.Count})");
+                Console.WriteLine($"{Log(source)} mùa {s} không có tập nào (entries={entries.Count}, groups={groups.Count}, g={ReleaseGroup})");
 
             return ContentTpl(etpl);
         }
@@ -195,7 +252,7 @@ public abstract class HubController : BaseENGController
 
         foreach (HubEntry item in shown)
         {
-            string link = accsArgs($"{host}/lite/{plugin}/{RouteFor(item.Label, item.Url)}?src={Enc(Clean(item.Url))}&label={Enc(item.Label)}&play=true");
+            string link = PlayLink(plugin, item);
 
             // details = host của file-host (Lampa in thành dòng phụ), còn quality/menu chất lượng thì
             // KHÔNG có: mỗi link là một nút. Uri.TryCreate chứ không gọi TryCreate trần (CS0103 — đã
@@ -212,7 +269,10 @@ public abstract class HubController : BaseENGController
 
     async Task<List<HubEntry>> CollectCached(string source, string imdbId, long tmdbId, short season)
     {
-        string memKey = $"movieshub:{source}:{tmdbId}:{imdbId}:{season}";
+        // PHẢI có ReleaseGroup trong key: với series, lời gọi g=0 chỉ trả PHIẾU NHÓM (chưa dịch trang
+        // nhóm nào), còn g=N mới trả tập. Chung một key là lần chọn nhóm thứ hai ăn lại danh sách
+        // phiếu và menu tập rỗng — đúng loại lỗi chỉ thấy trên máy người dùng.
+        string memKey = $"movieshub:{source}:{tmdbId}:{imdbId}:{season}:{ReleaseGroup}";
 
         if (hybridCache.TryGetValue(memKey, out List<HubEntry> cached) && cached != null)
             return cached;
@@ -226,7 +286,7 @@ public abstract class HubController : BaseENGController
     }
     #endregion
 
-    #region video: ĐÚNG MỘT url, không streamquality
+    #region video: ĐÚNG MỘT url (phim lẻ không streamquality; biến thể chỉ được ở menu TẬP)
     protected async Task<ActionResult> VideoCore(string source, string src, string label, short s, short e, bool play)
     {
         StatiCacheDisabled = true;
@@ -307,6 +367,19 @@ public abstract class HubController : BaseENGController
     /// headers_stream của module không áp vào đây: player tự gửi UA của nó, còn link r2 presigned
     /// của HubCloud thì không cần header gì cả.
     /// </summary>
+    /// <summary>
+    /// Url phát của một entry: route file.mkv/file.mp4 (giữ đuôi file trong path cho gst.js) +
+    /// src/label + play=true, và BẮT BUỘC bọc accsArgs vì player tự fetch url này — thiếu token là
+    /// Lampac chặn trước cả khi kịp 302 (đúng lỗi làm chết mọi nút ở bản v14/v15). method:"play"
+    /// chứ không "call": không JSON, Lampa đưa url thẳng cho player (học Sootio:857-858).
+    /// </summary>
+    protected string PlayLink(string plugin, HubEntry item)
+    {
+        string ep = item.Episode > 0 ? $"&s={item.Season}&e={item.Episode}" : "";
+
+        return accsArgs($"{host}/lite/{plugin}/{RouteFor(item.Label, item.Url)}?src={Enc(Clean(item.Url))}&label={Enc(item.Label)}{ep}&play=true");
+    }
+
     string PlayUrl(HubStream stream, string direct)
         => init.streamproxy ? HostStreamProxy(direct, headers: stream.Headers, force_streamproxy: true) : direct;
 
@@ -745,7 +818,7 @@ public abstract class HubController : BaseENGController
     static string Root(string url)
         => Uri.TryCreate(url, UriKind.Absolute, out Uri u) ? u.Scheme + "://" + u.Host : url;
 
-    static string Plain(string html)
+    protected static string Plain(string html)
         => Regex.Replace(Regex.Replace(html ?? "", "<[^>]+>", " "), @"\s+", " ").Trim();
 
     /// <summary>mirror mới nhất theo key ("hubcloud"/"vcloud"/"gdflix"); null nếu không lấy được json.</summary>
@@ -1188,7 +1261,7 @@ public abstract class HubController : BaseENGController
         return string.IsNullOrWhiteSpace(hist) ? "(không class nào gợi ý nút tải)" : hist;
     }
 
-    static string NearestHeadingBefore(string html, int position)
+    protected static string NearestHeadingBefore(string html, int position)
     {
         if (position <= 0)
             return "";

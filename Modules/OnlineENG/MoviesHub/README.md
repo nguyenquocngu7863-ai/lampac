@@ -80,11 +80,46 @@ một ký tự là chết.
 Kiểm chứng trên máy: `"gst": { "enable": true }` trong `init.conf`, plugin `http://<host>:9118/gst.js`
 đã đăng ký trong Lampa, và `curl -s http://127.0.0.1:9118/gst/status` phải thấy task khi đang phát.
 
+## Series: tầng chọn nhóm release (`?g=`) — học từ chính Movies4U
+
+Một mùa trên Movies4U không có "danh sách tập", nó có **N nhóm**, mỗi nhóm là một heading + một nút
+`DOWNLOAD LINKS` dẫn sang trang riêng:
+
+```
+Season 4 [Hindi ORG. + English]        480p [250MB/E]  -> DOWNLOAD LINKS
+Season 4 [Hindi ORG. + Multi Audio]    720p [600MB/E]  -> DOWNLOAD LINKS
+Season 4 [Hindi ORG. + Multi Audio]    1080p [900MB/E] -> DOWNLOAD LINKS
+Season 4 [Hindi ORG. + Multi Audio]    1080p [4GB/E]   -> DOWNLOAD LINKS
+Season 4 [Hindi ORG. + Multi Audio]    2160p 4K [6GB/E]-> DOWNLOAD LINKS
+```
+
+Luồng ba bước, giống cách PidTor làm với "Mùa: 1 сезон":
+
+1. `GET /lite/movies4u?...&serial=1&s=4` → `SeasonTpl` **danh sách nhóm** (label = nguyên heading),
+   mỗi nút trỏ về `…&s=4&g=<1..N>`. `GroupsForSeason()` đọc `download-links-div` có heading nhắc đúng
+   mùa, dự phòng là mọi nút có chữ "download links"; heading không nhắc mùa nào (phim một mùa) thì
+   được tính cho mọi mùa.
+2. `…&g=2` → chỉ trang của nhóm 2 được tải, mỗi tập một nút `EpisodeTpl`. **Mọi** host của cùng một
+   tập nằm trong `streamquality` của nút đó (`Ep 3 · hubcloud · 3 host`) — biến thể ở TẬP là chuẩn
+   của Lampa; cái bị cấm là nhét link phim lẻ vào menu chất lượng (`## Quy tắc UI`).
+3. Bấm tập → `PlayLink()` → `/lite/movies4u/file.mkv?…&play=true` (accsArgs) → 302 vào link trần.
+
+`ReleaseGroup <= 0` và có đúng 1 nhóm thì **không** hiện màn hình chọn (khỏi thừa một bước). Ở bước 1
+module cố tình không tải trang nhóm nào — chọn xong mới tải, nên mở một mùa 5 nhóm là 1 request.
+Vì lý do đó `CollectCached` nhét `ReleaseGroup` vào cache key: g=0 chỉ chứa phiếu nhóm, dùng chung
+key với g=N thì menu tập sẽ rỗng.
+
+MoviesDrive không làm theo cách này (user yêu cầu: nguồn đó không thiên về series) ⇒ `HubEntry.Group`
+luôn null bên đó, nhánh chọn nhóm không bao giờ chạy.
+
+
 ## Route
 
 | Route | Tác dụng |
 |---|---|
 | `GET /lite/moviesdrive?id=&imdb_id=&serial=&s=` | collection: tự tìm bài trên site, mỗi link file-host là một nút (mùa → tập cho series) |
+| `GET /lite/movies4u?...&serial=1&s=4` | series, chưa chọn nhóm → `SeasonTpl` danh sách nhóm release của mùa 4 |
+| `GET /lite/movies4u?...&serial=1&s=4&g=2` | nhóm release thứ 2 của mùa 4 → `EpisodeTpl` (mỗi tập một nút, các host là biến thể) |
 | `GET /lite/<nguồn>/video?src=<base64 link>&label=<base64>&s=&e=` | resolve link đó → **JSON** một url (đường `method:"call"`) |
 | `GET /lite/<nguồn>/file.mkv` / `file.mp4` | CÙNG action, alias để path có đuôi file cho gst.js |
 | `…&play=true` | 302 thẳng vào link trần (VLC/DLNA, và bước cuối của nước đi ở trên) |
@@ -127,6 +162,8 @@ Referer theo đúng origin đó. Đặt một host cố định = 403 cho các m
 | `movies4u: không có download-links-div … (a=123)` | selector sai, nhưng `a=` cho biết trang có bao nhiêu link |
 | `… build=<marker>` | marker bản build (`Build` trong HubController). Lampac compile module bằng Roslyn trong bộ nhớ nên không có dll trên đĩa để so — thấy marker trong log **khác** với bản vừa kéo là máy đang compile bản CŨ: `lampac stop`, xoá cache build của module (`rm -rf /root/lampac/module/OnlineENG/MoviesHub/obj /root/lampac/module/OnlineENG/MoviesHub/bin /root/lampac/module/OnlineENG/MoviesHub/*.dll` — không có cũng không sao), `lampac start` rồi mở lại phim |
 | `moviesdrive: play … [direct]` / `[proxy]` | `[direct]` = phát thẳng link extractor (mặc định). `[proxy]` = link đang đi qua `/proxy/{token}` vì init.conf bật `streamproxy` cho section đó — path sẽ mất `.mkv` nên GStreamer không bật |
+| `movies4u: mùa 4 có 5 nhóm release — đưa màn hình chọn (g=1..5)` | tầng chọn nhóm hoạt động (đó là cái anh hỏi) |
+| `movies4u: mùa 4 nhóm 3/5 'Season 4 […] 1080p [900MB/E]': 10 khối, 30 link` | đã dịch đúng một trang nhóm; `0 link` thì xem `classes=`/`hosts=` ngay dòng dưới |
 | `movieshub: bỏ N nút gdflix/gdlink/go2link khỏi menu` | nguồn vẫn trả link chết, CollectionCore chặn ở cổ chai cuối |
 | `movies4u: nhãn thiếu chất lượng: 'hubcloud.cx' (heading='' nút='…')` | heading khối không bắt được ⇒ selector `download-links-div`/`downloads-btns-div` đã đổi; xem `classes=` ở dòng ngay trên để biết site dùng class gì |
 | `movieshub: link có ký tự rác (&amp; / nháy / space) — đã sửa…` | HTML lọt vào link, module tự chữa; vẫn 403 thì gửi em đúng dòng này |
@@ -260,7 +297,9 @@ giá trị qua `HrefValue(m)` (ba nhóm `d`/`s`/`n`, không dùng trùng tên nh
 - Trước khi đưa link cho player, luôn `Clean()`/`NormalizeUrl()`: `&amp;` trong `href` của HTML làm
   R2 trả 400/403 (tham số thành `amp;X-Amz-Credential`), và khoảng trắng làm `ClearStreamUri` cắt
   link. Nhưng **không** được chuẩn hóa bằng `Uri.AbsoluteUri` — query presigned lệch 1 ký tự là chết.
-- Sau mỗi commit sửa module: đổi `Build` (hiện `v15b-urifix`) và nhắc marker trong message commit,
+- `HubEntry` có hai vai: `Episode > 0` = tập, `Episode == 0 && Group != null` = **phiếu nhóm**.
+  Thêm bất kỳ loại nào khác mà quên cập nhật `CollectionCore` là menu rỗng không lý do.
+- Sau mỗi commit sửa module: đổi `Build` (hiện `v16-series-groups`) và nhắc marker trong message commit,
   vì đó là cách duy nhất log tự chứng minh máy đang chạy bản nào (module compile trong bộ nhớ).
 
 ## Bẫy đã né sẵn (đều là bài học từ VidCore, đọc trước khi sửa)
