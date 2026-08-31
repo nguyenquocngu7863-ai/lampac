@@ -45,6 +45,9 @@ public class VidLinkController : BaseENGController
     [Route("lite/vidlink/video.m3u8")]
     public async Task<ActionResult> Video(long id, short s = -1, short e = -1, bool play = false)
     {
+        StatiCacheDisabled = true;
+        SetHeadersNoCache();
+
         if (await IsRequestBlocked(rch: false, rch_check: !play))
             return badInitMsg;
 
@@ -60,7 +63,10 @@ public class VidLinkController : BaseENGController
         var qualities = new StreamQualityTpl(resolved.Count);
         foreach (ResolvedStream item in resolved)
         {
-            if (item.Hls)
+            // Never give hls.js a /proxy/…m3u8. Local playlist is the only
+            // URL that returns #EXTM3U on this origin.
+            bool playlist = item.Hls || LooksLikeHls(item.Url) || !LooksLikeProgressive(item.Url);
+            if (playlist)
                 qualities.Append(PlaylistLink(item.Url), item.Label);
             else
                 qualities.Append(HostStreamProxy(item.Url, headers: item.Headers), item.Label);
@@ -70,6 +76,7 @@ public class VidLinkController : BaseENGController
             return OnError("stream", 502);
 
         var first = qualities.Firts();
+        Console.WriteLine($"VidLink: play {first.link}");
         if (play)
             return RedirectToPlay(first.link);
 
