@@ -283,10 +283,15 @@
   }
 
   function originalLogoUrl(url) {
-    if (typeof url !== 'string' || url.indexOf('include_image_language=') < 0) return url;
+    if (typeof url !== 'string') return url;
+    if (url.indexOf('language=') < 0 && url.indexOf('include_image_language=') < 0) return url;
+    if (!/tmdb|themoviedb|\/cub\/|apitmdb|tmapi/i.test(url)) return url;
 
-    // English TMDB metadata, but never ask for vi logos (they are often missing).
-    return url.replace(/([?&]include_image_language=)[^&]*/i, '$1en%2Cnull');
+    // Force English TMDB titles AND posters. language=vi makes TMDB return
+    // localized poster_path (e.g. "Người Nhện") even when the UI is Vietnamese.
+    return url
+      .replace(/([?&]language=)vi(?:[-_][A-Za-z]+)?(?=&|$)/ig, '$1en')
+      .replace(/([?&]include_image_language=)[^&]*/ig, '$1en%2Cnull');
   }
 
   function sanitizeTmdbLogos(data) {
@@ -339,8 +344,14 @@
     // Keep the Lampa UI in Vietnamese, but default TMDB titles/search to English
     // so movie names match sources. Lampa itself copies language → tmdb_lang.
     if (Lampa.Storage.get('language', 'ru') !== 'vi') return;
-    if (isVietnameseTmdbLang(tmdbLangCode()))
-      Lampa.Storage.set('tmdb_lang', 'en');
+    if (!isVietnameseTmdbLang(tmdbLangCode())) return;
+    Lampa.Storage.set('tmdb_lang', 'en');
+    try {
+      if (window.appready && !sessionStorage.getItem('lampac_tmdb_en_reloaded')) {
+        sessionStorage.setItem('lampac_tmdb_en_reloaded', '1');
+        window.location.reload();
+      }
+    } catch (e) { }
   }
 
   function installSetting() {

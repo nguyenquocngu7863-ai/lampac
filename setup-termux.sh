@@ -446,7 +446,7 @@ VI_LANG
 # shipping a small fix so Termux does not re-download Chrome, hls.js, or
 # every custom module. Use --sync-all for a full refresh.
 sync_latest_modules() {
-    info "Syncing latest patch files only (TMDB English + admin remember-password)..."
+    info "Syncing latest patch files only (TMDB English titles/posters)..."
 
     proot-distro login ubuntu -- bash -c "
         set -euo pipefail
@@ -501,6 +501,13 @@ sync_latest_modules() {
             if [ -d \"\$lampaweb/Models\" ]; then
                 pull Modules/LampaWeb/Models/InitPlugins.cs \"\$lampaweb/Models/InitPlugins.cs\"
             fi
+        done
+        for proxymodule in CubProxy TmdbProxy; do
+            for proxy in /root/lampac/module/Proxy/\$proxymodule /root/lampac/mods/Proxy/\$proxymodule; do
+                if [ -d \"\$proxy\" ]; then
+                    pull Modules/Proxy/\$proxymodule/Controller.cs \"\$proxy/Controller.cs\"
+                fi
+            done
         done
         for sisimod in /root/lampac/module/SISI /root/lampac/mods/SISI; do
             if [ -d \"\$sisimod\" ]; then

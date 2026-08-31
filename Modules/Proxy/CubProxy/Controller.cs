@@ -224,10 +224,15 @@ public class CubProxyController : BaseController
             var proxy = proxyManager?.Get();
             string requri = $"{init.scheme}://{domain}/{uri}";
 
-            // Keep Vietnamese metadata but never ask TMDB/CUB for vi logos.
-            // English and language-neutral artwork are much more complete.
+            // UI can stay Vietnamese; TMDB catalog must be English titles/posters.
             if (subdomain == "tmdb" && Regex.IsMatch(requri, @"[?&]language=vi(?:[-_][^&]+)?(?:&|$)", RegexOptions.IgnoreCase))
             {
+                requri = Regex.Replace(
+                    requri,
+                    @"([?&]language=)vi(?:[-_][^&]*)?",
+                    "$1en",
+                    RegexOptions.IgnoreCase
+                );
                 requri = Regex.Replace(
                     requri,
                     @"([?&]include_image_language=)[^&]*",

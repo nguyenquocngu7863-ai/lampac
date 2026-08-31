@@ -250,6 +250,9 @@ public class TmdbProxyController : BaseController
                 if (string.IsNullOrEmpty(value))
                     continue;
 
+                if (vietnameseMetadata && q.Key.Equals("language", StringComparison.OrdinalIgnoreCase))
+                    value = "en";
+
                 if (vietnameseMetadata && q.Key.Equals("include_image_language", StringComparison.OrdinalIgnoreCase))
                     value = "en,null";
 

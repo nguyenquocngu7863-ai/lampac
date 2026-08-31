@@ -115,6 +115,12 @@
       // Language selection is user-controlled in Settings → Interface.
       // Do not force `vi`: Lampa must load the complete standalone vi.js first.
 	  
+      // UI stays Vietnamese (`language=vi`). TMDB titles/posters must be
+      // English or search/source matching breaks. Set this before appready
+      // so the first catalog request is already `language=en`.
+      forceEnglishTmdbStorage();
+      installEnglishTmdbApi();
+
       if (lampainit_invc)
         lampainit_invc.appload();
 
@@ -145,8 +151,48 @@
   }, 200);
 
 
+  function rewriteTmdbLangUrl(url) {
+    if (typeof url !== 'string') return url;
+    if (!/tmdb|themoviedb|apitmdb|tmapi/i.test(url)) return url;
+    return url
+      .replace(/([?&]language=)vi(?:[-_][A-Za-z]+)?(?=&|$)/ig, '$1en')
+      .replace(/([?&]include_image_language=)[^&]*/ig, '$1en%2Cnull');
+  }
+
+  function forceEnglishTmdbStorage() {
+    if (!window.Lampa || !Lampa.Storage) return;
+    if (Lampa.Storage.get('language', 'ru') !== 'vi') return;
+    var tmdb = String(Lampa.Storage.get('tmdb_lang', 'vi') || 'vi').toLowerCase();
+    if (tmdb === 'vi' || tmdb.indexOf('vi-') === 0 || tmdb.indexOf('vi_') === 0)
+      Lampa.Storage.set('tmdb_lang', 'en');
+  }
+
+  function installEnglishTmdbApi() {
+    if (window.lampac_english_tmdb_api) return;
+    if (!window.Lampa) return;
+
+    if (Lampa.TMDB && typeof Lampa.TMDB.api === 'function') {
+      window.lampac_english_tmdb_api = true;
+      var origApi = Lampa.TMDB.api;
+      Lampa.TMDB.api = function () {
+        return rewriteTmdbLangUrl(origApi.apply(this, arguments));
+      };
+    }
+
+    if (Lampa.Listener && !window.lampac_english_tmdb_request) {
+      window.lampac_english_tmdb_request = true;
+      Lampa.Listener.follow('request_before', function (e) {
+        if (e && e.params && e.params.url)
+          e.params.url = rewriteTmdbLangUrl(e.params.url);
+      });
+    }
+  }
+
   function start() {
     {deny}
+
+    forceEnglishTmdbStorage();
+    installEnglishTmdbApi();
 	
     // Always sync plugins first, even on already-initialized clients
     syncPlugins();
