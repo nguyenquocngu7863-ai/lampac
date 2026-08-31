@@ -78,10 +78,18 @@ public class ModInit : IModuleLoaded, IModuleOnline
         conf.rhub = false;
         conf.httptimeout = 25;
         conf.streamproxy = true;
-        conf.overridehosts ??= ["https://vidcore.io"];
+
+        // TUYỆT ĐỐI KHÔNG set conf.overridehost / conf.overridehosts ở đây.
+        // Trong Lampac đó không phải "danh sách domain của nguồn" — đó là cơ chế
+        // chuyển request sang một Lampac instance khác: BaseOnlineController.IsRequestBlocked
+        // gọi IsOverridehost() => InvokeOverridehost() => RedirectResult(host + querystring)
+        // và DỪNG Ở ĐÓ. Nghĩa là Index()/Video() của module không chạy một dòng nào,
+        // không log gì, Lampa chỉ nhận được 302 -> "Nguồn (vidcore) không trả về kết quả".
+        // (Đây chính xác là bug đã xảy ra khi còn để `overridehosts = ["https://vidcore.io"]`.)
 
         // Stream đi qua CDN của VidCore: thiếu Referer là 403.
-        conf.headers_stream = HeadersModel.Init(
+        // `??=` để anh vẫn override được trong init.conf.
+        conf.headers_stream ??= HeadersModel.Init(
             ("User-Agent", Http.UserAgent),
             ("Referer", $"{conf.host.TrimEnd('/')}/"),
             ("Accept", "*/*")

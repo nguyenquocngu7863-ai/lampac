@@ -42,9 +42,17 @@ public class VidCoreController : BaseENGController
 
     [HttpGet, Staticache(manually: true)]
     [Route("lite/vidcore")]
-    public Task<ActionResult> Index(bool checksearch, long id, long tmdb_id, string imdb_id, string title, string original_title, byte serial, short s = -1, bool rjson = false)
+    public async Task<ActionResult> Index(bool checksearch, long id, long tmdb_id, string imdb_id, string title, string original_title, byte serial, short s = -1, bool rjson = false)
     {
-        return ViewTmdb(checksearch, id, tmdb_id, imdb_id, title, original_title, serial, s, rjson, method: "call");
+        var res = await ViewTmdb(checksearch, id, tmdb_id, imdb_id, title, original_title, serial, s, rjson, method: "call");
+
+        // Stage thu thập (collection) trước đây hoàn toàn mù: ViewTmdbAsync trả về
+        // badInitMsg/RedirectResult mà không in gì, nên "nguồn hiện mà không có kết quả"
+        // không phân biệt được là bị chặn, redirect, hay thiếu id.
+        if (res is null or RedirectResult || (res as ContentResult)?.StatusCode > 200)
+            Console.WriteLine($"VidCore: index không có dữ liệu (type={res?.GetType().Name ?? "null"}, status={(res as ContentResult)?.StatusCode?.ToString() ?? "-"}, id={id}, tmdb_id={tmdb_id}, serial={serial})");
+
+        return res;
     }
 
     [HttpGet, Staticache(manually: true)]

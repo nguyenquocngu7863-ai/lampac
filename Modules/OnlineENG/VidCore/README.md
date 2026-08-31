@@ -6,6 +6,17 @@ trên Termux khi browser hỏng.
 
 Luồng API lấy công thức từ `SaurabhKaperwan/CSX` (`CineStream` → `invokeVidcore`); chỉ dùng
 công thức API, không copy code (CSX GPL-3, kho này MIT).
+## Bẫy đã gặp (đọc trước khi sửa)
+
+- **Không set `conf.overridehost`/`conf.overridehosts`.** Ở Lampac đó là cơ chế *chuyển request
+  sang Lampac instance khác*: `IsRequestBlocked` → `InvokeOverridehost` → `RedirectResult` rồi
+  **dừng**, `Index()`/`Video()` không chạy, không log, Lampa báo "không trả về kết quả". Module
+  từng dính đúng cái này vì tưởng nó là "danh sách domain của nguồn".
+- Mọi đường chặn trong `BaseOnlineController` đều **im lặng** (403 không log). VidCore giờ in
+  `VidCore: blocked (...)` ở `Video()` và `VidCore: index không có dữ liệu (...)` ở `Index()`.
+- `Index()` có `[Staticache]`: nếu anh vừa đổi config xong mà vẫn thấy hành vi cũ, xoá cache
+  `rm -rf /root/lampac/cache/static` rồi `lampac restart` (302 cũ có thể còn nằm trong cache).
+
 
 ## Route
 
