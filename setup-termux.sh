@@ -446,7 +446,7 @@ VI_LANG
 # shipping a small fix so Termux does not re-download Chrome, hls.js, or
 # every custom module. Use --sync-all for a full refresh.
 sync_latest_modules() {
-    info "Syncing latest patch files only (admin remember-password + xasiat vi)..."
+    info "Syncing latest patch files only (TMDB English + admin remember-password)..."
 
     proot-distro login ubuntu -- bash -c "
         set -euo pipefail
@@ -493,6 +493,7 @@ sync_latest_modules() {
                 pull Modules/LampaWeb/plugins/subsense.js \"\$lampaweb/plugins/subsense.js\"
                 pull Modules/LampaWeb/plugins/subsense-auto.js \"\$lampaweb/plugins/subsense-auto.js\"
                 pull Modules/LampaWeb/plugins/autotracks.js \"\$lampaweb/plugins/autotracks.js\"
+                pull Modules/LampaWeb/plugins/vietnamese.js \"\$lampaweb/plugins/vietnamese.js\"
             fi
             if [ -d \"\$lampaweb/Controllers\" ]; then
                 pull Modules/LampaWeb/Controllers/ApiController.cs \"\$lampaweb/Controllers/ApiController.cs\"

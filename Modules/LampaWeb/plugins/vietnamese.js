@@ -267,16 +267,25 @@
     });
   }
 
+  function tmdbLangCode() {
+    if (!window.Lampa || !Lampa.Storage) return '';
+    var language = Lampa.Storage.get('language', 'ru');
+    var tmdb = Lampa.Storage.get('tmdb_lang', language);
+    return String(tmdb || language || 'en').toLowerCase();
+  }
+
+  function isVietnameseTmdbLang(code) {
+    return code === 'vi' || code.indexOf('vi-') === 0 || code.indexOf('vi_') === 0;
+  }
+
   function useVietnameseTmdb() {
-    if (!window.Lampa || !Lampa.Storage) return false;
-    return Lampa.Storage.get('language', 'ru') === 'vi' || Lampa.Storage.get('tmdb_lang', 'ru') === 'vi';
+    return isVietnameseTmdbLang(tmdbLangCode());
   }
 
   function originalLogoUrl(url) {
-    if (!useVietnameseTmdb() || typeof url !== 'string' || url.indexOf('include_image_language=') < 0) return url;
+    if (typeof url !== 'string' || url.indexOf('include_image_language=') < 0) return url;
 
-    // Keep metadata requests in Vietnamese, but request only English and
-    // language-neutral images so Lampa never selects a missing/broken vi logo.
+    // English TMDB metadata, but never ask for vi logos (they are often missing).
     return url.replace(/([?&]include_image_language=)[^&]*/i, '$1en%2Cnull');
   }
 
@@ -327,8 +336,11 @@
 
   function syncTmdbLanguage() {
     if (!window.Lampa || !Lampa.Storage) return;
-    if (Lampa.Storage.get('language', 'ru') === 'vi' && Lampa.Storage.get('tmdb_lang', 'ru') !== 'vi')
-      Lampa.Storage.set('tmdb_lang', 'vi');
+    // Keep the Lampa UI in Vietnamese, but default TMDB titles/search to English
+    // so movie names match sources. Lampa itself copies language → tmdb_lang.
+    if (Lampa.Storage.get('language', 'ru') !== 'vi') return;
+    if (isVietnameseTmdbLang(tmdbLangCode()))
+      Lampa.Storage.set('tmdb_lang', 'en');
   }
 
   function installSetting() {
@@ -359,7 +371,7 @@
 
     if (Lampa.Storage.listener) {
       Lampa.Storage.listener.follow('change', function (event) {
-        if (event.name === 'language') syncTmdbLanguage();
+        if (event.name === 'language' || event.name === 'tmdb_lang') syncTmdbLanguage();
       });
     }
 
