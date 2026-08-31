@@ -80,6 +80,7 @@
     <Project Path="Modules/OnlineENG/TwoEmbed/TwoEmbed.csproj" />
     <Project Path="Modules/OnlineENG/Videasy/Videasy.csproj" />
     <Project Path="Modules/OnlineENG/VidLink/VidLink.csproj" />
+    <Project Path="Modules/OnlineENG/VidCore/VidCore.csproj" />
     <Project Path="Modules/OnlineENG/VidSrc/VidSrc.csproj" />
     <Project Path="Modules/OnlineENG/WebStreamr/WebStreamr.csproj" />
     <Project Path="Modules/OnlineENG/Sootio/Sootio.csproj" />

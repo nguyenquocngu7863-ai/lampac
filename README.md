@@ -68,6 +68,14 @@ lampac config    # Mở init.conf bằng nano trong Ubuntu
 lampac update    # Cập nhật Lampac và đồng bộ lại thiết lập tuỳ biến
 ```
 
+> **Sửa lỗi (2026-08-31):** `lampac update` trước đây chạy một khối shell **inline** tham chiếu
+> 22 biến kiểu `$KKBase`, `$VideasyBase`, `$LampaWebBase`, `$BaseConfUrl`… mà **không biến nào được
+> định nghĩa** trong `setup-termux.sh`. Hệ quả: URL curl sinh ra thiếu host (`curl: (3) URL rejected:
+> No host part`) và `set -euo pipefail` dừng ngay lệnh đầu tiên ⇒ lệnh update không đồng bộ được module nào.
+> Nay `lampac update` delegate thẳng `bash setup-termux.sh --update` (giống cách `lampac sync` /
+> `lampac sync-all` đang làm), tức đi qua `install_custom_modules()` nơi `${CUSTOM_SOURCE_BASE}`
+> được nội suy đúng. Khối cũ còn ở `notes/setup-termux.update-block.old.sh` nếu cần đối chiếu.
+
 Lệnh `lampac start` in ra địa chỉ local, địa chỉ mạng LAN và cổng đang dùng. Thông thường bạn truy cập từ thiết bị khác cùng Wi-Fi qua:
 
 ```text
@@ -808,6 +816,19 @@ jackett update
 ```
 
 `lampac start` chỉ tự khởi động AIOStreams rồi chạy Lampac. Jackett có lifecycle độc lập để dễ đo hiệu năng: chạy `jackett start` khi cần dùng và `jackett stop` khi muốn giải phóng tài nguyên; `lampac stop` không dừng Jackett. AIOStreams có thể dùng URL/API key của Jackett theo cấu hình addon riêng trong dashboard AIO. Jackett lắng nghe mạng LAN để thiết bị khác mở dashboard; không đưa port `9117` ra Internet, đồng thời không commit hoặc chia sẻ API key.
+
+## Nguồn VidCore (4K, không cần Playwright)
+
+`Modules/OnlineENG/VidCore` là module động mới, resolver thuần HTTP theo công thức API của
+VidCore (`vidcore.io`, có biến thể 4K). Không phụ thuộc Chromium nên vẫn chạy khi Playwright hỏng;
+đóng vai trò nguồn ENG dự phòng khi HDVB/Mirage không lên.
+
+Điểm cần biết: module **không có trong `lampac-nextgen.zip`**, nên chỉ xuất hiện sau
+`--install` / `--sync-all` / `--update` (các lệnh này tạo thư mục module + chép `manifest.json`
+qua `install_custom_modules()`). Nó **không** nằm trong `--sync` nhẹ — đang ở giai đoạn thử nghiệm,
+theo đúng quy trình addon ở cuối README.
+
+Toàn bộ flow, route kiểm tra và cách tắt: [`Modules/OnlineENG/VidCore/README.md`](Modules/OnlineENG/VidCore/README.md).
 
 ## Trạng thái nguồn ENG và Mirage
 

@@ -717,6 +717,18 @@ install_custom_modules() {
             done
         fi
 
+        # VidCore is a NEW module: it is not part of lampac-nextgen.zip, so the
+        # directory and manifest.json must be created here. A plain `if [ -d ]`
+        # guard (used for modules that already exist in the release) would skip
+        # it forever. Kept out of --sync until stable, per the README rule.
+        vidcorebase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineENG/VidCore\"
+        vidcoretarget=/root/lampac/module/OnlineENG/VidCore
+        mkdir -p \"\$vidcoretarget\"
+        for vidcorefile in manifest.json Controller.cs ModInit.cs; do
+            curl -fSL --retry 3 \"\$vidcorebase/\$vidcorefile?cb=\$syncstamp\" -o \"\$vidcoretarget/\$vidcorefile.tmp\"
+            mv \"\$vidcoretarget/\$vidcorefile.tmp\" \"\$vidcoretarget/\$vidcorefile\"
+        done
+
         for proxymodule in CubProxy TmdbProxy; do
             proxytarget=\"/root/lampac/module/Proxy/\$proxymodule\"
             if [ -d \"\$proxytarget\" ]; then
@@ -921,275 +933,14 @@ case "${1:-}" in
         ;;
     update)
         echo "Updating Lampac..."
-        proot-distro login ubuntu -- bash -c '
-            set -euo pipefail
-            cd /tmp
-            curl -fSL --retry 3 -o lampac.zip "https://github.com/lampac-nextgen/lampac/releases/latest/download/lampac-nextgen.zip"
-            [[ ! -s lampac.zip ]] && echo "Download failed" && exit 1
-            STAGING="/tmp/lampac-staging"
-            rm -rf "$STAGING" && mkdir -p "$STAGING"
-            unzip -oq lampac.zip -d "$STAGING" && rm -f lampac.zip
-            subdirs=$(find "$STAGING" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
-            files_root=$(find "$STAGING" -mindepth 1 -maxdepth 1 -type f 2>/dev/null | wc -l)
-            if [[ "$subdirs" -eq 1 && "$files_root" -eq 0 ]]; then
-                subdir=$(find "$STAGING" -mindepth 1 -maxdepth 1 -type d | head -n1)
-                shopt -s dotglob nullglob
-                mv "$subdir"/* "$STAGING"/ 2>/dev/null || true
-                shopt -u dotglob nullglob
-                rmdir "$subdir" 2>/dev/null || true
-            fi
-            [[ ! -f "$STAGING/Core.dll" ]] && echo "Extraction failed" && exit 1
-            cp /root/lampac/init.conf /tmp/init.conf.bak 2>/dev/null || true
-            cp /root/lampac/passwd /tmp/passwd.bak 2>/dev/null || true
-            rm -rf /root/lampac && mv "$STAGING" /root/lampac
-            cp /tmp/init.conf.bak /root/lampac/ 2>/dev/null || true
-            cp /tmp/passwd.bak /root/lampac/ 2>/dev/null || true
-            rm -f /tmp/*.bak
-
-            # Re-apply the lightweight Termux profile. ENG providers remain
-            # paused; AIOStreams and Jackett have independent lifecycles.
-            file=/root/lampac/init.conf
-            if [ -f "$file" ]; then
-                sed -i "s/^[[:space:]]*}:,/  },/" "$file"
-                sed -i "s/\"GStreamer\",[[:space:]]*//g; s/,[[:space:]]*\"GStreamer\"//g" "$file"
-                if ! grep -q "^[[:space:]]*\"disableEng\"[[:space:]]*:" "$file" && grep -q "^[[:space:]]*\"listen\"[[:space:]]*:" "$file"; then
-                    sed -i "/^[[:space:]]*\"listen\"[[:space:]]*:/i\  \"disableEng\": true," "$file"
-                fi
-                if ! grep -q "^[[:space:]]*\"Jackett\"[[:space:]]*:" "$file" && grep -q "^[[:space:]]*\"listen\"[[:space:]]*:" "$file"; then
-                    sed -i "/^[[:space:]]*\"listen\"[[:space:]]*:/i\  \"Jackett\": { \"enable\": true, \"url\": \"\", \"port\": 9117, \"api_key\": \"\", \"proxy_downloads\": true }," "$file"
-                fi
-            fi
-
-            # Remove retired providers and stale site definitions so the dynamic
-            # module loader cannot load them from an earlier installation.
-            rm -rf /root/lampac/module/OnlineVN/NguonC \
-                   /root/lampac/module/OnlineENG/CineWave \
-                   /root/lampac/module/OnlineENG/Mapple4K \
-                   /root/lampac/module/OnlineENG/OpenDirectory \
-                   /root/lampac/mods/OnlineENG/CineWave \
-                   /root/lampac/mods/OnlineENG/Mapple4K \
-                   /root/lampac/mods/OnlineENG/OpenDirectory
-            rm -f /root/lampac/module/NextHUB/sites/85po.yaml \
-                  /root/lampac/mods/NextHUB/sites/85po.yaml
-
-            base="$KKBase"
-            target=/root/lampac/module/OnlineVN/KKPhim
-            mkdir -p "$target"
-            for file in Controller.cs Model.cs ModInit.cs manifest.json; do
-                curl -fSL --retry 3 "$base/$file" -o "$target/$file"
-            done
-
-            k20base="$K20Base"
-            k20target=/root/lampac/module/OnlineVN/K20
-            mkdir -p "$k20target"
-            for file in Controller.cs Model.cs ModInit.cs manifest.json; do
-                curl -fSL --retry 3 "$k20base/$file" -o "$k20target/$file"
-            done
-
-            vsmovbase="$VsMovBase"
-            vsmovtarget=/root/lampac/module/OnlineVN/VsMov
-            mkdir -p "$vsmovtarget"
-            for file in Controller.cs Model.cs ModInit.cs manifest.json; do
-                curl -fSL --retry 3 "$vsmovbase/$file" -o "$vsmovtarget/$file"
-            done
-
-            webbase="$WebBase"
-            webtarget=/root/lampac/module/OnlineENG/WebStreamr
-            mkdir -p "$webtarget"
-            for file in Controller.cs Model.cs ModInit.cs manifest.json; do
-                curl -fSL --retry 3 "$webbase/$file" -o "$webtarget/$file"
-            done
-
-            sootiobase="$SootioBase"
-            sootiotarget=/root/lampac/module/OnlineENG/Sootio
-            mkdir -p "$sootiotarget"
-            for file in Controller.cs Model.cs ModInit.cs manifest.json; do
-                curl -fSL --retry 3 "$sootiobase/$file" -o "$sootiotarget/$file"
-            done
-
-            aiobase="$AioBase"
-            aiotarget=/root/lampac/module/OnlineENG/AIOStreams
-            mkdir -p "$aiotarget"
-            for file in Controller.cs Model.cs ModInit.cs manifest.json; do
-                curl -fSL --retry 3 "$aiobase/$file" -o "$aiotarget/$file"
-            done
-
-            # Custom Online (Lampa client) plugin: wrapped info rows + full titles.
-            onlinebase="$OnlineBase"
-            onlinetarget=/root/lampac/module/Online
-            mkdir -p "$onlinetarget"
-            curl -fSL --retry 3 "$onlinebase/plugin.js" -o "$onlinetarget/plugin.js"
-
-            curl -fSL --retry 3 "$AioCtlUrl" -o /root/aioctl.sh
-            chmod +x /root/aioctl.sh
-
-            # Keep the dynamic LampaWeb subtitle/plugin selector in sync after
-            # replacing a release archive.
-            webbase="$LampaWebBase"
-
-            curl -fSL --retry 3 "$AioCtlUrl" -o /root/aioctl.sh
-            curl -fSL --retry 3 "$JackettCtlUrl" -o /root/jackettctl.sh
-            chmod +x /root/aioctl.sh /root/jackettctl.sh
-
-            syncstamp=$(date +%s)
-            nexthubrootbase="$NextHubRootBase"
-            nexthubroottarget=/root/lampac/module/NextHUB
-            nexthubtarget="$nexthubroottarget/sites"
-            if [ -d "$nexthubtarget" ]; then
-                for file in 24rolika.yaml 24video.yaml 3movs.yaml analdin.yaml batsa.yaml beeg.yaml bigboss.yaml brazzrus.yaml cam4.yaml crocotube.yaml ebasos.yaml ebun.yaml familyporn.yaml fapguru.yaml film-adult.yaml fpo.yaml gayporntube.yaml hellporno.yaml hochutv.yaml huyamba.yaml jopaonline.yaml lenkino.yaml lenporno.yaml noodlemagazine.yaml oxax.yaml perfektdamen.yaml porn4days.yaml porndig.yaml pornhub.yaml pornk.yaml porno365.yaml porno666.yaml pornoakt.yaml pornobolt.yaml pornobriz.yaml pornokaef.yaml pornone.yaml pornve.yaml prostoporno.yaml rusporno.yaml rusvideos.yaml sex-studentki.yaml sexporno.yaml sexxxxhub.yaml sosushka.yaml trahkino.yaml uporno.yaml veporn.yaml vporno.yaml vtrahe.yaml vtrahetv.yaml watchporn.yaml xasiat.yaml xozilla.yaml xxxperevod.yaml yaeby.yaml youjizz.yaml; do
-                    curl -fSL --retry 3 "$nexthubrootbase/sites/$file?cb=$syncstamp" -o "$nexthubtarget/$file.tmp"
-                    mv "$nexthubtarget/$file.tmp" "$nexthubtarget/$file"
-                done
-                for file in CategoryVi.cs manifest.json; do
-                    curl -fSL --retry 3 "$nexthubrootbase/$file" -o "$nexthubroottarget/$file.tmp"
-                    mv "$nexthubroottarget/$file.tmp" "$nexthubroottarget/$file"
-                done
-                curl -fSL --retry 3 "$nexthubrootbase/Controllers/ListController.cs" -o "$nexthubroottarget/Controllers/ListController.cs.tmp"
-                mv "$nexthubroottarget/Controllers/ListController.cs.tmp" "$nexthubroottarget/Controllers/ListController.cs"
-                curl -fSL --retry 3 "$nexthubrootbase/Controllers/ViewController.cs" -o "$nexthubroottarget/Controllers/ViewController.cs.tmp"
-                mv "$nexthubroottarget/Controllers/ViewController.cs.tmp" "$nexthubroottarget/Controllers/ViewController.cs"
-            fi
-
-            epornerbase="$EpornerBase"
-            epornertarget=/root/lampac/module/Adult/Eporner
-            if [ -d "$epornertarget" ]; then
-                for file in Controller.cs ModInit.cs Service.cs; do
-                    curl -fSL --retry 3 "$epornerbase/$file" -o "$epornertarget/$file.tmp"
-                    mv "$epornertarget/$file.tmp" "$epornertarget/$file"
-                done
-            fi
-
-            sisimodtarget=/root/lampac/module/SISI
-            if [ -d "$sisimodtarget" ]; then
-                curl -fSL --retry 3 "$SisiApiUrl" -o "$sisimodtarget/SisiApi.cs.tmp"
-                mv "$sisimodtarget/SisiApi.cs.tmp" "$sisimodtarget/SisiApi.cs"
-            fi
-            sisitarget=/root/lampac/module/SISI/plugins
-            if [ -d "$sisitarget" ]; then
-                rm -f "$sisitarget/sisi-layout.js" "$sisitarget/sisi-layout.js.tmp"
-                for file in sisi.js startpage.js sisi-restyle.js; do
-                    curl -fSL --retry 3 "$SisiPlugBase/$file" -o "$sisitarget/$file.tmp"
-                    mv "$sisitarget/$file.tmp" "$sisitarget/$file"
-                done
-            fi
-
-            for adultmodule in BongaCams Chaturbate Ebalovo Eporner HQporner PornHub Porntrex Runetki Spankbang Xhamster Xnxx Xvideos XvideosRED; do
-                adulttarget="/root/lampac/module/Adult/$adultmodule"
-                if [ -d "$adulttarget" ]; then
-                    curl -fSL --retry 3 "$csrc/Modules/Adult/$adultmodule/Service.cs?cb=$syncstamp" -o "$adulttarget/Service.cs.tmp"
-                    mv "$adulttarget/Service.cs.tmp" "$adulttarget/Service.cs"
-                fi
-            done
-
-            chaturbatebase="$ChaturbateBase"
-            chaturbatetarget=/root/lampac/module/Adult/Chaturbate
-            if [ -d "$chaturbatetarget" ]; then
-                for file in Controller.cs ModInit.cs; do
-                    curl -fSL --retry 3 "$chaturbatebase/$file?cb=$syncstamp" -o "$chaturbatetarget/$file.tmp"
-                    mv "$chaturbatetarget/$file.tmp" "$chaturbatetarget/$file"
-                done
-            fi
-
-            for adultmodinit in BongaCams Runetki Spankbang Ebalovo; do
-                adulttarget="/root/lampac/module/Adult/$adultmodinit"
-                if [ -d "$adulttarget" ]; then
-                    curl -fSL --retry 3 "$csrc/Modules/Adult/$adultmodinit/ModInit.cs?cb=$syncstamp" -o "$adulttarget/ModInit.cs.tmp"
-                    mv "$adulttarget/ModInit.cs.tmp" "$adulttarget/ModInit.cs"
-                fi
-            done
-
-            videasybase="$VideasyBase"
-            videasytarget=/root/lampac/module/OnlineENG/Videasy
-            if [ -d "$videasytarget" ]; then
-                for file in Controller.cs ModInit.cs; do
-                    curl -fSL --retry 3 "$videasybase/$file?cb=$syncstamp" -o "$videasytarget/$file.tmp"
-                    mv "$videasytarget/$file.tmp" "$videasytarget/$file"
-                done
-            fi
-
-            vidsrcbase="$VidSrcBase"
-            vidsrctarget=/root/lampac/module/OnlineENG/VidSrc
-            if [ -d "$vidsrctarget" ]; then
-                for file in Controller.cs ModInit.cs; do
-                    curl -fSL --retry 3 "$vidsrcbase/$file?cb=$syncstamp" -o "$vidsrctarget/$file.tmp"
-                    mv "$vidsrctarget/$file.tmp" "$vidsrctarget/$file"
-                done
-            fi
-
-            vidlinkbase="$VidLinkBase"
-            vidlinktarget=/root/lampac/module/OnlineENG/VidLink
-            if [ -d "$vidlinktarget" ]; then
-                for file in Controller.cs ModInit.cs; do
-                    curl -fSL --retry 3 "$vidlinkbase/$file?cb=$syncstamp" -o "$vidlinktarget/$file.tmp"
-                    mv "$vidlinktarget/$file.tmp" "$vidlinktarget/$file"
-                done
-            fi
-
-            for proxymodule in CubProxy TmdbProxy; do
-                proxytarget="/root/lampac/module/Proxy/$proxymodule"
-                if [ -d "$proxytarget" ]; then
-                    for file in Controller.cs ModInit.cs; do
-                        curl -fSL --retry 3 "$ProxyBase/$proxymodule/$file" -o "$proxytarget/$file.tmp"
-                        mv "$proxytarget/$file.tmp" "$proxytarget/$file"
-                    done
-                fi
-            done
-
-            # Keep the dynamic LampaWeb subtitle/plugin selector in sync after
-            # replacing a release archive.
-            webbase="$LampaWebBase"
-            webtarget=/root/lampac/module/LampaWeb
-            mkdir -p "$webtarget/Controllers" "$webtarget/Models" "$webtarget/Services" "$webtarget/plugins" "$webtarget/lang"
-            for file in Controllers/ApiController.cs ModInit.cs Models/InitPlugins.cs Services/LampaCron.cs Services/LampaVietnamese.cs lang/vi.js plugins/lampainit.js plugins/jackett.js plugins/online-compact.js plugins/vietnamese.js plugins/subsense-auto.js plugins/subsense.js plugins/subfinder.js plugins/stremiosub.js plugins/autotracks.js plugins/adminpanel.js; do
-                curl -fSL --retry 3 "$webbase/$file" -o "$webtarget/$file"
-            done
-            curl -fSL --retry 3 "$BaseConfUrl" -o /root/lampac/base.conf
-
-            gstbase="$GstBase"
-
-
-            mkdir -p "$webtarget/vendor/hls"
-            for file in hls.js LICENSE; do
-                curl -fSL --retry 3 "$webbase/vendor/hls/$file?cb=$syncstamp" -o "$webtarget/vendor/hls/$file.tmp"
-                mv "$webtarget/vendor/hls/$file.tmp" "$webtarget/vendor/hls/$file"
-            done
-            if [ -f /root/lampac/wwwroot/lampa-main/app.min.js ]; then
-                mkdir -p /root/lampac/wwwroot/lampa-main/vender/hls
-                cp "$webtarget/vendor/hls/hls.js" /root/lampac/wwwroot/lampa-main/vender/hls/hls.js.tmp
-                mv /root/lampac/wwwroot/lampa-main/vender/hls/hls.js.tmp /root/lampac/wwwroot/lampa-main/vender/hls/hls.js
-            fi
-
-            langdir=/root/lampac/wwwroot/lampa-main/lang
-            mkdir -p "$langdir"
-            cp "$webtarget/lang/vi.js" "$langdir/vi.js"
-
-            curl -fSL --retry 3 "$BaseConfUrl" -o /root/lampac/base.conf
-
-            gstbase="$GstBase"
-            gsttarget=/root/lampac/module/GStreamer
-            mkdir -p "$gsttarget/Services" "$gsttarget/plugins"
-            for file in Controller.cs ModInit.cs Services/GService.cs Services/GSProbe.cs Services/GStask.cs Services/HdrToneMappingBackend.cs Services/GStask.Pipeline.cs Services/GStask.Producer.cs plugins/gst.js; do
-                curl -fSL --retry 3 "$gstbase/$file" -o "$gsttarget/$file"
-            done
-
-            admintarget=/root/lampac/module/AdminPanel
-            if [ -d "$admintarget" ]; then
-                adminbase="$AdminBase"
-            adminstamp=$(date +%s)
-            for admintarget in /root/lampac/module/AdminPanel /root/lampac/mods/AdminPanel; do
-                [ -d "$admintarget" ] || continue
-                for file in AdminPanelController.cs ConfigSectionGroups.cs ModInit.cs manifest.json auth.html index.html; do
-                    curl -fSL --retry 3 "$adminbase/$file?cb=$adminstamp" -o "$admintarget/$file.tmp"
-                    mv "$admintarget/$file.tmp" "$admintarget/$file"
-                done
-                if ! grep -q src-adult-nexthub "$admintarget/ConfigSectionGroups.cs"; then
-                    echo "  [admin] ERROR: downloaded grouping is stale: $admintarget" >&2
-                    exit 1
-                fi
-                echo "  [admin] synced and verified: $admintarget"
-            done
-            echo "Update complete!"
-        '
+        # FIX (2026-08-31): khối inline trước đây tham chiếu $KKBase / $VideasyBase /
+        # $LampaWebBase / $BaseConfUrl … — 22 biến không hề được định nghĩa trong
+        # script, nên mọi URL curl sinh ra đều thiếu host ("curl: (3) URL rejected:
+        # No host part") và `set -euo pipefail` làm dừng cả lệnh update. Bản gốc đã
+        # được lưu ở notes/setup-termux.update-block.old.sh.
+        # --update ở CLI đã hoán đổi release rồi gọi install_custom_modules() với
+        # ${CUSTOM_SOURCE_BASE} được nội suy đúng, nên chỉ cần delegate (giống sync).
+        bash "$(dirname "$0")/setup-termux.sh" --update || exit 1
         proot-distro login ubuntu -- bash -s <<'VI_LANG'
 set -euo pipefail
 src=/root/lampac/module/LampaWeb/lang/vi.js
