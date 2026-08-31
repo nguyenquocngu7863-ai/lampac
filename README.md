@@ -826,10 +826,15 @@ jackett update
 VidCore (`vidcore.io`, có biến thể 4K). Không phụ thuộc Chromium nên vẫn chạy khi Playwright hỏng;
 đóng vai trò nguồn ENG dự phòng khi HDVB/Mirage không lên.
 
-Điểm cần biết: module **không có trong `lampac-nextgen.zip`**, nên chỉ xuất hiện sau
+**Trạng thái: đã xác minh trên thiết bị 2026-08-31** — movie `1288445` ra `2/5 streams`,
+TV `125988/1/1` (Silo S1E1) ra `1/5`, và mở player gốc `vidcore.io/tv/125988/1/1` thì cũng
+chỉ có Supreme + Prime không bị khiên đỏ: **số server sống bằng đúng số nguồn có**, không phải
+resolver hụt. 4K (`Premiere 4K`) chỉ xuất hiện ở phim lẻ mới phát hành.
+
+Điểm cần biết: module **không có trong `lampac-nextgen.zip`**, nên lần đầu phải có
 `--install` / `--sync-all` / `--update` (các lệnh này tạo thư mục module + chép `manifest.json`
-qua `install_custom_modules()`). Nó **không** nằm trong `--sync` nhẹ — đang ở giai đoạn thử nghiệm,
-theo đúng quy trình addon ở cuối README.
+qua `install_custom_modules()`). Sau khi xác minh thiết bị, nó **đã vào `--sync` nhẹ**
+(`sync_latest_modules()`) cùng VidLink — `lampac sync` là đủ để lấy bản mới.
 
 Test: mở Lampa -> xem danh sách Online (nguồn `VidCore (ENG)`) hoặc probe một dòng:
 

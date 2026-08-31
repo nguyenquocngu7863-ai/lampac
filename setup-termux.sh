@@ -517,6 +517,22 @@ sync_latest_modules() {
                 pull Modules/OnlineENG/VidLink/ModInit.cs \"\$vidlink/ModInit.cs\"
             fi
         done
+        # VidCore: da xac minh thiet bi 2026-08-31 (movie 1288445 + tv 125988) -> duoc
+        # cho vao sync nhe. Khac VidLink/Videasy, thu muc module chua co san trong
+        # lampac-nextgen.zip nen phai tu mkdir va lay ca manifest.json; moi file bo qua
+        # an toan khi nguon khong co (khoi nay chay duoi set -euo pipefail).
+        vidcoretarget=/root/lampac/module/OnlineENG/VidCore
+        mkdir -p \"\$vidcoretarget\"
+        for vidcorefile in manifest.json Controller.cs ModInit.cs; do
+            if curl -fsSL --retry 3 \"\$base/Modules/OnlineENG/VidCore/\$vidcorefile?cb=\$stamp\" -o \"/tmp/vidcore-\$vidcorefile\"; then
+                mv \"/tmp/vidcore-\$vidcorefile\" \"\$vidcoretarget/\$vidcorefile\"
+                echo \"  [sync] vidcore/\$vidcorefile\"
+            else
+                rm -f \"/tmp/vidcore-\$vidcorefile\"
+                echo \"  [sync] vidcore: bo qua \$vidcorefile (nguon khong co)\"
+            fi
+        done
+
         for sisimod in /root/lampac/module/SISI /root/lampac/mods/SISI; do
             if [ -d \"\$sisimod\" ]; then
                 pull SISI/SisiApi.cs \"\$sisimod/SisiApi.cs\"
@@ -696,7 +712,7 @@ install_custom_modules() {
         # (KHONG duoc dung backtick trong comment o day: ca khoi la chuoi
         #  double-quote cua bash -c, nen mot cap backtick se bi host chay nhu
         #  command substitution va nut tron phan text toi backtick ke tiep.
-        #  Co the kiem lai bang: sh check-termux-quoting.sh setup-termux.sh)
+            #  Sau khi sua khoi nay, kiem tra guest script bang bash -n sau khi goi escape.)
         videasybase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineENG/Videasy\"
         videasytarget=/root/lampac/module/OnlineENG/Videasy
         if [ -d \"\$videasytarget\" ]; then
@@ -727,14 +743,16 @@ install_custom_modules() {
         # VidCore is a NEW module: it is not part of lampac-nextgen.zip, so the
         # directory and manifest.json must be created here. A plain [ -d ] guard
         # (used for modules that already exist in the release) would skip it
-        # forever. Kept out of --sync until stable, per the README rule.
+        # forever. Sau 2026-08-31 module con duoc sync o ca --sync nhe
+        # (sync_latest_modules), vi da xac minh chay duoc tren thiet bi.
         #
         # Comment quy tắc trong khoi nay: khong duoc dung backtick cung nhu dau
         # nhay kep. Ca khoi la chuoi double-quote cua bash -c, nen mot cap
         # backtick se bi host chay nhu command substitution va nut tron phan
         # text toi backtick ke tiep; con dau nhay kep chua escape thi dong chuoi
-        # som, day phan con lai cua guest script ra chay o host. Kiem lai bang:
-        # sh check-termux-quoting.sh setup-termux.sh
+        # som, day phan con lai cua guest script ra chay o host. Kiem tra nhanh:
+        # grep -n 'setup-termux.sh$' khong duoc con tro toi script kiem tra nao
+        # (kiem tra bang bash -n tren guest script da duoc goi escape).
         #
         # Moi file lay doc lap va loi duoc bo qua: khoi nay chay trong guest
         # script co set -euo pipefail, nen khi nguon khong co module (vi du

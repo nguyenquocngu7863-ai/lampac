@@ -6,6 +6,16 @@ trên Termux khi browser hỏng.
 
 Luồng API lấy công thức từ `SaurabhKaperwan/CSX` (`CineStream` → `invokeVidcore`); chỉ dùng
 công thức API, không copy code (CSX GPL-3, kho này MIT).
+
+## Trạng thái
+
+Đã xác minh trên thiết bị (Termux, 2026-08-31): movie `1288445` → `2/5 streams`,
+TV `125988/1/1` → `1/5 streams`, stream phát qua `HostStreamProxy` bình thường.
+Số server lấy được **bằng đúng** số server sống của `vidcore.io` cho title đó — server nào
+bị gắn khiên đỏ trong player gốc thì module cũng không lấy được, đó là nguồn chết chứ không
+phải bug. `Premiere 4K` chỉ có ở phim lẻ mới phát hành, nên đừng lấy một title cũ làm phép
+thử cho 4K. Module giờ nằm trong cả `--sync` nhẹ lẫn `--sync-all`.
+
 ## Bẫy đã gặp (đọc trước khi sửa)
 
 - **`dec-vidcore` phải là JSON body thuần.** `Http.Post(url, string data)` của Lampac luôn bọc
