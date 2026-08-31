@@ -193,7 +193,26 @@ jackett start
 jackett stop
 ```
 
-Nếu lỡ gõ thừa khoảng trắng trước `aio`, gõ lại không có khoảng trắng đầu dòng.
+### Đang ở trong Ubuntu (prompt `~/lampac $`) thì đừng gọi `lampac`
+
+`lampac` là script của Termux, bên trong nó tự gọi `proot-distro login ubuntu`. Nếu anh đã ở trong
+phiên Ubuntu rồi thì proot bị lồng và nó chặn:
+
+```
+Error: attempted to run proot-distro in a proot session
+```
+
+Đó **không** phải lỗi module hay lỗi file vừa kéo — lệnh `curl` phía trên vẫn ghi file bình thường.
+Chọn một trong ba:
+
+```bash
+bash /root/lampac-run.sh                                        # chạy thẳng, log ra terminal này
+nohup bash /root/lampac-run.sh >/tmp/lampac.log 2>&1 &          # chạy nền; xem: tail -f /tmp/lampac.log
+pkill -f '[C]ore.dll'                                           # dừng khi đang ở trong Ubuntu
+```
+
+Hoặc `exit` về Termux rồi dùng `lampac stop` / `lampac start` như bình thường. Lampac không có lệnh
+restart — luôn là stop rồi start.
 
 ## 8. Lỗi thường gặp
 
