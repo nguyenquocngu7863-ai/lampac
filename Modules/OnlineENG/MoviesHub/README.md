@@ -42,13 +42,35 @@ GStreamer. Vì vậy:
   = Lampa coi là variant HLS và phát trực tiếp = hỏng.
 - Cố ý **không** có route `video.m3u8` cho hai nguồn này (route đó ép ngữ cảnh HLS).
 
+## Phát qua GStreamer — và hai cái giá của việc làm sai
+
+`Modules/GStreamer/plugins/gst.js` chỉ bật GStreamer khi **PATH** của url mà player nhận kết thúc
+bằng `.mkv` (nó cắt query trước: `url.split('#')[0].split('?')[0]` rồi `/\.mkv$/`). Không có `.mkv`
+trong path thì Lampa phát bằng player thường = mất E-AC3/DDP 5.1 ("mất tiếng"). Query dán thoải mái.
+
+1. **`method:"call"` bắt buộc trả JSON.** Đặt `play=true` mặc định ⇒ route mà Lampa gọi bằng `call`
+   trả 302 ⇒ Lampa theo redirect, nhận nguyên xác file mkv rồi cố parse JSON ⇒ **chết mọi link**.
+   Nên `play=false` là mặc định, `/video` luôn trả JSON.
+2. **Không tự ý nhét link đã resolve vào `/proxy/{token}`.** Token làm mất đuôi `.mkv` trong path
+   (gst hết bắt) và thêm một hop không cần thiết cho file tiến bộ. Mặc định phát link trần;
+   `PlayUrl` chỉ proxy khi bật `"streamproxy": true` cho đúng section nguồn đó trong `init.conf`.
+
+Đi được cả hai vì JSON trả về có `url` trỏ về **chính route `file.mkv?…&play=true`** của module
+(self-reference một hop): path vẫn kết thúc `.mkv` ⇒ gst.js bật GStreamer ⇒ GStreamer gọi lại route
+đó ⇒ gặp 302 ⇒ theo về link trần. `RouteFor(label,url)` chọn `file.mp4` khi tên file là mp4 (mp4 thì
+player thường lo được, không phải remux vô ích).
+
+Kiểm chứng trên máy: `"gst": { "enable": true }` trong `init.conf`, plugin `http://<host>:9118/gst.js`
+đã đăng ký trong Lampa, và `curl -s http://127.0.0.1:9118/gst/status` phải thấy task khi đang phát.
+
 ## Route
 
 | Route | Tác dụng |
 |---|---|
 | `GET /lite/moviesdrive?id=&imdb_id=&serial=&s=` | collection: tự tìm bài trên site, mỗi link file-host là một nút (mùa → tập cho series) |
-| `GET /lite/<nguồn>/video?src=<base64 link>&label=<base64>&s=&e=` | resolve link đó → một url |
-| `…&play=true` | redirect thẳng vào player |
+| `GET /lite/<nguồn>/video?src=<base64 link>&label=<base64>&s=&e=` | resolve link đó → **JSON** một url (đường `method:"call"`) |
+| `GET /lite/<nguồn>/file.mkv` / `file.mp4` | CÙNG action, alias để path có đuôi file cho gst.js |
+| `…&play=true` | 302 thẳng vào link trần (VLC/DLNA, và bước cuối của nước đi ở trên) |
 
 `?checksearch=1` trả `data-json=` (đúng tín hiệu Lampa dùng để hỏi "nguồn có không"), nên
 mở phim không bị đốt một lượt search.
@@ -86,6 +108,9 @@ Referer theo đúng origin đó. Đặt một host cố định = 403 cho các m
 | `moviesdrive: search 0 kết quả (q=tt…)` | IMDb id không có trong DB (phim mới/hiếm) |
 | `moviesdrive: N link file-host` rồi `0/N link giải được` | HubCloud đổi markup → xem `head=` in ra |
 | `movies4u: không có download-links-div … (a=123)` | selector sai, nhưng `a=` cho biết trang có bao nhiêu link |
+| `… collection (tmdb=…, build=<8 hex>)` | `build` = md5 dll đang chạy. So với `md5sum /root/lampac/module/OnlineENG/MoviesHub/MoviesHub.dll \| head -c 8`; lệch nhau nghĩa là máy đang compile bản **cũ** — đừng sửa code tiếp, kéo lại từ commit |
+| `movieshub: bỏ N nút gdflix/gdlink/go2link khỏi menu` | nguồn vẫn trả link chết, CollectionCore chặn ở cổ chai cuối |
+| `movies4u: nhãn thiếu chất lượng: 'hubcloud.cx' (heading='' nút='…')` | heading khối không bắt được ⇒ selector `download-links-div`/`downloads-btns-div` đã đổi; xem `classes=` ở dòng ngay trên để biết site dùng class gì |
 | `movies4u: 0 bài ứng viên` | **WP `?s=` không index href**, nên không bao giờ tìm được bằng IMDb id — module đã chuyển sang tìm tên+năm (qua TMDB); nếu vẫn 0 thì domain đổi hoặc bài không tồn tại |
 | `moviesdrive: bài: … a=0` | trang bài viết không có anchor nào → bị chặn/redirect, không phải selector sai |
 | `moviesdrive: 0 link file-host \| hosts=hubcloud.foo:12 t.me:3 …` | bộ lọc đúng nhưng site đặt link ở host lạ → gửi em nguyên dòng `hosts=` |
@@ -178,6 +203,17 @@ giá trị qua `HrefValue(m)` (ba nhóm `d`/`s`/`n`, không dùng trùng tên nh
 - `Math.Max(season, 1)` với `season` là `short` ⇒ CS0121 (hằng int convert ngược xuống short được,
   nên cả `Max(short,short)` lẫn `Max(int,int)` đều hợp lệ). Viết `Math.Max((int)season, 1)`.
 - `MatchCollection` không chỉ mục từ cuối: dùng `[Count - 1]`, không có `[^1]`.
+- **Patch C# bằng python: mọi chuỗi phải là raw string.** Hôm trước ghi `@"(?i)\.mp4\b"` qua chuỗi
+  thường của Python ⇒ `\b` bị dịch thành ký tự backspace (0x08) nằm TRONG FILE. C# vẫn compile vì
+  0x08 hợp lệ trong string literal, regex thì không bao giờ khớp ⇒ `RouteFor` luôn trả `file.mkv`,
+  mp4 cũng bị ép đi remux, không có lỗi nào báo. Bắt buộc quét sau khi ghi file:
+
+  ```bash
+  python3 -c 'F="<file.cs>"; s=open(F).read(); print("control chars ở dòng:", [i+1 for i,l in enumerate(s.split(chr(10))) if any(ord(c)<9 for c in l)])'
+  ```
+
+- Không đổi `method:"call"` sang trả 302; không bọc link đã resolve vào `HostStreamProxy` rồi đưa
+  cho player (xem `## Phát qua GStreamer`).
 
 ## Bẫy đã né sẵn (đều là bài học từ VidCore, đọc trước khi sửa)
 

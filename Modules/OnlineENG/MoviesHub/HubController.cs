@@ -275,12 +275,16 @@ public abstract class HubController : BaseENGController
     }
 
     /// <summary>
-    /// Link mà player nhận. Mặc định là link trần từ extractor. Chỉ đi qua /proxy khi host đó đòi
-    /// header lạ (Referer/Cookie) vì player không tự thêm header sau một 302; force_streamproxy để
-    /// vẫn có proxy kể cả khi người dùng tắt "streamproxy" trong init.conf.
+    /// Link mà player nhận = link trần mà extractor vừa trả. Đây là yêu cầu thẳng của người dùng
+    /// ("extraktor được link như nào thì phát như ấy", giống Sootio) và là điều kiện để gst.js còn
+    /// thấy đuôi .mkv: mỗi lần bọc vào /proxy/{token} là path mất đuôi file, plugin hết bắt, lại ra
+    /// ExoPlayer. Ai cần header lạ cho một host nào đó thì bật "streamproxy": true cho ĐÚNG section
+    /// của nguồn đó trong init.conf — force_streamproxy để vẫn proxy khi Lampac tắt serverproxy.
+    /// headers_stream của module không áp vào đây: player tự gửi UA của nó, còn link r2 presigned
+    /// của HubCloud thì không cần header gì cả.
     /// </summary>
     string PlayUrl(HubStream stream, string direct)
-        => stream.Headers is { Count: > 0 } ? HostStreamProxy(direct, headers: stream.Headers, force_streamproxy: true) : direct;
+        => init.streamproxy ? HostStreamProxy(direct, headers: stream.Headers, force_streamproxy: true) : direct;
 
     /// <summary>mkv/mp4/m3u8 đều chơi được qua Lampac; link trung gian (go2link, /drive/… không đuôi) thì không.</summary>
     static bool IsPlayable(string url)
