@@ -50,7 +50,7 @@ public class MoviesDriveController : HubController
             var meta = await TmdbMeta(tmdbId, tv);
 
             if (!string.IsNullOrWhiteSpace(meta.title))
-                query = tv ? $"{meta.title} season {Math.Max(season, 1)}" : $"{meta.title} {meta.year}";
+                query = tv ? $"{meta.title} season {Math.Max((int)season, 1)}" : $"{meta.title} {meta.year}";
         }
 
         if (string.IsNullOrWhiteSpace(query))

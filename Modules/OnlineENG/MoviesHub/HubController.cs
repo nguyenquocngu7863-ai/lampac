@@ -255,11 +255,13 @@ public abstract class HubController : BaseENGController
 
         if (depth == 0)
         {
-            // Trang tìm kiếm của HubCloud: danh sách file, chưa phải file -> 1 hop nữa
-            foreach (string file in Regex.Matches(html, @"href=""(?<u>[^""]*?/drive/[A-Za-z0-9_-]{6,})""", RegexOptions.IgnoreCase)
-                                             .Select(m => Absolute(m.Groups["u"].Value, url))
+            // Trang tìm kiếm/tìm-lại-file của HubCloud: chưa phải file -> nhảy tiếp. Quét URL TRẦN
+            // (không chỉ href="") vì trang file hay nhét link vào chuỗi JS/onclick.
+            foreach (string file in Regex.Matches(html, @"https?://[^""'\s<>\\]+?/(?:drive|dr|d)/[A-Za-z0-9_-]{6,}", RegexOptions.IgnoreCase)
+                                             .Select(m => Absolute(Unescape(m.Value), url))
+                                             .Where(u => u.Split('?')[0] != url.Split('?')[0])
                                              .Distinct(StringComparer.OrdinalIgnoreCase)
-                                             .Take(3))
+                                             .Take(4))
             {
                 found.AddRange(await ResolveHub(file, label, source, depth + 1));
                 if (found.Count > 0)

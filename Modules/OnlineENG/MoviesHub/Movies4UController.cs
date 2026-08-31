@@ -71,7 +71,7 @@ public class Movies4UController : HubController
             if (queries.Contains(key, StringComparer.OrdinalIgnoreCase))
                 continue;
 
-            queries.Add(tv ? $"{key} season {Math.Max(season, 1)}" : $"{key} {meta.year}");
+            queries.Add(tv ? $"{key} season {Math.Max((int)season, 1)}" : $"{key} {meta.year}");
             queries.Add(tv ? key : $"{key}");
         }
 
