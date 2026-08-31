@@ -261,11 +261,7 @@ public class VidCoreController : BaseENGController
                     return null;
                 }
 
-                string decRaw = await httpHydra.Post(
-                    $"{api}{DecryptRouteDec}",
-                    JsonConvert.SerializeObject(new { text = streamCipher }),
-                    addheaders: headers,
-                    statusCodeOK: false);
+                string decRaw = await DecJson($"{api}{DecryptRouteDec}", streamCipher, headers);
 
                 string m3u8 = Pick(ParseJson(decRaw), "url", "stream_url", "file", "src");
                 if (string.IsNullOrWhiteSpace(m3u8) || !IsHttpUrl(m3u8))
@@ -309,8 +305,10 @@ public class VidCoreController : BaseENGController
             ("Referer", $"{init.host.TrimEnd('/')}/"),
             ("Origin", init.host.TrimEnd('/')),
             ("X-Requested-With", "XMLHttpRequest"),
-            ("Accept", "application/json, text/plain, */*"),
-            ("Content-Type", "application/json")
+            ("Accept", "application/json, text/plain, */*")
+
+            // KHÔNG đặt Content-Type ở đây: HttpPost của Lampac tự bọc body, và
+            // content-type của StringContent mới là thứ server đọc (xem DecJson).
         );
 
         if (!string.IsNullOrWhiteSpace(csrf))
@@ -433,11 +431,7 @@ public class VidCoreController : BaseENGController
         if (string.IsNullOrWhiteSpace(cipher))
             return [];
 
-        string decRaw = await httpHydra.Post(
-            $"{api}{DecryptRouteDec}",
-            JsonConvert.SerializeObject(new { text = cipher }),
-            addheaders: headers,
-            statusCodeOK: false);
+        string decRaw = await DecJson($"{api}{DecryptRouteDec}", cipher, headers);
 
         List<JToken> list = ExtractList(ParseJson(decRaw));
 
@@ -449,6 +443,40 @@ public class VidCoreController : BaseENGController
             Console.WriteLine($"VidCore: {what} dec rỗng, resp={Preview(decRaw)}");
 
         return list;
+    }
+
+    /// <summary>
+    /// dec-vidcore YÊU CẦU JSON body. Http.Post(url, string) của Lampac luôn bọc body bằng
+    /// StringContent(..., "application/x-www-form-urlencoded"), nên gửi `{"text":…}` qua nó
+    /// thì enc-dec trả `400 {"error":"Expected body: text"}` — header Content-Type thêm vào
+    /// sau không ghi đè được vì content-type đã bị content đặt trước. Cách đúng (giống
+    /// IptvOnline/GetsTV): tự tạo StringContent với media type application/json.
+    /// Vẫn giữ một lần thử lại bằng form-urlencoded cho build enc-dec chấp nhận cả hai.
+    /// </summary>
+    async Task<string> DecJson(string url, string cipher, List<HeadersModel> headers)
+    {
+        string body = JsonConvert.SerializeObject(new { text = cipher });
+
+        using (var content = new System.Net.Http.StringContent(body, System.Text.Encoding.UTF8, "application/json"))
+        {
+            string raw = await Http.Post(
+                url,
+                content,
+                encoding: System.Text.Encoding.UTF8,
+                timeoutSeconds: init.httptimeout,
+                headers: headers,
+                proxy: proxy,
+                httpversion: init.httpversion,
+                statusCodeOK: false,
+                useDefaultHeaders: false);
+
+            if (!string.IsNullOrWhiteSpace(raw) && !raw.Contains("Expected body", StringComparison.OrdinalIgnoreCase))
+                return raw;
+
+            Console.WriteLine($"VidCore: dec JSON bị từ chối, thử form-urlencoded | {Preview(raw)}");
+        }
+
+        return await httpHydra.Post(url, "text=" + Uri.EscapeDataString(cipher), addheaders: headers, statusCodeOK: false);
     }
 
     /// <summary>

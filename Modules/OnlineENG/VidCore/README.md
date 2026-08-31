@@ -8,6 +8,14 @@ Luồng API lấy công thức từ `SaurabhKaperwan/CSX` (`CineStream` → `inv
 công thức API, không copy code (CSX GPL-3, kho này MIT).
 ## Bẫy đã gặp (đọc trước khi sửa)
 
+- **`dec-vidcore` phải là JSON body thuần.** `Http.Post(url, string data)` của Lampac luôn bọc
+  body bằng `StringContent(..., "application/x-www-form-urlencoded")`; enc-dec thấy vậy là trả
+  `400 {"error":"Expected body: text"}`. Thêm header `Content-Type: application/json` **không**
+  cứu được (content-type đã bị content đặt trước, `TryAddWithoutValidation` thất bại).
+  Cách đúng = `new StringContent(json, Encoding.UTF8, "application/json")` rồi gọi
+  `Http.Post(url, content, ...)` (như `IptvOnline`/`GetsTV`). Module làm vậy trong `DecJson()`.
+  Dấu hiệu trên thiết bị: `VidCore: servers dec rỗng, resp={"status":400,...,"error":"Expected body: text"}`.
+
 - **GET trang player phải là request trần kiểu browser** (chỉ UA + `Accept: text/html`).
   Mang `X-Requested-With: XMLHttpRequest` hoặc `Accept: application/json` (headers của bước
   enc-dec) sang bước này là vidcore.io không trả HTML chứa `\"en\"` nữa, module báo
