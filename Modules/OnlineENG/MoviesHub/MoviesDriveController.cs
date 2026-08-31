@@ -103,8 +103,14 @@ public class MoviesDriveController : HubController
 
             if (season == 0)
             {
-                foreach ((string label, string url, int _) in Anchors(html, postUrl, 12))
+                int before = entries.Count;
+
+                foreach ((string label, string url, int _) in Anchors(html, postUrl, 20))
                     entries.Add(new HubEntry(QualityLabel(label, url), url, 0, 0));
+
+                // host của các anchor: một dòng log này trả lời hết câu "link nằm ở đâu"
+                if (entries.Count == before)
+                    Console.WriteLine($"{Tag} 0 link file-host | hosts={HostHistogram(html, postUrl)}");
             }
             else if (season < 0)
             {
@@ -150,7 +156,7 @@ public class MoviesDriveController : HubController
                 }
 
                 if (entries.Count == 0)
-                    Console.WriteLine($"{Tag} mùa {season}: không parse được tập nào (a={Regex.Matches(packHtml, "(?i)<a[^>]+href=").Count}, pack={Cut(packUrl)})");
+                    Console.WriteLine($"{Tag} mùa {season}: không parse được tập nào (a={Regex.Matches(packHtml, "(?i)<a[^>]+href=").Count}, hosts={HostHistogram(packHtml, packUrl)}, pack={Cut(packUrl)})");
             }
 
             if (entries.Count > 0)

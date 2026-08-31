@@ -246,20 +246,60 @@ public abstract class HubController : BaseENGController
 
         if (found.Count == 0)
         {
-            foreach (Match m in Regex.Matches(html, @"href=""(?<u>[^""]*?/drive/download/[^""]+)""", RegexOptions.IgnoreCase))
-                found.Add(new HubStream(Absolute(m.Groups["u"].Value, url), QualityLabel(label, m.Groups["u"].Value), StreamHeaders(url)));
+            // quét URL trần thay vì href=""..."" — cùng lý do nháy đơn ở trên
+            foreach (Match m in Regex.Matches(html, @"https?://[^""'\s<>\\]+?/drive/download/[^""'\s<>\\]+", RegexOptions.IgnoreCase))
+                found.Add(new HubStream(Unescape(m.Value), QualityLabel(label, m.Value), StreamHeaders(url)));
         }
 
         if (found.Count > 0)
             return found.DistinctBy(x => x.Url).ToList();
 
+        // (d) Trang file của HubCloud/GDFlix là app JS: HTML không chứa link tải, và đó chính là
+        //     tình huống trong log thiết bị ("len=20070, head=<title>(Movies4u.Foo).Mutiny.2026.
+        //     480p...mkv</title>" — có tên file, không có url). Engine này có 2 cửa:
+        //       ?downloadfile=true  -> 302 vào file thô
+        //       /drive/<id>/<tên>.mkv -> phục vụ thẳng theo id (tên chỉ để player đoán định dạng)
+        //     Tên file lấy từ <title>. GetLocation dùng HEAD-ish (ResponseHeadersRead) nên không
+        //     tải cả film, và vẫn đi qua proxy của Lampac.
+        var filepage = Regex.Match(url, @"(?<root>https?://[^/]+)/(?<seg>drive|dr|d|file)/(?<id>[A-Za-z0-9_-]{10,})", RegexOptions.IgnoreCase);
+
+        if (filepage.Success)
+        {
+            string root = filepage.Groups["root"].Value;
+            string seg = filepage.Groups["seg"].Value;
+            string id = filepage.Groups["id"].Value;
+
+            string name = Regex.Match(html, @"(?is)<title>\s*(?<t>[^<|]*\.(?:mkv|mp4|m4v|mov|avi))", RegexOptions.IgnoreCase).Groups["t"].Value.Trim();
+
+            string ask = url.Contains('?') ? $"{url}&downloadfile=true" : $"{url}?downloadfile=true";
+            string loc = await Http.GetLocation(ask, referer: url, headers: StreamHeaders(url));
+
+            if (IsMediaPath(Absolute(loc, url)))
+            {
+                Console.WriteLine($"{Log(source)} 302 của downloadfile -> {Cut(Absolute(loc, url))}");
+                return [new HubStream(Absolute(loc, url), QualityLabel(label, loc), StreamHeaders(url))];
+            }
+
+            if (name.Length > 4)
+            {
+                string built = $"{root}/{seg}/{id}/{Uri.EscapeDataString(name)}";
+                Console.WriteLine($"{Log(source)} dựng link từ <title>: {Cut(built)}");
+                return [new HubStream(built, QualityLabel(label, name), StreamHeaders(url))];
+            }
+
+            Console.WriteLine($"{Log(source)} trang file không có link tải, <title> không có tên file, GetLocation={(loc == null ? "null" : Cut(loc))}");
+        }
+
         if (depth == 0)
         {
             // Trang tìm kiếm/tìm-lại-file của HubCloud: chưa phải file -> nhảy tiếp. Quét URL TRẦN
             // (không chỉ href="") vì trang file hay nhét link vào chuỗi JS/onclick.
-            foreach (string file in Regex.Matches(html, @"https?://[^""'\s<>\\]+?/(?:drive|dr|d)/[A-Za-z0-9_-]{6,}", RegexOptions.IgnoreCase)
+            // id của engine này là chuỗi random ~15 ký tự; {6,} từng bắt cả "/drive/assets" (file tĩnh)
+            foreach (string file in Regex.Matches(html, @"https?://[^""'\s<>\\]+?/(?:drive|dr|d|file)/[A-Za-z0-9_-]{13,}(?:/[^""'\s<>\\]*)?", RegexOptions.IgnoreCase)
                                              .Select(m => Absolute(Unescape(m.Value), url))
                                              .Where(u => u.Split('?')[0] != url.Split('?')[0])
+                                             .Where(u => !Regex.IsMatch(u, @"(?i)\.(js|css|png|jpe?g|svg|ico|woff2?)$"))
+                                             .Where(u => !u.Contains("search-recover"))
                                              .Distinct(StringComparer.OrdinalIgnoreCase)
                                              .Take(4))
             {
@@ -327,7 +367,17 @@ public abstract class HubController : BaseENGController
             string html = await httpHydra.Get(url, addheaders: headers, statusCodeOK: false);
 
             if (!string.IsNullOrWhiteSpace(html))
+            {
+                // Trang thách thức của Cloudflare: retry chỉ tổ mất 3x thời gian, nói rõ để
+                // người dùng biết nguồn này cần bypass (Lampac bật Playwright) chứ không phải bug.
+                if (html.Length < 9000 && Regex.IsMatch(html, @"(?i)just a moment|cf-browser-verification|attention required|__cf_chl"))
+                {
+                    Console.WriteLine($"{Hub} {Cut(url)} bị Cloudflare chặn (js challenge) — bỏ qua, không retry");
+                    return null;
+                }
+
                 return html;
+            }
 
             if (i < attempts)
                 await Task.Delay(500 * i);
@@ -410,9 +460,42 @@ public abstract class HubController : BaseENGController
     }
 
     static string Log(string source) => $"{source}:";
+
+    // GetPage không nhận source, nên log của nó dùng prefix chung
+    const string Hub = "hub";
     #endregion
 
     #region DOM nghiệp dư (không phụ thuộc HtmlAgilityPack)
+    // Hai site này (và HubCloud) trộn nháy đơn/nháy kép trong HTML. Regex cứng href="..." từng
+    // làm module thấy `a=154` mà vẫn 0 link ở MoviesDrive -> mọi pattern ở đây phải chấp nhận
+    // href="x" | href='x' | href=x. .NET cho phép trùng tên nhóm (?<u>) giữa các nhánh.
+    // d = nháy kép, s = nháy đơn, n = không nháy. Không dùng trùng tên nhóm để khỏi phụ thuộc
+    // đặc tính .NET — đọc bằng HrefValue(m).
+    protected const string AnchorPattern =
+        @"(?is)<a[^>]+href\s*=\s*(?:""(?<d>[^""]*)""|'(?<s>[^']*)'|(?<n>[^\s""'>]+))[^>]*>(?<t>.*?)</a>";
+
+    protected const string HrefPattern =
+        @"(?is)href\s*=\s*(?:""(?<d>[^""]*)""|'(?<s>[^']*)'|(?<n>[^\s""'>]+))";
+
+    /// <summary>Giá trị href của Match do AnchorPattern/HrefPattern sinh ra (bất kể loại nháy).</summary>
+    protected static string HrefValue(Match m)
+    {
+        Group g = m.Groups["d"];
+
+        if (g.Success)
+            return g.Value;
+
+        g = m.Groups["s"];
+
+        if (g.Success)
+            return g.Value;
+
+        return m.Groups["n"].Value;
+    }
+
+    // {0} = class fragment (đã Regex.Escape)
+    protected const string DivOpenPattern =
+        @"(?is)<div[^>]*class\s*=\s*(?:""[^""]*{0}[^""]*""|'[^']*{0}[^']*'|[^\s""'>]*{0}[^\s""'>]*)[^>]*>";
     /// <summary>
     /// Quét MỌI anchor trong HTML (không giả định nó nằm trong h5 như CSX), trả link + nhãn
     /// (text của anchor, nếu rỗng thì heading gần nhất phía trước). Lọc qua LooksLikeFileHost
@@ -425,20 +508,20 @@ public abstract class HubController : BaseENGController
         if (string.IsNullOrWhiteSpace(html))
             return result;
 
-        foreach (Match m in Regex.Matches(html, @"(?is)<a[^>]+href=""(?<u>[^""]+)""[^>]*>(?<t>.*?)</a>"))
+        foreach (Match m in Regex.Matches(html, AnchorPattern))
         {
-            string url = Absolute(Unescape(m.Groups["u"].Value), baseUrl);
-
-            // onlyFileHost=false: dùng cho các bước ĐIỀU HƯỚNG (trang pack của mùa, trang
-            // trung gian của Movies4U) — những link này không phải file-host mà là trang nội.
-            if (onlyFileHost && !LooksLikeFileHost(url))
-                continue;
+            string url = Absolute(Unescape(HrefValue(m)), baseUrl);
 
             string label = Regex.Replace(m.Groups["t"].Value, @"<[^>]+>", " ");
             label = Regex.Replace(label, @"\s+", " ").Trim();
 
             if (string.IsNullOrWhiteSpace(label))
                 label = NearestHeadingBefore(html, m.Index);
+
+            // onlyFileHost=false: dùng cho các bước ĐIỀU HƯỚNG (trang pack của mùa, trang
+            // trung gian của Movies4U) — những link này không phải file-host mà là trang nội.
+            if (onlyFileHost && !LooksLikeFileHost(url) && !LooksLikeQualityLink(url, label, baseUrl))
+                continue;
 
             result.Add((string.IsNullOrWhiteSpace(label) ? "link" : label, url, m.Index));
 
@@ -457,7 +540,7 @@ public abstract class HubController : BaseENGController
         if (string.IsNullOrWhiteSpace(html))
             return blocks;
 
-        foreach (Match open in Regex.Matches(html, @"(?is)<div[^>]*class=""[^""]*" + Regex.Escape(classFragment) + @"[^""]*""[^>]*>"))
+        foreach (Match open in Regex.Matches(html, string.Format(DivOpenPattern, Regex.Escape(classFragment))))
         {
             int start = open.Index + open.Length;
             int end = html.IndexOf("</div>", start, StringComparison.OrdinalIgnoreCase);
@@ -467,8 +550,8 @@ public abstract class HubController : BaseENGController
 
             string inner = html[start..end];
 
-            var links = Regex.Matches(inner, @"(?is)<a[^>]+href=""(?<u>[^""]+)""[^>]*>(?<t>.*?)</a>")
-                             .Select(m => (Label: Regex.Replace(m.Groups["t"].Value, @"<[^>]+>", " ").Trim(), Url: m.Groups["u"].Value))
+            var links = Regex.Matches(inner, AnchorPattern)
+                             .Select(m => (Label: Regex.Replace(m.Groups["t"].Value, @"<[^>]+>", " ").Trim(), Url: HrefValue(m)))
                              .Where(x => !string.IsNullOrWhiteSpace(x.Url))
                              .ToList();
 
@@ -501,6 +584,51 @@ public abstract class HubController : BaseENGController
     /// Lọc link rác. Trang của 2 nguồn này chèn cả nút "tìm quality trên chính site",
     /// tag, Telegram… nên chỉ giữ host của nhóm file-host và link /drive/|/file/ của họ.
     /// </summary>
+    /// <summary>
+    /// Đếm host của mọi anchor, in ra khi bộ lọc không bắt được link nào. Không có dòng này thì
+    /// "0 link" không nói được gì; có nó thì biết ngay site đổi chỗ hay link nằm ở host lạ.
+    /// </summary>
+    protected static string HostHistogram(string html, string baseUrl, int top = 6)
+    {
+        if (string.IsNullOrWhiteSpace(html))
+            return "(html rỗng)";
+
+        return string.Join(" ", Regex.Matches(html, @"(?is)<a[^>]+href\s*=\s*(?:""[^""]*""|'[^']*'|[^\s""'>]+)")
+                                    .Select(m =>
+                                    {
+                                        string raw = HrefValue(Regex.Match(m.Value, HrefPattern));
+                                        string u = Absolute(Unescape(raw), baseUrl);
+                                        return Uri.TryCreate(u, UriKind.Absolute, out Uri x) ? x.Host : "(relative)";
+                                    })
+                                    .GroupBy(h => h, StringComparer.OrdinalIgnoreCase)
+                                    .OrderByDescending(g => g.Count())
+                                    .Take(top)
+                                    .Select(g => $"{g.Key}:{g.Count()}"));
+    }
+
+    /// <summary>
+    /// Nhãn kiểu "480p [540MB]" / "1080p HEVC 5.4GB" + host khác host bài viết = nhiều khả năng là
+    /// một nút nguồn thật, kể cả khi host chưa có trong danh sách. Thêm cửa này để một lần sai
+    /// danh sách file-host không làm nguồn trả 0 link (chính là case moviesdrive: a=154 / 0 link).
+    /// </summary>
+    protected static bool LooksLikeQualityLink(string url, string label, string pageUrl)
+    {
+        if (string.IsNullOrWhiteSpace(label) || string.IsNullOrWhiteSpace(url))
+            return false;
+
+        if (!Regex.IsMatch(label, @"(?i)\d{3,4}p|\b4k\b|\d+(?:[.,]\d+)?\s?(?:gb|mb)"))
+            return false;
+
+        if (!Uri.TryCreate(url, UriKind.Absolute, out Uri u) || !Uri.TryCreate(pageUrl, UriKind.Absolute, out Uri p))
+            return false;
+
+        return !u.Host.Equals(p.Host, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Đường dẫn trông như file video (không có query) — thứ mà player chơi thẳng được.</summary>
+    protected static bool IsMediaPath(string url)
+        => !string.IsNullOrWhiteSpace(url) && Regex.IsMatch(url.Split('?')[0], @"(?i)\.(mkv|mp4|m4v|mov|avi|ts|webm)$");
+
     protected static bool LooksLikeFileHost(string url)
         => !string.IsNullOrWhiteSpace(url) &&
            Regex.IsMatch(url, @"(?i)hubcloud|hubgo\.|hubcdn|gdflix|gdlink|go2link|gdtot|fshare|kdrive|katamole|drive\.google|drive\.usercontent|/drive/[A-Za-z0-9_-]{6,}|/file/[A-Za-z0-9_-]{6,}|\.(mkv|mp4|m4v|avi|mov|ts|m3u8)(\?|$)");

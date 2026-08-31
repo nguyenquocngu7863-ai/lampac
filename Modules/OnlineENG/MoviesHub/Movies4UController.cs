@@ -93,15 +93,17 @@ public class Movies4UController : HubController
                 continue;
             }
 
-            // Không giả định <article>: mọi anchor trong heading h1..h4 đều là một bài.
-            foreach (Match m in Regex.Matches(search, @"(?is)<h([1-4])[^>]*>\s*<a[^>]+href=""(?<u>[^""]+)""[^>]*>(?<t>.*?)</a>"))
-            {
-                string url = Absolute(Unescape(m.Groups["u"].Value), site + "/");
-                string label = Regex.Replace(m.Groups["t"].Value, @"<[^>]+>", " ").Trim();
+            // Không giả định <article>: lấy mọi anchor nằm TRONG heading h1..h4 (heading có thể
+            // bọc thêm <span>/<a class=...>, và nháy có thể là nháy đơn).
+            foreach (Match h in Regex.Matches(search, @"(?is)<h([1-4])[^>]*>(?<body>.*?)</h\1>"))
+                foreach (Match m in Regex.Matches(h.Groups["body"].Value, AnchorPattern))
+                {
+                    string url = Absolute(Unescape(HrefValue(m)), site + "/");
+                    string label = Regex.Replace(m.Groups["t"].Value, @"<[^>]+>", " ").Trim();
 
-                if (url.StartsWith("http", StringComparison.OrdinalIgnoreCase) && !posts.Any(p => p.Url == url))
-                    posts.Add((url, string.IsNullOrWhiteSpace(label) ? "bài viết" : label));
-            }
+                    if (url.StartsWith("http", StringComparison.OrdinalIgnoreCase) && !posts.Any(p => p.Url == url))
+                        posts.Add((url, string.IsNullOrWhiteSpace(label) ? "bài viết" : label));
+                }
 
             Console.WriteLine($"{Tag} q={query} -> {posts.Count} bài ứng viên");
 
@@ -167,7 +169,7 @@ public class Movies4UController : HubController
                           .Take(3)
                           .ToList();
 
-            Console.WriteLine($"{Tag} không có download-links-div, thử anchor trần: {gates.Count}");
+            Console.WriteLine($"{Tag} không có download-links-div, thử anchor trần: {gates.Count} | hosts={HostHistogram(html, postUrl)}");
         }
 
         foreach (string gate in gates)
@@ -209,7 +211,7 @@ public class Movies4UController : HubController
             }
 
             if (added == 0)
-                Console.WriteLine($"{Tag} trang trung gian không có file-host | {Cut(gate)} len={inner.Length}, head={Preview(inner)}");
+                Console.WriteLine($"{Tag} trang trung gian không có file-host | {Cut(gate)} len={inner.Length}, a={Regex.Matches(inner, "(?i)<a[^>]+href=").Count}, hosts={HostHistogram(inner, gate)}, head={Preview(inner)}");
 
             if (into.Count > 0)
                 return;
