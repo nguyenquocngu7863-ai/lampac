@@ -491,6 +491,7 @@ sync_latest_modules() {
                 pull Modules/LampaWeb/plugins/subsense-auto.js \"\$lampaweb/plugins/subsense-auto.js\"
                 pull Modules/LampaWeb/plugins/autotracks.js \"\$lampaweb/plugins/autotracks.js\"
                 pull Modules/LampaWeb/plugins/vietnamese.js \"\$lampaweb/plugins/vietnamese.js\"
+                pull Modules/LampaWeb/plugins/adminpanel.js \"\$lampaweb/plugins/adminpanel.js\"
             fi
             if [ -d \"\$lampaweb/Controllers\" ]; then
                 pull Modules/LampaWeb/Controllers/ApiController.cs \"\$lampaweb/Controllers/ApiController.cs\"

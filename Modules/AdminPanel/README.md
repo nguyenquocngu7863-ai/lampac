@@ -2,6 +2,24 @@
 
 Веб-**админка** Lampac: статический UI (**`auth.html`**, **`index.html`**) и JSON API для просмотра и правки **`init.conf`**, снимка **`current.conf`** и пользователей **`users.json`** (режим **accsdb**). Доступ к закрытым маршрутам — после ввода **root-пароля** из файла **`passwd`** (cookie **`accspasswd`**; см. ниже); при отказе **`[Authorization]`** перенаправляет на **`/adminpanel/auth`**.
 
+## Lampa plugin
+
+Built-in **`adminpanel.js`** (LampaWeb `initPlugins.adminpanel`) opens the same
+API inside Lampa: Settings → **Admin Panel** → **Mở Admin Panel**. Password is
+entered once, stored on the device, and sent to **`POST /adminpanel/api/login`**
+(cookie **`accspasswd`**). Back stays in Lampa; it does **not** navigate to
+**`/adminpanel/auth`**.
+
+JSON helpers for the plugin (all **`AllowAnonymous`**, then cookie for the rest):
+
+| Method | Route | Role |
+|--------|-------|------|
+| **`GET /adminpanel/api/session`** | `{ok:true}` or **401** `{ok:false}` |
+| **`POST /adminpanel/api/login`** | JSON `{password, remember}` |
+| **`POST /adminpanel/api/logout`** | Clears the cookie |
+
+The HTML **`/adminpanel`** page remains available in a browser.
+
 ## Быстрый старт
 
 1. Включите модуль в **`manifest.json`** (`"enable": true`). По умолчанию в репозитории стоит **`false`**.

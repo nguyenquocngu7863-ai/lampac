@@ -68,7 +68,7 @@ public class InitPlugins
     /// (default Vietnamese) track when the player loads track lists.</summary>
     public bool autotracks { get; set; } = true;
 
-    /// <summary>Shows a protected AdminPanel shortcut in Lampa Settings.</summary>
+    /// <summary>Loads the in-Lampa Admin Panel (password once, no WebView).</summary>
     public bool adminpanel { get; set; } = true;
 
     /// <summary>Loads the GStreamer player helper when the GStreamer module is installed.</summary>

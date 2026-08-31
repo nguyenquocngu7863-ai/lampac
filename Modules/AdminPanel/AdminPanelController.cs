@@ -50,6 +50,87 @@ public class AdminPanelController : BaseController
             return Redirect("/adminpanel/auth?error=1");
 
         bool keep = remember is "1" or "on" or "true";
+        SetRootCookie(password, keep);
+        return Redirect("/adminpanel");
+    }
+
+    [HttpGet]
+    [AllowAnonymous]
+    [Route("/adminpanel/api/session")]
+    public ActionResult ApiSession()
+    {
+        bool ok = Request.Cookies.TryGetValue("accspasswd", out var passwd) &&
+                  passwd == CoreInit.rootPasswd;
+        return new ContentResult
+        {
+            Content = ok ? "{\"ok\":true}" : "{\"ok\":false}",
+            ContentType = "application/json; charset=utf-8",
+            StatusCode = ok ? 200 : 401
+        };
+    }
+
+    [HttpPost]
+    [AllowAnonymous]
+    [Route("/adminpanel/api/login")]
+    public async Task<IActionResult> ApiLogin()
+    {
+        string password = null;
+        bool keep = true;
+
+        string contentType = Request.ContentType ?? string.Empty;
+        if (contentType.Contains("application/json", StringComparison.OrdinalIgnoreCase))
+        {
+            string body;
+            using (var reader = new StreamReader(Request.Body, Encoding.UTF8, detectEncodingFromByteOrderMarks: false, bufferSize: 1024, leaveOpen: true))
+                body = await reader.ReadToEndAsync().ConfigureAwait(false);
+
+            if (!string.IsNullOrWhiteSpace(body))
+            {
+                try
+                {
+                    var parsed = JObject.Parse(body);
+                    password = parsed.Value<string>("password");
+                    keep = parsed.Value<bool?>("remember") ?? true;
+                }
+                catch (JsonException)
+                {
+                    return AdminJsonError(400, "invalid json");
+                }
+            }
+        }
+        else
+        {
+            password = Request.HasFormContentType ? Request.Form["password"].ToString() : null;
+            string remember = Request.HasFormContentType ? Request.Form["remember"].ToString() : null;
+            keep = remember is "1" or "on" or "true" || string.IsNullOrEmpty(remember);
+        }
+
+        if (!string.IsNullOrEmpty(password))
+            password = password.Replace("\n", "").Replace("\r", "").Replace("\t", "").Replace(" ", "");
+
+        if (string.IsNullOrEmpty(password) || password != CoreInit.rootPasswd)
+            return AdminJsonError(401, "invalid password");
+
+        SetRootCookie(password, keep);
+        return AdminJsonOk();
+    }
+
+    [HttpPost]
+    [AllowAnonymous]
+    [Route("/adminpanel/api/logout")]
+    public ActionResult ApiLogout()
+    {
+        Response.Cookies.Delete("accspasswd", new CookieOptions
+        {
+            Path = "/",
+            SameSite = SameSiteMode.Lax,
+            Secure = Request.IsHttps
+        });
+        return AdminJsonOk();
+    }
+
+    void SetRootCookie(string password, bool keep)
+    {
         var options = new CookieOptions
         {
             Path = "/",
@@ -65,7 +146,6 @@ public class AdminPanelController : BaseController
         }
 
         Response.Cookies.Append("accspasswd", password, options);
-        return Redirect("/adminpanel");
     }
 
     [HttpGet]
