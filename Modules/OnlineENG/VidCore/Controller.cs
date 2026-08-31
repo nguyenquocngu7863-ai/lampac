@@ -143,25 +143,51 @@ public class VidCoreController : BaseENGController
     {
         string host = init.host.TrimEnd('/');
         string api = (string.IsNullOrWhiteSpace(init.apihost) ? "https://enc-dec.app/api" : init.apihost).TrimEnd('/');
-        var headers = PageHeaders(null);
+        // GET trang player PHẢI là request kiểu trình duyệt. Nếu gửi kèm
+        // `X-Requested-With: XMLHttpRequest` / `Accept: application/json` (headers của
+        // bước enc-dec) thì vidcore.io không trả HTML chứa \"en\" nữa -> module báo
+        // "token not found" dù mở link bằng browser vẫn thấy đúng tập. CSX cũng
+        // app.get(baseUrl) trần, chỉ các POST enc-dec mới mang header XHR.
+        var pageGet = HeadersModel.Init(
+            ("User-Agent", Http.UserAgent),
+            ("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"),
+            ("Accept-Language", "en-US,en;q=0.9")
+        );
 
         string watchUrl = season > 0
             ? $"{host}/tv/{tmdbId}/{season}/{Math.Max(episode, (short)1)}"
             : $"{host}/movie/{tmdbId}";
 
-        string html = await httpHydra.Get(watchUrl, addheaders: headers, statusCodeOK: false);
+        string html = await httpHydra.Get(watchUrl, addheaders: pageGet, statusCodeOK: false);
         if (string.IsNullOrWhiteSpace(html))
         {
-            Console.WriteLine($"VidCore: watch page empty ({mediaType}:{tmdbId})");
+            Console.WriteLine($"VidCore: watch page empty ({mediaType}:{tmdbId}) {watchUrl}");
             return null;
         }
 
         string encrypted = ExtractEncrypted(html);
         if (string.IsNullOrWhiteSpace(encrypted))
         {
-            Console.WriteLine($"VidCore: token not found in {watchUrl}");
-            return null;
+            Console.WriteLine($"VidCore: token not found in {watchUrl} | {HtmlDiag(html)}");
+
+            // Nếu token không nằm trong trang này mà ở một document khác, thử 1 hop nữa.
+            foreach (string embed in EmbedCandidates(html))
+            {
+                string inner = await httpHydra.Get(embed, addheaders: pageGet, statusCodeOK: false);
+                encrypted = ExtractEncrypted(inner);
+                if (!string.IsNullOrWhiteSpace(encrypted))
+                {
+                    Console.WriteLine($"VidCore: token lấy từ embed {embed}");
+                    break;
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(encrypted))
+                return null;
         }
+
+        // Từ đây về sau là các request tới enc-dec (XHR + CSRF), không phải trang player.
+        var headers = PageHeaders(null);
 
         string encRaw = await httpHydra.Get(
             $"{api}{DecryptRouteEnc}?text={Uri.EscapeDataString(encrypted)}",
@@ -180,10 +206,10 @@ public class VidCoreController : BaseENGController
             return null;
         }
 
-        var pageHeaders = PageHeaders(csrf);
+        headers = PageHeaders(csrf);   // từ đây mọi request mang luôn CSRF token vừa lấy được
 
         // Danh sách server bị mã hoá: POST lấy ciphertext rồi đưa sang dec-vidcore.
-        string serversCipher = await PostCipher(serversUrl, pageHeaders);
+        string serversCipher = await PostCipher(serversUrl, headers);
         if (string.IsNullOrWhiteSpace(serversCipher))
         {
             Console.WriteLine($"VidCore: servers POST empty ({mediaType}:{tmdbId}) — thử đổi headers/apihost");
@@ -213,7 +239,7 @@ public class VidCoreController : BaseENGController
                     return null;
                 }
 
-                string streamCipher = await PostCipher($"{streamBase}/{data}", pageHeaders);
+                string streamCipher = await PostCipher($"{streamBase}/{data}", headers);
                 if (string.IsNullOrWhiteSpace(streamCipher))
                 {
                     Console.WriteLine($"VidCore: {Show(name)} stream payload empty");
@@ -234,7 +260,7 @@ public class VidCoreController : BaseENGController
                 }
 
                 Console.WriteLine($"VidCore: {Show(name)} ok");
-                return new ResolvedStream(m3u8, $"VidCore · {Show(name)}", pageHeaders);
+                return new ResolvedStream(m3u8, $"VidCore · {Show(name)}", headers);
             }
             catch (Exception ex)
             {
@@ -280,8 +306,8 @@ public class VidCoreController : BaseENGController
 
     /// <summary>
     /// CSX gọi các endpoint này bằng `app.post(url, headers=…)` — tức POST không body.
-    /// Đo thực tế trên thiết bị (2026-08-31, `termux-test-vidcore.sh chain`): body rỗng
-    /// không trả gì, phải gửi `{}` mới nhận 1916 ký tự ciphertext. Nên thử `{}` trước
+    /// Đo thực tế trên thiết bị (2026-08-31): body rỗng không trả gì, phải gửi `{}`
+    /// mới nhận 1916 ký tự ciphertext. Nên thử `{}` trước
     /// để đỡ mất một round-trip cho từng server; giữ body rỗng làm fallback cho build cũ.
     /// </summary>
     async Task<string> PostCipher(string url, List<HeadersModel> headers)
@@ -293,24 +319,66 @@ public class VidCoreController : BaseENGController
         return await httpHydra.Post(url, "", addheaders: headers, statusCodeOK: false);
     }
 
+    static readonly string[] EncryptedKeys = ["en", "token", "enc", "text", "cipher", "data"];
+
     /// <summary>
     /// VidCore nhét token vào trong một chuỗi JS đã escape, nên phải chấp nhận
-    /// cả bản có backslash: \"en\":\"...\" lẫn bản thường "en":"...".
+    /// \\"en\\":\\"...\\" lẫn bản thường "en":"...". Quét trên cả bản gốc lẫn bản đã gỡ
+    /// backslash, cho phép 0..n backslash quanh dấu nháy, và bắt giá trị >= 20 ký tự
+    /// để không ăn nhầm mấy key ngôn ngữ kiểu "en":"English".
     /// </summary>
     static string ExtractEncrypted(string html)
     {
-        foreach (string pattern in new[]
-        {
-            "\\\\\"(?:en|token)\\\\\":\\s*\\\\\"([^\"\\\\]+)",
-            "\"(?:en|token)\":\\s*\"([^\"]+)\""
-        })
-        {
-            var m = Regex.Match(html, pattern);
-            if (m.Success && m.Groups.Count > 1 && !string.IsNullOrWhiteSpace(m.Groups[1].Value))
-                return m.Groups[1].Value;
-        }
+        if (string.IsNullOrWhiteSpace(html))
+            return null;
+
+        string keys = string.Join("|", EncryptedKeys);
+        string pattern = $@"\\*""(?:{keys})\\*""\s*:\s*\\*""([^""\r\n]{{20,}})";
+
+        foreach (string hay in new[] { html, html.Replace("\\", "") })
+            foreach (Match m in Regex.Matches(hay, pattern))
+            {
+                string value = m.Groups[1].Value.Trim();
+
+                // ciphertext không chứa tag HTML; đó là dấu hiệu regex ăn xuyên markup
+                if (value.Length < 20 || value.Contains('<') || value.Contains("</"))
+                    continue;
+
+                return value.TrimEnd('\\');
+            }
 
         return null;
+    }
+
+    /// <summary>Mô tả ngắn thứ vừa nhận được, để lần sau khỏi phải đoán.</summary>
+    static string HtmlDiag(string html)
+    {
+        string kind = html.Contains("Just a moment", StringComparison.OrdinalIgnoreCase) ||
+                      html.Contains("cf-chl", StringComparison.OrdinalIgnoreCase) ? "anti-bot" :
+                      html.Contains("<html", StringComparison.OrdinalIgnoreCase) ? "html" : "not-html";
+
+        return $"len={html.Length}, {kind}, head={Preview(html)}";
+    }
+
+    /// <summary>Nguồn iframe/embed, dùng khi token không nằm ngay trong trang.</summary>
+    static IEnumerable<string> EmbedCandidates(string html)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (Match m in Regex.Matches(html, @"(?i)<(?:iframe|embed)[^>]+src\s*=\s*[""'](?<u>[^""']+)[""']"))
+        {
+            string url = m.Groups["u"].Value;
+            if (url.StartsWith("//"))
+                url = "https:" + url;
+
+            if (!url.StartsWith("http", StringComparison.OrdinalIgnoreCase) || !seen.Add(url))
+                continue;
+
+            yield return url;
+
+            if (seen.Count >= 2)
+                yield break;
+        }
     }
 
     /// <summary>

@@ -8,6 +8,14 @@ Luồng API lấy công thức từ `SaurabhKaperwan/CSX` (`CineStream` → `inv
 công thức API, không copy code (CSX GPL-3, kho này MIT).
 ## Bẫy đã gặp (đọc trước khi sửa)
 
+- **GET trang player phải là request trần kiểu browser** (chỉ UA + `Accept: text/html`).
+  Mang `X-Requested-With: XMLHttpRequest` hoặc `Accept: application/json` (headers của bước
+  enc-dec) sang bước này là vidcore.io không trả HTML chứa `\"en\"` nữa, module báo
+  `token not found` dù mở link bằng browser vẫn thấy đúng tập. Header XHR chỉ dùng cho
+  `enc-vidcore`/`dec-vidcore`/servers/stream.
+- URL TV `{{host}}/tv/{tmdb}/{season}/{episode}` và movie `{{host}}/movie/{tmdb}` **chính là
+  trang player** (không phải trang watch có iframe) — token nằm inline trong trang đó.
+
 - **Không set `conf.overridehost`/`conf.overridehosts`.** Ở Lampac đó là cơ chế *chuyển request
   sang Lampac instance khác*: `IsRequestBlocked` → `InvokeOverridehost` → `RedirectResult` rồi
   **dừng**, `Index()`/`Video()` không chạy, không log, Lampa báo "không trả về kết quả". Module
