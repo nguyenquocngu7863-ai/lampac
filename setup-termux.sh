@@ -692,7 +692,11 @@ install_custom_modules() {
         done
 
         # Videasy is the first ENG resolver under isolated repair. Sync only
-        # this provider; `disableEng` remains globally enabled.
+        # this provider; the disableEng switch stays globally enabled.
+        # (KHONG duoc dung backtick trong comment o day: ca khoi la chuoi
+        #  double-quote cua bash -c, nen mot cap backtick se bi host chay nhu
+        #  command substitution va nut tron phan text toi backtick ke tiep.
+        #  Co the kiem lai bang: sh check-termux-quoting.sh setup-termux.sh)
         videasybase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineENG/Videasy\"
         videasytarget=/root/lampac/module/OnlineENG/Videasy
         if [ -d \"\$videasytarget\" ]; then
@@ -721,12 +725,21 @@ install_custom_modules() {
         fi
 
         # VidCore is a NEW module: it is not part of lampac-nextgen.zip, so the
-        # directory and manifest.json must be created here. A plain `if [ -d ]`
-        # guard (used for modules that already exist in the release) would skip
-        # it forever. Kept out of --sync until stable, per the README rule.
-        # Mỗi file lấy độc lập và lỗi được bỏ qua: block này chạy trong guest script
-        # có `set -euo pipefail`, nên nếu nguồn không có module (ví dụ vừa lùi
-        # LAMPAC_CUSTOM_SOURCE_BASE về nhánh cũ) thì curl -f fail sẽ dừng cả sync.
+        # directory and manifest.json must be created here. A plain [ -d ] guard
+        # (used for modules that already exist in the release) would skip it
+        # forever. Kept out of --sync until stable, per the README rule.
+        #
+        # Comment quy tắc trong khoi nay: khong duoc dung backtick cung nhu dau
+        # nhay kep. Ca khoi la chuoi double-quote cua bash -c, nen mot cap
+        # backtick se bi host chay nhu command substitution va nut tron phan
+        # text toi backtick ke tiep; con dau nhay kep chua escape thi dong chuoi
+        # som, day phan con lai cua guest script ra chay o host. Kiem lai bang:
+        # sh check-termux-quoting.sh setup-termux.sh
+        #
+        # Moi file lay doc lap va loi duoc bo qua: khoi nay chay trong guest
+        # script co set -euo pipefail, nen khi nguon khong co module (vi du
+        # vua lui LAMPAC_CUSTOM_SOURCE_BASE ve nhanh cu) ma curl -f fail thi
+        # cung khong duoc dung ca sync-all.
         vidcorebase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineENG/VidCore\"
         vidcoretarget=/root/lampac/module/OnlineENG/VidCore
         for vidcorefile in manifest.json Controller.cs ModInit.cs; do

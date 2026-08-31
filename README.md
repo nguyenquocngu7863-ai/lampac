@@ -1009,6 +1009,15 @@ Giữ Termux ở foreground khi cần độ ổn định cao, tắt battery opti
 
 ## Quy trình làm addon (học từ cái giá của sisi-layout)
 
+> **Bẫy quoting khi sửa `setup-termux.sh`:** phần lớn script guest được nhúng trong
+> `proot-distro login ubuntu -- bash -c " … "` — một **chuỗi double-quote**. Bên trong chuỗi đó
+> `#` không phải comment, nên backtick bị host chạy như command substitution và **nuốt trọn**
+> text tới backtick kế tiếp; dấu nháy kép chưa escape thì **đóng chuỗi sớm**, đẩy phần còn lại
+> của guest script ra chạy trên Termux. Cả hai đều im lặng: `bash -n` không báo gì.
+> Trước khi commit, chạy: `sh check-termux-quoting.sh` (và nếu sửa `install_custom_modules()`,
+> đối chiếu `bash -n` trên payload — xem comment đầu file `check-termux-quoting.sh`).
+
+
 > **Cảnh nghèo rút kinh nghiệm**: đừng bao giờ nghĩ ra một addon mới, viết thẳng vào trong
 > `Core/wwwroot/` hoặc module chính (`SISI/`, `LampaWeb/`, …), push lên `main`, rồi để
 > `setup-termux.sh --sync` tự kéo nó về cho mọi người. Thử nghiệm thế này từng phá hỏng
