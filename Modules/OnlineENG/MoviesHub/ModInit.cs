@@ -78,7 +78,7 @@ public class ModInit : IModuleLoaded, IModuleOnline
             kit = false,
             rhub = false,
             httptimeout = 30,
-            streamproxy = true,
+            streamproxy = false,   // MoviesHub phát link trần; /proxy chỉ bật cho host đòi header (VideoCore.PlayUrl)
 
             // Giá trị MẶC ĐỊNH — init.conf vẫn override được bằng "MoviesDrive": {"enable": false}.
             // Thiếu enable=true thì với disableEng:true, IsRequestBlockedRchOrDisable trả
@@ -90,7 +90,7 @@ public class ModInit : IModuleLoaded, IModuleOnline
         conf.kit = false;
         conf.rhub = false;
         conf.httptimeout = 30;
-        conf.streamproxy = true;
+        conf.streamproxy = false;  // xem ghi chú ở Section(): link extractor trả sao phát vậy
 
         // KHÔNG set conf.overridehost/overridehosts: ở Lampac đó là cơ chế chuyển request sang
         // Lampac instance khác (IsOverridehost -> RedirectResult rồi dừng), không phải danh

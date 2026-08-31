@@ -7,6 +7,8 @@ using Shared.Models.Templates;
 using Shared.Services;
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Security.Cryptography;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -45,7 +47,51 @@ public abstract class HubController : BaseENGController
     /// AIOStreams, K20 đều dùng cách này: MỘT action, nhiều route alias file.mkv / file.mp4 / video.
     /// </summary>
     protected static string RouteFor(string label, string url)
-        => Regex.IsMatch($"{label} {url}", @"(?i)\.mp4") ? "file.mp4" : "file.mkv";
+        => Regex.IsMatch($"{label} {url}", @"(?i)\.mp4\b") ? "file.mp4" : "file.mkv";
+
+    /// <summary>
+    /// md5 của dll đang chạy, in ra MỌI log collection/play. Lý do: có lần thiết bị compile bản
+    /// cũ (raw.githubusercontent phục vụ cache vài phút sau push) nên log của anh và code của em
+    /// không khớp nhau, mất một vòng debug. Muốn tự kiểm:
+    ///   md5sum /root/lampac/module/OnlineENG/MoviesHub/MoviesHub.dll | head -c 8
+    /// phải ra đúng số trong log.
+    /// </summary>
+    static readonly string Build = ComputeBuild();
+
+    static string ComputeBuild()
+    {
+        try
+        {
+            string path = typeof(HubController).Assembly.Location;
+
+            if (string.IsNullOrEmpty(path) || !File.Exists(path))
+                return "?";
+
+            return Convert.ToHexString(MD5.HashData(File.ReadAllBytes(path)))[..8].ToLowerInvariant();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"movieshub: không đọc được dll để lấy build marker: {ex.GetType().Name} {ex.Message}");
+            return "?";
+        }
+    }
+
+    /// <summary>
+    /// Host mà module này không thể tự chơi: gdflix/gdlink/go2link bị Cloudflare js challenge,
+    /// không Playwright trên Android là chết. Mỗi nút kiểu đó = 6 dòng log vô ích, nên xoá khỏi
+    /// menu (yêu cầu của người dùng) thay vì để họ bấm rồi đoán. Lọc 2ชั้น: nguồn + CollectionCore.
+    /// </summary>
+    protected static bool DeadHost(string url)
+        => Regex.IsMatch(url ?? "", @"(?i)gdflix|gdlink|go2link");
+
+    /// <summary>
+    /// Escape link trước khi đưa cho player. Bằng chứng phải làm: Shared/Controllers/BaseController.cs
+    /// cắt url ở KÝ TỰ TRẮNG đầu tiên (ClearStreamUri, và RedirectToPlay làm url.Split(" ")[0]), nên
+    /// ".../drive/Movie 4K.mkv" chưa escape sẽ thành ".../drive/Movie". Uri.AbsoluteUri biến khoảng
+    /// trắng thành %20 mà giữ nguyên query (link r2 presigned có query rất dài, không được mất).
+    /// </summary>
+    protected static string NormalizeUrl(string url)
+        => url != null && Uri.TryCreate(url.Trim(), UriKind.Absolute, out Uri u) ? u.AbsoluteUri : url?.Trim();
 
     #region collection: mỗi link một nút nguồn
     protected async Task<ActionResult> CollectionCore(string source, bool checksearch, long id, long tmdb_id, string imdb_id, string title, string original_title, byte serial, short s, bool rjson)
@@ -87,6 +133,13 @@ public abstract class HubController : BaseENGController
 
         string plugin = init.plugin.ToLowerAndTrim();
 
+        // Chặn cuối cho yêu cầu "xoá nút gdflix": MỌI đường thu thập (gate, anchor trần, pack mùa)
+        // đều đi qua danh sách này nên không còn khả năng lọt nút chết vào menu.
+        List<HubEntry> shown = [.. entries.Where(x => !DeadHost(x.Url))];
+
+        if (shown.Count != entries.Count)
+            Console.WriteLine($"{Log(source)} bỏ {entries.Count - shown.Count} nút gdflix/gdlink/go2link khỏi menu");
+
         if (serial == 1)
         {
             if (s <= 0)
@@ -104,7 +157,7 @@ public abstract class HubController : BaseENGController
 
             var etpl = new EpisodeTpl();
 
-            foreach (HubEntry item in entries.Where(x => x.Episode > 0))
+            foreach (HubEntry item in shown.Where(x => x.Episode > 0))
             {
                 string link = $"{host}/lite/{plugin}/{RouteFor(item.Label, item.Url)}?src={Enc(item.Url)}&label={Enc(item.Label)}&s={item.Season}&e={item.Episode}";
 
@@ -120,7 +173,7 @@ public abstract class HubController : BaseENGController
 
         var mtpl = new MovieTpl(title, original_title);
 
-        foreach (HubEntry item in entries)
+        foreach (HubEntry item in shown)
         {
             string link = $"{host}/lite/{plugin}/{RouteFor(item.Label, item.Url)}?src={Enc(item.Url)}&label={Enc(item.Label)}";
 
@@ -142,7 +195,7 @@ public abstract class HubController : BaseENGController
 
         List<HubEntry> entries = await Collect(source, imdbId, tmdbId, season) ?? [];
 
-        Console.WriteLine($"{Log(source)} {entries.Count} link cho collection (tmdb={tmdbId}, season={season})");
+        Console.WriteLine($"{Log(source)} {entries.Count} link cho collection (tmdb={tmdbId}, season={season}, build={Build})");
 
         hybridCache.Set(memKey, entries, cacheTime(15));
         return entries;
@@ -192,24 +245,42 @@ public abstract class HubController : BaseENGController
             return OnError("stream", 502);
         }
 
-        string proxied = HostStreamProxy(first.Url, headers: first.Headers);
+        //triết lý của người dùng, cũng là của Sootio (addon Stremio): extractor trả link nào thì
+        // phát link đó. Không tự ý nhét file mkv tiến bộ vào /proxy của mình: token proxy làm mất
+        // đuôi .mkv trong url mà Lampa thấy (gst.js chỉ nhìn path, không nhìn 302) và thêm một hop
+        // cắt Range không cần thiết. Proxy chỉ còn cho host BẮT BUỘC header lạ — xem PlayUrl.
+        string direct = NormalizeUrl(first.Url);
 
-        Console.WriteLine($"{Log(source)} play {Cut(first.Url)} ({(s > 0 ? $"S{s}E{e} · " : "")}{label})");
+        Console.WriteLine($"{Log(source)} play {Cut(direct)} ({(s > 0 ? $"S{s}E{e} · " : "")}{label}) build={Build}");
 
         if (play)
-            return RedirectToPlay(proxied);
+            return RedirectToPlay(PlayUrl(first, direct));
 
-        // quality là NHÃN của nút, không phải menu chất lượng: chỉ một link ở đây.
+        // method:"call" thì BẮT BUỘC trả JSON. Bản trước em để play=true mặc định nên route này trả
+        // 302 -> Lampa theo redirect, nhận nguyên xác file mkv rồi cố parse JSON -> CHẾT CẢ hai
+        // nguồn (log thiết bị: mọi link hỏng sau khi đổi sang mkv).
+        //
+        // url trong JSON là CHÍNH route .mkv của module + &play=true: path vẫn kết thúc .mkv nên
+        // gst.js bật GStreamer (giữ được tiếng DDP/E-AC3), còn 302 bên dưới thì GStreamer hoặc
+        // ExoPlayer tự theo được. Link gốc (trang chia sẻ) được truyền lại qua src= để mỗi lần bấm
+        // là extractor resolve lại — link r2 presigned hết hạn sau ~1 giờ mà lưu lại là toi.
         return ContentTo(VideoTpl.ToJson(
             "play",
-            proxied,
+            $"{host}/lite/{init.plugin.ToLowerAndTrim()}/{RouteFor(label, direct)}?src={Enc(link)}&label={Enc(label)}&play=true",
             label,
             quality: first.Label,
             vast: init.vast,
-            hls_manifest_timeout: 120000,
             httpContext: HttpContext
         ));
     }
+
+    /// <summary>
+    /// Link mà player nhận. Mặc định là link trần từ extractor. Chỉ đi qua /proxy khi host đó đòi
+    /// header lạ (Referer/Cookie) vì player không tự thêm header sau một 302; force_streamproxy để
+    /// vẫn có proxy kể cả khi người dùng tắt "streamproxy" trong init.conf.
+    /// </summary>
+    string PlayUrl(HubStream stream, string direct)
+        => stream.Headers is { Count: > 0 } ? HostStreamProxy(direct, headers: stream.Headers, force_streamproxy: true) : direct;
 
     /// <summary>mkv/mp4/m3u8 đều chơi được qua Lampac; link trung gian (go2link, /drive/… không đuôi) thì không.</summary>
     static bool IsPlayable(string url)
@@ -1024,7 +1095,11 @@ public abstract class HubController : BaseENGController
         foreach (Match open in Regex.Matches(html, string.Format(DivOpenPattern, Regex.Escape(classFragment))))
         {
             int start = open.Index + open.Length;
-            int end = html.IndexOf("</div>", start, StringComparison.OrdinalIgnoreCase);
+
+            // </div> ĐẦU TIÊN sau khi mở khối không phải </div> của khối: WP bọc div lồng nhau, cắt
+            // sớm làm mất các nút phía sau và mất luôn heading — một trong các nghi phạm khiến
+            // Movies4U chỉ ra bản nhỏ, mất nhóm 4K/20GB. DivEnd đếm độ sâu.
+            int end = DivEnd(html, start);
 
             if (end < 0)
                 end = Math.Min(html.Length, start + 6000);
@@ -1043,6 +1118,46 @@ public abstract class HubController : BaseENGController
         }
 
         return blocks;
+    }
+
+    /// <summary>Vị trí &lt;/div&gt; đóng khối mở tại <paramref name="start"/>, có đếm div lồng nhau.
+    /// Trả -1 khi phải cắt cứng (html hở / quá dài).</summary>
+    static int DivEnd(string html, int start, int hardLimit = 250_000)
+    {
+        int depth = 1;
+        int stop = Math.Min(html.Length, start + hardLimit);
+
+        foreach (Match m in Regex.Matches(html[start..stop], @"(?is)<div\b[^>]*>|</div\s*>"))
+        {
+            if (m.Value.StartsWith("</", StringComparison.OrdinalIgnoreCase))
+            {
+                if (--depth == 0)
+                    return start + m.Index;
+            }
+            else
+                depth++;
+        }
+
+        return -1;
+    }
+
+    /// <summary>Thống kê class của div/anchor nào trông như "khối nút tải". Log "0 link" mà không
+    /// có dòng này thì không biết site đổi selector sang gì.</summary>
+    protected static string ClassHistogram(string html, int top = 8)
+    {
+        if (string.IsNullOrWhiteSpace(html))
+            return "(html rỗng)";
+
+        string[] names = [.. Regex.Matches(html, @"(?is)class\s*=\s*(?:""[^""]*""|'[^']*')")
+                               .Select(m => Regex.Replace(m.Value, @"^class\s*=\s*[""']|[""']$", "").Trim())
+                               .Where(v => v.Length > 0 && Regex.IsMatch(v, @"(?i)download|links|btn|file|qual"))];
+
+        string hist = string.Join(" ", names.GroupBy(v => v, StringComparer.OrdinalIgnoreCase)
+                                           .OrderByDescending(g => g.Count())
+                                           .Take(top)
+                                           .Select(g => $"{g.Key}:{g.Count()}"));
+
+        return string.IsNullOrWhiteSpace(hist) ? "(không class nào gợi ý nút tải)" : hist;
     }
 
     static string NearestHeadingBefore(string html, int position)

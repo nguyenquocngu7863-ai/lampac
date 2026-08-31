@@ -36,10 +36,9 @@ public class MoviesDriveController : HubController
     [Route("lite/moviesdrive/video")]
     [Route("lite/moviesdrive/file.mkv")]
     [Route("lite/moviesdrive/file.mp4")]
-    // play=true MẶC ĐỊNH (nhà WebStreamr/Sootio làm vậy): trả 302 chứ không trả JSON, vì
-    // VideoTpl.ToJson sẽ thay url bằng /proxy/{token} — mất đuôi .mkv trong url mà Lampa thấy,
-    // gst.js không nhận ra nữa và lại phát bằng ExoPlayer (mất tiếng DDP). 302 thì path vẫn là
-    // /lite/moviesdrive/file.mkv nên plugin bắt được, còn VLC/DLNA theo redirect bình thường.
+    // play=false: method:"call" đòi JSON, 302 ở đây là chết cả menu (bản trước em để play=true mặc
+    // định và mọi link hỏng — xem VideoCore). JSON trả về trỏ lại file.mkv?…&play=true để gst.js
+    // vẫn thấy .mkv trong path, còn link phát là link trần mà extractor lấy được (không /proxy).
     public Task<ActionResult> Video(string src, string label, short s = -1, short e = -1, bool play = true)
         => VideoCore(Source, src, label, s, e, play);
 

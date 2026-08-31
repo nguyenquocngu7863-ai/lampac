@@ -44,16 +44,16 @@ public class Movies4UController : HubController
         => CollectionCore(Source, checksearch, id, tmdb_id, imdb_id, title, original_title, serial, s, rjson);
 
     // Không route video.m3u8: .mkv phải để GStreamer của Lampac quyết, không ép HLS.
-    // file.mkv/file.mp4 alias: xem ghi chú RouteFor trong HubController (điều kiện để gst.js bật
-    // GStreamer = path kết thúc .mkv; query không ảnh hưởng).
+    // file.mkv/file.mp4 alias: chỉ để PATH của url kết thúc bằng .mkv cho gst.js (xem RouteFor
+    // trong HubController). Cùng action, cùng logic — không có menu chất lượng, không ép HLS.
+    // play=false: method:"call" cần JSON. Để play=true mặc định là làm chết cả hai nguồn.
     [HttpGet, Staticache(manually: true)]
     [Route("lite/movies4u/video")]
     [Route("lite/movies4u/file.mkv")]
     [Route("lite/movies4u/file.mp4")]
-    // play=true MẶC ĐỊNH (nhà WebStreamr/Sootio làm vậy): trả 302 chứ không trả JSON, vì
-    // VideoTpl.ToJson sẽ thay url bằng /proxy/{token} — mất đuôi .mkv trong url mà Lampa thấy,
-    // gst.js không nhận ra nữa và lại phát bằng ExoPlayer (mất tiếng DDP). 302 thì path vẫn là
-    // /lite/movies4u/file.mkv nên plugin bắt được, còn VLC/DLNA theo redirect bình thường.
+    // play=false => /video (method:"call") trả JSON; JSON đó trỏ về file.mkv?…&play=true nên
+    // đường nào player cũng thấy path .mkv mà gst.js bắt được, còn bản thân link phát là link trần
+    // từ extractor (VideoCore.PlayUrl). Ai bấm nút VLC/DLNA thì ăn &play=true -> 302 thẳng file.
     public Task<ActionResult> Video(string src, string label, short s = -1, short e = -1, bool play = true)
         => VideoCore(Source, src, label, s, e, play);
 
@@ -167,7 +167,7 @@ public class Movies4UController : HubController
         // vẫn có "4K"/"1080p" khi text của nút trơ trọi.
         List<(string Url, string Heading)> gates = [.. DivBlocks(html, "download-links-div", 12)
                                                         .SelectMany(b => b.Links.Select(l => (Url: Absolute(Unescape(l.Url), postUrl), b.Heading)))
-                                                        .Where(x => x.Url.StartsWith("http", StringComparison.OrdinalIgnoreCase) && !UselessHost(x.Url))
+                                                        .Where(x => x.Url.StartsWith("http", StringComparison.OrdinalIgnoreCase) && !DeadHost(x.Url))
                                                         .DistinctBy(x => x.Url)
                                                         .Take(10)];
 
@@ -176,11 +176,11 @@ public class Movies4UController : HubController
             // Dự phòng: một số bài để link trần, không bọc div
             gates = [.. Anchors(html, postUrl, 20, onlyFileHost: false)
                         .Select(a => (Url: a.Url, Heading: (string)null))
-                        .Where(x => x.Url.StartsWith("http", StringComparison.OrdinalIgnoreCase) && !UselessHost(x.Url))
+                        .Where(x => x.Url.StartsWith("http", StringComparison.OrdinalIgnoreCase) && !DeadHost(x.Url))
                         .DistinctBy(x => x.Url)
                         .Take(10)];
 
-            Console.WriteLine($"{Tag} không có download-links-div, thử anchor trần: {gates.Count} | hosts={HostHistogram(html, postUrl)}");
+            Console.WriteLine($"{Tag} không có download-links-div, thử anchor trần: {gates.Count} | hosts={HostHistogram(html, postUrl)} | classes={ClassHistogram(html)}");
         }
 
         int before = into.Count;
@@ -207,6 +207,9 @@ public class Movies4UController : HubController
             // kiểu tường minh: C# không suy được kiểu đích cho collection expression khi dùng var
             List<(string Label, string Url)> raw = [.. blocks.SelectMany(b => b.Links.Select(l => (Label: $"{b.Heading} {l.Label}".Trim(), Url: l.Url)))];
 
+            if (blocks.Count == 0)
+                Console.WriteLine($"{Tag} gate {Cut(gate)} không có downloads-btns-div | classes={ClassHistogram(inner)} | a={Regex.Matches(inner, "(?i)<a[^>]+href=").Count}");
+
             if (raw.Count == 0)
                 raw = [.. Anchors(inner, gate, 20, onlyFileHost: false).Select(a => (a.Label, a.Url))];
 
@@ -214,7 +217,7 @@ public class Movies4UController : HubController
             {
                 string abs = Absolute(Unescape(url), gate);
 
-                if (!LooksLikeFileHost(abs) || UselessHost(abs))
+                if (!LooksLikeFileHost(abs) || DeadHost(abs))
                     continue;
 
                 Push(into, heading, label, abs);
@@ -225,27 +228,30 @@ public class Movies4UController : HubController
         }
 
         if (into.Count == before)
-            Console.WriteLine($"{Tag} 0 link từ {gates.Count} gate của bài {Cut(postUrl)} | hosts={HostHistogram(html, postUrl)}");
+            Console.WriteLine($"{Tag} 0 link từ {gates.Count} gate của bài {Cut(postUrl)} | hosts={HostHistogram(html, postUrl)} | classes={ClassHistogram(html)}");
         else
-            Console.WriteLine($"{Tag} movie: {into.Count - before} link từ {gates.Count} gate (bỏ gdflix/gdlink vì Cloudflare)");
-    }
-
-    /// <summary>Nút nguồn vào collection: một link = một nút, có chất lượng + dung lượng trong nhãn.</summary>
-    void Push(List<HubEntry> into, string heading, string label, string url)
-    {
-        if (into.Any(x => x.Url == url) || into.Count >= 24)
-            return;
-
-        into.Add(new HubEntry(QualityLabel($"{heading} {label}", url), url, 0, 0));
+            Console.WriteLine($"{Tag} movie: {into.Count - before} link từ {gates.Count} gate (mọi khối gate, đã bỏ gdflix/gdlink)");
     }
 
     /// <summary>
-    /// gdflix/gdlink bị Cloudflare challenge và module không có Playwright, nên mỗi nút kiểu đó là
-    /// một cái bẫy trong menu (log thiết bị: 6 dòng log vô ích cho một nút chết). The request của
-    /// người dùng là bỏ hẳn — HubCloud vẫn đủ mọi chất lượng.
+    /// Nút nguồn vào collection: một link = một nút, nhãn là "heading của khối + text nút" đã qua
+    /// QualityLabel (nên ra dạng "4K · 20 GB"). Chặn cả DeadHost ở đây, dù CollectMovie đã lọc, vì
+    /// đây là cổ chai duy nhất mà mọi đường (gate / anchor trần / link thẳng file-host) đi qua.
     /// </summary>
-    static bool UselessHost(string url)
-        => Regex.IsMatch(url ?? "", @"(?i)gdflix|gdlink|go2link");
+    void Push(List<HubEntry> into, string heading, string label, string url)
+    {
+        if (into.Any(x => x.Url == url) || into.Count >= 24 || DeadHost(url))
+            return;
+
+        string text = QualityLabel($"{heading} {label}", url);
+
+        // Nhãn trơ trọi tên host (log cũ: "hubcloud.cx", "gdflix.dev") = heading của khối không được
+        // bắt. Tự in nguyên liệu để vòng sau sửa selector mà không cần anh dán html.
+        if (!Regex.IsMatch(text, @"(?i)\d{3,4}p|\b4k\b|\bhd\b|\d+(?:[.,]\d+)?\s?(?:gb|mb)"))
+            Console.WriteLine($"{Tag} nhãn thiếu chất lượng: '{text}' (heading='{heading}' nút='{label}')");
+
+        into.Add(new HubEntry(text, url, 0, 0));
+    }
 
     void CollectSeasons(string html, string postUrl, List<HubEntry> into)
     {
@@ -316,7 +322,7 @@ public class Movies4UController : HubController
             {
                 string abs = Absolute(Unescape(url), packUrl);
 
-                if (!LooksLikeFileHost(abs) || UselessHost(abs))
+                if (!LooksLikeFileHost(abs) || DeadHost(abs))
                     continue;
 
                 into.Add(new HubEntry($"Ep {ep} · {QualityLabel(label, abs)}", abs, season, ep));
