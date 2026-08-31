@@ -158,35 +158,33 @@ Hai thư mục khác nhau:
 
 `curl -o ~/lampac/module/...` ghi vào Termux → thường `curl: (23) write` / `No such file`. Phải vào Ubuntu.
 
-Mẫu (thay `SRC` / `DST` / chuỗi `grep`):
+Mẫu — **URL ghi cứng trong Ubuntu** (copy nguyên khối). Không dùng `\$LAMPAC_CUSTOM_SOURCE_BASE` trong `bash -lc`: Ubuntu **không** nhận biến Termux → `curl: (3) URL rejected: No host part`.
 
 ```bash
-export LAMPAC_CUSTOM_SOURCE_BASE=https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05241-lampac
-stamp=$(date +%s)
-proot-distro login ubuntu -- bash -lc "
+proot-distro login ubuntu -- bash -lc '
 set -e
-base='$LAMPAC_CUSTOM_SOURCE_BASE'
-stamp='$stamp'
-# SRC = đường trong repo GitHub; DST = file runtime trong Ubuntu
-curl -fSL --retry 3 \"\$base/Modules/LampaWeb/plugins/lampainit.js?cb=\$stamp\" \
+base=https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05241-lampac
+stamp=$(date +%s)
+curl -fSL --retry 3 "$base/Modules/LampaWeb/plugins/lampainit.js?cb=$stamp" \
   -o /root/lampac/module/LampaWeb/plugins/lampainit.js.tmp
 mv /root/lampac/module/LampaWeb/plugins/lampainit.js.tmp \
    /root/lampac/module/LampaWeb/plugins/lampainit.js
-[ -d /root/lampac/mods/LampaWeb/plugins ] && \
+if [ -d /root/lampac/mods/LampaWeb/plugins ]; then
   cp /root/lampac/module/LampaWeb/plugins/lampainit.js \
      /root/lampac/mods/LampaWeb/plugins/lampainit.js
-grep -n 'Logo plugin owns' /root/lampac/module/LampaWeb/plugins/lampainit.js
-"
+fi
+grep -n hasCyrillicText /root/lampac/module/LampaWeb/plugins/lampainit.js
+'
 ```
 
 Từng dòng:
 
-1. `export LAMPAC_CUSTOM_SOURCE_BASE=…/arena/01a05241-lampac` — URL raw GitHub. Giữ 241; 63 chỉ dự phòng.
-2. `stamp=$(date +%s)` rồi `?cb=$stamp` — né cache `raw.githubusercontent.com` (không có thì curl có thể trả file cũ).
-3. `proot-distro login ubuntu -- bash -lc "…"` — chạy **trong Ubuntu**, không phải shell Termux.
+1. `base=https://…/arena/01a05241-lampac` — URL raw **trong Ubuntu**. Giữ 241; 63 chỉ dự phòng. `export` Termux vẫn dùng cho `--sync`, không cần cho lệnh này.
+2. `stamp=$(date +%s)` rồi `?cb=$stamp` — chạy **trong** Ubuntu; né cache `raw.githubusercontent.com`.
+3. `proot-distro login ubuntu -- bash -lc '…'` — nháy **đơn** quanh script. Nháy kép + `\$VAR` dễ mất host.
 4. `curl … -o ….tmp` rồi `mv` — ghi xong mới thay file, tránh file dở khi mạng đứt.
-5. `[ -d mods/… ] && cp` — nếu có overlay `mods/` (load trước `module/`) thì chép luôn, không thì bỏ qua.
-6. `grep` — xác nhận file mới (chuỗi chat đưa). Không thấy = chưa vào đúng chỗ.
+5. `if [ -d mods/… ]` — có overlay `mods/` thì chép; không có thì bỏ qua. Đừng copy `&amp;&amp;` từ web.
+6. `grep` — xác nhận file mới. Không thấy = chưa vào đúng chỗ.
 
 Sau khi curl:
 
