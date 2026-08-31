@@ -13,13 +13,14 @@ Bản hướng dẫn này dành cho cách chạy Lampac trên **Android qua Term
 
 ## Cài đặt nhanh
 
-> Nhánh mới nhất: **`arena/01a04e63-lampac`**. Đừng clone `main` — `main` đang chậm hơn và thiếu bản vá mới.
+> Nhánh đang dùng: **`arena/01a05241-lampac`**. Đừng clone `main` — `main` đang chậm hơn và thiếu bản vá.
+> Nhánh dự phòng: **`arena/01a04e63-lampac`** (bản cũ, chỉ quay lại nếu 241 hỏng).
 
 Mở Termux, tải script rồi chạy:
 
 ```bash
 pkg update -y && pkg install -y git curl
-git clone --depth 1 --branch arena/01a04e63-lampac https://github.com/nguyenquocngu7863-ai/lampac.git
+git clone --depth 1 --branch arena/01a05241-lampac https://github.com/nguyenquocngu7863-ai/lampac.git
 cd lampac
 bash setup-termux.sh --install
 ```
@@ -93,7 +94,7 @@ Có **ba lệnh**. Script trên điện thoại tự chứa danh sách file, nê
 > sync**, gộp thành một lệnh duy nhất:
 >
 > ```bash
-> curl -fsSL "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04e63-lampac/setup-termux.sh?cb=$(date +%s)" -o setup-termux.sh \
+> curl -fsSL "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05241-lampac/setup-termux.sh?cb=$(date +%s)" -o setup-termux.sh \
 >   && bash setup-termux.sh --sync && lampac stop && lampac start
 > ```
 >
@@ -101,11 +102,12 @@ Có **ba lệnh**. Script trên điện thoại tự chứa danh sách file, nê
 >
 > **Clone nhánh chưa đủ.** `--sync` / `--sync-all` / `--update` curl file từ
 > `LAMPAC_CUSTOM_SOURCE_BASE`, không phải từ `git branch` đang checkout.
-> Mặc định hiện tại: nhánh `arena/01a04e63-lampac`. Đừng dùng `main`.
+> Mặc định hiện tại: nhánh `arena/01a05241-lampac`. Đừng dùng `main`.
+> Dự phòng: `arena/01a04e63-lampac`.
 
 ```bash
 # Bước 0 — lấy script mới (làm một lần sau mỗi patch)
-curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04e63-lampac/setup-termux.sh -o setup-termux.sh
+curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05241-lampac/setup-termux.sh -o setup-termux.sh
 ```
 
 ### `LAMPAC_CUSTOM_SOURCE_BASE` — nguồn file khi sync
@@ -115,19 +117,19 @@ curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/0
 Mặc định trong script:
 
 ```text
-https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04e63-lampac
+https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05241-lampac
 ```
 
 Kiểm tra đang trỏ đâu:
 
 ```bash
-lampac branch
+echo "${LAMPAC_CUSTOM_SOURCE_BASE:-https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05241-lampac}"
 ```
 
-Dùng **một lần** (nhánh agent mới hơn 63, hoặc fork riêng):
+Dùng **một lần** (fork riêng, hoặc quay về nhánh dự phòng 63):
 
 ```bash
-LAMPAC_CUSTOM_SOURCE_BASE='https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04e63-lampac' \
+LAMPAC_CUSTOM_SOURCE_BASE='https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05241-lampac' \
   bash setup-termux.sh --sync
 lampac stop && lampac start
 ```
@@ -135,9 +137,9 @@ lampac stop && lampac start
 Gắn **vĩnh viễn** trong Termux:
 
 ```bash
-echo "export LAMPAC_CUSTOM_SOURCE_BASE=https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04e63-lampac" >> ~/.bashrc
+echo "export LAMPAC_CUSTOM_SOURCE_BASE=https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05241-lampac" >> ~/.bashrc
 source ~/.bashrc
-lampac branch
+echo "$LAMPAC_CUSTOM_SOURCE_BASE"
 bash setup-termux.sh --sync && lampac stop && lampac start
 ```
 
@@ -161,7 +163,7 @@ lampac stop && lampac start
 Hoặc một lệnh (vẫn nên tải script mới trước):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04e63-lampac/setup-termux.sh | bash -s -- --sync
+curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05241-lampac/setup-termux.sh | bash -s -- --sync
 lampac stop && lampac start
 ```
 
@@ -247,7 +249,7 @@ proot-distro login ubuntu -- bash -lc '
 Không cần clone Git:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04e63-lampac/setup-termux.sh \
+curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05241-lampac/setup-termux.sh \
   | bash -s -- --update
 ```
 
@@ -628,7 +630,7 @@ Không sửa trực tiếp file addon upstream chỉ để dịch. Khi `--update
 
 Muốn 100% tiếng Việt lõi, mở giao diện Lampac `http://IP:9118` (file gốc đã vá). App Lampa Android (`file:`) vẫn tải `lang/{code}.js` từ GitHub/lampa.mx; plugin không sửa được `app.min.js` đóng gói trong APK.
 
-Khi người dùng tự chọn `vi`, overlay đồng bộ `tmdb_lang=vi` để tiêu đề, mô tả và thể loại lấy từ TMDB bằng tiếng Việt. Riêng request ảnh dùng `include_image_language=en,null`, ưu tiên logo English/ngôn ngữ trung lập vì TMDB thường không có logo `vi`.
+Khi người dùng chọn `vi`, giao diện Lampac vẫn tiếng Việt. Catalog TMDB (tựa, poster, logo) mặc định English (`tmdb_lang=en`) để khớp nguồn xem; request ảnh dùng `include_image_language=en,null`.
 
 Online và addon thông thường tiếp tục dùng catalog overlay. Riêng SISI được Việt hóa trực tiếp trong `SISI/plugins/*.js` và menu `Modules/Adult/*/Service.cs` để không dịch nhầm tiêu đề video. NextHUB: YAML site Nga đã đổi nhãn sort/category sang tiếng Việt (slug/host/parse giữ nguyên); tube quốc tế chỉ đổi nhãn sort tiếng Nga. `CategoryVi.cs` vẫn dịch nhãn Cyrillic còn lại theo slug lúc server dựng menu; tên playlist/video không đi qua bộ dịch này. Khi upstream update SISI/NextHUB, merge source và giữ catalog Việt tương ứng.
 
@@ -653,7 +655,7 @@ curl -s http://127.0.0.1:9118/lampainit.js | grep -oE 'StremioSub[^" ]*|stremios
 Nếu lệnh không in ra `stremiosub.js`, đồng bộ đầy đủ LampaWeb rồi khởi động lại:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04e63-lampac/setup-termux.sh | bash -s -- --sync-all
+curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05241-lampac/setup-termux.sh | bash -s -- --sync-all
 lampac stop
 lampac start
 ```
@@ -851,7 +853,7 @@ proot-distro login ubuntu -- bash -lc '
   mkdir -p /root/lampac-backups
   [ -f /root/lampac/init.conf ] && cp -a /root/lampac/init.conf /root/lampac-backups/init.conf.before-recovery
   [ -f /root/lampac/passwd ] && cp -a /root/lampac/passwd /root/lampac-backups/passwd.before-recovery
-  curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a04e63-lampac/config/termux-recovery.init.conf \
+  curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05241-lampac/config/termux-recovery.init.conf \
     -o /root/lampac/init.conf
 '
 ```
