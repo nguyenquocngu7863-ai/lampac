@@ -237,7 +237,30 @@ giá trị qua `HrefValue(m)` (ba nhóm `d`/`s`/`n`, không dùng trùng tên nh
 - Không đổi `method:"call"` sang trả 302, và ngược lại: nút phát thì dùng `method:"play"` chứ không
   `call`. Không bọc link đã resolve vào `HostStreamProxy` rồi đưa cho player. **Mọi** url mà player
   tự fetch phải đi qua `accsArgs(...)` (xem `## Phát qua GStreamer`).
-- Sau mỗi commit sửa module: đổi `Build` (hiện `v15-play-302`) và nhắc marker trong message commit,
+- Static của BCL **phải có lớp đứng trước**: viết `Uri.TryCreate(x, UriKind.Absolute, out Uri u)`,
+  không phải `TryCreate(x, out Uri u)`. Lỗi này (CS0103 ở `HubController.cs:201`) làm module không
+  compile, mà module không compile là **Lampac không boot được** (`Core.Startup.ConfigureServices`
+  ném exception, process chết với signal 6) — người dùng mất server, không chỉ mất nguồn. Quét sau
+  khi ghi file (một phút, cứu một buổi):
+
+  ```bash
+  python3 - <<'PY'
+  import glob, re
+  for f in glob.glob("Modules/OnlineENG/MoviesHub/*.cs"):
+      for i, l in enumerate(open(f).read().split(chr(10)), 1):
+          if re.search(r"(?<![.\w])(TryCreate|IsNullOrWhiteSpace|IsNullOrEmpty|EscapeDataString"
+                       r"|UnescapeDataString|ToHexString|HashData|ReadAllBytes)\(", l):
+              print(f"{f}:{i}: {l.strip()}")
+  print("xong")
+  PY
+  ```
+
+  Ngoài ra vẫn chạy đều: kiểm `{}/()/[]` cân bằng (bỏ qua comment + chuỗi), và quét control char —
+  `python3 -c 's=open(F).read(); print([i+1 for i,l in enumerate(s.split(chr(10))) if any(ord(c)<9 for c in l)])'`.
+- Trước khi đưa link cho player, luôn `Clean()`/`NormalizeUrl()`: `&amp;` trong `href` của HTML làm
+  R2 trả 400/403 (tham số thành `amp;X-Amz-Credential`), và khoảng trắng làm `ClearStreamUri` cắt
+  link. Nhưng **không** được chuẩn hóa bằng `Uri.AbsoluteUri` — query presigned lệch 1 ký tự là chết.
+- Sau mỗi commit sửa module: đổi `Build` (hiện `v15b-urifix`) và nhắc marker trong message commit,
   vì đó là cách duy nhất log tự chứng minh máy đang chạy bản nào (module compile trong bộ nhớ).
 
 ## Bẫy đã né sẵn (đều là bài học từ VidCore, đọc trước khi sửa)
