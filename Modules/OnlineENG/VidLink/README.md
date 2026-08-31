@@ -20,7 +20,7 @@ Nguồn ENG `https://vidlink.pro`. Resolver mặc định là **HTTP** (token XS
 
 ## HTTP
 
-CSX `invokeVidlink`: token `enc-dec.app/api/enc-vidlink`, JSON `stream.qualities` (360/720/1080). HLS khi `type=m3u8` hoặc URL `.m3u8` → `/lite/vidlink/playlist.m3u8?uri=`. Còn lại MP4 → `/lite/vidlink/media.mp4?uri=` với header CDN **`filmboom.top`** (không vidlink.pro). Segment không đi `/proxy/`.
+CDN (`bcdn.hakunaymatata.com`) 429 nếu probe nhiều lần. Không probe lúc resolve. Play URL luôn `/lite/vidlink/playlist.m3u8?uri=` (HLS). Header CDN `filmboom.top`. Token enc-dec. Segment `media.ts?uri=`, không `/proxy/`.
 
 | Route | Việc |
 |-------|------|

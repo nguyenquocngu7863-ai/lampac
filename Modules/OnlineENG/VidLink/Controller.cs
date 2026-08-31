@@ -66,15 +66,7 @@ public class VidLinkController : BaseENGController
 
         var qualities = new StreamQualityTpl(resolved.Count);
         foreach (ResolvedStream item in resolved)
-        {
-            // CSX: type m3u8 / URL .m3u8 → HLS (hls.js). Else progressive MP4
-            // with filmboom.top headers. Lampa only uses hls.js for *.m3u8.
-            bool playlist = item.Hls || LooksLikeHls(item.Url);
-            qualities.Append(
-                playlist ? PlaylistLink(item.Url) : MediaLink(item.Url, ".mp4"),
-                item.Label
-            );
-        }
+            qualities.Append(PlaylistLink(item.Url), item.Label);
 
         if (qualities.IsEmpty)
             return OnError("stream", 502);
@@ -135,7 +127,7 @@ public class VidLinkController : BaseENGController
     async Task<List<ResolvedStream>> Resolve(long tmdbId, short season, short episode)
     {
         string mediaType = season > 0 ? "tv" : "movie";
-        string memKey = $"vidlink:play6:{mediaType}:{tmdbId}:{season}:{episode}";
+        string memKey = $"vidlink:play7:{mediaType}:{tmdbId}:{season}:{episode}";
         if (hybridCache.TryGetValue(memKey, out List<ResolvedStream> cached) && cached?.Count > 0)
             return cached;
 
@@ -144,7 +136,7 @@ public class VidLinkController : BaseENGController
         {
             var playwright = await ResolvePlaywright(tmdbId, season, episode);
             if (playwright != null && playwright.Count > 0)
-                resolved = await FinalizeStreams(playwright);
+                resolved = FinalizeStreams(playwright);
         }
 
         if (resolved == null || resolved.Count == 0)
@@ -194,7 +186,7 @@ public class VidLinkController : BaseENGController
                     proxy: proxy
                 );
 
-                List<ResolvedStream> streams = await FinalizeStreams(ReadStreams(root));
+                List<ResolvedStream> streams = FinalizeStreams(ReadStreams(root));
                 if (streams.Count > 0)
                 {
                     int hls = streams.FindAll(i => i.Hls).Count;
@@ -243,58 +235,21 @@ public class VidLinkController : BaseENGController
         return result;
     }
 
-    async Task<List<ResolvedStream>> FinalizeStreams(List<ResolvedStream> streams)
+    List<ResolvedStream> FinalizeStreams(List<ResolvedStream> streams)
     {
         if (streams == null || streams.Count == 0)
             return streams;
 
+        // Do not probe the CDN here. Extra GETs to bcdn.hakunaymatata.com
+        // return 429 then 428, and the real playlist fetch dies. HLS only.
         var result = new List<ResolvedStream>(streams.Count);
-        List<HeadersModel> working = null;
-
         foreach (ResolvedStream item in streams)
         {
-            ProbeResult probe = null;
-            if (item.Headers?.Count > 0)
-                probe = await ProbeUrl(item.Url, item.Headers);
-
-            if (probe is not { Ok: true } && working != null)
-                probe = await ProbeUrl(item.Url, working);
-
-            if (probe is not { Ok: true })
-            {
-                foreach (List<HeadersModel> headers in HeaderVariants(item.Url))
-                {
-                    probe = await ProbeUrl(item.Url, headers);
-                    if (probe?.Ok == true)
-                    {
-                        working = headers;
-                        RememberHeaders(item.Url, headers);
-                        break;
-                    }
-                }
-            }
-
-            if (probe is { Ok: true })
-            {
-                result.Add(item with
-                {
-                    Url = probe.Url,
-                    Hls = probe.Hls,
-                    Headers = probe.Headers
-                });
-                continue;
-            }
-
-            // Still expose a local playlist URL so hls.js does not hit the CDN
-            // through /proxy with Origin / no-redirect. Playlist() retries.
-            result.Add(item with
-            {
-                Hls = item.Hls || LooksLikeHls(item.Url),
-                Headers = item.Headers?.Count > 0 ? item.Headers : StreamHeaders()
-            });
+            var headers = item.Headers?.Count > 0 ? item.Headers : StreamHeaders();
+            RememberHeaders(item.Url, headers);
+            result.Add(item with { Hls = true, Headers = headers });
         }
 
-        result.Sort((a, b) => b.Hls.CompareTo(a.Hls));
         return result;
     }
 
@@ -398,6 +353,26 @@ public class VidLinkController : BaseENGController
                 string body = probe.content ?? string.Empty;
                 string trim = body.TrimStart();
                 Console.WriteLine($"VidLink: playlist {HostOf(url)} {status} {PreviewOf(trim)}");
+
+                if (status is 429 or 428)
+                {
+                    await Task.Delay(2000);
+                    probe = await Http.BaseGet(
+                        url,
+                        timeoutSeconds: 15,
+                        headers: headers,
+                        statusCodeOK: false,
+                        MaxResponseContentBufferSize: 1_000_000,
+                        proxy: proxy,
+                        useDefaultHeaders: false
+                    );
+                    status = (int)(probe.response?.StatusCode ?? 0);
+                    body = probe.content ?? string.Empty;
+                    trim = body.TrimStart();
+                    Console.WriteLine($"VidLink: playlist retry {HostOf(url)} {status} {PreviewOf(trim)}");
+                    if (status is 429 or 428)
+                        return default;
+                }
 
                 if (status is not (200 or 206))
                     continue;
@@ -561,6 +536,25 @@ public class VidLinkController : BaseENGController
 
                 int status = (int)resp.StatusCode;
                 Console.WriteLine($"VidLink: media {HostOf(url)} {status}");
+                if (status is 429 or 428)
+                {
+                    await Task.Delay(2000);
+                    resp.Dispose();
+                    using var retry = new HttpRequestMessage(HttpMethod.Get, url);
+                    Http.DefaultRequestHeaders(url, retry, null, null, headers, useDefaultHeaders: false);
+                    if (Request.Headers.TryGetValue("Range", out range) && range.Count > 0)
+                        retry.Headers.TryAddWithoutValidation("Range", range.ToString());
+                    resp = await client.SendAsync(
+                        retry,
+                        HttpCompletionOption.ResponseHeadersRead,
+                        HttpContext.RequestAborted
+                    );
+                    status = (int)resp.StatusCode;
+                    Console.WriteLine($"VidLink: media retry {HostOf(url)} {status}");
+                    if (status is 429 or 428)
+                        return OnError("media", refresh_proxy: true);
+                }
+
                 if (status is not (200 or 206))
                     continue;
 
@@ -634,54 +628,18 @@ public class VidLinkController : BaseENGController
 
     IEnumerable<List<HeadersModel>> HeaderVariants(string url)
     {
-        // CSX default CDN headers are filmboom.top, not vidlink.pro.
         yield return HeadersModel.Init(
             ("User-Agent", CsUserAgent),
             ("Referer", CdnOrigin + "/"),
             ("Origin", CdnOrigin),
-            ("Accept", "*/*")
+            ("Accept", "application/vnd.apple.mpegurl,*/*")
         );
 
         yield return HeadersModel.Init(
-            ("User-Agent", Http.UserAgent),
-            ("Referer", CdnOrigin + "/"),
-            ("Origin", CdnOrigin),
-            ("Accept", "*/*")
-        );
-
-        yield return HeadersModel.Init(
-            ("User-Agent", Http.UserAgent),
-            ("Referer", CdnOrigin + "/"),
-            ("Accept", "*/*")
-        );
-
-        yield return HeadersModel.Init(
-            ("User-Agent", Http.UserAgent),
-            ("Referer", PlayerOrigin + "/"),
-            ("Accept", "*/*")
-        );
-
-        yield return HeadersModel.Init(
-            ("User-Agent", Http.UserAgent),
+            ("User-Agent", CsUserAgent),
             ("Referer", PlayerOrigin + "/"),
             ("Origin", PlayerOrigin),
-            ("Accept", "*/*")
-        );
-
-        if (Uri.TryCreate(url, UriKind.Absolute, out Uri uri))
-        {
-            string origin = uri.GetLeftPart(UriPartial.Authority);
-            yield return HeadersModel.Init(
-                ("User-Agent", Http.UserAgent),
-                ("Referer", origin + "/"),
-                ("Origin", origin),
-                ("Accept", "*/*")
-            );
-        }
-
-        yield return HeadersModel.Init(
-            ("User-Agent", Http.UserAgent),
-            ("Accept", "*/*")
+            ("Accept", "application/vnd.apple.mpegurl,*/*")
         );
     }
 
@@ -933,7 +891,7 @@ public class VidLinkController : BaseENGController
             ("User-Agent", CsUserAgent),
             ("Referer", CdnOrigin + "/"),
             ("Origin", CdnOrigin),
-            ("Accept", "*/*")
+            ("Accept", "application/vnd.apple.mpegurl,*/*")
         );
     }
 
