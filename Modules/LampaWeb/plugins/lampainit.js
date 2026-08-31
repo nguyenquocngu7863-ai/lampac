@@ -175,6 +175,14 @@
     return /[àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]/i.test(String(value || ''));
   }
 
+  function hasCyrillicText(value) {
+    return /[\u0400-\u04FF]/.test(String(value || ''));
+  }
+
+  function needsEnglishTitle(value) {
+    return hasVietnameseText(value) || hasCyrillicText(value);
+  }
+
   function filterEnglishLogos(logos) {
     if (!logos || !logos.length) return logos;
     var kept = logos.filter(function (logo) {
@@ -190,8 +198,18 @@
   function sanitizeTmdbPayload(data) {
     if (!uiIsVietnamese() || !data || typeof data !== 'object') return data;
     if (data.movie && data.movie !== data) sanitizeTmdbPayload(data.movie);
-    if (hasVietnameseText(data.title) && data.original_title) data.title = data.original_title;
-    if (hasVietnameseText(data.name) && data.original_name) data.name = data.original_name;
+    // Cub home/browse lists are results[]; card details are a single object.
+    if (Array.isArray(data.results)) {
+      for (var i = 0; i < data.results.length; i++) sanitizeTmdbPayload(data.results[i]);
+    }
+    if (needsEnglishTitle(data.title)) {
+      var enTitle = data.original_title || data.original_name;
+      if (enTitle && !needsEnglishTitle(enTitle)) data.title = enTitle;
+    }
+    if (needsEnglishTitle(data.name)) {
+      var enName = data.original_name || data.original_title;
+      if (enName && !needsEnglishTitle(enName)) data.name = enName;
+    }
     if (data.images && Array.isArray(data.images.logos))
       data.images.logos = filterEnglishLogos(data.images.logos);
     // Logo plugins consume /images JSON as `{logos:[...]}` and take logos[0].
@@ -214,9 +232,9 @@
     if (titleEl.find('img').length) return;
 
     var text = (titleEl.text() || '').trim();
-    if (hasVietnameseText(text)) {
+    if (needsEnglishTitle(text)) {
       var en = (movie && (movie.original_title || movie.original_name || movie.title)) || text;
-      if (en && en !== text) titleEl.text(en);
+      if (en && en !== text && !needsEnglishTitle(en)) titleEl.text(en);
     }
   }
 
