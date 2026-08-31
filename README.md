@@ -897,6 +897,7 @@ luồng, selector và cách đọc log.
 | Route | Nguồn |
 |---|---|
 | `lite/moviesdrive[/video]` | search theo IMDb id → link HubCloud theo quality (có 4K ở phim mới) |
+| — | mỗi link file-host (.mkv) là **một nút nguồn**, không vào menu chất lượng — để GStreamer của Lampac xử lý |
 | `lite/movies4u[/video]` | WordPress search `?s=` + `Cookie: xla=s4t` → `div.download-links-div` |
 
 Cả hai được `install_custom_modules()` (khối `--install` / `--sync-all` / `--update`) và

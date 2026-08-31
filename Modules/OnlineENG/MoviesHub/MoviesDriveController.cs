@@ -11,11 +11,11 @@ using System.Threading.Tasks;
 namespace MoviesHub;
 
 /// <summary>
-/// MoviesDrive — `GET {site}/search.php?q=&lt;imdb&gt;` (Typesense, JSON) → `document.permalink`
-/// → trong bài có các heading chứa link HubCloud theo từng quality (480p…4K).
-/// Series: `Season N` → trang danh sách tập → `Ep N` → 1-2 link.
-/// Formula theo CSX `invokeMoviesdrive`, nhưng mọi bước đều có log vì nhóm site này
-/// đổi markup thường xuyên.
+/// MoviesDrive — `GET {site}/search.php?q=&lt;imdb&gt;` (Typesense, JSON) → `hits[].document.permalink`.
+/// Trong bài, mỗi quality là một anchor trỏ thẳng sang HubCloud (không cần giả định nó nằm
+/// trong h5 như CSX — chính giả định đó làm module trả 0 link ở vòng test đầu).
+///
+/// Series: `Season N` (link trang nội) → trang pack có các khối `Ep N` → 1-2 link/tập.
 /// </summary>
 public class MoviesDriveController : HubController
 {
@@ -27,28 +27,22 @@ public class MoviesDriveController : HubController
 
     [HttpGet, Staticache(manually: true)]
     [Route("lite/moviesdrive")]
-    public async Task<ActionResult> Index(bool checksearch, long id, long tmdb_id, string imdb_id, string title, string original_title, byte serial, short s = -1, bool rjson = false)
-    {
-        var res = await ViewTmdb(checksearch, id, tmdb_id, imdb_id, title, original_title, serial, s, rjson, method: "call");
+    public Task<ActionResult> Index(bool checksearch, long id, long tmdb_id, string imdb_id, string title, string original_title, byte serial, short s = -1, bool rjson = false)
+        => CollectionCore(Source, checksearch, id, tmdb_id, imdb_id, title, original_title, serial, s, rjson);
 
-        if (res is null or RedirectResult || (res as ContentResult)?.StatusCode > 200)
-            Console.WriteLine($"moviesdrive: index không có dữ liệu (type={res?.GetType().Name ?? "null"}, status={(res as ContentResult)?.StatusCode?.ToString() ?? "-"}, id={id}, tmdb_id={tmdb_id}, serial={serial})");
-
-        return res;
-    }
-
+    // KHÔNG có route video.m3u8: file .mkv phải để Lampac/GStreamer quyết định, không ép HLS.
     [HttpGet, Staticache(manually: true)]
     [Route("lite/moviesdrive/video")]
-    [Route("lite/moviesdrive/video.m3u8")]
-    public Task<ActionResult> Video(long id, string imdb_id, short s = -1, short e = -1, bool play = false)
-        => VideoCore(Source, id, imdb_id, s, e, play);
+    public Task<ActionResult> Video(string src, string label, short s = -1, short e = -1, bool play = false)
+        => VideoCore(Source, src, label, s, e, play);
 
-    protected override async Task<List<(string Label, string Url)>> FindLinks(string source, string imdbId, long tmdbId, short season, short episode)
+    protected override async Task<List<HubEntry>> Collect(string source, string imdbId, long tmdbId, short season)
     {
         string site = init.host.TrimEnd('/');
         string imdb = imdbId?.Trim();
-        bool tv = season > 0;
+        bool tv = season != 0;
 
+        // MoviesDrive tìm được bằng IMDb id (field imdb_id trong Typesense) — giữ ưu tiên đó.
         string query = string.IsNullOrWhiteSpace(imdb) ? null : imdb;
 
         if (query == null)
@@ -56,12 +50,12 @@ public class MoviesDriveController : HubController
             var meta = await TmdbMeta(tmdbId, tv);
 
             if (!string.IsNullOrWhiteSpace(meta.title))
-                query = tv ? $"{meta.title} season {season}" : $"{meta.title} {meta.year}";
+                query = tv ? $"{meta.title} season {Math.Max(season, 1)}" : $"{meta.title} {meta.year}";
         }
 
         if (string.IsNullOrWhiteSpace(query))
         {
-            Console.WriteLine($"moviesdrive: không có từ khoá tìm (imdb rỗng, tmdb meta fail id={tmdbId})");
+            Console.WriteLine($"{Tag} không có từ khoá tìm (imdb rỗng, tmdb meta fail, tmdb={tmdbId})");
             return null;
         }
 
@@ -69,32 +63,31 @@ public class MoviesDriveController : HubController
 
         if (ParseJson(raw) is not JObject root)
         {
-            Console.WriteLine($"moviesdrive: search không trả JSON ({site}) len={raw?.Length ?? 0}, head={Preview(raw)}");
+            Console.WriteLine($"{Tag} search không trả JSON ({site}) len={raw?.Length ?? 0}, head={Preview(raw)}");
             return null;
         }
 
         if (root["hits"] is not JArray hits || hits.Count == 0)
         {
-            Console.WriteLine($"moviesdrive: search 0 kết quả (q={query}, found={(root["found"]?.ToString() ?? "?")})");
+            Console.WriteLine($"{Tag} search 0 kết quả (q={query}, found={root["found"] ?? "?"})");
             return null;
         }
 
-        var links = new List<(string Label, string Url)>();
+        var entries = new List<HubEntry>();
 
-        foreach (JToken hit in hits.Take(4))
+        foreach (JToken hit in hits.Take(3))
         {
-            JToken doc = hit["document"];
-            if (doc is not JObject document)
+            if (hit["document"] is not JObject document)
                 continue;
 
             string postImdb = Text(document, "imdb_id");
+
+            if (!string.IsNullOrWhiteSpace(imdb) && !string.IsNullOrWhiteSpace(postImdb) && postImdb != imdb)
+                continue;
+
             string permalink = Text(document, "permalink");
 
             if (string.IsNullOrWhiteSpace(permalink))
-                continue;
-
-            // Có IMDb id mà bài khác id -> bỏ, đúng như CSX. Chỉ nới khi tìm bằng tên.
-            if (!string.IsNullOrWhiteSpace(imdb) && !string.IsNullOrWhiteSpace(postImdb) && postImdb != imdb)
                 continue;
 
             string postUrl = Absolute(permalink, site + "/");
@@ -102,55 +95,94 @@ public class MoviesDriveController : HubController
 
             if (string.IsNullOrWhiteSpace(html))
             {
-                Console.WriteLine($"moviesdrive: bài viết rỗng {Cut(postUrl)}");
+                Console.WriteLine($"{Tag} bài viết rỗng {Cut(postUrl)}");
                 continue;
             }
 
-            if (!tv)
+            Console.WriteLine($"{Tag} bài: {Cut(postUrl)} a={Regex.Matches(html, "(?i)<a[^>]+href=").Count} len={html.Length}");
+
+            if (season == 0)
             {
-                foreach (Match m in Regex.Matches(html, @"(?is)<h[1-6][^>]*>\s*<a[^>]+href=""(?<u>[^""]+)""[^>]*>(?<t>.*?)</a>"))
+                foreach ((string label, string url, int _) in Anchors(html, postUrl, 12))
+                    entries.Add(new HubEntry(QualityLabel(label, url), url, 0, 0));
+            }
+            else if (season < 0)
+            {
+                // Danh sách mùa: link là trang nội (pack), nên KHÔNG lọc file-host.
+                foreach ((string label, string url, int _) in Anchors(html, postUrl, 60, onlyFileHost: false))
                 {
-                    string url = Absolute(Unescape(m.Groups["u"].Value), postUrl);
+                    short n = SeasonNumber(label);
 
-                    if (!LooksLikeFileHost(url))
-                        continue;
-
-                    links.Add((Regex.Replace(m.Groups["t"].Value, @"<[^>]+>", "").Trim(), url));
+                    if (n > 0 && !entries.Any(x => x.Season == n))
+                        entries.Add(new HubEntry($"Mùa {n}", url, n, 0));
                 }
             }
             else
             {
-                var seasonLinks = HrefsAfterHeading(html, $@"(Season\s*{season}\b|S{season:00}\b|Season\s*{season:00}\b)", 1);
+                var pack = Anchors(html, postUrl, 60, onlyFileHost: false)
+                           .FirstOrDefault(a => SeasonNumber(a.Label) == season);
 
-                if (seasonLinks.Count == 0)
+                string packUrl = pack.Url ?? postUrl;
+                string packHtml = pack.Url == null ? html : await GetPage(pack.Url);
+
+                if (string.IsNullOrWhiteSpace(packHtml))
                 {
-                    Console.WriteLine($"moviesdrive: không thấy khối Season {season} trong {Cut(postUrl)} (h5={Regex.Matches(html, "(?is)<h[1-6]").Count})");
+                    Console.WriteLine($"{Tag} trang mùa {season} rỗng {Cut(packUrl)}");
                     continue;
                 }
 
-                string epUrl = Absolute(seasonLinks[0].Url, postUrl);
-                string epHtml = await GetPage(epUrl);
+                var perEpisode = new Dictionary<short, int>();
 
-                if (string.IsNullOrWhiteSpace(epHtml))
+                foreach ((string label, string url, int _) in Anchors(packHtml, packUrl, 200))
                 {
-                    Console.WriteLine($"moviesdrive: trang danh sách tập rỗng {Cut(epUrl)}");
-                    continue;
+                    short ep = EpisodeNumber(label);
+
+                    if (ep <= 0)
+                        continue;
+
+                    // CSX lấy 2 link/tập; giữ nguyên để danh sách tập không phình.
+                    perEpisode.TryGetValue(ep, out int taken);
+                    if (taken >= 2)
+                        continue;
+
+                    perEpisode[ep] = taken + 1;
+                    entries.Add(new HubEntry($"Ep {ep} · {QualityLabel(label, url)}", url, season, ep));
                 }
 
-                foreach ((string label, string url) in HrefsAfterHeading(epHtml, $@"(Ep\.?\s*{episode:00}\b|Ep\.?\s*{episode}\b|Episode\s*{episode}\b|\bE{episode:00}\b)", 4))
-                {
-                    string fileUrl = Absolute(url, epUrl);
-                    if (LooksLikeFileHost(fileUrl))
-                        links.Add((label, fileUrl));
-                }
+                if (entries.Count == 0)
+                    Console.WriteLine($"{Tag} mùa {season}: không parse được tập nào (a={Regex.Matches(packHtml, "(?i)<a[^>]+href=").Count}, pack={Cut(packUrl)})");
             }
 
-            if (links.Count > 0)
+            if (entries.Count > 0)
                 break;
         }
 
-        Console.WriteLine($"moviesdrive: {links.Count} link file-host (q={query}, hits={hits.Count}, {(tv ? "tv" : "movie")}:{tmdbId})");
-
-        return links.Count == 0 ? null : links.DistinctBy(l => l.Url).ToList();
+        return entries.Count == 0 ? null : entries.DistinctBy(x => x.Url + x.Season + x.Episode).ToList();
     }
+
+    static short SeasonNumber(string text)
+    {
+        var m = Regex.Match(text ?? "", @"(?i)(?:season\s*(\d{1,2})|s(\d{2})\b)");
+
+        if (!m.Success)
+            return 0;
+
+        int.TryParse(m.Groups[1].Success ? m.Groups[1].Value : m.Groups[2].Value, out int n);
+
+        return (short)n;
+    }
+
+    static short EpisodeNumber(string text)
+    {
+        var m = Regex.Match(text ?? "", @"(?i)(?:ep(?:isode)?\.?\s*(\d{1,3})|\be(\d{2})\b)");
+
+        if (!m.Success)
+            return 0;
+
+        int.TryParse(m.Groups[1].Success ? m.Groups[1].Value : m.Groups[2].Value, out int n);
+
+        return (short)n;
+    }
+
+    static string Tag => "moviesdrive:";
 }

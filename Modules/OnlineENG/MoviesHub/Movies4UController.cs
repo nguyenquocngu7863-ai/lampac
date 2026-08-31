@@ -12,14 +12,16 @@ using System.Threading.Tasks;
 namespace MoviesHub;
 
 /// <summary>
-/// Movies4U — WordPress: `GET {site}/?s=&lt;title+year&gt;` kèm `Cookie: xla=s4t` (thiếu cookie
-/// là bị chặn), bài viết khớp IMDb qua `imdb.com/title/tt…/`, link nằm trong
-/// `div.download-links-div a.btn` -> sang trang trung gian -> `div.downloads-btns-div a.btn`.
-/// Series: mỗi `div.downloads-btns-div` là một mùa, heading phía trước chứa "Season N";
-/// vào link đó rồi lấy khối thứ `episode`.
+/// Movies4U — WordPress: `GET {site}/?s=&lt;title&gt;+&lt;year&gt;` kèm `Cookie: xla=s4t`
+/// (thiếu cookie là bị chặn). Bài viết khớp qua `imdb.com/title/tt…/`.
 ///
-/// Site này là họ hàng của MoviesDrive (cũng đổ về HubCloud/GDrive) nên resolver dùng
-/// chung của HubController — đó là lý do hai nguồn nằm cùng một module.
+/// Vòng test đầu cho thấy: KHÔNG được tìm bằng IMDb id — `?s=` chỉ tìm text đã index,
+/// còn id nằm trong `href` nên không bao giờ khớp (log: "0 bài ứng viên"). Vì vậy luôn tìm
+/// bằng tên + năm từ TMDB, còn IMDb id chỉ dùng để XÁC MINH bài.
+///
+/// Link nằm trong `div.download-links-div a.btn` (trang trung gian) → `div.downloads-btns-div
+/// a.btn` (file-host). Series: mỗi `div.downloads-btns-div` là một mùa, heading phía trước
+/// cho biết mùa nào; vào link đó rồi mỗi khối là một tập.
 /// </summary>
 public class Movies4UController : HubController
 {
@@ -29,257 +31,295 @@ public class Movies4UController : HubController
     {
     }
 
+    static string Tag => "movies4u:";
+
     List<HeadersModel> SiteHeaders()
         => HeadersModel.Init(
-            ("Cookie", "xla=s4t"),          // thiếu cookie là site chặn, theo CSX
+            ("Cookie", "xla=s4t"),
             ("Referer", init.host.TrimEnd('/') + "/"));
 
     [HttpGet, Staticache(manually: true)]
     [Route("lite/movies4u")]
-    public async Task<ActionResult> Index(bool checksearch, long id, long tmdb_id, string imdb_id, string title, string original_title, byte serial, short s = -1, bool rjson = false)
-    {
-        var res = await ViewTmdb(checksearch, id, tmdb_id, imdb_id, title, original_title, serial, s, rjson, method: "call");
+    public Task<ActionResult> Index(bool checksearch, long id, long tmdb_id, string imdb_id, string title, string original_title, byte serial, short s = -1, bool rjson = false)
+        => CollectionCore(Source, checksearch, id, tmdb_id, imdb_id, title, original_title, serial, s, rjson);
 
-        if (res is null or RedirectResult || (res as ContentResult)?.StatusCode > 200)
-            Console.WriteLine($"movies4u: index không có dữ liệu (type={res?.GetType().Name ?? "null"}, status={(res as ContentResult)?.StatusCode?.ToString() ?? "-"}, id={id}, tmdb_id={tmdb_id}, serial={serial})");
-
-        return res;
-    }
-
+    // Không route video.m3u8: .mkv phải để GStreamer của Lampac quyết, không ép HLS.
     [HttpGet, Staticache(manually: true)]
     [Route("lite/movies4u/video")]
-    [Route("lite/movies4u/video.m3u8")]
-    public Task<ActionResult> Video(long id, string imdb_id, short s = -1, short e = -1, bool play = false)
-        => VideoCore(Source, id, imdb_id, s, e, play);
+    public Task<ActionResult> Video(string src, string label, short s = -1, short e = -1, bool play = false)
+        => VideoCore(Source, src, label, s, e, play);
 
-    protected override async Task<List<(string Label, string Url)>> FindLinks(string source, string imdbId, long tmdbId, short season, short episode)
+    protected override async Task<List<HubEntry>> Collect(string source, string imdbId, long tmdbId, short season)
     {
-        string site = init.host.TrimEnd('/');   // host của riêng Movies4U, không mượn apihost
+        string site = init.host.TrimEnd('/');
         string imdb = imdbId?.Trim();
-        bool tv = season > 0;
-
-        // IMDb id thường có ngay trong bài nên search theo nó trước (rẻ và chính xác);
-        // không có thì mới lấy tên + năm từ TMDB.
-        string query = string.IsNullOrWhiteSpace(imdb) ? null : imdb;
-
-        if (query == null)
-        {
-            var meta = await TmdbMeta(tmdbId, tv);
-
-            if (!string.IsNullOrWhiteSpace(meta.title))
-                query = tv ? $"{meta.title} season {season}" : $"{meta.title} {meta.year}";
-        }
-
-        if (string.IsNullOrWhiteSpace(query))
-        {
-            Console.WriteLine($"movies4u: không có từ khoá tìm (imdb rỗng, tmdb meta fail id={tmdbId})");
-            return null;
-        }
+        bool tv = season != 0;
 
         var headers = SiteHeaders();
-        string search = await GetPage($"{site}/?s={Uri.EscapeDataString(query)}", headers);
+        var meta = await TmdbMeta(tmdbId, tv);
 
-        if (string.IsNullOrWhiteSpace(search))
+        // Tìm bằng tên. Thử original_title trước vì site là tiếng Anh.
+        var queries = new List<string>();
+
+        foreach (string name in new[] { meta.originalTitle, meta.title })
         {
-            Console.WriteLine($"movies4u: trang tìm kiếm rỗng {site}/?s={Cut(query)}");
+            if (string.IsNullOrWhiteSpace(name))
+                continue;
+
+            string key = name.Trim();
+
+            if (queries.Contains(key, StringComparer.OrdinalIgnoreCase))
+                continue;
+
+            queries.Add(tv ? $"{key} season {Math.Max(season, 1)}" : $"{key} {meta.year}");
+            queries.Add(tv ? key : $"{key}");
+        }
+
+        if (queries.Count == 0)
+        {
+            Console.WriteLine($"{Tag} TMDB không trả title để tìm (tmdb={tmdbId}) — không có cách nào khác vì ?s= không tìm được theo IMDb id");
             return null;
         }
 
-        var posts = Regex.Matches(search, @"(?is)<h3[^>]*>\s*<a[^>]+href=""(?<u>[^""]+)""[^>]*>(?<t>.*?)</a>")
-                         .Select(m => (Url: Absolute(Unescape(m.Groups["u"].Value), site + "/"),
-                                        Label: Regex.Replace(m.Groups["t"].Value, @"<[^>]+>", "").Trim()))
-                         .Where(p => p.Url.StartsWith("http", StringComparison.OrdinalIgnoreCase))
-                         .DistinctBy(p => p.Url)
-                         .Take(5)
-                         .ToList();
+        var posts = new List<(string Url, string Label)>();
 
-        Console.WriteLine($"movies4u: {posts.Count} bài ứng viên (q={query})");
+        foreach (string query in queries.Take(2))
+        {
+            string search = await GetPage($"{site}/?s={Uri.EscapeDataString(query)}", headers);
 
-        var links = new List<(string Label, string Url)>();
+            if (string.IsNullOrWhiteSpace(search))
+            {
+                Console.WriteLine($"{Tag} trang tìm kiếm rỗng | q={query} site={site}");
+                continue;
+            }
 
-        foreach ((string postUrl, string postLabel) in posts)
+            // Không giả định <article>: mọi anchor trong heading h1..h4 đều là một bài.
+            foreach (Match m in Regex.Matches(search, @"(?is)<h([1-4])[^>]*>\s*<a[^>]+href=""(?<u>[^""]+)""[^>]*>(?<t>.*?)</a>"))
+            {
+                string url = Absolute(Unescape(m.Groups["u"].Value), site + "/");
+                string label = Regex.Replace(m.Groups["t"].Value, @"<[^>]+>", " ").Trim();
+
+                if (url.StartsWith("http", StringComparison.OrdinalIgnoreCase) && !posts.Any(p => p.Url == url))
+                    posts.Add((url, string.IsNullOrWhiteSpace(label) ? "bài viết" : label));
+            }
+
+            Console.WriteLine($"{Tag} q={query} -> {posts.Count} bài ứng viên");
+
+            if (posts.Count > 0)
+                break;
+        }
+
+        if (posts.Count == 0)
+            return null;
+
+        var entries = new List<HubEntry>();
+
+        foreach ((string postUrl, string _) in posts.Take(4))
         {
             string html = await GetPage(postUrl, headers);
 
             if (string.IsNullOrWhiteSpace(html))
                 continue;
 
-            // Cùng site nhưng sai phim thì bỏ; chỉ bắt buộc khi mình tìm bằng IMDb id.
             if (!string.IsNullOrWhiteSpace(imdb))
             {
                 string found = Regex.Match(html, @"imdb\.com/title/(?<id>tt\d{6,8})").Groups["id"].Value;
 
                 if (!string.IsNullOrEmpty(found) && found != imdb)
-                    continue;
-            }
-
-            if (!tv)
-            {
-                // download-links-div -> trang trung gian -> downloads-btns-div
-                var gates = HrefsInDiv(html, "download-links-div", 2);
-
-                if (gates.Count == 0)
                 {
-                    Console.WriteLine($"movies4u: không có download-links-div trong {Cut(postUrl)} (a={Regex.Matches(html, "(?i)<a[^>]+href=").Count})");
+                    Console.WriteLine($"{Tag} bài lệch IMDb ({found} ≠ {imdb}) — bỏ {Cut(postUrl)}");
                     continue;
                 }
-
-                foreach ((string _, string gateUrl) in gates)
-                {
-                    string innerUrl = Absolute(gateUrl, postUrl);
-                    string inner = await GetPage(innerUrl, headers);
-
-                    if (string.IsNullOrWhiteSpace(inner))
-                    {
-                        Console.WriteLine($"movies4u: trang trung gian rỗng {Cut(innerUrl)}");
-                        continue;
-                    }
-
-                    Collect(inner, innerUrl, links);
-
-                    if (links.Count > 0)
-                        break;
-                }
             }
+
+            Console.WriteLine($"{Tag} bài: {Cut(postUrl)} len={html.Length} div={Regex.Matches(html, "(?i)<div").Count} a={Regex.Matches(html, "(?i)<a[^>]+href=").Count}");
+
+            if (season == 0)
+                await CollectMovie(html, postUrl, headers, entries);
+            else if (season < 0)
+                CollectSeasons(html, postUrl, entries);
             else
-            {
-                var blocks = DivBlocks(html, "downloads-btns-div");
+                await CollectEpisodes(html, postUrl, headers, season, entries);
 
-                if (blocks.Count == 0)
-                {
-                    Console.WriteLine($"movies4u: không có downloads-btns-div (series) trong {Cut(postUrl)}");
-                    continue;
-                }
-
-                // Mỗi khối là một mùa, heading phía trước cho biết là mùa nào.
-                (int Index, string Inner) seasonBlock = default;
-                bool picked = false;
-
-                foreach ((int index, string inner) in blocks)
-                {
-                    string heading = NearestHeadingBefore(html, index);
-
-                    if (Regex.IsMatch(heading, $@"(Season\s*{season}\b|S{season:00}\b|Season\s*{season:00}\b)", RegexOptions.IgnoreCase))
-                    {
-                        seasonBlock = (index, inner);
-                        picked = true;
-                        break;
-                    }
-                }
-
-                if (!picked)
-                    seasonBlock = blocks[0];
-
-                string firstHref = Regex.Match(seasonBlock.Inner, @"(?is)<a[^>]+href=""(?<u>[^""]+)""").Groups["u"].Value;
-
-                if (string.IsNullOrWhiteSpace(firstHref))
-                {
-                    Console.WriteLine($"movies4u: khối mùa {season} không có link (blocks={blocks.Count})");
-                    continue;
-                }
-
-                string packUrl = Absolute(Unescape(firstHref), postUrl);
-                string packHtml = await GetPage(packUrl, headers);
-
-                if (string.IsNullOrWhiteSpace(packHtml))
-                {
-                    Console.WriteLine($"movies4u: trangpack rỗng {Cut(packUrl)}");
-                    continue;
-                }
-
-                var episodeBlocks = DivBlocks(packHtml, "downloads-btns-div");
-
-                if (episodeBlocks.Count == 0)
-                {
-                    Console.WriteLine($"movies4u: pack không có downloads-btns-div {Cut(packUrl)}");
-                    continue;
-                }
-
-                int pick = Math.Clamp(episode - 1 < 0 ? 0 : episode - 1, 0, episodeBlocks.Count - 1);
-
-                Collect(packHtml, packUrl, links, episodeBlocks[pick].Inner, episodeBlocks.Count);
-            }
-
-            if (links.Count > 0)
+            if (entries.Count > 0)
                 break;
         }
 
-        Console.WriteLine($"movies4u: {links.Count} link file-host ({(tv ? "tv" : "movie")}:{tmdbId})");
-
-        return links.Count == 0 ? null : links.DistinctBy(l => l.Url).ToList();
+        return entries.Count == 0 ? null : entries.DistinctBy(x => x.Url + x.Season + x.Episode).ToList();
     }
 
-    /// <summary>Lấy các link file-host trong một khối HTML (toàn trang hoặc một div).</summary>
-    void Collect(string html, string baseUrl, List<(string Label, string Url)> into, string scope = null, int blockCount = 0)
+    async Task CollectMovie(string html, string postUrl, List<HeadersModel> headers, List<HubEntry> into)
     {
-        string haystack = string.IsNullOrWhiteSpace(scope) ? html : scope;
+        var gates = DivBlocks(html, "download-links-div", 4)
+                        .SelectMany(b => b.Links)
+                        .Select(l => Absolute(Unescape(l.Url), postUrl))
+                        .Where(u => u.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .Take(3)
+                        .ToList();
 
-        var found = HrefsInDiv(haystack, "downloads-btns-div", 8);
-
-        if (found.Count == 0)
-            found = HrefsInDiv(haystack, "download-links-div", 8);
-
-        if (found.Count == 0)
+        if (gates.Count == 0)
         {
-            // một số bài để link trần, không bọc div
-            found = Regex.Matches(haystack, @"(?is)<a[^>]+href=""(?<u>[^""]+)""[^>]*>(?<t>.*?)</a>")
-                         .Select(m => (Label: Regex.Replace(m.Groups["t"].Value, @"<[^>]+>", " ").Trim(), Url: m.Groups["u"].Value))
-                         .ToList();
+            // Dự phòng: một số bài để link trần, không bọc div
+            gates = Anchors(html, postUrl, 6, onlyFileHost: false).Select(a => a.Url)
+                          .Where(u => u.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                          .Distinct(StringComparer.OrdinalIgnoreCase)
+                          .Take(3)
+                          .ToList();
+
+            Console.WriteLine($"{Tag} không có download-links-div, thử anchor trần: {gates.Count}");
         }
 
-        int added = 0;
-
-        foreach ((string label, string url) in found)
+        foreach (string gate in gates)
         {
-            string abs = Absolute(Unescape(url), baseUrl);
+            // Gate đã là file-host (một số bài link thẳng hubcloud) thì dùng luôn.
+            if (LooksLikeFileHost(gate))
+            {
+                into.Add(new HubEntry(QualityLabel("link", gate), gate, 0, 0));
+                continue;
+            }
 
-            if (!LooksLikeFileHost(abs))
+            string inner = await GetPage(gate, headers);
+
+            if (string.IsNullOrWhiteSpace(inner))
+            {
+                Console.WriteLine($"{Tag} trang trung gian rỗng {Cut(gate)}");
+                continue;
+            }
+
+            var blocks = DivBlocks(inner, "downloads-btns-div", 12);
+            var raw = blocks.SelectMany(b => b.Links).ToList();
+
+            if (raw.Count == 0)
+                raw = Anchors(inner, gate, 12, onlyFileHost: false).Select(a => (a.Label, a.Url)).ToList();
+
+            int added = 0;
+
+            foreach ((string label, string url) in raw)
+            {
+                string abs = Absolute(Unescape(url), gate);
+
+                if (!LooksLikeFileHost(abs))
+                    continue;
+
+                into.Add(new HubEntry(QualityLabel(label, abs), abs, 0, 0));
+
+                if (++added >= 8)
+                    break;
+            }
+
+            if (added == 0)
+                Console.WriteLine($"{Tag} trang trung gian không có file-host | {Cut(gate)} len={inner.Length}, head={Preview(inner)}");
+
+            if (into.Count > 0)
+                return;
+        }
+    }
+
+    void CollectSeasons(string html, string postUrl, List<HubEntry> into)
+    {
+        foreach (var block in DivBlocks(html, "downloads-btns-div", 20))
+        {
+            short n = SeasonNumber(block.Heading);
+
+            if (n <= 0 || into.Any(x => x.Season == n))
                 continue;
 
-            into.Add((string.IsNullOrWhiteSpace(label) ? $"link {added + 1}" : Regex.Replace(label, @"\s+", " ").Trim(), abs));
+            string url = block.Links.Count > 0 ? Absolute(Unescape(block.Links[0].Url), postUrl) : null;
 
-            if (++added >= 8)
-                break;
+            if (string.IsNullOrWhiteSpace(url))
+                continue;
+
+            into.Add(new HubEntry($"Mùa {n}", url, n, 0));
         }
 
-        if (added == 0)
-            Console.WriteLine($"movies4u: khối không có file-host nào (blocks={blockCount}) {Cut(baseUrl)}");
+        if (into.Count == 0)
+            Console.WriteLine($"{Tag} không nhận diện được mùa nào trong downloads-btns-div (heading={string.Join(" | ", DivBlocks(html, "downloads-btns-div", 5).Select(b => b.Heading))})");
     }
 
-    /// <summary>
-    /// Các div có class chứa <paramref name="classFragment"/>, giữ cả vị trí để tìm được
-    /// heading phía trước (WordPress ở đây đặt "Season 1" ngay trước khối link).
-    /// </summary>
-    static List<(int Index, string Inner)> DivBlocks(string html, string classFragment)
+    async Task CollectEpisodes(string html, string postUrl, List<HeadersModel> headers, short season, List<HubEntry> into)
     {
-        var blocks = new List<(int Index, string Inner)>();
+        var blocks = DivBlocks(html, "downloads-btns-div", 20);
+        var block = blocks.FirstOrDefault(b => SeasonNumber(b.Heading) == season);
 
-        foreach (Match m in Regex.Matches(html, @"(?is)<div[^>]*class=""[^""]*" + Regex.Escape(classFragment) + @"[^""]*""[^>]*>"))
+        if (block.Links == null || block.Links.Count == 0)
         {
-            int start = m.Index + m.Length;
-            int end = html.IndexOf("</div>", start, StringComparison.OrdinalIgnoreCase);
-
-            if (end < 0)
-                end = Math.Min(html.Length, start + 4000);
-
-            blocks.Add((m.Index, html[start..end]));
+            Console.WriteLine($"{Tag} không có khối Season {season}, thử khối đầu tiên (blocks={blocks.Count})");
+            block = blocks.Count > 0 ? blocks[0] : default;
         }
 
-        return blocks;
+        if (block.Links == null || block.Links.Count == 0)
+            return;
+
+        string packUrl = Absolute(Unescape(block.Links[0].Url), postUrl);
+
+        // Khối mùa có thể chứa thẳng link từng tập (không có trang pack riêng).
+        string packHtml = LooksLikeFileHost(packUrl) ? null : await GetPage(packUrl, headers);
+
+        if (block.Heading == null && packHtml == null)
+            return;
+
+        if (packHtml == null)
+        {
+            if (LooksLikeFileHost(packUrl))
+            {
+                into.Add(new HubEntry(QualityLabel($"Mùa {season}", packUrl), packUrl, season, 0));
+                return;
+            }
+
+            Console.WriteLine($"{Tag} trang pack mùa {season} rỗng {Cut(packUrl)}");
+            return;
+        }
+
+        var epBlocks = DivBlocks(packHtml, "downloads-btns-div", 40);
+
+        for (int i = 0; i < epBlocks.Count; i++)
+        {
+            short ep = EpisodeNumber(epBlocks[i].Heading);
+            if (ep <= 0)
+                ep = (short)(i + 1);
+
+            int taken = 0;
+
+            foreach ((string label, string url) in epBlocks[i].Links)
+            {
+                string abs = Absolute(Unescape(url), packUrl);
+
+                if (!LooksLikeFileHost(abs))
+                    continue;
+
+                into.Add(new HubEntry($"Ep {ep} · {QualityLabel(label, abs)}", abs, season, ep));
+
+                if (++taken >= 2)
+                    break;
+            }
+        }
+
+        if (into.Count == 0)
+            Console.WriteLine($"{Tag} pack {Cut(packUrl)} có {epBlocks.Count} khối nhưng không có file-host nào");
     }
 
-    static string NearestHeadingBefore(string html, int position)
+    static short SeasonNumber(string text)
     {
-        int from = Math.Max(0, position - 1500);
-        string before = html[from..position];
+        var m = Regex.Match(text ?? "", @"(?i)(?:season\s*(\d{1,2})|s(\d{2})\b)");
 
-        var matches = Regex.Matches(before, @"(?is)<h([1-6])[^>]*>(?<t>.*?)</h\1>");
+        if (!m.Success)
+            return 0;
 
-        if (matches.Count == 0)
-            return "";
+        int.TryParse(m.Groups[1].Success ? m.Groups[1].Value : m.Groups[2].Value, out int n);
 
-        string text = Regex.Replace(matches[matches.Count - 1].Groups["t"].Value, @"<[^>]+>", " ");
+        return (short)n;
+    }
 
-        return Regex.Replace(text, @"\s+", " ").Trim();
+    static short EpisodeNumber(string text)
+    {
+        var m = Regex.Match(text ?? "", @"(?i)(?:ep(?:isode)?\.?\s*(\d{1,3})|\be(\d{2})\b)");
+
+        if (!m.Success)
+            return 0;
+
+        int.TryParse(m.Groups[1].Success ? m.Groups[1].Value : m.Groups[2].Value, out int n);
+
+        return (short)n;
     }
 }

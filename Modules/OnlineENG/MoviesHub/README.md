@@ -31,13 +31,27 @@ URL media trần (`.mkv/.mp4/.m3u8`…) → `/drive/download/<id>/<tên>` → Go
 (`drive.google.com/file/d/<id>/view` đổi thành `drive.usercontent.google.com/download?id=…`)
 → trang tìm kiếm thì nhảy thêm 1 hop vào file.
 
+## Quy tắc UI (quan trọng, đừng đổi)
+
+Link của nhóm file-host là **file .mkv/.mp4 thô**, không phải HLS. Lampac phải được thấy
+chúng như **từng nút nguồn** (`MovieTpl` / `EpisodeTpl`) để việc phát/transcode đi qua
+GStreamer. Vì vậy:
+
+- `Collect()` trả `HubEntry` — một link = một nút, nhãn là `4K · 7.1GB · hubcloud.cx`.
+- `/video` trả **đúng một** url, **không** có `streamquality`. Nhét mkv vào menu chất lượng
+  = Lampa coi là variant HLS và phát trực tiếp = hỏng.
+- Cố ý **không** có route `video.m3u8` cho hai nguồn này (route đó ép ngữ cảnh HLS).
+
 ## Route
 
 | Route | Tác dụng |
 |---|---|
-| `GET /lite/moviesdrive` / `/lite/movies4u` | collection cho Lampa (`ViewTmdb(method:"call")`) |
-| `GET /lite/moviesdrive/video?id=&imdb_id=&s=&e=` | resolve + trả `StreamQualityTpl` |
-| `…/video.m3u8?play=true` | redirect thẳng vào player |
+| `GET /lite/moviesdrive?id=&imdb_id=&serial=&s=` | collection: tự tìm bài trên site, mỗi link file-host là một nút (mùa → tập cho series) |
+| `GET /lite/<nguồn>/video?src=<base64 link>&label=<base64>&s=&e=` | resolve link đó → một url |
+| `…&play=true` | redirect thẳng vào player |
+
+`?checksearch=1` trả `data-json=` (đúng tín hiệu Lampa dùng để hỏi "nguồn có không"), nên
+mở phim không bị đốt một lượt search.
 
 ## Config (init.conf)
 
@@ -72,6 +86,9 @@ Referer theo đúng origin đó. Đặt một host cố định = 403 cho các m
 | `moviesdrive: search 0 kết quả (q=tt…)` | IMDb id không có trong DB (phim mới/hiếm) |
 | `moviesdrive: N link file-host` rồi `0/N link giải được` | HubCloud đổi markup → xem `head=` in ra |
 | `movies4u: không có download-links-div … (a=123)` | selector sai, nhưng `a=` cho biết trang có bao nhiêu link |
+| `movies4u: 0 bài ứng viên` | **WP `?s=` không index href**, nên không bao giờ tìm được bằng IMDb id — module đã chuyển sang tìm tên+năm (qua TMDB); nếu vẫn 0 thì domain đổi hoặc bài không tồn tại |
+| `moviesdrive: bài: … a=0` | trang bài viết không có anchor nào → bị chặn/redirect, không phải selector sai |
+| `moviesdrive: 0 link file-host (… hits=1)` | hits=1 mà 0 link ⇒ selector h5 đã lỗi thời; bản mới quét MỌI anchor nên không còn case này |
 | `movieshub: blocked (enable=False…)` | bị chặn cấu hình (không phải lỗi resolver) |
 | `movieshub: tmdb meta fail` | TMDB/cub không trả metadata → không có tên để tìm Movies4U |
 
