@@ -93,6 +93,8 @@ Referer theo đúng origin đó. Đặt một host cố định = 403 cho các m
 | `…: 302 của downloadfile -> …mkv` | cửa số 4 ăn: link thô đã thành link chơi được |
 | `…: dựng link từ <title>: …` | cửa số 5 ăn: HubCloud không trả 302 cho `downloadfile=true` |
 | `moviesdrive: 0 link file-host (… hits=1)` | tìm được bài nhưng không có anchor nào ra file-host ⇒ xem `hosts=` ở dòng ngay dưới |
+| `movies4u: movie: N link từ M gate (bỏ gdflix/gdlink vì Cloudflare)` | đã duyệt hết mọi khối chất lượng trong bài (không còn dừng ở gate đầu) |
+| `movies4u: 0 link từ 0 gate của bài …` | bài không có `download-links-div` nào dùng được → xem `hosts=` ngay sau |
 | `…: trang trung gian <mdrive…> -> <hubcloud…>` | nhánh (m) ăn: đã lấy được link thật từ trang rút gọn |
 | `…: có N anchor nhưng không có link HubCloud/GDFlix \| hosts=…` | MoviesDrive đổi chỗ chứa link → gửi em dòng `hosts=` |
 | `movieshub: blocked (enable=False…)` | bị chặn cấu hình (không phải lỗi resolver) |

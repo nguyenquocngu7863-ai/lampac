@@ -37,6 +37,16 @@ public abstract class HubController : BaseENGController
     {
     }
 
+    /// <summary>
+    /// Mồi cho Modules/GStreamer/plugins/gst.js: plugin bật GStreamer khi VÀ CHỈ khi phần PATH của
+    /// url kết thúc bằng .mkv (nó cắt query trước khi test: url.split('#')[0].split('?')[0], rồi
+    /// /\.mkv$/ — nên query string thoải mái, chỉ path là tính). Không có .mkv trong path thì Lampa
+    /// tự phát bằng ExoPlayer = mất E-AC3/DDP 5.1 ("mất tiếng" anh hỏi). WebStreamr, Sootio,
+    /// AIOStreams, K20 đều dùng cách này: MỘT action, nhiều route alias file.mkv / file.mp4 / video.
+    /// </summary>
+    protected static string RouteFor(string label, string url)
+        => Regex.IsMatch($"{label} {url}", @"(?i)\.mp4") ? "file.mp4" : "file.mkv";
+
     #region collection: mỗi link một nút nguồn
     protected async Task<ActionResult> CollectionCore(string source, bool checksearch, long id, long tmdb_id, string imdb_id, string title, string original_title, byte serial, short s, bool rjson)
     {
@@ -96,10 +106,10 @@ public abstract class HubController : BaseENGController
 
             foreach (HubEntry item in entries.Where(x => x.Episode > 0))
             {
-                string link = $"{host}/lite/{plugin}/video?src={Enc(item.Url)}&label={Enc(item.Label)}&s={item.Season}&e={item.Episode}";
+                string link = $"{host}/lite/{plugin}/{RouteFor(item.Label, item.Url)}?src={Enc(item.Url)}&label={Enc(item.Label)}&s={item.Season}&e={item.Episode}";
 
                 etpl.Append(item.Label, title ?? original_title, item.Season, item.Episode, link, "call",
-                            streamlink: $"{link}&play=true");
+                            streamlink: accsArgs($"{link}&play=true"));
             }
 
             if (etpl.IsEmpty)
@@ -112,9 +122,9 @@ public abstract class HubController : BaseENGController
 
         foreach (HubEntry item in entries)
         {
-            string link = $"{host}/lite/{plugin}/video?src={Enc(item.Url)}&label={Enc(item.Label)}";
+            string link = $"{host}/lite/{plugin}/{RouteFor(item.Label, item.Url)}?src={Enc(item.Url)}&label={Enc(item.Label)}";
 
-            mtpl.Append(item.Label, link, "call", stream: $"{link}&play=true");
+            mtpl.Append(item.Label, link, "call", stream: accsArgs($"{link}&play=true"));
         }
 
         if (mtpl.IsEmpty)

@@ -30,10 +30,17 @@ public class MoviesDriveController : HubController
     public Task<ActionResult> Index(bool checksearch, long id, long tmdb_id, string imdb_id, string title, string original_title, byte serial, short s = -1, bool rjson = false)
         => CollectionCore(Source, checksearch, id, tmdb_id, imdb_id, title, original_title, serial, s, rjson);
 
-    // KHÔNG có route video.m3u8: file .mkv phải để Lampac/GStreamer quyết định, không ép HLS.
+    // Alias file.mkv/file.mp4 là để gst.js nhận ra và đưa qua GStreamer (giữ đủ tiếng DDP/E-AC3);
+    // KHÔNG có route .m3u8 — ép ngữ cảnh HLS là sai với file thô, Lampac mới là thứ quyết định.
     [HttpGet, Staticache(manually: true)]
     [Route("lite/moviesdrive/video")]
-    public Task<ActionResult> Video(string src, string label, short s = -1, short e = -1, bool play = false)
+    [Route("lite/moviesdrive/file.mkv")]
+    [Route("lite/moviesdrive/file.mp4")]
+    // play=true MẶC ĐỊNH (nhà WebStreamr/Sootio làm vậy): trả 302 chứ không trả JSON, vì
+    // VideoTpl.ToJson sẽ thay url bằng /proxy/{token} — mất đuôi .mkv trong url mà Lampa thấy,
+    // gst.js không nhận ra nữa và lại phát bằng ExoPlayer (mất tiếng DDP). 302 thì path vẫn là
+    // /lite/moviesdrive/file.mkv nên plugin bắt được, còn VLC/DLNA theo redirect bình thường.
+    public Task<ActionResult> Video(string src, string label, short s = -1, short e = -1, bool play = true)
         => VideoCore(Source, src, label, s, e, play);
 
     protected override async Task<List<HubEntry>> Collect(string source, string imdbId, long tmdbId, short season)
