@@ -831,27 +831,32 @@ VidCore (`vidcore.io`, có biến thể 4K). Không phụ thuộc Chromium nên 
 qua `install_custom_modules()`). Nó **không** nằm trong `--sync` nhẹ — đang ở giai đoạn thử nghiệm,
 theo đúng quy trình addon ở cuối README.
 
-Test nhanh bằng script riêng (chạy trong Termux, không cần clone repo) — dò 5 hop API, chép module,
-bật server có log, rồi in lỗi compile nếu có:
+Test: mở Lampa -> xem danh sách Online (nguồn `VidCore (ENG)`) hoặc probe một dòng:
 
 ```bash
-bash setup-termux.sh --sync-all          # chép module + tạo lại launcher
+lampac vidcore 155          # tmdb / movie
+lampac vidcore 2389 1 1     # series: tmdb season episode
+```
+
+Nếu `--sync-all` không chép tới nơi (khối `install_custom_modules()` chạy với
+`set -euo pipefail`, nên **một file 404 là dừng cả hàm** — lỗi có từ trước, không riêng VidCore),
+chép tay 3 file theo mẫu "Curl một file thẳng vào Ubuntu":
+
+```bash
+proot-distro login ubuntu -- bash -lc '
+set -e
+d=/root/lampac/module/OnlineENG/VidCore
+mkdir -p "$d"
+base=https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05799-lampac/Modules/OnlineENG/VidCore
+stamp=$(date +%s)
+for f in manifest.json Controller.cs ModInit.cs; do
+    curl -fSL --retry 3 "$base/$f?cb=$stamp" -o "$d/$f"
+    echo "  [OK] $f"
+done
+ls -l "$d"
+'
 lampac restart
-lampac vidcore 155                       # probe: route + resolve + phân loại lỗi
 ```
-
-`lampac vidcore [tmdb] [season] [episode]` là lệnh dựng sẵn trong launcher (`create_launcher()`),
-in mã HTTP của `/lite/vidcore` và `/lite/vidcore/video`, so với một *route ma* để biết module có
-thực sự đăng ký route không, rồi phân loại body (`{"host":…}` = OK, `resolve` = exception,
-`stream` = không ra link). Các dòng `VidCore: …` chi tiết in ra terminal đang chạy `lampac start`.
-
-Muốn dò cả 5 hop API bằng curl mà không đụng Lampac, dùng script rời (cùng repo):
-
-```bash
-curl -fsSL "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05799-lampac/termux-test-vidcore.sh?cb=$(date +%s)" -o vidcore.sh && bash vidcore.sh chain
-```
-
-`bash vidcore.sh chain` là chế độ nhẹ nhất (không đụng file, không restart). `rollback` trả lại bản cũ.
 
 Toàn bộ flow, route kiểm tra và cách tắt: [`Modules/OnlineENG/VidCore/README.md`](Modules/OnlineENG/VidCore/README.md).
 
@@ -1008,14 +1013,6 @@ JACKETT_GC_HEAP_HARD_LIMIT=20000000 jackett start
 Giữ Termux ở foreground khi cần độ ổn định cao, tắt battery optimization cho Termux và tránh để hệ thống đóng ứng dụng khi thiếu RAM.
 
 ## Quy trình làm addon (học từ cái giá của sisi-layout)
-
-> **Bẫy quoting khi sửa `setup-termux.sh`:** phần lớn script guest được nhúng trong
-> `proot-distro login ubuntu -- bash -c " … "` — một **chuỗi double-quote**. Bên trong chuỗi đó
-> `#` không phải comment, nên backtick bị host chạy như command substitution và **nuốt trọn**
-> text tới backtick kế tiếp; dấu nháy kép chưa escape thì **đóng chuỗi sớm**, đẩy phần còn lại
-> của guest script ra chạy trên Termux. Cả hai đều im lặng: `bash -n` không báo gì.
-> Trước khi commit, chạy: `sh check-termux-quoting.sh` (và nếu sửa `install_custom_modules()`,
-> đối chiếu `bash -n` trên payload — xem comment đầu file `check-termux-quoting.sh`).
 
 
 > **Cảnh nghèo rút kinh nghiệm**: đừng bao giờ nghĩ ra một addon mới, viết thẳng vào trong
