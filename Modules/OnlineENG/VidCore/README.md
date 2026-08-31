@@ -68,6 +68,24 @@ lampac stop && lampac start
 
 ## Kiểm tra nhanh
 
+Cách gọn nhất — script `termux-test-vidcore.sh` ở gốc repo, chạy trong Termux (không cần clone):
+
+```bash
+curl -fsSL "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05799-lampac/termux-test-vidcore.sh?cb=$(date +%s)" -o vidcore.sh && bash vidcore.sh
+```
+
+| Lệnh | Làm gì |
+|---|---|
+| `bash vidcore.sh chain` | Dò 4 bước API bằng curl **trong Ubuntu**, không đụng file, không restart. In ra đúng mắt xích hỏng (trang / cipher / `enc-vidcore` / `POST servers` / `dec-vidcore`) |
+| `bash vidcore.sh install` | Backup rồi chép `manifest.json`, `Controller.cs`, `ModInit.cs` vào `/root/lampac/module/OnlineENG/VidCore` |
+| `bash vidcore.sh serve` | Bật Lampac tách tiến trình (log `~/.vidcore-test.log`), gọi `/lite/vidcore` + `/lite/vidcore/video?id=…`, in `error CS` nếu module không compile |
+| `bash vidcore.sh rollback` | Trả lại bản backup (hoặc xoá module nếu chưa có backup) |
+
+Mặc định test `TMDB=155` (The Dark Knight). Phim bộ: `TMDB=<id> SEASON=1 EPISODE=1 bash vidcore.sh chain`.
+`chain` dùng `enc-dec.app`; đổi bằng `VIDCORE_API=https://… bash vidcore.sh chain`.
+
+Thủ công (nếu không muốn dùng script):
+
 ```bash
 # route đã được nạp chưa (200/302 = OK, 404 = module chưa vào)
 curl -s -o /dev/null -w "%{http_code}\n" "http://127.0.0.1:9118/lite/vidcore?tmdb_id=155&rjson=1"

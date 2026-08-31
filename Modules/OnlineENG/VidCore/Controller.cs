@@ -243,8 +243,8 @@ public class VidCoreController : BaseENGController
     {
         foreach (string pattern in new[]
         {
-            "\\\\\"(?:en|token)\\\\\":\\\\\"([^\"\\\\]+)",
-            "\"(?:en|token)\":\"([^\"]+)\""
+            "\\\\\"(?:en|token)\\\\\":\\s*\\\\\"([^\"\\\\]+)",
+            "\"(?:en|token)\":\\s*\"([^\"]+)\""
         })
         {
             var m = Regex.Match(html, pattern);

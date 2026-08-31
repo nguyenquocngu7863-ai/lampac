@@ -7,7 +7,7 @@ Tài liệu này ghi lại quy trình làm việc khi sửa mã nguồn trên Gi
 > - Repository mã nguồn: thường là `~/lampac` ở phía Termux.
 > - Bản Lampac đang chạy: nằm bên trong Ubuntu proot tại `/root/lampac`.
 >
-> `git pull` chỉ cập nhật mã nguồn trong repository; nó **không tự cập nhật** bản Lampac đang chạy. Muốn cập nhật bản đang chạy, cần chạy `setup-termux.sh --sync` hoặc `--sync-all`. Các lệnh đó curl file từ `LAMPAC_CUSTOM_SOURCE_BASE` (mặc định nhánh `arena/01a05241-lampac`), không phải từ `git branch` đang checkout. Nhánh dự phòng: `arena/01a04e63-lampac`.
+> `git pull` chỉ cập nhật mã nguồn trong repository; nó **không tự cập nhật** bản Lampac đang chạy. Muốn cập nhật bản đang chạy, cần chạy `setup-termux.sh --sync` hoặc `--sync-all`. Các lệnh đó curl file từ `LAMPAC_CUSTOM_SOURCE_BASE` (mặc định nhánh `arena/01a05799-lampac`), không phải từ `git branch` đang checkout. Nhánh dự phòng: `arena/01a04e63-lampac`.
 
 ## 1. Cài mới từ GitHub
 
@@ -15,20 +15,20 @@ Tài liệu này ghi lại quy trình làm việc khi sửa mã nguồn trên Gi
 pkg update -y
 pkg install -y git curl
 
-git clone --depth 1 --branch arena/01a05241-lampac https://github.com/nguyenquocngu7863-ai/lampac.git
+git clone --depth 1 --branch arena/01a05799-lampac https://github.com/nguyenquocngu7863-ai/lampac.git
 cd ~/lampac
 bash setup-termux.sh --install
 ```
 
-Nhánh đang dùng là `arena/01a05241-lampac`. Không clone `main` — `main` đang chậm hơn. Nhánh dự phòng: `arena/01a04e63-lampac`.
+Nhánh đang dùng là `arena/01a05799-lampac`. Không clone `main` — `main` đang chậm hơn. Nhánh dự phòng: `arena/01a04e63-lampac`.
 
 Nếu thư mục đã tồn tại:
 
 ```bash
 cd ~/lampac
 git status
-git fetch origin arena/01a05241-lampac
-git pull --ff-only origin arena/01a05241-lampac
+git fetch origin arena/01a05799-lampac
+git pull --ff-only origin arena/01a05799-lampac
 ```
 
 ## 2. Các lệnh Git thường dùng
@@ -52,7 +52,7 @@ Không dùng `git reset --hard` nếu chưa chắc chắn, vì lệnh này có t
 Trong phiên làm việc của agent, branch cố định là:
 
 ```text
-arena/01a05241-lampac
+arena/01a05799-lampac
 ```
 
 Quy trình chuẩn sau khi có commit:
@@ -61,14 +61,14 @@ Quy trình chuẩn sau khi có commit:
 cd ~/lampac
 git add -A
 git commit -m "mo-ta-ngan-gon-thay-doi"
-git push origin arena/01a05241-lampac
+git push origin arena/01a05799-lampac
 ```
 
 Nếu branch đã được agent push lên GitHub rồi thì chỉ cần lấy branch mới nhất:
 
 ```bash
-git fetch origin arena/01a05241-lampac
-git log --oneline origin/arena/01a05241-lampac -5
+git fetch origin arena/01a05799-lampac
+git log --oneline origin/arena/01a05799-lampac -5
 ```
 
 ## 4. Đưa branch agent vào `main`
@@ -79,10 +79,10 @@ Dùng đúng **hai dòng** dưới đây. Remote branch của agent là nguồn;
 
 ```bash
 git fetch origin
-git push --force-with-lease origin origin/arena/01a05241-lampac:main
+git push --force-with-lease origin origin/arena/01a05799-lampac:main
 ```
 
-`origin/arena/01a05241-lampac` là dữ liệu nguồn, còn `:main` là branch đích. `--force-with-lease` chỉ cho phép cập nhật nếu `main` trên remote vẫn đúng phiên bản đã fetch; nó an toàn hơn `--force`. Sau lệnh này, `main` sẽ nhận commit mới nhất của branch agent, ví dụ `11a24fde`.
+`origin/arena/01a05799-lampac` là dữ liệu nguồn, còn `:main` là branch đích. `--force-with-lease` chỉ cho phép cập nhật nếu `main` trên remote vẫn đúng phiên bản đã fetch; nó an toàn hơn `--force`. Sau lệnh này, `main` sẽ nhận commit mới nhất của branch agent, ví dụ `11a24fde`.
 
 Không dùng các hướng dẫn `git switch main`, `git checkout main` hoặc merge qua local `main` cho quy trình này; chúng dễ bị chặn khi `setup-termux.sh` đang có thay đổi local hoặc khi clone chưa tạo local branch `main`.
 
@@ -96,7 +96,7 @@ Không cần switch branch để cập nhật bản Lampac đang chạy. Nếu c
 
 ```bash
 cd ~/lampac
-curl -fL "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05241-lampac/setup-termux.sh" -o "$HOME/setup-termux-latest.sh"
+curl -fL "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05799-lampac/setup-termux.sh" -o "$HOME/setup-termux-latest.sh"
 
 lampac stop || true
 bash "$HOME/setup-termux-latest.sh" --sync-all
@@ -118,7 +118,7 @@ lampac stop && lampac start
 Không checkout đè file local. Tải một bản script mới vào thư mục Home, không dùng `/tmp`:
 
 ```bash
-curl -fL "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05241-lampac/setup-termux.sh" -o "$HOME/setup-termux-latest.sh"
+curl -fL "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05799-lampac/setup-termux.sh" -o "$HOME/setup-termux-latest.sh"
 ls -l "$HOME/setup-termux-latest.sh"
 chmod +x "$HOME/setup-termux-latest.sh"
 
@@ -213,7 +213,7 @@ Lỗi này xảy ra khi clone chưa có local branch `main`. Không cần tạo 
 
 ```bash
 git fetch origin
-git push --force-with-lease origin origin/arena/01a05241-lampac:main
+git push --force-with-lease origin origin/arena/01a05799-lampac:main
 ```
 
 ### `bash: ...setup-termux-latest.sh: No such file or directory`
@@ -230,7 +230,7 @@ Nếu không có file, tải lại bằng lệnh `curl -fL ... -o "$HOME/setup-t
 
 Kiểm tra theo thứ tự:
 
-1. Đảm bảo commit đã nằm trên nhánh `arena/01a05241-lampac` trên GitHub (không chờ `main`).
+1. Đảm bảo commit đã nằm trên nhánh `arena/01a05799-lampac` trên GitHub (không chờ `main`).
 2. Chạy `setup-termux.sh --sync-all` hoặc xoá thủ công theo mục 6.
 3. Chạy `lampac stop` rồi `lampac start`.
 4. Thoát hẳn và mở lại ứng dụng Lampa để xoá cache WebView.
@@ -246,24 +246,24 @@ tên plugin) nhưng không kéo file `.js` mới → server trả 404.
 Cách xử lý và phòng ngừa — **luôn tải lại script trước khi sync**, gộp một lệnh:
 
 ```bash
-curl -fsSL "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05241-lampac/setup-termux.sh?cb=$(date +%s)" -o ~/setup-termux-branch.sh \
+curl -fsSL "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05799-lampac/setup-termux.sh?cb=$(date +%s)" -o ~/setup-termux-branch.sh \
   && bash ~/setup-termux-branch.sh --sync && lampac stop && lampac start
 ```
 
-Lệnh trên đã trỏ nhánh đang dùng `arena/01a05241-lampac`. Không thay bằng `main`. Dự phòng: `arena/01a04e63-lampac`.
+Lệnh trên đã trỏ nhánh đang dùng `arena/01a05799-lampac`. Không thay bằng `main`. Dự phòng: `arena/01a04e63-lampac`.
 
 **Clone/`git pull` chưa đủ.** `--sync` curl file từ `LAMPAC_CUSTOM_SOURCE_BASE`
-(mặc định cùng nhánh 241). Khi test nhánh khác hoặc quay về 63, phải khớp cả URL tải
+(mặc định cùng nhánh 5799 — nhánh thử nghiệm đang giữ VidCore). Khi test nhánh khác hoặc quay về 63, phải khớp cả URL tải
 script **và** custom base:
 
 ```bash
-export LAMPAC_CUSTOM_SOURCE_BASE='https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05241-lampac'
+export LAMPAC_CUSTOM_SOURCE_BASE='https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05799-lampac'
 curl -fsSL "$LAMPAC_CUSTOM_SOURCE_BASE/setup-termux.sh?cb=$(date +%s)" -o ~/setup-termux-branch.sh
 bash ~/setup-termux-branch.sh --sync
 lampac stop && lampac start
 ```
 
-Xem đang trỏ đâu: `echo "${LAMPAC_CUSTOM_SOURCE_BASE:-mặc định 241}"`. Xác minh nhanh sau khi sync:
+Xem đang trỏ đâu: `echo "${LAMPAC_CUSTOM_SOURCE_BASE:-mặc định là nhánh 5799}"`. Xác minh nhanh sau khi sync:
 
 ```bash
 proot-distro login ubuntu -- bash -c 'curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:9118/autotracks.js'
