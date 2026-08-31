@@ -20,6 +20,8 @@ Nguồn ENG `https://vidlink.pro`. Resolver mặc định là **HTTP** (token XS
 
 ## HTTP
 
+API VidLink trả HLS (`stream.playlist`, `type: hls`). Lampac gắn `#.m3u8` để player dùng hls.js — URL `.mp4` thuần sẽ bị HTML5 từ chối (`no supported source`).
+
 | Route | Việc |
 |-------|------|
 | `lite/vidlink` | Danh sách phim/tập |

@@ -26,7 +26,7 @@ public class VidLinkController : BaseENGController
         "c75136c5668bbfe65a7ecad431a745db68b5f381555b38d8f6c699449cf11fcd"
     );
 
-    sealed record ResolvedStream(string Url, string Label, List<HeadersModel> Headers);
+    sealed record ResolvedStream(string Url, string Label, List<HeadersModel> Headers, bool Hls = false);
 
     public VidLinkController() : base(ModInit.conf)
     {
@@ -54,9 +54,14 @@ public class VidLinkController : BaseENGController
         if (resolved == null || resolved.Count == 0)
             return OnError("stream", 502);
 
+        resolved.Sort((a, b) => b.Hls.CompareTo(a.Hls));
+
         var qualities = new StreamQualityTpl(resolved.Count);
         foreach (ResolvedStream item in resolved)
-            qualities.Append(HostStreamProxy(item.Url, headers: item.Headers), item.Label);
+        {
+            string uri = item.Hls ? WithHashExt(item.Url, ".m3u8") : item.Url;
+            qualities.Append(HostStreamProxy(uri, headers: item.Headers), item.Label);
+        }
 
         if (qualities.IsEmpty)
             return OnError("stream", 502);
@@ -79,7 +84,7 @@ public class VidLinkController : BaseENGController
     async Task<List<ResolvedStream>> Resolve(long tmdbId, short season, short episode)
     {
         string mediaType = season > 0 ? "tv" : "movie";
-        string memKey = $"vidlink:http:{mediaType}:{tmdbId}:{season}:{episode}";
+        string memKey = $"vidlink:play:{mediaType}:{tmdbId}:{season}:{episode}";
         if (hybridCache.TryGetValue(memKey, out List<ResolvedStream> cached) && cached?.Count > 0)
             return cached;
 
@@ -131,10 +136,11 @@ public class VidLinkController : BaseENGController
                 proxy: proxy
             );
 
-            List<ResolvedStream> streams = ReadStreams(root);
+            List<ResolvedStream> streams = await FinalizeStreams(ReadStreams(root));
             if (streams.Count > 0)
             {
-                Console.WriteLine($"VidLink: {streams.Count} HTTP streams ({tmdbId})");
+                int hls = streams.FindAll(i => i.Hls).Count;
+                Console.WriteLine($"VidLink: {streams.Count} HTTP streams ({tmdbId}), hls={hls}");
                 return streams;
             }
         }
@@ -174,22 +180,82 @@ public class VidLinkController : BaseENGController
         if (root == null)
             return result;
 
-        var headers = StreamHeaders();
-        Collect(root, result, seen, headers, depth: 0);
-
-        if (result.Count == 0 && root is JValue value && value.Type == JTokenType.String)
-            TryAdd(value.Value<string>(), "Auto", result, seen, headers);
-
+        Collect(root, result, seen, depth: 0);
         return result;
     }
 
-    static void Collect(
-        JToken token,
-        List<ResolvedStream> result,
-        HashSet<string> seen,
-        List<HeadersModel> headers,
-        int depth
-    )
+    async Task<List<ResolvedStream>> FinalizeStreams(List<ResolvedStream> streams)
+    {
+        if (streams == null || streams.Count == 0)
+            return streams;
+
+        var result = new List<ResolvedStream>(streams.Count);
+        foreach (ResolvedStream item in streams)
+        {
+            bool hls = item.Hls;
+            if (!hls && LooksLikeProgressive(item.Url))
+            {
+                bool? peek = await PeekIsHls(item.Url, item.Headers);
+                hls = peek != false;
+            }
+
+            var headers = hls ? StreamHeaders() : FileHeaders();
+            result.Add(item with { Hls = hls, Headers = headers });
+        }
+
+        result.Sort((a, b) => b.Hls.CompareTo(a.Hls));
+        return result;
+    }
+
+    async Task<bool?> PeekIsHls(string url, List<HeadersModel> headers)
+    {
+        try
+        {
+            var peekHeaders = new List<HeadersModel>(headers ?? new List<HeadersModel>())
+            {
+                new HeadersModel("Range", "bytes=0-1023"),
+                new HeadersModel("Accept", "*/*")
+            };
+
+            var probe = await Http.BaseGet(
+                url,
+                timeoutSeconds: 8,
+                headers: peekHeaders,
+                statusCodeOK: false,
+                MaxResponseContentBufferSize: 8192,
+                proxy: proxy,
+                useDefaultHeaders: false
+            );
+
+            string body = probe.content;
+            if (string.IsNullOrEmpty(body))
+                return null;
+
+            string trim = body.TrimStart();
+            if (trim.StartsWith("#EXTM3U", StringComparison.OrdinalIgnoreCase) ||
+                trim.StartsWith("#EXT-X-", StringComparison.OrdinalIgnoreCase))
+            {
+                Console.WriteLine($"VidLink: peeked HLS at {HostOf(url)}");
+                return true;
+            }
+
+            if (trim.StartsWith("<", StringComparison.Ordinal) ||
+                trim.StartsWith("{", StringComparison.Ordinal))
+                return null;
+
+            if (body.Contains("ftyp", StringComparison.Ordinal) ||
+                body.Contains("moov", StringComparison.Ordinal))
+                return false;
+
+            return null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    void Collect(JToken token, List<ResolvedStream> result, HashSet<string> seen, int depth)
     {
         if (token == null || depth > 8)
             return;
@@ -197,40 +263,76 @@ public class VidLinkController : BaseENGController
         if (token is JArray array)
         {
             foreach (JToken item in array)
-                Collect(item, result, seen, headers, depth + 1);
+                Collect(item, result, seen, depth + 1);
             return;
         }
 
         if (token is not JObject obj)
             return;
 
-        string url = FirstString(obj, "playlist", "file", "url", "src", "stream", "link");
+        string type = FirstString(obj, "type");
         string label = FirstString(obj, "quality", "label", "title", "name", "language", "lang", "server");
-        TryAdd(url, label, result, seen, headers);
+
+        if (obj["qualities"] is JObject qualities)
+        {
+            foreach (JProperty quality in qualities.Properties())
+            {
+                if (quality.Value is not JObject qobj)
+                    continue;
+
+                string qurl = FirstString(qobj, "url", "file", "playlist", "src");
+                string qtype = FirstString(qobj, "type") ?? type;
+                TryAdd(qurl, string.IsNullOrWhiteSpace(label) ? quality.Name : $"{label} {quality.Name}", result, seen, qtype);
+            }
+        }
+
+        string url = FirstString(obj, "playlist", "file", "url", "src", "link");
+        TryAdd(url, label, result, seen, type);
 
         foreach (JProperty property in obj.Properties())
         {
+            string name = property.Name;
+            if (name is "captions" or "subtitles" or "subtitle" or "flags")
+                continue;
+
             if (property.Value is JObject or JArray)
-                Collect(property.Value, result, seen, headers, depth + 1);
-            else if (property.Value?.Type == JTokenType.String &&
-                     IsStreamName(property.Name))
-            {
-                TryAdd(property.Value.Value<string>(), label ?? property.Name, result, seen, headers);
-            }
+                Collect(property.Value, result, seen, depth + 1);
         }
     }
 
-    static bool IsStreamName(string name)
+    void TryAdd(string url, string label, List<ResolvedStream> result, HashSet<string> seen, string type)
     {
-        if (string.IsNullOrWhiteSpace(name))
-            return false;
+        if (string.IsNullOrWhiteSpace(url) ||
+            !Uri.TryCreate(url, UriKind.Absolute, out Uri uri) ||
+            uri.Scheme is not ("http" or "https") ||
+            !seen.Add(url))
+        {
+            return;
+        }
 
-        string value = name.ToLowerInvariant();
-        return value is "playlist" or "file" or "url" or "src" or "stream" or "link" or "m3u8" or "hls";
+        bool hls = IsHls(type, url);
+        if (!hls && !LooksLikeProgressive(url) && !LooksLikeHls(url) && result.Count > 0)
+            return;
+
+        if (!hls && !LooksLikeProgressive(url) && !LooksLikeHls(url))
+            return;
+
+        string quality = string.IsNullOrWhiteSpace(label) ? GuessQuality(url) : Compact(label);
+        if (string.IsNullOrWhiteSpace(quality))
+            quality = hls ? "HLS" : "MP4";
+
+        if (result.Exists(i => i.Label.Equals(quality, StringComparison.OrdinalIgnoreCase)))
+            quality += $" #{result.Count + 1}";
+
+        var headers = hls ? StreamHeaders() : FileHeaders();
+        result.Add(new ResolvedStream(url, quality, headers, hls));
     }
 
     static string FirstString(JObject obj, params string[] names)
     {
+        if (obj == null)
+            return null;
+
         foreach (string name in names)
         {
             JToken token = obj[name];
@@ -248,45 +350,51 @@ public class VidLinkController : BaseENGController
         return null;
     }
 
-    static void TryAdd(
-        string url,
-        string label,
-        List<ResolvedStream> result,
-        HashSet<string> seen,
-        List<HeadersModel> headers
-    )
+    static bool IsHls(string type, string url)
     {
-        if (string.IsNullOrWhiteSpace(url) ||
-            !Uri.TryCreate(url, UriKind.Absolute, out Uri uri) ||
-            uri.Scheme is not ("http" or "https") ||
-            !seen.Add(url))
+        if (!string.IsNullOrWhiteSpace(type))
         {
-            return;
+            string value = type.Trim().ToLowerInvariant();
+            if (value is "hls" or "m3u8" or "m3u" or "mpegurl")
+                return true;
+            if (value is "file" or "mp4" or "mkv" or "webm" or "dash" or "mpd")
+                return false;
+            // "movie" / "tv" / "srt" are metadata, not stream containers.
         }
 
-        if (!LooksLikeMedia(url) && result.Count > 0)
-            return;
+        if (LooksLikeHls(url))
+            return true;
 
-        if (!LooksLikeMedia(url) && !url.Contains("m3u", StringComparison.OrdinalIgnoreCase))
-            return;
-
-        string quality = string.IsNullOrWhiteSpace(label) ? GuessQuality(url) : Compact(label);
-        if (string.IsNullOrWhiteSpace(quality))
-            quality = "Auto";
-
-        if (result.Exists(i => i.Label.Equals(quality, StringComparison.OrdinalIgnoreCase)))
-            quality += $" #{result.Count + 1}";
-
-        result.Add(new ResolvedStream(url, quality, headers));
+        // VidLink's documented API is HLS. A missing type + no video
+        // extension is treated as a playlist so Lampa uses hls.js.
+        return !LooksLikeProgressive(url);
     }
 
-    static bool LooksLikeMedia(string url)
+    static bool LooksLikeHls(string url)
     {
+        if (string.IsNullOrWhiteSpace(url))
+            return false;
+
         return url.Contains(".m3u", StringComparison.OrdinalIgnoreCase) ||
-            url.Contains(".mp4", StringComparison.OrdinalIgnoreCase) ||
-            url.Contains(".mpd", StringComparison.OrdinalIgnoreCase) ||
             url.Contains("m3u8", StringComparison.OrdinalIgnoreCase) ||
-            url.Contains("/hls", StringComparison.OrdinalIgnoreCase);
+            url.Contains("/hls", StringComparison.OrdinalIgnoreCase) ||
+            url.Contains("mpegurl", StringComparison.OrdinalIgnoreCase);
+    }
+
+    static bool LooksLikeProgressive(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+            return false;
+
+        string path = url;
+        int cut = path.IndexOfAny(['?', '#']);
+        if (cut >= 0)
+            path = path[..cut];
+
+        return path.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase) ||
+            path.EndsWith(".mkv", StringComparison.OrdinalIgnoreCase) ||
+            path.EndsWith(".webm", StringComparison.OrdinalIgnoreCase) ||
+            path.EndsWith(".mov", StringComparison.OrdinalIgnoreCase);
     }
 
     static string GuessQuality(string url)
@@ -302,6 +410,33 @@ public class VidLinkController : BaseENGController
 
         string result = Regex.Replace(value, @"\s+", " ").Trim();
         return result.Length > 80 ? result[..80] : result;
+    }
+
+    static string WithHashExt(string url, string ext)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+            return url;
+
+        int hash = url.IndexOf('#');
+        if (hash >= 0)
+            url = url[..hash];
+
+        return url + "#" + ext;
+    }
+
+    static string HostOf(string url)
+    {
+        return Uri.TryCreate(url, UriKind.Absolute, out Uri uri) ? uri.Host : url;
+    }
+
+    List<HeadersModel> FileHeaders()
+    {
+        // Origin on progressive MP4s is a common 403 trigger. Referer is enough.
+        return HeadersModel.Init(
+            ("User-Agent", Http.UserAgent),
+            ("Referer", PlayerOrigin + "/"),
+            ("Accept", "*/*")
+        );
     }
 
     List<HeadersModel> ApiHeaders()
@@ -368,7 +503,8 @@ public class VidLinkController : BaseENGController
             new ResolvedStream(
                 result.m3u8,
                 "Playwright",
-                result.headers ?? StreamHeaders()
+                result.headers ?? StreamHeaders(),
+                IsHls(null, result.m3u8)
             )
         ];
     }
