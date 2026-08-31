@@ -20,7 +20,7 @@ Nguồn ENG `https://vidlink.pro`. Resolver mặc định là **HTTP** (token XS
 
 ## HTTP
 
-API VidLink trả HLS (`stream.playlist`, `type: hls`). Lampac **tải playlist trên server** (`/lite/vidlink/playlist.m3u8`) rồi viết lại segment qua `/proxy` — hls.js nhận `#EXTM3U` cùng origin, không fetch CDN qua `/proxy` (Origin/`AllowAutoRedirect=false` hay 403). URL MP4 không gắn `.m3u8`.
+API VidLink trả HLS (`stream.playlist`, `type: hls`) — Streamflix/Phisher cũng lấy field này. Lampac luôn đưa player URL `/lite/vidlink/playlist.m3u8?uri=` (hls.js). Playlist viết lại segment qua `/lite/vidlink/media.ts?uri=` (không `/proxy/`). Không đưa `.mp4` cho HTML5.
 
 | Route | Việc |
 |-------|------|

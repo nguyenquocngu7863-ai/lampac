@@ -64,11 +64,10 @@ public class VidLinkController : BaseENGController
         var qualities = new StreamQualityTpl(resolved.Count);
         foreach (ResolvedStream item in resolved)
         {
-            bool playlist = item.Hls || LooksLikeHls(item.Url) || !LooksLikeProgressive(item.Url);
-            qualities.Append(
-                playlist ? PlaylistLink(item.Url) : MediaLink(item.Url, ".mp4"),
-                item.Label
-            );
+            // VidLink / StreamPlay / Streamflix all treat the API as HLS
+            // (`stream.playlist`). Lampa only enables hls.js for *.m3u8, so a
+            // media.mp4 play URL always hits HTML5 → "no supported source".
+            qualities.Append(PlaylistLink(item.Url), item.Label);
         }
 
         if (qualities.IsEmpty)
@@ -130,7 +129,7 @@ public class VidLinkController : BaseENGController
     async Task<List<ResolvedStream>> Resolve(long tmdbId, short season, short episode)
     {
         string mediaType = season > 0 ? "tv" : "movie";
-        string memKey = $"vidlink:play4:{mediaType}:{tmdbId}:{season}:{episode}";
+        string memKey = $"vidlink:play5:{mediaType}:{tmdbId}:{season}:{episode}";
         if (hybridCache.TryGetValue(memKey, out List<ResolvedStream> cached) && cached?.Count > 0)
             return cached;
 
@@ -244,12 +243,6 @@ public class VidLinkController : BaseENGController
 
         foreach (ResolvedStream item in streams)
         {
-            if (!item.Hls && LooksLikeProgressive(item.Url))
-            {
-                result.Add(item with { Hls = false, Headers = StreamHeaders() });
-                continue;
-            }
-
             ProbeResult probe = null;
             if (working != null)
                 probe = await ProbeUrl(item.Url, working);
@@ -393,7 +386,30 @@ public class VidLinkController : BaseENGController
                 string trim = body.TrimStart();
                 Console.WriteLine($"VidLink: playlist {HostOf(url)} {status} {PreviewOf(trim)}");
 
-                if (status is not (200 or 206) || !IsExtM3u(trim))
+                if (status is not (200 or 206))
+                    continue;
+
+                if (!IsExtM3u(trim) && trim.StartsWith('{'))
+                {
+                    try
+                    {
+                        var root = JObject.Parse(trim);
+                        string inner = FirstString(root, "playlist", "url", "file", "src")
+                            ?? FirstString(root["stream"] as JObject, "playlist", "url", "file", "src");
+                        if (!string.IsNullOrWhiteSpace(inner) &&
+                            !string.Equals(inner, url, StringComparison.OrdinalIgnoreCase) &&
+                            Uri.TryCreate(inner, UriKind.Absolute, out _))
+                        {
+                            Console.WriteLine($"VidLink: playlist json→{HostOf(inner)}");
+                            return await FetchPlaylist(inner);
+                        }
+                    }
+                    catch
+                    {
+                    }
+                }
+
+                if (!IsExtM3u(trim))
                     continue;
 
                 string finalUrl = StripHash(probe.response?.RequestMessage?.RequestUri?.AbsoluteUri ?? url);
@@ -539,25 +555,44 @@ public class VidLinkController : BaseENGController
                 string finalUrl = StripHash(resp.RequestMessage?.RequestUri?.AbsoluteUri ?? url);
                 RememberHeaders(finalUrl, headers);
 
+                await using var input = await resp.Content.ReadAsStreamAsync(HttpContext.RequestAborted);
+                byte[] peek = new byte[512];
+                int n = await input.ReadAsync(peek.AsMemory(0, peek.Length), HttpContext.RequestAborted);
+                string head = n > 0 ? Encoding.ASCII.GetString(peek, 0, n).TrimStart() : string.Empty;
+
+                if (IsExtM3u(head))
+                {
+                    using var ms = new System.IO.MemoryStream();
+                    if (n > 0)
+                        ms.Write(peek, 0, n);
+                    await input.CopyToAsync(ms, HttpContext.RequestAborted);
+                    string body = Encoding.UTF8.GetString(ms.ToArray());
+                    string rewritten = RewritePlaylist(body, finalUrl, headers);
+                    Console.WriteLine($"VidLink: media {HostOf(url)} was hls, rewrite");
+                    return ContentTo(rewritten, "application/vnd.apple.mpegurl; charset=utf-8");
+                }
+
                 string ct = resp.Content.Headers.ContentType?.ToString();
                 if (string.IsNullOrWhiteSpace(ct) ||
                     ct.StartsWith("application/octet-stream", StringComparison.OrdinalIgnoreCase) ||
-                    ct.StartsWith("text/", StringComparison.OrdinalIgnoreCase))
+                    ct.StartsWith("text/", StringComparison.OrdinalIgnoreCase) ||
+                    ct.Contains("mpegurl", StringComparison.OrdinalIgnoreCase))
                 {
-                    ct = LooksLikeProgressive(url) ? "video/mp4" : "video/mp2t";
+                    ct = LooksLikeProgressive(url) || LooksLikeMp4(head) ? "video/mp4" : "video/mp2t";
                 }
 
                 Response.StatusCode = status;
                 Response.ContentType = ct;
                 Response.Headers["Accept-Ranges"] = "bytes";
 
-                if (resp.Content.Headers.ContentLength is long length)
+                if (resp.Content.Headers.ContentLength is long length && n >= 0)
                     Response.ContentLength = length;
 
                 if (resp.Content.Headers.TryGetValues("Content-Range", out var contentRange))
                     Response.Headers["Content-Range"] = string.Join(", ", contentRange);
 
-                await using var input = await resp.Content.ReadAsStreamAsync(HttpContext.RequestAborted);
+                if (n > 0)
+                    await Response.Body.WriteAsync(peek.AsMemory(0, n), HttpContext.RequestAborted);
                 await input.CopyToAsync(Response.Body, HttpContext.RequestAborted);
                 return new EmptyResult();
             }
