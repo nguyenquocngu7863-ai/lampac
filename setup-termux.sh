@@ -724,12 +724,20 @@ install_custom_modules() {
         # directory and manifest.json must be created here. A plain `if [ -d ]`
         # guard (used for modules that already exist in the release) would skip
         # it forever. Kept out of --sync until stable, per the README rule.
+        # Mỗi file lấy độc lập và lỗi được bỏ qua: block này chạy trong guest script
+        # có `set -euo pipefail`, nên nếu nguồn không có module (ví dụ vừa lùi
+        # LAMPAC_CUSTOM_SOURCE_BASE về nhánh cũ) thì curl -f fail sẽ dừng cả sync.
         vidcorebase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineENG/VidCore\"
         vidcoretarget=/root/lampac/module/OnlineENG/VidCore
-        mkdir -p \"\$vidcoretarget\"
         for vidcorefile in manifest.json Controller.cs ModInit.cs; do
-            curl -fSL --retry 3 \"\$vidcorebase/\$vidcorefile?cb=\$syncstamp\" -o \"\$vidcoretarget/\$vidcorefile.tmp\"
-            mv \"\$vidcoretarget/\$vidcorefile.tmp\" \"\$vidcoretarget/\$vidcorefile\"
+            if curl -fsSL --retry 3 \"\$vidcorebase/\$vidcorefile?cb=\$syncstamp\" -o \"/tmp/vidcore-\$vidcorefile\"; then
+                mkdir -p \"\$vidcoretarget\"
+                mv \"/tmp/vidcore-\$vidcorefile\" \"\$vidcoretarget/\$vidcorefile\"
+                echo \"  [vidcore] \$vidcorefile\"
+            else
+                rm -f \"/tmp/vidcore-\$vidcorefile\"
+                echo \"  [vidcore] bo qua \$vidcorefile - khong co tren nguon: kiem tra LAMPAC_CUSTOM_SOURCE_BASE\"
+            fi
         done
 
         for proxymodule in CubProxy TmdbProxy; do
