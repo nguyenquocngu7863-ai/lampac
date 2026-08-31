@@ -53,7 +53,7 @@ public abstract class HubController : BaseENGController
     /// hash, phải đánh tay: mỗi commit sửa MoviesHub là đổi chuỗi này (luật trong README). Log ra
     /// marker khác = máy đang compile bản cũ -> dừng việc sửa code, kéo lại từ commit đó.
     /// </summary>
-    protected const string Build = "v15-play-302";
+    protected const string Build = "v15b-urifix";
 
     /// <summary>
     /// Host mà module này không thể tự chơi: gdflix/gdlink/go2link bị Cloudflare js challenge,
@@ -197,8 +197,11 @@ public abstract class HubController : BaseENGController
         {
             string link = accsArgs($"{host}/lite/{plugin}/{RouteFor(item.Label, item.Url)}?src={Enc(Clean(item.Url))}&label={Enc(item.Label)}&play=true");
 
+            // details = host của file-host (Lampa in thành dòng phụ), còn quality/menu chất lượng thì
+            // KHÔNG có: mỗi link là một nút. Uri.TryCreate chứ không gọi TryCreate trần (CS0103 — đã
+            // làm hỏng cả Lampac vì module không compile được).
             mtpl.Append(item.Label, link, "play", stream: link,
-                        details: TryCreate(item.Url, out Uri u) ? u.Host : null);
+                        details: Uri.TryCreate(item.Url, UriKind.Absolute, out Uri uh) ? uh.Host : null);
         }
 
         if (mtpl.IsEmpty)
