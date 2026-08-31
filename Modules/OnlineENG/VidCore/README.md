@@ -66,6 +66,16 @@ lampac stop && lampac start
 `manifest.json`, `Controller.cs`, `ModInit.cs`. Chủ ý **không** nằm trong `--sync`
 (danh sách vá nhẹ) cho tới khi ổn định — xem "Quy trình làm addon" ở README gốc.
 
+## Bài học compile/nạp (đã xác minh trên thiết bị)
+
+`bash vidcore.sh log` cho thấy `compilation VidCore` + `loaded module: VidCore` và **không** có
+`error CS` nào — module compile và nạp sạch. Vì vậy khi route trả body **rỗng** mà log không có
+dòng `VidCore:` nào, thủ phạm là **exception chưa được bắt**: `config/base.conf` đặt
+`"exceptionHandlerLogTarget": "none"`, nên Lampac không ghi lại dấu vết 500 ở đâu cả.
+Module giờ tự bắt exception ở mọi bước và tự in log, không phụ thuộc exception handler nữa.
+Bật trace toàn cục (tuỳ chọn, ích cho mọi module): thêm `"exceptionHandlerLogTarget": "file"`
+vào `init.conf` → xem `/root/lampac/logs/exceptionHandler.log`.
+
 ## Đã xác minh trên thiết bị (2026-08-31, mode `chain`)
 
 - `vidcore.io/movie/155` còn sống, cipher bắt được bằng mẫu escaped.

@@ -226,9 +226,24 @@ PORTSH
     fi
 
     echo
-    say "Resolve: /lite/$MODULE_ROUTE/video?id=$TMDB"
-    body=$(curl -s -m 90 "http://127.0.0.1:$PORT/lite/$MODULE_ROUTE/video?id=$TMDB&s=$SEASON&e=$EPISODE")
+    say "Resolve: /lite/$MODULE_ROUTE/video?id=$TMDB (lần đầu có thể chậm ~30-60s)"
+    raw=$(curl -s -m 120 -w '\n%{http_code}' "http://127.0.0.1:$PORT/lite/$MODULE_ROUTE/video?id=$TMDB&s=$SEASON&e=$EPISODE")
+    code=$(printf '%s' "$raw" | tail -1)
+    body=$(printf '%s' "$raw" | sed '$d')
+    echo "    HTTP $code"
     printf '%s\n' "$body" | head -c 700; echo
+    # base.conf đặt "exceptionHandlerLogTarget": "none" nên 500 có thể KHÔNG có dấu vết
+    if [ "${code%[0-9][0-9]}" = "5" ] || [ -z "$body" ]; then
+        say "exceptionHandler.log (nếu app không bật log exception thì file này trống/không có):"
+        proot-distro login ubuntu -- bash -s <<'EXLOG'
+f=/root/lampac/logs/exceptionHandler.log
+if [ -f "$f" ]; then
+    grep -A 6 "\[GlobalError\]" "$f" | tail -30
+else
+    echo "  (không có $f — base.conf để exceptionHandlerLogTarget: none)"
+fi
+EXLOG
+    fi
     if printf '%s' "$body" | grep -q '"host"'; then
         ok "CÓ link stream — mở AdminPanel/Log để chọn host, hoặc bấm play trong Lampa."
     else
@@ -237,12 +252,15 @@ PORTSH
 
     echo
     say "Lỗi compile module (nếu có):"
-    # CSharpEval in "compilation error: <module>" rồi mới tới từng dòng `error CS…`,
-    # nên phải lấy cả khối — grep cùng dòng sẽ không bao giờ khớp tên module.
-    if grep -q "compilation error" "$LOG" 2>/dev/null; then
-        grep -n -A 24 "compilation error" "$LOG" | head -80
+    # Lampac in lỗi compile theo 2 kiểu: CSharpEval "compilation error: <module>" (rồi
+    # từng dòng `error CS…` KHÔNG kèm tên module) và Startup "error compilation <dir>"
+    # rồi throw. Dấu hiệu THÀNH CÔNG là dòng "compilation VidCore".
+    if grep -qE "compilation error|error compilation" "$LOG" 2>/dev/null; then
+        grep -n -A 24 -E "compilation error|error compilation" "$LOG" | head -80
+    elif grep -q "compilation VidCore" "$LOG" 2>/dev/null; then
+        echo "    ✓ log có 'compilation VidCore' → module compile OK"
     else
-        echo "    (không có 'compilation error' trong log)"
+        echo "    (không có dòng compile nào nhắc VidCore → module có thể không được quét)"
     fi
     echo
     say "Log của module:"
@@ -253,8 +271,11 @@ PORTSH
 }
 
 mode_log() {
-    say "Khối 'compilation error' (CSharpEval.cs in module name ở dòng riêng):"
-    grep -n -A 24 "compilation error" "$LOG" 2>/dev/null | head -120 || echo "    (không có)"
+    say "Dấu vết compile (thành công = dòng 'compilation VidCore'):"
+    grep -nE "compilation VidCore|skip compilation|error compilation|compilation error" "$LOG" 2>/dev/null | head -20 || echo "    (không có)"
+    echo
+    say "Khối lỗi compile + diagnostics:"
+    grep -n -A 24 -E "compilation error|error compilation" "$LOG" 2>/dev/null | head -160 || echo "    (không có)"
     echo
     say "Mọi dòng nhắc VidCore:"
     grep -in "vidcore" "$LOG" 2>/dev/null | tail -25 || echo "    (không có)"
@@ -264,8 +285,14 @@ mode_log() {
 dir=/root/lampac/module/OnlineENG/VidCore
 if [ -d "$dir" ]; then ls -la "$dir"; else echo "  ✗ không có $dir"; fi
 [ -f "$dir/manifest.json" ] && { echo "  manifest:"; sed 's/^/    /' "$dir/manifest.json"; }
-echo "  cache dll đã compile:"
-ls -la /root/lampac/module/*.dll /root/lampac/cache 2>/dev/null | head -6 || echo "    (không có cache dll)"
+echo "  cache/module (Startup.cs lưu dll theo hash — có file = từng compile thành công):"
+ls -la /root/lampac/cache/module 2>/dev/null | head -8 || echo "    (không có /root/lampac/cache/module)"
+echo "  BaseModule trong 2 file cấu hình:"
+for cf in /root/lampac/base.conf /root/lampac/init.conf; do
+    [ -f "$cf" ] || continue
+    echo "    --- $cf"
+    tr -d \'\n\' < "$cf" | grep -oE "\"BaseModule\"[^}]*}" | cut -c1-260 | sed \'s/^/      /\'
+done
 LSLOG
     echo
     say "40 dòng cuối của log:"

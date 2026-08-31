@@ -61,7 +61,18 @@ public class VidCoreController : BaseENGController
         if (id <= 0)
             return OnError();
 
-        List<ResolvedStream> resolved = await Resolve(id, s, e);
+        List<ResolvedStream> resolved;
+        try
+        {
+            resolved = await Resolve(id, s, e);
+        }
+        catch (Exception ex)
+        {
+            // Không được để nổ: Lampac sẽ trả 500 rỗng và không lại dấu vết gì ở stdout.
+            Console.WriteLine($"VidCore: ex {ex.GetType().Name} {ex.Message}");
+            return OnError("resolve", 502);
+        }
+
         if (resolved == null || resolved.Count == 0)
             return OnError("stream", 502);
 
@@ -135,19 +146,20 @@ public class VidCoreController : BaseENGController
             return null;
         }
 
-        var enc = await httpHydra.Get<JObject>(
+        string encRaw = await httpHydra.Get(
             $"{api}{DecryptRouteEnc}?text={Uri.EscapeDataString(encrypted)}",
             addheaders: headers,
             statusCodeOK: false);
 
-        JToken encResult = enc?["result"] ?? enc;
-        string serversUrl = encResult?.Value<string>("servers");
-        string streamBase = encResult?.Value<string>("stream");
-        string csrf = encResult?.Value<string>("token");
+        JToken encParsed = ParseJson(encRaw);
+        JToken encResult = Unwrap(Child(encParsed, "result") ?? encParsed);
+        string serversUrl = Text(encResult, "servers");
+        string streamBase = Text(encResult, "stream");
+        string csrf = Text(encResult, "token");
 
         if (string.IsNullOrWhiteSpace(serversUrl) || string.IsNullOrWhiteSpace(streamBase))
         {
-            Console.WriteLine($"VidCore: enc-vidcore incomplete ({mediaType}:{tmdbId})");
+            Console.WriteLine($"VidCore: enc-vidcore incomplete ({mediaType}:{tmdbId}) resp={Preview(encRaw)}");
             return null;
         }
 
@@ -155,6 +167,12 @@ public class VidCoreController : BaseENGController
 
         // Danh sách server bị mã hoá: POST lấy ciphertext rồi đưa sang dec-vidcore.
         string serversCipher = await PostCipher(serversUrl, pageHeaders);
+        if (string.IsNullOrWhiteSpace(serversCipher))
+        {
+            Console.WriteLine($"VidCore: servers POST empty ({mediaType}:{tmdbId}) — thử đổi headers/apihost");
+            return null;
+        }
+
         List<JToken> servers = await DecryptList(serversCipher, api, headers);
         if (servers.Count == 0)
         {
@@ -162,36 +180,51 @@ public class VidCoreController : BaseENGController
             return null;
         }
 
+        Console.WriteLine($"VidCore: {servers.Count} servers ({mediaType}:{tmdbId})");
+
         // Mỗi server một luồng — fan-out song song, con chết không kéo cả dãy.
         async Task<ResolvedStream> FetchServer(JToken server)
         {
-            if (server is not JObject serverObj)
+            string name = Text(server, "name");
+
+            try
+            {
+                string data = Text(server, "data", "id", "cid");
+                if (string.IsNullOrWhiteSpace(data))
+                {
+                    Console.WriteLine($"VidCore: {Show(name)} no data field");
+                    return null;
+                }
+
+                string streamCipher = await PostCipher($"{streamBase}/{data}", pageHeaders);
+                if (string.IsNullOrWhiteSpace(streamCipher))
+                {
+                    Console.WriteLine($"VidCore: {Show(name)} stream payload empty");
+                    return null;
+                }
+
+                string decRaw = await httpHydra.Post(
+                    $"{api}{DecryptRouteDec}",
+                    JsonConvert.SerializeObject(new { text = streamCipher }),
+                    addheaders: headers,
+                    statusCodeOK: false);
+
+                string m3u8 = Pick(ParseJson(decRaw), "url", "stream_url", "file", "src");
+                if (string.IsNullOrWhiteSpace(m3u8) || !IsHttpUrl(m3u8))
+                {
+                    Console.WriteLine($"VidCore: {Show(name)} no url, dec={Preview(decRaw)}");
+                    return null;
+                }
+
+                Console.WriteLine($"VidCore: {Show(name)} ok");
+                return new ResolvedStream(m3u8, $"VidCore · {Show(name)}", pageHeaders);
+            }
+            catch (Exception ex)
+            {
+                // Một server hỏng không được kéo cả Task.WhenAll.
+                Console.WriteLine($"VidCore: {Show(name)} ex {ex.GetType().Name}");
                 return null;
-
-            string data = serverObj.Value<string>("data");
-            string name = serverObj.Value<string>("name");
-            if (string.IsNullOrWhiteSpace(data))
-                return null;
-
-            string streamCipher = await PostCipher($"{streamBase}/{data}", pageHeaders);
-            if (string.IsNullOrWhiteSpace(streamCipher))
-                return null;
-
-            var dec = await httpHydra.Post<JObject>(
-                $"{api}{DecryptRouteDec}",
-                JsonConvert.SerializeObject(new { text = streamCipher }),
-                addheaders: headers,
-                statusCodeOK: false);
-
-            JToken result = Unwrap(dec?["result"] ?? dec);
-            if (result is not JObject streamObj)
-                return null;
-
-            string m3u8 = streamObj.Value<string>("url") ?? streamObj.Value<string>("stream_url");
-            if (string.IsNullOrWhiteSpace(m3u8) || !IsHttpUrl(m3u8))
-                return null;
-
-            return new ResolvedStream(m3u8, $"VidCore · {(string.IsNullOrWhiteSpace(name) ? "server" : name)}", pageHeaders);
+            }
         }
 
         var answered = await Task.WhenAll(servers.Select(server => FetchServer(server)));
@@ -301,13 +334,13 @@ public class VidCoreController : BaseENGController
         if (string.IsNullOrWhiteSpace(cipher))
             return list;
 
-        var dec = await httpHydra.Post<JObject>(
+        string decRaw = await httpHydra.Post(
             $"{api}{DecryptRouteDec}",
             JsonConvert.SerializeObject(new { text = cipher }),
             addheaders: headers,
             statusCodeOK: false);
 
-        JToken result = Unwrap(dec?["result"] ?? dec);
+        JToken result = Unwrap(Child(ParseJson(decRaw), "result"));
         if (result is JArray arr)
         {
             list.AddRange(arr.Children());
@@ -322,6 +355,87 @@ public class VidCoreController : BaseENGController
 
         return list;
     }
+
+    #region json-safe helpers
+    /// <summary>
+    /// Lampac parse JSON hộ bằng Newtonsoft theo kiểu mạnh (Get&lt;JObject&gt;), nên chỉ cần
+    /// enc-dec trả về mảng/chuỗi thay vì object là request nổ 500 rỗng, không để lại
+    /// dấu vết. Vì vậy module đọc text thô rồi tự parse ở đây, mọi bước đều trả null an toàn.
+    /// </summary>
+    static JToken ParseJson(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return null;
+
+        try
+        {
+            return JToken.Parse(raw);
+        }
+        catch (JsonReaderException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Lấy token con mà không nổ khi token đang là mảng/chuỗi.</summary>
+    static JToken Child(JToken token, string name)
+        => token is JObject obj ? obj[name] : null;
+
+    /// <summary>Chuỗi ở key đầu tiên có thật; bỏ qua object/array để tránh InvalidCastException.</summary>
+    static string Text(JToken token, params string[] keys)
+    {
+        if (token is not JObject obj)
+            return null;
+
+        foreach (string key in keys)
+            if (obj[key] is JValue value && value.Value is string str && !string.IsNullOrWhiteSpace(str))
+                return str;
+
+        return null;
+    }
+
+    /// <summary>
+    /// URL stream có thể nằm ở result.url / result.stream_url / hoặc result là chính chuỗi URL.
+    /// Quét thêm một lớp mảng để không mất cả dãy chỉ vì khác shape.
+    /// </summary>
+    static string Pick(JToken decrypted, params string[] keys)
+    {
+        JToken node = Unwrap(Child(decrypted, "result") ?? decrypted);
+        if (node == null)
+            return null;
+
+        string url = Text(node, keys);
+        if (!string.IsNullOrWhiteSpace(url))
+            return url;
+
+        if (node is JValue value && value.Value is string text)
+            return text.Trim().Trim('"');
+
+        if (node is JArray arr)
+        {
+            foreach (JToken item in arr)
+            {
+                url = Text(item, keys);
+                if (!string.IsNullOrWhiteSpace(url))
+                    return url;
+            }
+        }
+
+        return null;
+    }
+
+    static string Preview(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return "<empty>";
+
+        raw = raw.Replace('\r', ' ').Replace('\n', ' ');
+        return raw.Length <= 180 ? raw : raw[..180] + "...";
+    }
+
+    static string Show(string name)
+        => string.IsNullOrWhiteSpace(name) ? "server" : name;
+    #endregion
 
     static bool IsHttpUrl(string uri) =>
         !string.IsNullOrWhiteSpace(uri) && Uri.TryCreate(uri, UriKind.Absolute, out Uri u) && (u.Scheme == Uri.UriSchemeHttp || u.Scheme == Uri.UriSchemeHttps);
