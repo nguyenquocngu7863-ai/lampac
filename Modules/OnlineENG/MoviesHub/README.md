@@ -93,6 +93,8 @@ Referer theo đúng origin đó. Đặt một host cố định = 403 cho các m
 | `…: 302 của downloadfile -> …mkv` | cửa số 4 ăn: link thô đã thành link chơi được |
 | `…: dựng link từ <title>: …` | cửa số 5 ăn: HubCloud không trả 302 cho `downloadfile=true` |
 | `moviesdrive: 0 link file-host (… hits=1)` | tìm được bài nhưng không có anchor nào ra file-host ⇒ xem `hosts=` ở dòng ngay dưới |
+| `…: trang trung gian <mdrive…> -> <hubcloud…>` | nhánh (m) ăn: đã lấy được link thật từ trang rút gọn |
+| `…: có N anchor nhưng không có link HubCloud/GDFlix \| hosts=…` | MoviesDrive đổi chỗ chứa link → gửi em dòng `hosts=` |
 | `movieshub: blocked (enable=False…)` | bị chặn cấu hình (không phải lỗi resolver) |
 | `movieshub: tmdb meta fail` | TMDB/cub không trả metadata → không có tên để tìm Movies4U |
 
@@ -150,6 +152,20 @@ Về **tìm link trên trang nguồn**: không được giả định cấu trú
 `<h5><a>` làm MoviesDrive trả 0 link). Mọi regex ở `HubController` dùng `AnchorPattern` /
 `HrefPattern` / `DivOpenPattern`, chấp nhận `href="x"`, `href='x'` và `href=x`; `.NET` đọc
 giá trị qua `HrefValue(m)` (ba nhóm `d`/`s`/`n`, không dùng trùng tên nhóm).
+
+## Bẫy riêng của họ (đã có trong code, đừng bỏ)
+
+- **TLD `.mov` không phải file video.** Regex media từng chỉ đòi chuỗi kết thúc bằng `.mkv|.mov|…`
+  nên `https://moviesdrives.mov` (domain chính của MoviesDrive) bị nhận là link chơi được — đúng
+  cái log `moviesdrive: play https://moviesdrives.mov`. Mọi pattern media phải có `/` trước tên
+  file, `IsMediaPath` siết `^https?://[^/]+/.+\.ext$`, và `Anchors` bỏ link trơ về homepage.
+- **`mdrive.lol` là trang rút gọn, không phải file-host** (bước `extractMdrive()` của CSX): nút
+  chất lượng trong bài MoviesDrive trỏ sang đó, bên trong mới có link HubCloud/GDFlix. `ResolveHub`
+  có nhánh (m): thử 302 bằng `Http.GetLocation` (rẻ) rồi đọc trang, lọc `Links()` lấy
+  HubCloud/GDFlix/file, đệ quy `ResolveHub(depth + 1)` tối đa 3 link.
+- **Dung lượng không nằm trong text của nút.** `WidenLabel()` lấy text anchor, nếu chưa có
+  `\d+(\.\d+)?\s*(KB|MB|GB|TB)` thì mò 200 ký tự trước / 600 sau anchor — size thường đứng ở
+  `<span>` cạnh nút. Dùng cho `Anchors()`, `Links()`, `DivBlocks()`, không tốn thêm request nào.
 
 ## Bẫy đã né sẵn (đều là bài học từ VidCore, đọc trước khi sửa)
 
