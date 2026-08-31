@@ -47,8 +47,8 @@ public static class ConfigSectionGroups
         new("src-eng", "Nguồn · ENG (10 nguồn gốc)", "Nhóm embed tiếng Anh theo bản gốc: đủ 10 nguồn (Videasy/VidSrc là bản fix riêng). Phần lớn chạy bằng embed/Playwright; cần disableEng: false để hiện trong Lampa.",
             new[] { "Autoembed", "Hydraflix", "MovPI", "Playembed", "Rgshows", "Smashystream", "Twoembed", "VidLink", "Videasy", "Vidsrc" }),
 
-        new("src-http-bridge", "Nguồn · HTTP / Stremio (tùy biến)", "Các nguồn tự viết, chạy không cần Playwright: Stremio bridge (AIOStreams, Sootio, WebStreamr) và VidCore (embed 4K, giải mã qua apihost).",
-            new[] { "AIOStreams", "Sootio", "WebStreamr", "VidCore" }),
+        new("src-http-bridge", "Nguồn · HTTP / Stremio (tùy biến)", "Các nguồn tự viết, chạy không cần Playwright: Stremio bridge (AIOStreams, Sootio, WebStreamr), VidCore (embed 4K, giải mã qua apihost) và MoviesDrive/Movies4U (link HubCloud/Google Drive — chung một resolver, riêng một cấu hình).",
+            new[] { "AIOStreams", "Sootio", "WebStreamr", "VidCore", "MoviesDrive", "Movies4U" }),
 
         new("src-rus", "Nguồn · Nga và CIS", "Nguồn VOD/CDN Nga; Mirage và Phantom nằm ở nhóm cần trình duyệt.",
             new[]

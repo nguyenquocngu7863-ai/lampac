@@ -21,7 +21,7 @@ public class MoviesDriveController : HubController
 {
     const string Source = "moviesdrive";
 
-    public MoviesDriveController() : base(ModInit.conf)
+    public MoviesDriveController() : base(ModInit.drive)   // config section riêng: "MoviesDrive"
     {
     }
 

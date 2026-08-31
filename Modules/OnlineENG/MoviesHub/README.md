@@ -6,6 +6,7 @@ Resolver đặt trong `HubController` — `MoviesDriveController`/`Movies4UContr
 loại phần "tìm link trên trang của họ".
 
 - **Không Playwright, không enc-dec.** Regex + redirect thuần HTTP.
+- Một assembly để chia sẻ resolver, **hai config section** để tắt/bật và đổi domain độc lập.
 - **Chưa chạy trên thiết bị** — đây là vòng test đầu, nên mọi bước đều in log có số đếm
   (`N bài ứng viên`, `N link file-host`, `N/M link giải được`) để một lần chạy là đủ
   kết luận, không phải đoán.
@@ -40,16 +41,24 @@ URL media trần (`.mkv/.mp4/.m3u8`…) → `/drive/download/<id>/<tên>` → Go
 
 ## Config (init.conf)
 
+Mỗi nguồn là **một config section riêng** (cùng assembly chỉ để dùng chung resolver):
+
 ```jsonc
-"MoviesHub": {
-  "enable": true,                       // mặc định true ngay trong ModInit; tắt = 403 im lặng
-  "enabled": true,                      // hiện trong danh sách Online khi disableEng:true
-  "host": "https://new3.moviesdrive.christmas",  // MoviesDrive (domain xoay vòng)
-  "apihost": "https://new5.movies4u.clinic",     // Movies4U
-  "httptimeout": 30,
-  "streamproxy": true
+"MoviesDrive": {
+  "enable": true,                        // mặc định true trong ModInit; tắt = 403 im lặng
+  "enabled": true,                       // có hiện trong Online khi disableEng:true
+  "host": "https://new3.moviesdrive.christmas",   // domain xoay vòng -> đổi ở đây
+  "httptimeout": 30, "streamproxy": true, "displayindex": 1017
+},
+"Movies4U": {
+  "enable": true, "enabled": true,
+  "host": "https://new5.movies4u.clinic",
+  "httptimeout": 30, "streamproxy": true, "displayindex": 1018
 }
 ```
+
+Cả hai xuất hiện trong Admin Panel ở nhóm *Nguồn · HTTP / Stremio (tùy biến)*
+(`Modules/AdminPanel/ConfigSectionGroups.cs`).
 
 Referer **không** đặt tĩnh trong `headers_stream`: link cuối thuộc mirror nào của
 `hubcloud.*` (hoặc `drive.usercontent.google.com`) thì `HubController.StreamHeaders` gắn

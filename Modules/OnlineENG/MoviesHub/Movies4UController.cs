@@ -25,14 +25,14 @@ public class Movies4UController : HubController
 {
     const string Source = "movies4u";
 
-    public Movies4UController() : base(ModInit.conf)
+    public Movies4UController() : base(ModInit.fouru)      // config section riêng: "Movies4U"
     {
     }
 
     List<HeadersModel> SiteHeaders()
         => HeadersModel.Init(
-            ("Cookie", "xla=s4t"),
-            ("Referer", init.apihost.TrimEnd('/') + "/"));
+            ("Cookie", "xla=s4t"),          // thiếu cookie là site chặn, theo CSX
+            ("Referer", init.host.TrimEnd('/') + "/"));
 
     [HttpGet, Staticache(manually: true)]
     [Route("lite/movies4u")]
@@ -54,7 +54,7 @@ public class Movies4UController : HubController
 
     protected override async Task<List<(string Label, string Url)>> FindLinks(string source, string imdbId, long tmdbId, short season, short episode)
     {
-        string site = (string.IsNullOrWhiteSpace(init.apihost) ? "https://new5.movies4u.clinic" : init.apihost).TrimEnd('/');
+        string site = init.host.TrimEnd('/');   // host của riêng Movies4U, không mượn apihost
         string imdb = imdbId?.Trim();
         bool tv = season > 0;
 
