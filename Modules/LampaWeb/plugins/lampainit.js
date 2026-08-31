@@ -154,9 +154,81 @@
   function rewriteTmdbLangUrl(url) {
     if (typeof url !== 'string') return url;
     if (!/tmdb|themoviedb|apitmdb|tmapi/i.test(url)) return url;
-    return url
+    url = url
       .replace(/([?&]language=)vi(?:[-_][A-Za-z]+)?(?=&|$)/ig, '$1en')
       .replace(/([?&]include_image_language=)[^&]*/ig, '$1en%2Cnull');
+    if (/append_to_response=[^&]*images/i.test(url) && !/include_image_language=/i.test(url))
+      url += (url.indexOf('?') >= 0 ? '&' : '?') + 'include_image_language=en%2Cnull';
+    return url;
+  }
+
+  function uiIsVietnamese() {
+    return window.Lampa && Lampa.Storage && Lampa.Storage.get('language', 'ru') === 'vi';
+  }
+
+  function hasVietnameseText(value) {
+    return /[àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]/i.test(String(value || ''));
+  }
+
+  function pickEnglishLogo(logos) {
+    if (!logos || !logos.length) return null;
+    var fallback = null;
+    for (var i = 0; i < logos.length; i++) {
+      var code = String(logos[i] && logos[i].iso_639_1 || '').toLowerCase().split(/[-_]/)[0];
+      if (code === 'en' && logos[i].file_path) return logos[i];
+      if (!code && logos[i] && logos[i].file_path && !fallback) fallback = logos[i];
+    }
+    return fallback;
+  }
+
+  function filterEnglishLogos(logos) {
+    if (!logos || !logos.length) return logos;
+    var kept = logos.filter(function (logo) {
+      var code = String(logo && logo.iso_639_1 || '').toLowerCase().split(/[-_]/)[0];
+      return !code || code === 'en';
+    });
+    return kept.length ? kept : logos.filter(function (logo) {
+      var code = String(logo && logo.iso_639_1 || '').toLowerCase().split(/[-_]/)[0];
+      return code !== 'vi';
+    });
+  }
+
+  function sanitizeTmdbPayload(data) {
+    if (!uiIsVietnamese() || !data || typeof data !== 'object') return data;
+    if (data.movie && data.movie !== data) sanitizeTmdbPayload(data.movie);
+    if (hasVietnameseText(data.title) && data.original_title) data.title = data.original_title;
+    if (hasVietnameseText(data.name) && data.original_name) data.name = data.original_name;
+    if (data.images && Array.isArray(data.images.logos))
+      data.images.logos = filterEnglishLogos(data.images.logos);
+    return data;
+  }
+
+  function applyEnglishCardTitle(e) {
+    if (!uiIsVietnamese() || !e) return;
+    var movie = e.data && (e.data.movie || e.data);
+    var root = e.body;
+    if (!root || !root.find) {
+      if (!window.$) return;
+      root = $(document);
+    }
+    var titleEl = root.find('.full-start-new__title, .full-start__title').first();
+    if (!titleEl.length) return;
+
+    var enLogo = pickEnglishLogo(movie && movie.images && movie.images.logos);
+    if (enLogo && enLogo.file_path && Lampa.TMDB && typeof Lampa.TMDB.image === 'function') {
+      var src = Lampa.TMDB.image('t/p/w500' + enLogo.file_path);
+      var img = titleEl.find('img');
+      if (img.length) {
+        if (img.attr('src') !== src) img.attr('src', src);
+        return;
+      }
+    }
+
+    var text = (titleEl.text() || '').trim();
+    if (hasVietnameseText(text)) {
+      var en = (movie && (movie.original_title || movie.original_name || movie.title)) || text;
+      if (en && en !== text) titleEl.text(en);
+    }
   }
 
   function forceEnglishTmdbStorage() {
@@ -168,10 +240,10 @@
   }
 
   function installEnglishTmdbApi() {
-    if (window.lampac_english_tmdb_api) return;
     if (!window.Lampa) return;
+    forceEnglishTmdbStorage();
 
-    if (Lampa.TMDB && typeof Lampa.TMDB.api === 'function') {
+    if (Lampa.TMDB && typeof Lampa.TMDB.api === 'function' && !window.lampac_english_tmdb_api) {
       window.lampac_english_tmdb_api = true;
       var origApi = Lampa.TMDB.api;
       Lampa.TMDB.api = function () {
@@ -184,6 +256,18 @@
       Lampa.Listener.follow('request_before', function (e) {
         if (e && e.params && e.params.url)
           e.params.url = rewriteTmdbLangUrl(e.params.url);
+      });
+      Lampa.Listener.follow('request_secuses', function (e) {
+        if (e && e.data) sanitizeTmdbPayload(e.data);
+      });
+      Lampa.Listener.follow('full', function (e) {
+        if (!e) return;
+        if (e.data) sanitizeTmdbPayload(e.data);
+        if (e.type === 'complite') {
+          applyEnglishCardTitle(e);
+          setTimeout(function () { applyEnglishCardTitle(e); }, 200);
+          setTimeout(function () { applyEnglishCardTitle(e); }, 800);
+        }
       });
     }
   }

@@ -224,21 +224,28 @@ public class CubProxyController : BaseController
             var proxy = proxyManager?.Get();
             string requri = $"{init.scheme}://{domain}/{uri}";
 
-            // UI can stay Vietnamese; TMDB catalog must be English titles/posters.
-            if (subdomain == "tmdb" && Regex.IsMatch(requri, @"[?&]language=vi(?:[-_][^&]+)?(?:&|$)", RegexOptions.IgnoreCase))
+            // UI can stay Vietnamese; TMDB titles/posters/logos must be English.
+            if (subdomain == "tmdb")
             {
-                requri = Regex.Replace(
-                    requri,
-                    @"([?&]language=)vi(?:[-_][^&]*)?",
-                    "$1en",
-                    RegexOptions.IgnoreCase
-                );
-                requri = Regex.Replace(
-                    requri,
-                    @"([?&]include_image_language=)[^&]*",
-                    "$1en,null",
-                    RegexOptions.IgnoreCase
-                );
+                if (Regex.IsMatch(requri, @"[?&]language=vi(?:[-_][^&]+)?(?:&|$)", RegexOptions.IgnoreCase))
+                {
+                    requri = Regex.Replace(
+                        requri,
+                        @"([?&]language=)vi(?:[-_][^&]*)?",
+                        "$1en",
+                        RegexOptions.IgnoreCase
+                    );
+                }
+
+                if (Regex.IsMatch(requri, @"[?&]include_image_language=[^&]*vi", RegexOptions.IgnoreCase))
+                {
+                    requri = Regex.Replace(
+                        requri,
+                        @"([?&]include_image_language=)[^&]*",
+                        "$1en,null",
+                        RegexOptions.IgnoreCase
+                    );
+                }
             }
 
             if (HttpContext.Request.Headers.ContainsKey("token") || HttpContext.Request.Headers.ContainsKey("profile"))

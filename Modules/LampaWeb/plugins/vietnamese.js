@@ -284,21 +284,25 @@
 
   function originalLogoUrl(url) {
     if (typeof url !== 'string') return url;
-    if (url.indexOf('language=') < 0 && url.indexOf('include_image_language=') < 0) return url;
     if (!/tmdb|themoviedb|\/cub\/|apitmdb|tmapi/i.test(url)) return url;
 
-    // Force English TMDB titles AND posters. language=vi makes TMDB return
-    // localized poster_path (e.g. "Người Nhện") even when the UI is Vietnamese.
-    return url
+    // Force English TMDB titles, posters AND logos. CUB still returns vi logos
+    // when include_image_language lists vi, even if language=en.
+    url = url
       .replace(/([?&]language=)vi(?:[-_][A-Za-z]+)?(?=&|$)/ig, '$1en')
       .replace(/([?&]include_image_language=)[^&]*/ig, '$1en%2Cnull');
+    if (/append_to_response=[^&]*images/i.test(url) && !/include_image_language=/i.test(url))
+      url += (url.indexOf('?') >= 0 ? '&' : '?') + 'include_image_language=en%2Cnull';
+    return url;
   }
 
   function sanitizeTmdbLogos(data) {
-    if (!useVietnameseTmdb() || !data || typeof data !== 'object' || !data.images || !Array.isArray(data.images.logos)) return data;
+    if (!data || typeof data !== 'object') return data;
+    if (data.movie && data.movie !== data) sanitizeTmdbLogos(data.movie);
+    if (!data.images || !Array.isArray(data.images.logos)) return data;
 
-    // Cached CUB/TMDB responses may still contain vi logos even after the URL
-    // policy changes. Remove them at the response boundary as well.
+    // Lampa picks the title logo by UI language (vi), not tmdb_lang. Drop vi
+    // logos so the card falls back to the English treatment.
     data.images.logos = data.images.logos.filter(function (logo) {
       var code = String(logo && logo.iso_639_1 || '').toLowerCase().split(/[-_]/)[0];
       return !code || code === 'en';
@@ -336,6 +340,16 @@
         arguments[1] = originalLogoUrl(String(url || ''));
         return originalOpen.apply(this, arguments);
       };
+    }
+
+    if (window.Lampa && Lampa.Listener && !window.lampac_vietnamese_tmdb_secuses) {
+      window.lampac_vietnamese_tmdb_secuses = true;
+      Lampa.Listener.follow('request_secuses', function (e) {
+        if (e && e.data) sanitizeTmdbLogos(e.data);
+      });
+      Lampa.Listener.follow('full', function (e) {
+        if (e && e.data) sanitizeTmdbLogos(e.data);
+      });
     }
   }
 
