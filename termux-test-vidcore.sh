@@ -8,6 +8,7 @@
 #   chain      chỉ dò 5 bước API (không đụng file, không restart Lampac)
 #   install    chép Controller.cs + ModInit.cs + manifest.json vào module, có backup
 #   serve      bật Lampac tách tiến trình + gọi thẳng route video + in log
+#   log        in nguyên khối "compilation error" + mọi dòng VidCore + tình trạng file module
 #   rollback   khôi phục bản backup gần nhất
 #   all        chain → install → serve
 #
@@ -218,7 +219,11 @@ PORTSH
     echo
     say "Route:  /lite/$MODULE_ROUTE"
     code=$(curl -s -o /dev/null -w '%{http_code}' -m 30 "http://127.0.0.1:$PORT/lite/$MODULE_ROUTE?tmdb_id=$TMDB&rjson=1")
-    echo "    HTTP $code  (200/302 = route đã nạp, 404 = module chưa vào → xem lỗi compile dưới)"
+    ghost=$(curl -s -o /dev/null -w '%{http_code}' -m 30 "http://127.0.0.1:$PORT/lite/$MODULE_ROUTE_khongcoayroute?tmdb_id=$TMDB")
+    echo "    HTTP $code   (route ma trả $ghost — hai mã GIỐNG NHAU nghĩa là route chưa đăng ký, không phải module chạy OK)"
+    if [ "$code" = "$ghost" ]; then
+        no "route /lite/$MODULE_ROUTE không tồn tại → module chưa được nạp. Xem khối 'compilation error' bên dưới."
+    fi
 
     echo
     say "Resolve: /lite/$MODULE_ROUTE/video?id=$TMDB"
@@ -232,12 +237,12 @@ PORTSH
 
     echo
     say "Lỗi compile module (nếu có):"
-    if grep -nE "error CS[0-9]+" "$LOG" | grep -iE "vidcore|OnlineENG/VidCore" ; then
-        echo "    ↑ VidCore không compile được — dán các dòng này cho tôi."
-    elif grep -nE "error CS[0-9]+" "$LOG" | head -5; then
-        echo "    (có lỗi compile nhưng không rõ từ VidCore)"
+    # CSharpEval in "compilation error: <module>" rồi mới tới từng dòng `error CS…`,
+    # nên phải lấy cả khối — grep cùng dòng sẽ không bao giờ khớp tên module.
+    if grep -q "compilation error" "$LOG" 2>/dev/null; then
+        grep -n -A 24 "compilation error" "$LOG" | head -80
     else
-        echo "    (không có lỗi compile)"
+        echo "    (không có 'compilation error' trong log)"
     fi
     echo
     say "Log của module:"
@@ -247,11 +252,32 @@ PORTSH
     say "Tắt hẳn VidCore: đặt \"VidCore\": { \"enable\": false } trong init.conf (lệnh: lampac config)"
 }
 
+mode_log() {
+    say "Khối 'compilation error' (CSharpEval.cs in module name ở dòng riêng):"
+    grep -n -A 24 "compilation error" "$LOG" 2>/dev/null | head -120 || echo "    (không có)"
+    echo
+    say "Mọi dòng nhắc VidCore:"
+    grep -in "vidcore" "$LOG" 2>/dev/null | tail -25 || echo "    (không có)"
+    echo
+    say "File module trong Ubuntu:"
+    proot-distro login ubuntu -- bash -s <<'LSLOG'
+dir=/root/lampac/module/OnlineENG/VidCore
+if [ -d "$dir" ]; then ls -la "$dir"; else echo "  ✗ không có $dir"; fi
+[ -f "$dir/manifest.json" ] && { echo "  manifest:"; sed 's/^/    /' "$dir/manifest.json"; }
+echo "  cache dll đã compile:"
+ls -la /root/lampac/module/*.dll /root/lampac/cache 2>/dev/null | head -6 || echo "    (không có cache dll)"
+LSLOG
+    echo
+    say "40 dòng cuối của log:"
+    tail -n 40 "$LOG" 2>/dev/null || echo "    (không đọc được $LOG)"
+}
+
 case "$MODE" in
     chain)    mode_chain ;;
+    log)      mode_log ;;
     install)  mode_install ;;
     rollback) mode_rollback ;;
     serve)    mode_serve ;;
     all)      mode_chain; echo; mode_install && { echo; mode_serve; } ;;
-    *)        sed -n '3,20p' "$0"; exit 2 ;;
+    *)        sed -n '3,24p' "$0"; exit 2 ;;
 esac
