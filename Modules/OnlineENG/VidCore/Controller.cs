@@ -216,10 +216,16 @@ public class VidCoreController : BaseENGController
             return null;
         }
 
-        List<JToken> servers = await DecryptList(serversCipher, api, headers);
+        // Ciphertext phải là chuỗi/JSON; nếu đây là HTML thì dec-vidcore sẽ trả rỗng
+        // và ta chỉ còn "no servers" vô nghĩa — nên nói rõ ngay ở đây.
+        string probe = serversCipher.TrimStart();
+        if (probe.StartsWith('<') || probe.Contains("<html", StringComparison.OrdinalIgnoreCase))
+            Console.WriteLine($"VidCore: servers POST trả HTML, không phải ciphertext ({mediaType}:{tmdbId}) resp={Preview(serversCipher)}");
+
+        List<JToken> servers = await DecryptList(serversCipher, api, headers, "servers");
         if (servers.Count == 0)
         {
-            Console.WriteLine($"VidCore: no servers ({mediaType}:{tmdbId})");
+            Console.WriteLine($"VidCore: no servers ({mediaType}:{tmdbId}) cipher={Preview(serversCipher)}");
             return null;
         }
 
@@ -413,11 +419,10 @@ public class VidCoreController : BaseENGController
         return token;
     }
 
-    async Task<List<JToken>> DecryptList(string cipher, string api, List<HeadersModel> headers)
+    async Task<List<JToken>> DecryptList(string cipher, string api, List<HeadersModel> headers, string what)
     {
-        var list = new List<JToken>();
         if (string.IsNullOrWhiteSpace(cipher))
-            return list;
+            return [];
 
         string decRaw = await httpHydra.Post(
             $"{api}{DecryptRouteDec}",
@@ -425,17 +430,69 @@ public class VidCoreController : BaseENGController
             addheaders: headers,
             statusCodeOK: false);
 
-        JToken result = Unwrap(Child(ParseJson(decRaw), "result"));
-        if (result is JArray arr)
+        List<JToken> list = ExtractList(ParseJson(decRaw));
+
+        if (list.Count == 0)
+            Console.WriteLine($"VidCore: {what} dec rỗng, resp={Preview(decRaw)}");
+
+        return list;
+    }
+
+    /// <summary>
+    /// dec-vidcore đổi shape giữa các build: `{"result":[...]}`, `[...]` ở gốc,
+    /// `{"result":"<json dạng chuỗi>"}`, `{"result":{"servers":[...]}}`, và có khi
+    /// `{"result":{"0":{...},"1":{...}}}`. Đổ hết về một List ở đây, thay vì chỉ nhận
+    /// đúng một hình rồi báo "no servers" giả như trước.
+    /// </summary>
+    static List<JToken> ExtractList(JToken root, int depth = 0)
+    {
+        var list = new List<JToken>();
+        if (root == null || depth > 3)
+            return list;
+
+        root = Unwrap(root);
+
+        if (root is JArray arr)
         {
-            list.AddRange(arr.Children());
+            foreach (JToken item in arr)
+                list.Add(Unwrap(item) ?? item);
+
+            return list;
         }
-        else if (result is JObject obj)
+
+        if (root is JObject obj)
         {
-            if (obj["servers"] is JArray inner)
-                list.AddRange(inner.Children());
-            else
-                list.Add(obj);
+            // object rỗng hoặc lỗi -> không có gì
+            if (!obj.HasValues)
+                return list;
+
+            if (obj["result"] is JToken inner && inner.Type != JTokenType.Null)
+                return ExtractList(inner, depth + 1);
+
+            if (obj["servers"] is JToken servers && servers.Type != JTokenType.Null)
+                return ExtractList(servers, depth + 1);
+
+            // { "0": {...}, "1": {...} }
+            var children = obj.Properties()
+                .Where(p => p.Value is JObject || p.Value is JArray)
+                .Select(p => p.Value)
+                .ToList();
+
+            if (children.Count > 1 && obj["url"] == null && obj["name"] == null)
+            {
+                foreach (JToken child in children)
+                    list.AddRange(ExtractList(child, depth + 1));
+
+                return list;
+            }
+
+            // `{"error":"..."}` / token hết hạn: coi như không có gì để log line
+            // "dec rỗng, resp=…" in ra nguyên văn, thay vì trả một object rác.
+            if (obj["error"] != null)
+                return list;
+
+            list.Add(obj);
+            return list;
         }
 
         return list;
