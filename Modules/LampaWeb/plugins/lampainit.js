@@ -175,17 +175,6 @@
     return /[àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]/i.test(String(value || ''));
   }
 
-  function pickEnglishLogo(logos) {
-    if (!logos || !logos.length) return null;
-    var fallback = null;
-    for (var i = 0; i < logos.length; i++) {
-      var code = String(logos[i] && logos[i].iso_639_1 || '').toLowerCase().split(/[-_]/)[0];
-      if (code === 'en' && logos[i].file_path) return logos[i];
-      if (!code && logos[i] && logos[i].file_path && !fallback) fallback = logos[i];
-    }
-    return fallback;
-  }
-
   function filterEnglishLogos(logos) {
     if (!logos || !logos.length) return logos;
     var kept = logos.filter(function (logo) {
@@ -221,22 +210,8 @@
     }
     var titleEl = root.find('.full-start-new__title, .full-start__title').first();
     if (!titleEl.length) return;
-
-    var logos = (movie && movie.images && movie.images.logos) || (movie && movie.logos);
-    var enLogo = pickEnglishLogo(logos);
-    if (enLogo && enLogo.file_path && Lampa.TMDB && typeof Lampa.TMDB.image === 'function') {
-      var path = String(enLogo.file_path).replace(/\.svg$/i, '.png');
-      var src = Lampa.TMDB.image('t/p/w500' + path);
-      var img = titleEl.find('img');
-      if (img.length) {
-        if (img.attr('src') !== src) img.attr('src', src);
-      } else {
-        // Logo plugins only insert <img> when /images?language=vi has logos[0].
-        // Movies without a Vietnamese treatment never get a node to overlay.
-        titleEl.html('<img src="' + src + '" alt="" />');
-      }
-      return;
-    }
+    // Logo plugin owns this node. Do not insert or resize <img>.
+    if (titleEl.find('img').length) return;
 
     var text = (titleEl.text() || '').trim();
     if (hasVietnameseText(text)) {
