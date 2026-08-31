@@ -7,8 +7,6 @@ using Shared.Models.Templates;
 using Shared.Services;
 using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Security.Cryptography;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -50,36 +48,17 @@ public abstract class HubController : BaseENGController
         => Regex.IsMatch($"{label} {url}", @"(?i)\.mp4\b") ? "file.mp4" : "file.mkv";
 
     /// <summary>
-    /// md5 của dll đang chạy, in ra MỌI log collection/play. Lý do: có lần thiết bị compile bản
-    /// cũ (raw.githubusercontent phục vụ cache vài phút sau push) nên log của anh và code của em
-    /// không khớp nhau, mất một vòng debug. Muốn tự kiểm:
-    ///   md5sum /root/lampac/module/OnlineENG/MoviesHub/MoviesHub.dll | head -c 8
-    /// phải ra đúng số trong log.
+    /// Marker của bản build, in vào MỌI log collection/play. Lampac compile module bằng Roslyn
+    /// TRONG BỘ NHỚ (Core/Startup.cs -> Shared/Services/CSharpEval.cs) nên không có dll trên đĩa mà
+    /// hash, phải đánh tay: mỗi commit sửa MoviesHub là đổi chuỗi này (luật trong README). Log ra
+    /// marker khác = máy đang compile bản cũ -> dừng việc sửa code, kéo lại từ commit đó.
     /// </summary>
-    static readonly string Build = ComputeBuild();
-
-    static string ComputeBuild()
-    {
-        try
-        {
-            string path = typeof(HubController).Assembly.Location;
-
-            if (string.IsNullOrEmpty(path) || !File.Exists(path))
-                return "?";
-
-            return Convert.ToHexString(MD5.HashData(File.ReadAllBytes(path)))[..8].ToLowerInvariant();
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"movieshub: không đọc được dll để lấy build marker: {ex.GetType().Name} {ex.Message}");
-            return "?";
-        }
-    }
+    protected const string Build = "v14-json-direct";
 
     /// <summary>
     /// Host mà module này không thể tự chơi: gdflix/gdlink/go2link bị Cloudflare js challenge,
     /// không Playwright trên Android là chết. Mỗi nút kiểu đó = 6 dòng log vô ích, nên xoá khỏi
-    /// menu (yêu cầu của người dùng) thay vì để họ bấm rồi đoán. Lọc 2ชั้น: nguồn + CollectionCore.
+    /// menu (yêu cầu của người dùng) thay vì để họ bấm rồi đoán. Lọc ở 2 lớp: nguồn + CollectionCore.
     /// </summary>
     protected static bool DeadHost(string url)
         => Regex.IsMatch(url ?? "", @"(?i)gdflix|gdlink|go2link");
@@ -251,7 +230,7 @@ public abstract class HubController : BaseENGController
         // cắt Range không cần thiết. Proxy chỉ còn cho host BẮT BUỘC header lạ — xem PlayUrl.
         string direct = NormalizeUrl(first.Url);
 
-        Console.WriteLine($"{Log(source)} play {Cut(direct)} ({(s > 0 ? $"S{s}E{e} · " : "")}{label}) build={Build}");
+        Console.WriteLine($"{Log(source)} play {Cut(direct)} [{(init.streamproxy ? "proxy" : "direct")}] ({(s > 0 ? $"S{s}E{e} · " : "")}{label}) build={Build}");
 
         if (play)
             return RedirectToPlay(PlayUrl(first, direct));

@@ -108,7 +108,8 @@ Referer theo đúng origin đó. Đặt một host cố định = 403 cho các m
 | `moviesdrive: search 0 kết quả (q=tt…)` | IMDb id không có trong DB (phim mới/hiếm) |
 | `moviesdrive: N link file-host` rồi `0/N link giải được` | HubCloud đổi markup → xem `head=` in ra |
 | `movies4u: không có download-links-div … (a=123)` | selector sai, nhưng `a=` cho biết trang có bao nhiêu link |
-| `… collection (tmdb=…, build=<8 hex>)` | `build` = md5 dll đang chạy. So với `md5sum /root/lampac/module/OnlineENG/MoviesHub/MoviesHub.dll \| head -c 8`; lệch nhau nghĩa là máy đang compile bản **cũ** — đừng sửa code tiếp, kéo lại từ commit |
+| `… build=<marker>` | marker bản build (`Build` trong HubController). Lampac compile module bằng Roslyn trong bộ nhớ nên không có dll trên đĩa để so — thấy marker trong log **khác** với bản vừa kéo là máy đang compile bản CŨ: `lampac stop`, xoá cache build của module (`rm -rf /root/lampac/module/OnlineENG/MoviesHub/obj /root/lampac/module/OnlineENG/MoviesHub/bin /root/lampac/module/OnlineENG/MoviesHub/*.dll` — không có cũng không sao), `lampac start` rồi mở lại phim |
+| `moviesdrive: play … [direct]` / `[proxy]` | `[direct]` = phát thẳng link extractor (mặc định). `[proxy]` = link đang đi qua `/proxy/{token}` vì init.conf bật `streamproxy` cho section đó — path sẽ mất `.mkv` nên GStreamer không bật |
 | `movieshub: bỏ N nút gdflix/gdlink/go2link khỏi menu` | nguồn vẫn trả link chết, CollectionCore chặn ở cổ chai cuối |
 | `movies4u: nhãn thiếu chất lượng: 'hubcloud.cx' (heading='' nút='…')` | heading khối không bắt được ⇒ selector `download-links-div`/`downloads-btns-div` đã đổi; xem `classes=` ở dòng ngay trên để biết site dùng class gì |
 | `movies4u: 0 bài ứng viên` | **WP `?s=` không index href**, nên không bao giờ tìm được bằng IMDb id — module đã chuyển sang tìm tên+năm (qua TMDB); nếu vẫn 0 thì domain đổi hoặc bài không tồn tại |
@@ -211,6 +212,9 @@ giá trị qua `HrefValue(m)` (ba nhóm `d`/`s`/`n`, không dùng trùng tên nh
   ```bash
   python3 -c 'F="<file.cs>"; s=open(F).read(); print("control chars ở dòng:", [i+1 for i,l in enumerate(s.split(chr(10))) if any(ord(c)<9 for c in l)])'
   ```
+- **Mỗi commit sửa MoviesHub phải bump `Build` trong HubController.cs** (hiện là `v14-json-direct`)
+  và viết marker mới vào message commit. Đây là cách duy nhất để log tự chứng minh máy anh đang chạy
+  bản nào, vì module không để dll lại trên đĩa.
 
 - Không đổi `method:"call"` sang trả 302; không bọc link đã resolve vào `HostStreamProxy` rồi đưa
   cho player (xem `## Phát qua GStreamer`).
