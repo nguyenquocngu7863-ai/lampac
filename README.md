@@ -838,6 +838,15 @@ lampac vidcore 155          # tmdb / movie
 lampac vidcore 2389 1 1     # series: tmdb season episode
 ```
 
+Nếu Lampa báo "Nguồn (vidcore) không trả về kết quả" mà Lampac **không có log nào**, kiểm tra
+nhanh route có bị redirect không (5 giây, khỏi đọc log):
+
+```bash
+proot-distro login ubuntu -- bash -lc 'curl -s -o /dev/null -w "%{http_code} %{redirect_url}\n" "http://127.0.0.1:9000/lite/vidcore?id=155"'
+```
+
+`200 ` = route chạy. `302 https://vidcore.io/...` = `overridehosts` bị set (xem
+`Modules/OnlineENG/VidCore/README.md` — mục "Bẫy đã gặp").
 Nếu `--sync-all` không chép tới nơi (khối `install_custom_modules()` chạy với
 `set -euo pipefail`, nên **một file 404 là dừng cả hàm** — lỗi có từ trước, không riêng VidCore),
 chép tay 3 file theo mẫu "Curl một file thẳng vào Ubuntu":
