@@ -234,7 +234,7 @@ public abstract class HubController : BaseENGController
         // drive link nằm ngay trong trang (nhiều bài nhét gdrive ở nút thứ hai)
         found.AddRange(FromGoogleDrive(html, label));
 
-        foreach (Match m in Regex.Matches(html, @"https?://[^""'\s<>]+?\.(?:mkv|mp4|m4v|mov|avi|mkv\.js|ts|m3u8)(?:\?[^""'\s<>]*)?", RegexOptions.IgnoreCase))
+        foreach (Match m in Regex.Matches(html, @"https?://[^""'\s<>]+?/[^""'\s<>/?]*\.(?:mkv|mp4|m4v|mov|avi|mkv\.js|ts|m3u8)(?:\?[^""'\s<>]*)?", RegexOptions.IgnoreCase))
         {
             string media = Unescape(m.Value);
 
@@ -305,6 +305,40 @@ public abstract class HubController : BaseENGController
             }
 
             Console.WriteLine($"{Log(source)} trang file không có link tải, <title> không có tên file, GetLocation={(loc == null ? "null" : Cut(loc))}");
+        }
+
+        // (m) MoviesDrive không đặt link HubCloud thẳng vào bài: nút chất lượng trỏ sang trang
+        //     rút gọn của họ (log: mdrive.lol), trong trang đó mới có link HubCloud/GDFlix.
+        //     CSX gọi bước này là extractMdrive(). Thử 302 trước (rẻ), rồi mới đọc trang.
+        if (depth == 0 && !IsHubHost(url) && !IsGdHost(url))
+        {
+            string via = Absolute(await Http.GetLocation(url, headers: StreamHeaders(url)), url);
+
+            if (IsPlayable(via) && via != url && (IsHubHost(via) || IsGdHost(via) || IsMediaPath(via)))
+            {
+                Console.WriteLine($"{Log(source)} trang trung gian 302 -> {Cut(via)}");
+                return await ResolveHub(source, via, label, depth + 1);
+            }
+
+            var middle = [.. Links(html).Select(x => Absolute(x.Href, url))
+                                       .Where(u => IsHubHost(u) || IsGdHost(u) || IsMediaPath(u))
+                                       .Distinct(StringComparer.OrdinalIgnoreCase)];
+
+            foreach (string hop in middle.Take(3))
+            {
+                var more = await ResolveHub(source, hop, label, depth + 1);
+
+                if (more.Count > 0)
+                {
+                    Console.WriteLine($"{Log(source)} trang trung gian {Cut(url)} -> {Cut(hop)}");
+                    return more;
+                }
+            }
+
+            if (blocked)
+                Console.WriteLine($"{Log(source)} trang trung gian {Cut(url)} không đọc được, không có link HubCloud/GDFlix");
+            else if (middle.Count == 0)
+                Console.WriteLine($"{Log(source)} trang trung gian {Cut(url)} có {Links(html).Count} anchor nhưng không có link HubCloud/GDFlix | hosts={HostHistogram(html, url)}");
         }
 
         if (depth == 0)
@@ -442,6 +476,27 @@ public abstract class HubController : BaseENGController
         }
     }
 
+    /// <summary>
+    /// Nhãn nút nguồn = text của anchor, VÀ nếu nhãn chưa có dung lượng thì mò thêm quanh anchor:
+    /// hai site này để "720p" trong text còn "[1.9GB]" ở <span> ngay cạnh nút (yêu cầu "lấy luôn
+    /// dung lượng ở phần tên link"). Chỉ quét xung quanh nên không thêm request nào.
+    /// </summary>
+    protected static string WidenLabel(string html, int anchorStart, string label)
+    {
+        if (string.IsNullOrWhiteSpace(html))
+            return label ?? "";
+
+        if (Regex.IsMatch(label ?? "", @"(?i)\d+(?:[.,]\d+)?\s*[KMGT]B"))
+            return label;
+
+        int from = Math.Max(0, anchorStart - 200);
+        int to = Math.Min(html.Length, anchorStart + 600);
+
+        var m = Regex.Match(Plain(html[from..to]), @"(?i)\d+(?:[.,]\d+)?\s*(?:KB|MB|GB|TB)");
+
+        return m.Success ? (label + " " + m.Value).Trim() : label;
+    }
+
     /// <summary>Nhãn nút nguồn: chất lượng + dung lượng + host, lấy từ text của link hoặc tên file.</summary>
     protected static string QualityLabel(string label, string hint)
     {
@@ -533,7 +588,7 @@ public abstract class HubController : BaseENGController
     protected static List<(string Href, string Text)> Links(string block, string fragment = null)
         => [.. Regex.Matches(block ?? "", AnchorPattern)
                  .Where(m => fragment == null || m.Value.Contains(fragment, StringComparison.OrdinalIgnoreCase))
-                 .Select(m => (Href: Unescape(HrefValue(m)), Text: Plain(m.Groups["t"].Value)))
+                 .Select(m => (Href: Unescape(HrefValue(m)), Text: WidenLabel(block, m.Index, Plain(m.Groups["t"].Value))))
                  .Where(x => !string.IsNullOrWhiteSpace(x.Href))];
 
     /// <summary>
@@ -768,7 +823,7 @@ public abstract class HubController : BaseENGController
         if (list.Count == 0)
         {
             // site đổi nhãn nút -> quét url file trần, thà còn link hơn là 0
-            foreach (Match m in Regex.Matches(inner, @"https?://[^\s<>""']+?\.(?:mkv|mp4|m4v|mov|avi)(?:\?[^\s<>""']+)?", RegexOptions.IgnoreCase))
+                foreach (Match m in Regex.Matches(inner, @"https?://[^""'\s<>]+?/[^""'\s<>/?]*\.(?:mkv|mp4|m4v|mov|avi)(?:\?[^""'\s<>]*)?", RegexOptions.IgnoreCase))
                 list.Add(new HubStream(Unescape(m.Value), QualityLabel(hint, m.Value), StreamHeaders(page)));
         }
 
@@ -859,7 +914,7 @@ public abstract class HubController : BaseENGController
         }
 
         if (list.Count == 0)
-            foreach (Match m in Regex.Matches(html, @"https?://[^\s<>""']+?\.(?:mkv|mp4|m4v|mov|avi)(?:\?[^\s<>""']+)?", RegexOptions.IgnoreCase))
+                foreach (Match m in Regex.Matches(html, @"https?://[^""'\s<>]+?/[^""'\s<>/?]*\.(?:mkv|mp4|m4v|mov|avi)(?:\?[^""'\s<>]*)?", RegexOptions.IgnoreCase))
                 list.Add(new HubStream(Unescape(m.Value), QualityLabel(hint, m.Value), StreamHeaders(url)));
 
         if (list.Count == 0)
@@ -929,6 +984,12 @@ public abstract class HubController : BaseENGController
             if (onlyFileHost && !LooksLikeFileHost(url) && !LooksLikeQualityLink(url, label, baseUrl))
                 continue;
 
+            // link trơ trọi về homepage (https://moviesdrives.mov) từng bị nhận là link .mov
+            if (onlyFileHost && Uri.TryCreate(url, UriKind.Absolute, out Uri bare) && bare.AbsolutePath.Trim('/').Length == 0)
+                continue;
+
+            label = WidenLabel(html, m.Index, label);
+
             result.Add((string.IsNullOrWhiteSpace(label) ? "link" : label, url, m.Index));
 
             if (result.Count >= max)
@@ -957,7 +1018,7 @@ public abstract class HubController : BaseENGController
             string inner = html[start..end];
 
             var links = Regex.Matches(inner, AnchorPattern)
-                             .Select(m => (Label: Regex.Replace(m.Groups["t"].Value, @"<[^>]+>", " ").Trim(), Url: HrefValue(m)))
+                             .Select(m => (Label: WidenLabel(inner, m.Index, Plain(m.Groups["t"].Value)), Url: HrefValue(m)))
                              .Where(x => !string.IsNullOrWhiteSpace(x.Url))
                              .ToList();
 
