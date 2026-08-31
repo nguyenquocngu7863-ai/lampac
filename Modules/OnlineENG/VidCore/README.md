@@ -88,7 +88,32 @@ vào `init.conf` → xem `/root/lampac/logs/exceptionHandler.log`.
 
 ## Kiểm tra nhanh
 
-Cách gọn nhất — script `termux-test-vidcore.sh` ở gốc repo, chạy trong Termux (không cần clone):
+### Cách 1 — thẳng trong Lampac (đây là cách nên dùng hằng ngày)
+
+`lampac vidcore` do `create_launcher()` sinh ra, có sẵn sau `bash setup-termux.sh --sync-all`:
+
+```bash
+lampac vidcore                 # movie 155 (The Dark Knight)
+lampac vidcore 680             # movie khác theo TMDB id
+lampac vidcore 2389 1 1        # series: tmdb / season / episode
+```
+
+Nó in: mã HTTP của `/lite/vidcore` (kèm **route ma** để so — 2 mã bằng nhau nghĩa là module
+chưa đăng ký route), mã HTTP + 500B đầu của `/lite/vidcore/video`, rồi phân loại:
+
+| Body | Nghĩa |
+|---|---|
+| có `"host"` | ✅ ra link, mở Lampa chọn host được |
+| `{"error":"resolve"}` | exception bên trong `Resolve` — xem `VidCore: ex …` |
+| `{"error":"stream"}` | chạy hết nhưng không ra link — xem các dòng `VidCore: …` |
+| khác | thường là 500; bật `"exceptionHandlerLogTarget": "file"` trong `init.conf` để thấy `[GlobalError]` |
+
+Log chi tiết (`VidCore: 5 servers (movie:155)`, `Supreme ok`, `no url, dec=…`) in ra terminal
+đang chạy `lampac start`, nên tốt nhất: terminal 1 `lampac restart`, terminal 2 `lampac vidcore 155`.
+
+### Cách 2 — script rời, dò cả 5 hop API bằng curl (không đụng Lampac)
+
+`termux-test-vidcore.sh` ở gốc repo, chạy trong Termux (không cần clone):
 
 ```bash
 curl -fsSL "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05799-lampac/termux-test-vidcore.sh?cb=$(date +%s)" -o vidcore.sh && bash vidcore.sh
@@ -104,7 +129,7 @@ curl -fsSL "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/
 Mặc định test `TMDB=155` (The Dark Knight). Phim bộ: `TMDB=<id> SEASON=1 EPISODE=1 bash vidcore.sh chain`.
 `chain` dùng `enc-dec.app`; đổi bằng `VIDCORE_API=https://… bash vidcore.sh chain`.
 
-Thủ công (nếu không muốn dùng script):
+Cách thủ công:
 
 ```bash
 # route đã được nạp chưa (200/302 = OK, 404 = module chưa vào)

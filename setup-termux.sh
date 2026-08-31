@@ -900,6 +900,52 @@ case "${1:-}" in
     sync-all)
         bash "$(dirname "$0")/setup-termux.sh" --sync-all
         ;;
+    vidcore)
+        # Probe nhanh nguồn VidCore (4K) — chạy thẳng từ launcher, không cần script ngoài.
+        #   lampac vidcore                 -> movie, TMDB 155 (The Dark Knight)
+        #   lampac vidcore 680             -> movie khác theo TMDB id
+        #   lampac vidcore 2389 1 1        -> series: tmdb=2389 season=1 episode=1
+        TMDB_ID="${2:-155}"
+        VSEA="${3:--1}"
+        VEP="${4:--1}"
+
+        PORT=$(proot-distro login ubuntu -- bash -c "grep -oE '\"port\"[^0-9]+[0-9]+' /root/lampac/init.conf 2>/dev/null | head -1 | grep -oE '[0-9]+$'")
+        PORT=${PORT:-9118}
+
+        if ! proot-distro login ubuntu -- test -f /root/lampac/module/OnlineENG/VidCore/Controller.cs; then
+            echo "VidCore: module chưa được cài."
+            echo "  cài:  bash \"$(dirname \"$0\")/setup-termux.sh\" --sync-all   rồi  lampac restart"
+            exit 1
+        fi
+
+        if ! curl -fsS -m 5 -o /dev/null "http://127.0.0.1:$PORT/" 2>/dev/null; then
+            echo "VidCore: Lampac không đáp ứng ở cổng $PORT — bật nó lên trước (lampac start)."
+            echo "        Chạy probe ở terminal khác để còn thấy log của module."
+            exit 1
+        fi
+
+        echo "VidCore probe  →  http://127.0.0.1:$PORT   tmdb=$TMDB_ID season=$VSEA episode=$VEP"
+
+        code=$(curl -s -o /dev/null -w '%{http_code}' -m 30 "http://127.0.0.1:$PORT/lite/vidcore?tmdb_id=$TMDB_ID&rjson=1")
+        ghost=$(curl -s -o /dev/null -w '%{http_code}' -m 30 "http://127.0.0.1:$PORT/lite/vidcore_khongcodau_han")
+        echo "  /lite/vidcore        HTTP $code     (route ma: $ghost)"
+        if [ "$code" = "$ghost" ]; then
+            echo "  route chưa đăng ký — tìm 'compilation VidCore' (OK) hoặc 'compilation error: VidCore' (lỗi) trong log khởi động."
+        fi
+
+        out=$(curl -s -m 120 -w '\n%{http_code}' "http://127.0.0.1:$PORT/lite/vidcore/video?id=$TMDB_ID&s=$VSEA&e=$VEP")
+        vcode=$(printf '%s' "$out" | tail -1)
+        body=$(printf '%s' "$out" | sed '$d')
+        echo "  .../vidcore/video    HTTP $vcode"
+        printf '%s\n' "$body" | head -c 500; echo
+
+        case "$body" in
+            *'"host"'*)    echo "  OK: có link stream. Mở Lampa -> Online -> VidCore để chọn host." ;;
+            *'resolve'*)   echo "  exception bên trong Resolve. Dòng 'VidCore: ex ...' trong log nói loại lỗi." ;;
+            *'stream'*)    echo "  không có stream. Tìm dòng 'VidCore: ...' trong log: token not found / enc-vidcore incomplete / servers POST empty / no servers / <name> no url." ;;
+            *)             echo "  không phân loại được. Bật \"exceptionHandlerLogTarget\": \"file\" trong init.conf để 500 được ghi vào /root/lampac/logs/exceptionHandler.log." ;;
+        esac
+        ;;
     restart)
         pkill -TERM -f '[C]ore\.dll' 2>/dev/null || true
         sleep 1
@@ -977,7 +1023,7 @@ patch_registry "$root/app.min.js"
 VI_LANG
         ;;
     *)
-        echo "Usage: lampac {start|stop|status|config|info|update}"
+        echo "Usage: lampac {start|stop|status|config|info|update|vidcore}"
         echo ""
         echo "  start   — Start Lampac server"
         echo "  stop    — Stop Lampac server"
@@ -985,6 +1031,7 @@ VI_LANG
         echo "  config  — Edit config (init.conf)"
         echo "  info    — Show URL and port"
         echo "  update  — Update release and restore custom modules"
+        echo "  vidcore — Probe nguồn VidCore 4K: lampac vidcore [tmdb] [season] [episode]"
         ;;
 esac
 SHORTCUT

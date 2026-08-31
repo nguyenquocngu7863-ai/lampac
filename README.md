@@ -835,12 +835,33 @@ Test nhanh bằng script riêng (chạy trong Termux, không cần clone repo) �
 bật server có log, rồi in lỗi compile nếu có:
 
 ```bash
-curl -fsSL "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05799-lampac/termux-test-vidcore.sh?cb=$(date +%s)" -o vidcore.sh && bash vidcore.sh
+bash setup-termux.sh --sync-all          # chép module + tạo lại launcher
+lampac restart
+lampac vidcore 155                       # probe: route + resolve + phân loại lỗi
+```
+
+`lampac vidcore [tmdb] [season] [episode]` là lệnh dựng sẵn trong launcher (`create_launcher()`),
+in mã HTTP của `/lite/vidcore` và `/lite/vidcore/video`, so với một *route ma* để biết module có
+thực sự đăng ký route không, rồi phân loại body (`{"host":…}` = OK, `resolve` = exception,
+`stream` = không ra link). Các dòng `VidCore: …` chi tiết in ra terminal đang chạy `lampac start`.
+
+Muốn dò cả 5 hop API bằng curl mà không đụng Lampac, dùng script rời (cùng repo):
+
+```bash
+curl -fsSL "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05799-lampac/termux-test-vidcore.sh?cb=$(date +%s)" -o vidcore.sh && bash vidcore.sh chain
 ```
 
 `bash vidcore.sh chain` là chế độ nhẹ nhất (không đụng file, không restart). `rollback` trả lại bản cũ.
 
 Toàn bộ flow, route kiểm tra và cách tắt: [`Modules/OnlineENG/VidCore/README.md`](Modules/OnlineENG/VidCore/README.md).
+
+**Lùi về nhánh cũ nếu VidCore làm phiền:** code cũ vẫn nguyên ở `arena/01a05241-lampac`.
+
+```bash
+export LAMPAC_CUSTOM_SOURCE_BASE=https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05241-lampac
+rm -rf /root/lampac/module/OnlineENG/VidCore     # module này không có trong lampac-nextgen.zip nên xoá là sạch
+bash setup-termux.sh --sync-all && lampac restart
+```
 
 ## Trạng thái nguồn ENG và Mirage
 

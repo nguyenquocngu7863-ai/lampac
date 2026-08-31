@@ -8,6 +8,7 @@
 #   chain      chỉ dò 5 bước API (không đụng file, không restart Lampac)
 #   install    chép Controller.cs + ModInit.cs + manifest.json vào module, có backup
 #   serve      bật Lampac tách tiến trình + gọi thẳng route video + in log
+#   (Sau này có thể test thẳng không cần script: lampac vidcore [tmdb] [season] [episode])
 #   log        in nguyên khối "compilation error" + mọi dòng VidCore + tình trạng file module
 #   rollback   khôi phục bản backup gần nhất
 #   all        chain → install → serve
@@ -219,10 +220,10 @@ PORTSH
     echo
     say "Route:  /lite/$MODULE_ROUTE"
     code=$(curl -s -o /dev/null -w '%{http_code}' -m 30 "http://127.0.0.1:$PORT/lite/$MODULE_ROUTE?tmdb_id=$TMDB&rjson=1")
-    ghost=$(curl -s -o /dev/null -w '%{http_code}' -m 30 "http://127.0.0.1:$PORT/lite/$MODULE_ROUTE_khongcoayroute?tmdb_id=$TMDB")
+    ghost=$(curl -s -o /dev/null -w '%{http_code}' -m 30 "http://127.0.0.1:$PORT/lite/${MODULE_ROUTE}_khongcodau_han?tmdb_id=$TMDB")
     echo "    HTTP $code   (route ma trả $ghost — hai mã GIỐNG NHAU nghĩa là route chưa đăng ký, không phải module chạy OK)"
     if [ "$code" = "$ghost" ]; then
-        no "route /lite/$MODULE_ROUTE không tồn tại → module chưa được nạp. Xem khối 'compilation error' bên dưới."
+        no "route /lite/$MODULE_ROUTE chưa đăng ký → module không được nạp. Xem 'log' mode bên dưới." 
     fi
 
     echo
