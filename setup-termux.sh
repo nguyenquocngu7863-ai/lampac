@@ -446,7 +446,7 @@ VI_LANG
 # shipping a small fix so Termux does not re-download Chrome, hls.js, or
 # every custom module. Use --sync-all for a full refresh.
 sync_latest_modules() {
-    info "Syncing latest patch files only (TMDB English titles/posters)..."
+    info "Syncing latest patch files only (Cub ENG catalog + TMDB English titles/logos)..."
 
     proot-distro login ubuntu -- bash -c "
         set -euo pipefail
@@ -478,7 +478,8 @@ sync_latest_modules() {
               /root/lampac/mods/LampaWeb/plugins/player-landscape.js
 
         # Latest patch:
-        #  - VidLink HTTP resolver (no Playwright) — Controller.cs + ModInit.cs
+        #  - Cub ENG catalog (viewru off) + TMDB English titles/logos
+        #  - lampainit.js: Cyrillic/VI card titles → original_title
         # mods/ overrides module/, so keep both copies in sync when present.
         for lampaweb in /root/lampac/module/LampaWeb /root/lampac/mods/LampaWeb; do
             if [ -d \"\$lampaweb/plugins\" ]; then
@@ -502,6 +503,7 @@ sync_latest_modules() {
             for proxy in /root/lampac/module/Proxy/\$proxymodule /root/lampac/mods/Proxy/\$proxymodule; do
                 if [ -d \"\$proxy\" ]; then
                     pull Modules/Proxy/\$proxymodule/Controller.cs \"\$proxy/Controller.cs\"
+                    pull Modules/Proxy/\$proxymodule/ModInit.cs \"\$proxy/ModInit.cs\"
                 fi
             done
         done
@@ -717,8 +719,10 @@ install_custom_modules() {
         for proxymodule in CubProxy TmdbProxy; do
             proxytarget=\"/root/lampac/module/Proxy/\$proxymodule\"
             if [ -d \"\$proxytarget\" ]; then
-                curl -fSL --retry 3 \"${CUSTOM_SOURCE_BASE}/Modules/Proxy/\$proxymodule/Controller.cs\" -o \"\$proxytarget/Controller.cs.tmp\"
-                mv \"\$proxytarget/Controller.cs.tmp\" \"\$proxytarget/Controller.cs\"
+                for file in Controller.cs ModInit.cs; do
+                    curl -fSL --retry 3 \"${CUSTOM_SOURCE_BASE}/Modules/Proxy/\$proxymodule/\$file\" -o \"\$proxytarget/\$file.tmp\"
+                    mv \"\$proxytarget/\$file.tmp\" \"\$proxytarget/\$file\"
+                done
             fi
         done
 
@@ -1123,8 +1127,10 @@ case "${1:-}" in
             for proxymodule in CubProxy TmdbProxy; do
                 proxytarget="/root/lampac/module/Proxy/$proxymodule"
                 if [ -d "$proxytarget" ]; then
-                    curl -fSL --retry 3 "$ProxyBase/$proxymodule/Controller.cs" -o "$proxytarget/Controller.cs.tmp"
-                    mv "$proxytarget/Controller.cs.tmp" "$proxytarget/Controller.cs"
+                    for file in Controller.cs ModInit.cs; do
+                        curl -fSL --retry 3 "$ProxyBase/$proxymodule/$file" -o "$proxytarget/$file.tmp"
+                        mv "$proxytarget/$file.tmp" "$proxytarget/$file"
+                    done
                 fi
             done
 
