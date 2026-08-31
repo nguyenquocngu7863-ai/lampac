@@ -167,6 +167,16 @@ giá trị qua `HrefValue(m)` (ba nhóm `d`/`s`/`n`, không dùng trùng tên nh
   `\d+(\.\d+)?\s*(KB|MB|GB|TB)` thì mò 200 ký tự trước / 600 sau anchor — size thường đứng ở
   `<span>` cạnh nút. Dùng cho `Anchors()`, `Links()`, `DivBlocks()`, không tốn thêm request nào.
 
+## Luật viết code của vùng này (toàn bộ từng làm hỏng build trên thiết bị)
+
+- `var x = [.. …]` **không compile được** (CS9176 — C# không suy kiểu cho collection expression khi
+  đích là `var`). Phải ghi tường minh: `List<string> x = [.. …]`.
+- Verbatim string chứa `[""]` rất dễ lệch một dấu nháy ⇒ C# nuốt hết code phía sau thành chuỗi,
+  lỗi báo ở dòng cuối file choàng hoàng. Dò HTML attribute thì dùng `Block()` / `Links()`.
+- `Math.Max(season, 1)` với `season` là `short` ⇒ CS0121 (hằng int convert ngược xuống short được,
+  nên cả `Max(short,short)` lẫn `Max(int,int)` đều hợp lệ). Viết `Math.Max((int)season, 1)`.
+- `MatchCollection` không chỉ mục từ cuối: dùng `[Count - 1]`, không có `[^1]`.
+
 ## Bẫy đã né sẵn (đều là bài học từ VidCore, đọc trước khi sửa)
 
 - `Http.Post(url, string)` của Lampac **luôn** gửi `application/x-www-form-urlencoded`;
