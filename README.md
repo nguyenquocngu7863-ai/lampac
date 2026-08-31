@@ -145,6 +145,56 @@ bash setup-termux.sh --sync && lampac stop && lampac start
 
 Phải khớp **hai chỗ**: URL tải `setup-termux.sh` và `LAMPAC_CUSTOM_SOURCE_BASE`. Chỉ đổi một bên thì script mới vẫn kéo file từ nhánh cũ (hoặc ngược lại).
 
+### Curl một file thẳng vào Ubuntu
+
+`--sync` chỉ kéo **list có sẵn trong script**. File mới, file C# vừa vá, hoặc lần `--sync` cũ không đụng VidLink/`lampainit.js` thì file trên máy không đổi. Khi chat đưa **lệnh dài** `proot-distro login ubuntu -- bash -lc ... curl ...`, đó **không** phải cài lại Lampac — chỉ chép **một file** từ GitHub 241 vào bản đang chạy.
+
+Hai thư mục khác nhau:
+
+| Nơi | Đường dẫn | Việc gì |
+|---|---|---|
+| Termux (git) | `~/lampac` = `/data/data/com.termux/files/home/lampac` | clone/script. **Không** phải server |
+| Ubuntu proot | `/root/lampac` | Lampac thật. Module ở `module/…` (và `mods/…` nếu có) |
+
+`curl -o ~/lampac/module/...` ghi vào Termux → thường `curl: (23) write` / `No such file`. Phải vào Ubuntu.
+
+Mẫu (thay `SRC` / `DST` / chuỗi `grep`):
+
+```bash
+export LAMPAC_CUSTOM_SOURCE_BASE=https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05241-lampac
+stamp=$(date +%s)
+proot-distro login ubuntu -- bash -lc "
+set -e
+base='$LAMPAC_CUSTOM_SOURCE_BASE'
+stamp='$stamp'
+# SRC = đường trong repo GitHub; DST = file runtime trong Ubuntu
+curl -fSL --retry 3 \"\$base/Modules/LampaWeb/plugins/lampainit.js?cb=\$stamp\" \
+  -o /root/lampac/module/LampaWeb/plugins/lampainit.js.tmp
+mv /root/lampac/module/LampaWeb/plugins/lampainit.js.tmp \
+   /root/lampac/module/LampaWeb/plugins/lampainit.js
+[ -d /root/lampac/mods/LampaWeb/plugins ] && \
+  cp /root/lampac/module/LampaWeb/plugins/lampainit.js \
+     /root/lampac/mods/LampaWeb/plugins/lampainit.js
+grep -n 'Logo plugin owns' /root/lampac/module/LampaWeb/plugins/lampainit.js
+"
+```
+
+Từng dòng:
+
+1. `export LAMPAC_CUSTOM_SOURCE_BASE=…/arena/01a05241-lampac` — URL raw GitHub. Giữ 241; 63 chỉ dự phòng.
+2. `stamp=$(date +%s)` rồi `?cb=$stamp` — né cache `raw.githubusercontent.com` (không có thì curl có thể trả file cũ).
+3. `proot-distro login ubuntu -- bash -lc "…"` — chạy **trong Ubuntu**, không phải shell Termux.
+4. `curl … -o ….tmp` rồi `mv` — ghi xong mới thay file, tránh file dở khi mạng đứt.
+5. `[ -d mods/… ] && cp` — nếu có overlay `mods/` (load trước `module/`) thì chép luôn, không thì bỏ qua.
+6. `grep` — xác nhận file mới (chuỗi chat đưa). Không thấy = chưa vào đúng chỗ.
+
+Sau khi curl:
+
+- File **C#** (`.cs`, controller): `lampac stop && lampac start` (compile lúc start).
+- File **JS** plugin (`lampainit.js`, `vietnamese.js`, …): hard refresh / thoát hẳn Lampa. Restart Lampac không bắt buộc nhưng không hại.
+
+Không `cd ~/lampac` rồi curl vào đó. Không bỏ `export` 241.
+
 | Lệnh | Khi nào dùng | Tải gì |
 |---|---|---|
 | `--sync` | Vá nhỏ vừa ship (Chaturbate, proxy 18+, NextHUB YAML, …) | **Chỉ file của bản vá mới nhất.** Không tải Chrome, hls.js, KKPhim, LampaWeb |

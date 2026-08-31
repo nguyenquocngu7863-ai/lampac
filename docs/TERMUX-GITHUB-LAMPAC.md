@@ -103,6 +103,8 @@ bash "$HOME/setup-termux-latest.sh" --sync-all
 lampac start
 ```
 
+Khi `--sync` không kéo đúng file (list script cũ, hoặc chat bảo curl thẳng), dùng lệnh dài `proot-distro login ubuntu -- curl …` ghi **một file** vào `/root/lampac/module/…`. Không ghi vào `~/lampac` của Termux. Giải thích từng dòng và mẫu: [README — Curl một file thẳng vào Ubuntu](../README.md#curl-một-file-thẳng-vào-ubuntu).
+
 `--sync-all` dùng khi cần đồng bộ đầy đủ module tuỳ biến, AdminPanel, GStreamer và xoá module cũ. Với bản vá nhỏ chỉ cần các file trong danh sách sync:
 
 ```bash
