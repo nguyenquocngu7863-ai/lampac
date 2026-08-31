@@ -80,7 +80,7 @@ một ký tự là chết.
 Kiểm chứng trên máy: `"gst": { "enable": true }` trong `init.conf`, plugin `http://<host>:9118/gst.js`
 đã đăng ký trong Lampa, và `curl -s http://127.0.0.1:9118/gst/status` phải thấy task khi đang phát.
 
-## Series: tầng chọn nhóm release (`?g=`) — học từ chính Movies4U
+## Series: nhóm release của một mùa nằm ở **Bộ lọc → thuyết minh** (`?g=`)
 
 Một mùa trên Movies4U không có "danh sách tập", nó có **N nhóm**, mỗi nhóm là một heading + một nút
 `DOWNLOAD LINKS` dẫn sang trang riêng:
@@ -95,17 +95,24 @@ Season 4 [Hindi ORG. + Multi Audio]    2160p 4K [6GB/E]-> DOWNLOAD LINKS
 
 Luồng ba bước, giống cách PidTor làm với "Mùa: 1 сезон":
 
-1. `GET /lite/movies4u?...&serial=1&s=4` → `SeasonTpl` **danh sách nhóm** (label = nguyên heading),
-   mỗi nút trỏ về `…&s=4&g=<1..N>`. `GroupsForSeason()` đọc `download-links-div` có heading nhắc đúng
-   mùa, dự phòng là mọi nút có chữ "download links"; heading không nhắc mùa nào (phim một mùa) thì
-   được tính cho mọi mùa.
-2. `…&g=2` → chỉ trang của nhóm 2 được tải, mỗi tập một nút `EpisodeTpl`. **Mọi** host của cùng một
-   tập nằm trong `streamquality` của nút đó (`Ep 3 · hubcloud · 3 host`) — biến thể ở TẬP là chuẩn
-   của Lampa; cái bị cấm là nhét link phim lẻ vào menu chất lượng (`## Quy tắc UI`).
+1. `GET /lite/movies4u?...&serial=1&s=4` → `EpisodeTpl` của nhóm **đầu tiên**, kèm `VoiceTpl` liệt
+   kê cả 5 nhóm. Lampa hiển thị `VoiceTpl` ở **Bộ lọc → thuyết minh** (anh chụp PidTor: "Thuyết
+   minh / LostFilm"), nên đổi nhóm được ngay trong danh sách tập, không phải quay lại màn hình chọn.
+   `GroupsForSeason()` đọc `download-links-div` có heading nhắc đúng mùa, dự phòng là mọi nút có chữ
+   "download links". **Bất biến phải nhớ: `SeasonTpl` = danh sách MÙA.** Bản `v16` trả nhóm bằng
+   `SeasonTpl` ⇒ Lampa nhét hết "Download Links 650MB", "BATCH/ZIP [1.5GB]" vào bộ lọc "Mùa" và
+   không còn phân biệt được gì (ảnh anh chụp) — nhóm thì dùng `VoiceTpl`, mùa mới dùng `SeasonTpl`.
+2. `…&g=2` → chỉ trang nhóm 2 được tải; mỗi tập một nút, **mọi** host của cùng tập nằm trong
+   `streamquality` của nút đó (`Ep 3 · hubcloud · 3 host`). Biến thể ở TẬP là chuẩn của Lampa; cái bị
+   cấm là nhét link phim lẻ vào menu chất lượng (`## Quy tắc UI`). Mỗi tập mang `voice_name` =
+   nhãn nhóm đã cắt "Season N" (`GroupShort`) để Lampa in dòng phụ, nhìn là biết đang xem
+   `Hindi ORG. + Multi Audio | 1080p [900MB/E]`. Nhóm đang chọn được đánh dấu `active`
+   (`vtpl.Append(name, i + 1 == cur, link)`) — đúng kỹ thuật của Mirage
+   (`Modules/OnlineRUS/Mirage/Controller.cs:190-215` + `etpl.Append(vtpl)` ở :368).
 3. Bấm tập → `PlayLink()` → `/lite/movies4u/file.mkv?…&play=true` (accsArgs) → 302 vào link trần.
 
 `ReleaseGroup <= 0` và có đúng 1 nhóm thì **không** hiện màn hình chọn (khỏi thừa một bước). Ở bước 1
-module cố tình không tải trang nhóm nào — chọn xong mới tải, nên mở một mùa 5 nhóm là 1 request.
+mở mùa chỉ tốn ĐÚNG một lần dịch trang nhóm (nhóm mặc định), không phải 5 — xem `CollectEpisodes`.
 Vì lý do đó `CollectCached` nhét `ReleaseGroup` vào cache key: g=0 chỉ chứa phiếu nhóm, dùng chung
 key với g=N thì menu tập sẽ rỗng.
 
@@ -118,7 +125,7 @@ luôn null bên đó, nhánh chọn nhóm không bao giờ chạy.
 | Route | Tác dụng |
 |---|---|
 | `GET /lite/moviesdrive?id=&imdb_id=&serial=&s=` | collection: tự tìm bài trên site, mỗi link file-host là một nút (mùa → tập cho series) |
-| `GET /lite/movies4u?...&serial=1&s=4` | series, chưa chọn nhóm → `SeasonTpl` danh sách nhóm release của mùa 4 |
+| `GET /lite/movies4u?...&serial=1&s=4` | series: tập của nhóm đầu + `VoiceTpl` (Bộ lọc → thuyết minh) liệt kê mọi nhóm của mùa đó |
 | `GET /lite/movies4u?...&serial=1&s=4&g=2` | nhóm release thứ 2 của mùa 4 → `EpisodeTpl` (mỗi tập một nút, các host là biến thể) |
 | `GET /lite/<nguồn>/video?src=<base64 link>&label=<base64>&s=&e=` | resolve link đó → **JSON** một url (đường `method:"call"`) |
 | `GET /lite/<nguồn>/file.mkv` / `file.mp4` | CÙNG action, alias để path có đuôi file cho gst.js |

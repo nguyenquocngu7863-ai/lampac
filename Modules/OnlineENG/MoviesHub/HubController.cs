@@ -58,7 +58,7 @@ public abstract class HubController : BaseENGController
     /// hash, phải đánh tay: mỗi commit sửa MoviesHub là đổi chuỗi này (luật trong README). Log ra
     /// marker khác = máy đang compile bản cũ -> dừng việc sửa code, kéo lại từ commit đó.
     /// </summary>
-    protected const string Build = "v16-series-groups";
+    protected const string Build = "v17-voice-groups";
 
     /// <summary>Nhóm release được chọn qua ?g= (0 = chưa chọn). Đặt tên đầy đủ vì nếu gọi là
     /// <c>Group</c> thì nó che kiểu System.Text.RegularExpressions.Group đang dùng trong
@@ -195,26 +195,35 @@ public abstract class HubController : BaseENGController
                                            .Select(x => x.Group)
                                            .Distinct()];
 
-            if (ReleaseGroup <= 0 && groups.Count > 1)
-            {
-                Console.WriteLine($"{Log(source)} mùa {s} có {groups.Count} nhóm release — đưa màn hình chọn (g=1..{groups.Count})");
+            // Nhóm release của một mùa KHÔNG được trả về như SeasonTpl: Lampa coi mọi SeasonTpl là
+            // danh sách MÙA rồi nhét vào bộ lọc "Mùa" (ảnh của người dùng: "Download Links 650MB",
+            // "BATCH/ZIP [1.5GB]" nằm lẫn với mùa, không nhận ra cái nào là cái nào). Cách đúng là
+            // của Mirage (Modules/OnlineRUS/Mirage/Controller.cs:190-215, 368): danh sách nhóm gắn
+            // vào VoiceTpl -> Lampa hiện ở "Bộ lọc > thuyết minh", còn "Mùa" chỉ dùng để chọn mùa.
+            short cur = ReleaseGroup > 0 ? (short)Math.Min((int)ReleaseGroup, groups.Count) : (short)1;
 
-                var chooser = new SeasonTpl();
+            VoiceTpl vtpl = null;
+
+            if (groups.Count > 1)
+            {
+                vtpl = new VoiceTpl();
 
                 for (int i = 0; i < groups.Count; i++)
-                    chooser.Append(groups[i], $"{host}/lite/{plugin}?id={tmdbId}&imdb_id={imdb_id}&serial=1&rjson={rjson}&s={s}&g={i + 1}", s);
+                    vtpl.Append(GroupShort(groups[i]), i + 1 == cur,
+                                $"{host}/lite/{plugin}?id={tmdbId}&imdb_id={imdb_id}&serial=1&rjson={rjson}&s={s}&g={i + 1}");
 
-                return ContentTpl(chooser);
+                Console.WriteLine($"{Log(source)} mùa {s}: {groups.Count} nhóm release vào bộ lọc thuyết minh, đang chọn g={cur}");
             }
 
-            if (ReleaseGroup > 0 && groups.Count > 0)
+            if (groups.Count > 0)
             {
-                string want = groups[Math.Min((int)ReleaseGroup, groups.Count) - 1];
+                string want = groups[cur - 1];
                 int had = shown.Count;
 
                 shown = [.. shown.Where(x => x.Episode == 0 || string.IsNullOrWhiteSpace(x.Group) || x.Group == want)];
 
-                Console.WriteLine($"{Log(source)} mùa {s}: nhóm '{Cut(want)}' còn {shown.Count} link (đổ {had - shown.Count} link của nhóm khác)");
+                if (had != shown.Count)
+                    Console.WriteLine($"{Log(source)} mùa {s}: nhóm '{Cut(want)}' còn {shown.Count} link (đổ {had - shown.Count} link nhóm khác)");
             }
 
             var etpl = new EpisodeTpl();
@@ -237,10 +246,16 @@ public abstract class HubController : BaseENGController
                         sq.Append(PlayLink(plugin, v), v.Label);
                 }
 
+                // voice_name = tên nhóm release (Mirage cũng truyền cái này cho từng tập) để Lampa
+                // in dòng phụ "KandFF • 1080p" ngay trên nút, không cần mở bộ lọc.
                 etpl.Append(first.Label + (variants.Count > 1 ? $" · {variants.Count} host" : ""),
                             title ?? original_title, first.Season, first.Episode, link, "play",
-                            streamquality: sq, streamlink: link);
+                            streamquality: sq, streamlink: link,
+                            voice_name: GroupShort(first.Group));
             }
+
+            if (vtpl != null)
+                etpl.Append(vtpl);
 
             if (etpl.IsEmpty)
                 Console.WriteLine($"{Log(source)} mùa {s} không có tập nào (entries={entries.Count}, groups={groups.Count}, g={ReleaseGroup})");
@@ -702,6 +717,20 @@ public abstract class HubController : BaseENGController
             name = string.IsNullOrWhiteSpace(label) ? "stream" : label;
 
         return name.Length > 40 ? name[..40] : name;
+    }
+
+    /// <summary>Nhãn nhóm release để hiển thị: bỏ "Season N" thừa (mùa đã chọn rồi), giữ nguyên phần
+    /// chất lượng + audio + dung lượng — thứ duy nhất phân biệt 5 nhóm gần giống nhau. CHỈ dùng cho
+    /// nhãn; so khớp nhóm vẫn dùng chuỗi gốc trong HubEntry.Group.</summary>
+    protected static string GroupShort(string heading)
+    {
+        if (string.IsNullOrWhiteSpace(heading))
+            return null;
+
+        string t = Regex.Replace(heading.Trim(), @"(?i)^season\s*\d+\s*[:\-]?\s*", "");
+        t = Regex.Replace(t, @"\s+", " ").Trim();
+
+        return t.Length > 64 ? t[..64].TrimEnd() + "…" : (t.Length == 0 ? null : t);
     }
 
     protected static string Cut(string url)

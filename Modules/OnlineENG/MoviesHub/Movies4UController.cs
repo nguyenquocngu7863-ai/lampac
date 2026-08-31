@@ -289,14 +289,13 @@ public class Movies4UController : HubController
             return;
         }
 
-        if (ReleaseGroup <= 0 && groups.Count > 1)
-        {
-            foreach ((string head, string url) in groups)
-                into.Add(new HubEntry(head, url, season, 0, head));
+        // PHIẾU NHÓM luôn được trả về, kể cả khi đã chọn (g>0), vì CollectionCore cần danh sách đó
+        // để dựng VoiceTpl — người dùng phải đổi nhóm được NGAY TRONG danh sách tập, không phải
+        // quay lại một màn hình chọn riêng.
+        foreach ((string head, string url) in groups)
+            into.Add(new HubEntry(head, url, season, 0, head));
 
-            return;   // chưa tải trang nhóm nào cả — để người dùng chọn đã
-        }
-
+        // Chưa chọn thì dùng nhóm đầu (Mirage cũng mặc định nhóm đầu tiên: "if (t == -1) t = id").
         int pick = ReleaseGroup > 0 ? Math.Min((int)ReleaseGroup, groups.Count) - 1 : 0;
         string groupUrl = groups[pick].Url;
 
