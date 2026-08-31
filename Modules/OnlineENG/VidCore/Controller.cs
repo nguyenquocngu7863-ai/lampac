@@ -452,12 +452,6 @@ public class VidCoreController : BaseENGController
     }
 
     /// <summary>
-    /// dec-vidcore đổi shape giữa các build: `{"result":[...]}`, `[...]` ở gốc,
-    /// `{"result":"<json dạng chuỗi>"}`, `{"result":{"servers":[...]}}`, và có khi
-    /// `{"result":{"0":{...},"1":{...}}}`. Đổ hết về một List ở đây, thay vì chỉ nhận
-    /// đúng một hình rồi báo "no servers" giả như trước.
-    /// </summary>
-    /// <summary>
     /// Bước cuối khi dec-vidcore không trả JSON sạch. Ba đường, theo thứ tự đáng tin:
     /// unescape rồi parse -> moi khối JSON/array đầu tiên trong text -> nếu chỉ còn
     /// HTML/JS thì quét thẳng URL .m3u8/.mp4 thành pseudo-server để người dùng vẫn có link.
@@ -494,9 +488,12 @@ public class VidCoreController : BaseENGController
             // đóng cuối, cả hai cách đều thử.
             foreach (string cut in new[] { candidate[start..], candidate[start..Math.Min(candidate.Length, Math.Max(candidate.LastIndexOf(']'), candidate.LastIndexOf('}')) + 1)] })
             {
-                list = ExtractList(ParseJson(cut));
-                if (list.Count > 0)
-                    return list;
+                foreach (string hay in new[] { cut, JsLiteralToJson(cut) })
+                {
+                    list = ExtractList(ParseJson(hay));
+                    if (list.Count > 0)
+                        return list;
+                }
             }
         }
 
@@ -512,6 +509,32 @@ public class VidCoreController : BaseENGController
             Console.WriteLine($"VidCore: dec không phải JSON, tự quét được {list.Count} URL stream");
 
         return list;
+    }
+
+    /// <summary>
+    /// dec-vidcore đổi shape giữa các build: `{"result":[...]}`, `[...]` ở gốc,
+    /// `{"result":"<json dạng chuỗi>"}`, `{"result":{"servers":[...]}}`, và có khi
+    /// `{"result":{"0":{...},"1":{...}}}`. Đổ hết về một List ở đây, thay vì chỉ nhận
+    /// đúng một hình rồi báo "no servers" giả như trước.
+    /// </summary>
+
+    /// <summary>
+    /// dec-vidcore từng trả về JS object literal chứ không phải JSON: key dùng nháy đơn,
+    /// có dấu phẩy thừa trước } ]. JToken.Parse fail loại này im lặng, nhìn y hệt
+    /// "endpoint trả rỗng" — nên về đây rồi mới kết luận.
+    /// </summary>
+    static string JsLiteralToJson(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text) || !text.Contains('\''))
+            return text;
+
+        // 'name': -> "name":   |   : 'abc' -> : "abc"   |   {a:1,} -> {a:1}
+        string t = Regex.Replace(text, "([{,]\\s*)([A-Za-z_$][A-Za-z0-9_$]*)\\s*:", "$1\"$2\":");
+        t = Regex.Replace(t, "'([^'\\r\\n]*)'(\\s*:)", "\"$1\"$2");
+        t = Regex.Replace(t, "(:\\s*)'([^'\\r\\n]*)'", "$1\"$2\"");
+        t = Regex.Replace(t, ",(\\s*[}\\]])", "$1");
+
+        return t;
     }
 
     static List<JToken> ExtractList(JToken root, int depth = 0)
