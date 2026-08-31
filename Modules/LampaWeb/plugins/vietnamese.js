@@ -291,22 +291,33 @@
     url = url
       .replace(/([?&]language=)vi(?:[-_][A-Za-z]+)?(?=&|$)/ig, '$1en')
       .replace(/([?&]include_image_language=)[^&]*/ig, '$1en%2Cnull');
-    if (/append_to_response=[^&]*images/i.test(url) && !/include_image_language=/i.test(url))
+    var imagesEndpoint = /\/(?:movie|tv)\/\d+\/images(?:\?|$)/i.test(url) ||
+      /append_to_response=[^&]*images/i.test(url);
+    if (imagesEndpoint && !/include_image_language=/i.test(url))
       url += (url.indexOf('?') >= 0 ? '&' : '?') + 'include_image_language=en%2Cnull';
     return url;
+  }
+
+  function filterEnglishLogos(logos) {
+    if (!logos || !logos.length) return logos;
+    var kept = logos.filter(function (logo) {
+      var code = String(logo && logo.iso_639_1 || '').toLowerCase().split(/[-_]/)[0];
+      return !code || code === 'en';
+    });
+    return kept.length ? kept : logos.filter(function (logo) {
+      var code = String(logo && logo.iso_639_1 || '').toLowerCase().split(/[-_]/)[0];
+      return code !== 'vi';
+    });
   }
 
   function sanitizeTmdbLogos(data) {
     if (!data || typeof data !== 'object') return data;
     if (data.movie && data.movie !== data) sanitizeTmdbLogos(data.movie);
-    if (!data.images || !Array.isArray(data.images.logos)) return data;
-
-    // Lampa picks the title logo by UI language (vi), not tmdb_lang. Drop vi
-    // logos so the card falls back to the English treatment.
-    data.images.logos = data.images.logos.filter(function (logo) {
-      var code = String(logo && logo.iso_639_1 || '').toLowerCase().split(/[-_]/)[0];
-      return !code || code === 'en';
-    });
+    if (data.images && Array.isArray(data.images.logos))
+      data.images.logos = filterEnglishLogos(data.images.logos);
+    // Logo plugins use GET /images and take logos[0] from this shape.
+    if (Array.isArray(data.logos))
+      data.logos = filterEnglishLogos(data.logos);
     return data;
   }
 

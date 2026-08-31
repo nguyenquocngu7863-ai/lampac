@@ -225,6 +225,8 @@ public class CubProxyController : BaseController
             string requri = $"{init.scheme}://{domain}/{uri}";
 
             // UI can stay Vietnamese; TMDB titles/posters/logos must be English.
+            // /images?language=vi is a FILTER: movies without a vi treatment
+            // return logos:[], so logo plugins never draw an English logo.
             if (subdomain == "tmdb")
             {
                 if (Regex.IsMatch(requri, @"[?&]language=vi(?:[-_][^&]+)?(?:&|$)", RegexOptions.IgnoreCase))
@@ -245,6 +247,11 @@ public class CubProxyController : BaseController
                         "$1en,null",
                         RegexOptions.IgnoreCase
                     );
+                }
+                else if (Regex.IsMatch(requri, @"/(?:movie|tv)/\d+/images(?:\?|$)", RegexOptions.IgnoreCase) &&
+                         requri.IndexOf("include_image_language=", StringComparison.OrdinalIgnoreCase) < 0)
+                {
+                    requri += (requri.Contains("?") ? "&" : "?") + "include_image_language=en,null";
                 }
             }
 

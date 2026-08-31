@@ -153,11 +153,16 @@
 
   function rewriteTmdbLangUrl(url) {
     if (typeof url !== 'string') return url;
-    if (!/tmdb|themoviedb|apitmdb|tmapi/i.test(url)) return url;
+    if (!/tmdb|themoviedb|apitmdb|tmapi|\/cub\//i.test(url)) return url;
     url = url
       .replace(/([?&]language=)vi(?:[-_][A-Za-z]+)?(?=&|$)/ig, '$1en')
       .replace(/([?&]include_image_language=)[^&]*/ig, '$1en%2Cnull');
-    if (/append_to_response=[^&]*images/i.test(url) && !/include_image_language=/i.test(url))
+    // Logo plugins call /movie|tv/{id}/images?language=vi. TMDB treats
+    // `language` as a FILTER, so no-vi movies return logos:[]. Always
+    // ask for English title treatments.
+    var imagesEndpoint = /\/(?:movie|tv)\/\d+\/images(?:\?|$)/i.test(url) ||
+      /append_to_response=[^&]*images/i.test(url);
+    if (imagesEndpoint && !/include_image_language=/i.test(url))
       url += (url.indexOf('?') >= 0 ? '&' : '?') + 'include_image_language=en%2Cnull';
     return url;
   }
@@ -200,6 +205,9 @@
     if (hasVietnameseText(data.name) && data.original_name) data.name = data.original_name;
     if (data.images && Array.isArray(data.images.logos))
       data.images.logos = filterEnglishLogos(data.images.logos);
+    // Logo plugins consume /images JSON as `{logos:[...]}` and take logos[0].
+    if (Array.isArray(data.logos))
+      data.logos = filterEnglishLogos(data.logos);
     return data;
   }
 
@@ -214,14 +222,20 @@
     var titleEl = root.find('.full-start-new__title, .full-start__title').first();
     if (!titleEl.length) return;
 
-    var enLogo = pickEnglishLogo(movie && movie.images && movie.images.logos);
+    var logos = (movie && movie.images && movie.images.logos) || (movie && movie.logos);
+    var enLogo = pickEnglishLogo(logos);
     if (enLogo && enLogo.file_path && Lampa.TMDB && typeof Lampa.TMDB.image === 'function') {
-      var src = Lampa.TMDB.image('t/p/w500' + enLogo.file_path);
+      var path = String(enLogo.file_path).replace(/\.svg$/i, '.png');
+      var src = Lampa.TMDB.image('t/p/w500' + path);
       var img = titleEl.find('img');
       if (img.length) {
         if (img.attr('src') !== src) img.attr('src', src);
-        return;
+      } else {
+        // Logo plugins only insert <img> when /images?language=vi has logos[0].
+        // Movies without a Vietnamese treatment never get a node to overlay.
+        titleEl.html('<img src="' + src + '" alt="" />');
       }
+      return;
     }
 
     var text = (titleEl.text() || '').trim();
