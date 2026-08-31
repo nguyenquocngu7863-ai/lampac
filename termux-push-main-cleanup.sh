@@ -191,4 +191,4 @@ echo "=== tag sao lưu ==="; git ls-remote --tags origin | sed 's/^/  /' | head 
 [ "$DRY_RUN" = "1" ] && echo "(dry-run nên số liệu trên vẫn là hiện tại)"
 echo
 echo "Đồng bộ lại cài đặt trên điện thoại:"
-echo "  cd ~/lampac && git pull --ff-only origin main && bash setup-termux.sh --sync && lampac restart"
+echo "  cd ~/lampac && git pull --ff-only origin main && bash setup-termux.sh --sync && lampac stop && lampac start"

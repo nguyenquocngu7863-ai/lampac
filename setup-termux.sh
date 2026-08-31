@@ -935,7 +935,7 @@ case "${1:-}" in
 
         if ! proot-distro login ubuntu -- test -f /root/lampac/module/OnlineENG/VidCore/Controller.cs; then
             echo "VidCore: module chưa được cài."
-            echo "  cài:  bash \"$(dirname \"$0\")/setup-termux.sh\" --sync-all   rồi  lampac restart"
+            echo "  cài:  bash \"$(dirname \"$0\")/setup-termux.sh\" --sync-all   rồi  lampac stop && lampac start"
             exit 1
         fi
 
@@ -983,7 +983,7 @@ case "${1:-}" in
         echo "  Nhánh mới nhất (không dùng main):"
         echo "    cd ~/lampac && git fetch origin && git checkout arena/01a05799-lampac"
         echo "    echo 'export LAMPAC_CUSTOM_SOURCE_BASE=https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05799-lampac' >> ~/.bashrc"
-        echo "    source ~/.bashrc && lampac sync && lampac restart"
+        echo "    source ~/.bashrc && lampac sync && lampac stop && lampac start"
         echo ""
         ;;
     info)

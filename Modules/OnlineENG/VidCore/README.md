@@ -31,7 +31,7 @@ công thức API, không copy code (CSX GPL-3, kho này MIT).
 - Mọi đường chặn trong `BaseOnlineController` đều **im lặng** (403 không log). VidCore giờ in
   `VidCore: blocked (...)` ở `Video()` và `VidCore: index không có dữ liệu (...)` ở `Index()`.
 - `Index()` có `[Staticache]`: nếu anh vừa đổi config xong mà vẫn thấy hành vi cũ, xoá cache
-  `rm -rf /root/lampac/cache/static` rồi `lampac restart` (302 cũ có thể còn nằm trong cache).
+  `rm -rf /root/lampac/cache/static` rồi `lampac stop && lampac start` (302 cũ có thể còn nằm trong cache).
 
 
 ## Route

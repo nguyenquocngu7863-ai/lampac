@@ -62,7 +62,7 @@ proot-distro login ubuntu -- bash -c "
 
 ok "Xong. Khởi động lại để nạp module mới:"
 echo
-echo "  lampac restart"
+echo "  lampac stop && lampac start"
 echo
 echo "Sau đó mở AdminPanel → mục 'Nguồn · ENG (10 nguồn gốc)' để xem nhóm mới."
 echo "Nếu muốn 10 nguồn hiện trong Lampa: đặt \"disableEng\": false trong init.conf."

@@ -864,7 +864,7 @@ for f in manifest.json Controller.cs ModInit.cs; do
 done
 ls -l "$d"
 '
-lampac restart
+lampac stop && lampac start
 ```
 
 Toàn bộ flow, route kiểm tra và cách tắt: [`Modules/OnlineENG/VidCore/README.md`](Modules/OnlineENG/VidCore/README.md).
@@ -874,7 +874,7 @@ Toàn bộ flow, route kiểm tra và cách tắt: [`Modules/OnlineENG/VidCore/R
 ```bash
 export LAMPAC_CUSTOM_SOURCE_BASE=https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05241-lampac
 rm -rf /root/lampac/module/OnlineENG/VidCore     # module này không có trong lampac-nextgen.zip nên xoá là sạch
-bash setup-termux.sh --sync-all && lampac restart
+bash setup-termux.sh --sync-all && lampac stop && lampac start
 ```
 
 ## Trạng thái nguồn ENG và Mirage
@@ -1065,7 +1065,7 @@ Lampa.Plugins.add(function(){ this.add = function(){ console.log("my addon loade
 JS
 
 # Khởi động lại Lampac
-lampac restart
+lampac stop && lampac start
 ```
 
 Sau đó vào Lampa → Settings → Plugins → gõ URL
