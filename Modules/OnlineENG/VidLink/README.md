@@ -28,6 +28,9 @@ API VidLink trả HLS (`stream.playlist`, `type: hls`). Lampac **tải playlist 
 | `lite/vidlink/video` | Stream |
 | `lite/vidlink/video.m3u8` | Cùng resolver |
 | `lite/vidlink/playlist.m3u8` | Tải HLS, viết lại segment |
+| `lite/vidlink/media.mp4` | Stream MP4 (có `uri=`) |
+| `lite/vidlink/file.mp4` | Alias MP4 (có `uri=`) |
+| `lite/vidlink/media.ts` | Segment HLS |
 
 ## Files
 

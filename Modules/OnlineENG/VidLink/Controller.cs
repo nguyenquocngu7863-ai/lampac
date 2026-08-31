@@ -109,6 +109,24 @@ public class VidLinkController : BaseENGController
         return ContentTo(rewritten, "application/vnd.apple.mpegurl; charset=utf-8");
     }
 
+    [HttpGet, Staticache(manually: true)]
+    [Route("lite/vidlink/media")]
+    [Route("lite/vidlink/media.ts")]
+    [Route("lite/vidlink/media.m4s")]
+    [Route("lite/vidlink/media.mp4")]
+    [Route("lite/vidlink/file.mp4")]
+    public async Task<ActionResult> Media(string uri)
+    {
+        StatiCacheDisabled = true;
+        SetHeadersNoCache();
+
+        string source = DecryptQuery(uri);
+        if (string.IsNullOrWhiteSpace(source) || !IsHttpUrl(source))
+            return OnError("uri");
+
+        return await PipeMedia(source);
+    }
+
     async Task<List<ResolvedStream>> Resolve(long tmdbId, short season, short episode)
     {
         string mediaType = season > 0 ? "tv" : "movie";
@@ -455,12 +473,107 @@ public class VidLinkController : BaseENGController
 
         return playlist
             ? PlaylistLink(uri.AbsoluteUri)
-            : HostStreamProxy(uri.AbsoluteUri, headers: headers);
+            : MediaLink(uri.AbsoluteUri);
     }
 
     string PlaylistLink(string source)
     {
         return accsArgs($"{host}/lite/vidlink/playlist.m3u8?uri={HttpUtility.UrlEncode(EncryptQuery(source))}");
+    }
+
+    string MediaLink(string source, string ext = null)
+    {
+        if (ext == null)
+        {
+            if (LooksLikeProgressive(source))
+                ext = ".mp4";
+            else if (source.Contains(".m4s", StringComparison.OrdinalIgnoreCase))
+                ext = ".m4s";
+            else
+                ext = ".ts";
+        }
+
+        return accsArgs($"{host}/lite/vidlink/media{ext}?uri={HttpUtility.UrlEncode(EncryptQuery(source))}");
+    }
+
+    async Task<ActionResult> PipeMedia(string url)
+    {
+        var variants = new List<List<HeadersModel>>();
+        string hostKey = $"vidlink:hdr:{HostOf(url)}";
+        if (hybridCache.TryGetValue(hostKey, out List<HeadersModel> remembered) && remembered?.Count > 0)
+            variants.Add(remembered);
+
+        foreach (List<HeadersModel> headers in HeaderVariants(url))
+            variants.Add(headers);
+
+        foreach (List<HeadersModel> headers in variants)
+        {
+            var client = FriendlyHttp.MessageClient(
+                "base",
+                Http.HandlerOrNull(url, proxy),
+                out bool dispose,
+                allowAutoRedirect: true
+            );
+
+            HttpResponseMessage resp = null;
+            try
+            {
+                using var req = new HttpRequestMessage(HttpMethod.Get, url);
+                Http.DefaultRequestHeaders(url, req, null, null, headers, useDefaultHeaders: false);
+
+                if (Request.Headers.TryGetValue("Range", out var range) && range.Count > 0)
+                    req.Headers.TryAddWithoutValidation("Range", range.ToString());
+
+                resp = await client.SendAsync(
+                    req,
+                    HttpCompletionOption.ResponseHeadersRead,
+                    HttpContext.RequestAborted
+                );
+
+                int status = (int)resp.StatusCode;
+                Console.WriteLine($"VidLink: media {HostOf(url)} {status}");
+                if (status is not (200 or 206))
+                    continue;
+
+                RememberHeaders(url, headers);
+                string finalUrl = StripHash(resp.RequestMessage?.RequestUri?.AbsoluteUri ?? url);
+                RememberHeaders(finalUrl, headers);
+
+                string ct = resp.Content.Headers.ContentType?.ToString();
+                if (string.IsNullOrWhiteSpace(ct) ||
+                    ct.StartsWith("application/octet-stream", StringComparison.OrdinalIgnoreCase) ||
+                    ct.StartsWith("text/", StringComparison.OrdinalIgnoreCase))
+                {
+                    ct = LooksLikeProgressive(url) ? "video/mp4" : "video/mp2t";
+                }
+
+                Response.StatusCode = status;
+                Response.ContentType = ct;
+                Response.Headers["Accept-Ranges"] = "bytes";
+
+                if (resp.Content.Headers.ContentLength is long length)
+                    Response.ContentLength = length;
+
+                if (resp.Content.Headers.TryGetValues("Content-Range", out var contentRange))
+                    Response.Headers["Content-Range"] = string.Join(", ", contentRange);
+
+                await using var input = await resp.Content.ReadAsStreamAsync(HttpContext.RequestAborted);
+                await input.CopyToAsync(Response.Body, HttpContext.RequestAborted);
+                return new EmptyResult();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"VidLink: media {HostOf(url)} ex {ex.GetType().Name}");
+            }
+            finally
+            {
+                resp?.Dispose();
+                if (dispose)
+                    client.Dispose();
+            }
+        }
+
+        return OnError("media", refresh_proxy: true);
     }
 
     void RememberHeaders(string url, List<HeadersModel> headers)
@@ -1013,21 +1126,6 @@ public class VidLinkController : BaseENGController
             for (int i = 0; i < message.Length; i += 16)
             {
                 int n = Math.Min(16, message.Length - i);
-                byte[] block = new byte[n + 2];
-                message.Slice(i, n).CopyTo(block);
-                block[n] = 1;
-                h = ((h + new BigInteger(block, isUnsigned: true, isBigEndian: false)) * r) % p;
-            }
-
-            h += s;
-            byte[] tag = new byte[16];
-            byte[] raw = h.ToByteArray(isUnsigned: true, isBigEndian: false);
-            Buffer.BlockCopy(raw, 0, tag, 0, Math.Min(16, raw.Length));
-            return tag;
-        }
-    }
-}
-ge.Length - i);
                 byte[] block = new byte[n + 2];
                 message.Slice(i, n).CopyTo(block);
                 block[n] = 1;
