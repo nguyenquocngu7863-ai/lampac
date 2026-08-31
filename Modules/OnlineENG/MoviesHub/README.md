@@ -88,9 +88,35 @@ Referer theo đúng origin đó. Đặt một host cố định = 403 cho các m
 | `movies4u: không có download-links-div … (a=123)` | selector sai, nhưng `a=` cho biết trang có bao nhiêu link |
 | `movies4u: 0 bài ứng viên` | **WP `?s=` không index href**, nên không bao giờ tìm được bằng IMDb id — module đã chuyển sang tìm tên+năm (qua TMDB); nếu vẫn 0 thì domain đổi hoặc bài không tồn tại |
 | `moviesdrive: bài: … a=0` | trang bài viết không có anchor nào → bị chặn/redirect, không phải selector sai |
-| `moviesdrive: 0 link file-host (… hits=1)` | hits=1 mà 0 link ⇒ selector h5 đã lỗi thời; bản mới quét MỌI anchor nên không còn case này |
+| `moviesdrive: 0 link file-host \| hosts=hubcloud.foo:12 t.me:3 …` | bộ lọc đúng nhưng site đặt link ở host lạ → gửi em nguyên dòng `hosts=` |
+| `…: <url> bị Cloudflare chặn (js challenge)` | host đó cần bypass (bật Playwright trong Lampac) — không phải bug; module bỏ qua, không retry 3 lần |
+| `…: 302 của downloadfile -> …mkv` | cửa số 4 ăn: link thô đã thành link chơi được |
+| `…: dựng link từ <title>: …` | cửa số 5 ăn: HubCloud không trả 302 cho `downloadfile=true` |
+| `moviesdrive: 0 link file-host (… hits=1)` | tìm được bài nhưng không có anchor nào ra file-host ⇒ xem `hosts=` ở dòng ngay dưới |
 | `movieshub: blocked (enable=False…)` | bị chặn cấu hình (không phải lỗi resolver) |
 | `movieshub: tmdb meta fail` | TMDB/cub không trả metadata → không có tên để tìm Movies4U |
+
+## Trang file HubCloud/GDFlix: vì sao phải thử nhiều cửa
+
+`https://hubcloud.cx/drive/<id>` là **app JS** — HTML không chứa link tải. Bằng chứng từ log thiết bị:
+`len=20070`, `head=<title>(Movies4u.Foo).Mutiny.2026.480p.WEB-DL.English.ESub.x264.mkv</title>`
+→ có **tên file**, không có **url**. Nên resolver thử lần lượt:
+
+1. url đã là file (`.mkv/.mp4/…`) → dùng thẳng.
+2. `…/drive/download/<id>/<tên>.mkv` xuất hiện trần trong HTML (kể cả trong chuỗi JS, không cần `href`).
+3. Google Drive id (trong url hoặc trang) → `drive.usercontent.google.com/download?id=…`.
+4. `<url trang file>?downloadfile=true` + `Http.GetLocation`: engine GDFlix trả **302** vào file thô;
+   helper đó dùng `HttpCompletionOption.ResponseHeadersRead` nên **không tải body**, và vẫn đi qua
+   proxy cấu hình trong Lampac (không tự `new HttpClient`).
+5. Không ra 302 thì dựng `{root}/{drive|dr|file}/{id}/{tên lấy từ <title>}.mkv` — engine map theo
+   `id`, phần tên chỉ để player đoán định dạng (HubCloud canonical cũng đúng dạng này).
+6. Hết cách mới nhảy sang trang `/drive|/dr|/file/<id>` khác tìm thấy trong trang. Id phải ≥13 ký tự
+   vì `{6,}` từng bắt nhầm `https://hubcloud.club/drive/assets` (file tĩnh) → 3 hop lãng phí.
+
+Về **tìm link trên trang nguồn**: không được giả định cấu trúc (bài học từ vòng test đầu — giả định
+`<h5><a>` làm MoviesDrive trả 0 link). Mọi regex ở `HubController` dùng `AnchorPattern` /
+`HrefPattern` / `DivOpenPattern`, chấp nhận `href="x"`, `href='x'` và `href=x`; `.NET` đọc
+giá trị qua `HrefValue(m)` (ba nhóm `d`/`s`/`n`, không dùng trùng tên nhóm).
 
 ## Bẫy đã né sẵn (đều là bài học từ VidCore, đọc trước khi sửa)
 
