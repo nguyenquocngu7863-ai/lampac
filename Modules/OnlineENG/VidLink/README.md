@@ -20,13 +20,14 @@ Nguồn ENG `https://vidlink.pro`. Resolver mặc định là **HTTP** (token XS
 
 ## HTTP
 
-API VidLink trả HLS (`stream.playlist`, `type: hls`). Lampac gắn `#.m3u8` để player dùng hls.js — URL `.mp4` thuần sẽ bị HTML5 từ chối (`no supported source`).
+API VidLink trả HLS (`stream.playlist`, `type: hls`). Lampac **tải playlist trên server** (`/lite/vidlink/playlist.m3u8`) rồi viết lại segment qua `/proxy` — hls.js nhận `#EXTM3U` cùng origin, không fetch CDN qua `/proxy` (Origin/`AllowAutoRedirect=false` hay 403). URL MP4 không gắn `.m3u8`.
 
 | Route | Việc |
 |-------|------|
 | `lite/vidlink` | Danh sách phim/tập |
 | `lite/vidlink/video` | Stream |
-| `lite/vidlink/video.m3u8` | Cùng resolver, đuôi HLS |
+| `lite/vidlink/video.m3u8` | Cùng resolver |
+| `lite/vidlink/playlist.m3u8` | Tải HLS, viết lại segment |
 
 ## Files
 

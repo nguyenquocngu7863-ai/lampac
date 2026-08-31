@@ -59,10 +59,11 @@ public class ModInit : IModuleLoaded, IModuleOnline
         conf.rhub = false;
         conf.httptimeout = 20;
         conf.streamproxy = true;
-        conf.headers_stream ??= HeadersModel.Init(
+        // Origin on CDN GETs is a common 403. Referer is enough.
+        conf.headers_stream = HeadersModel.Init(
             ("User-Agent", Http.UserAgent),
             ("Referer", "https://vidlink.pro/"),
-            ("Origin", "https://vidlink.pro")
+            ("Accept", "*/*")
         ).ToDictionary();
     }
 

@@ -14,6 +14,7 @@ using System.Numerics;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using System.Web;
 
 namespace VidLink;
 
@@ -59,8 +60,10 @@ public class VidLinkController : BaseENGController
         var qualities = new StreamQualityTpl(resolved.Count);
         foreach (ResolvedStream item in resolved)
         {
-            string uri = item.Hls ? WithHashExt(item.Url, ".m3u8") : item.Url;
-            qualities.Append(HostStreamProxy(uri, headers: item.Headers), item.Label);
+            if (item.Hls)
+                qualities.Append(PlaylistLink(item.Url), item.Label);
+            else
+                qualities.Append(HostStreamProxy(item.Url, headers: item.Headers), item.Label);
         }
 
         if (qualities.IsEmpty)
@@ -81,16 +84,39 @@ public class VidLinkController : BaseENGController
         ));
     }
 
+    [HttpGet, Staticache(manually: true)]
+    [Route("lite/vidlink/playlist.m3u8")]
+    public async Task<ActionResult> Playlist(string uri)
+    {
+        string source = DecryptQuery(uri);
+        if (string.IsNullOrWhiteSpace(source) || !IsHttpUrl(source))
+            return OnError("uri");
+
+        var fetched = await FetchPlaylist(source);
+        if (string.IsNullOrWhiteSpace(fetched.body))
+            return OnError("playlist", refresh_proxy: true);
+
+        string rewritten = RewritePlaylist(fetched.body, fetched.url, fetched.headers);
+        if (!IsExtM3u(rewritten))
+            return OnError("playlist", refresh_proxy: true);
+
+        return ContentTo(rewritten, "application/vnd.apple.mpegurl; charset=utf-8");
+    }
+
     async Task<List<ResolvedStream>> Resolve(long tmdbId, short season, short episode)
     {
         string mediaType = season > 0 ? "tv" : "movie";
-        string memKey = $"vidlink:play:{mediaType}:{tmdbId}:{season}:{episode}";
+        string memKey = $"vidlink:play3:{mediaType}:{tmdbId}:{season}:{episode}";
         if (hybridCache.TryGetValue(memKey, out List<ResolvedStream> cached) && cached?.Count > 0)
             return cached;
 
         List<ResolvedStream> resolved = await ResolveHttp(tmdbId, season, episode);
         if (resolved == null || resolved.Count == 0)
-            resolved = await ResolvePlaywright(tmdbId, season, episode);
+        {
+            var playwright = await ResolvePlaywright(tmdbId, season, episode);
+            if (playwright != null && playwright.Count > 0)
+                resolved = await FinalizeStreams(playwright);
+        }
 
         if (resolved == null || resolved.Count == 0)
         {
@@ -190,69 +216,284 @@ public class VidLinkController : BaseENGController
             return streams;
 
         var result = new List<ResolvedStream>(streams.Count);
+        List<HeadersModel> working = null;
+
         foreach (ResolvedStream item in streams)
         {
-            bool hls = item.Hls;
-            if (!hls && LooksLikeProgressive(item.Url))
+            if (!item.Hls && LooksLikeProgressive(item.Url))
             {
-                bool? peek = await PeekIsHls(item.Url, item.Headers);
-                hls = peek != false;
+                result.Add(item with { Hls = false, Headers = StreamHeaders() });
+                continue;
             }
 
-            var headers = hls ? StreamHeaders() : FileHeaders();
-            result.Add(item with { Hls = hls, Headers = headers });
+            ProbeResult probe = null;
+            if (working != null)
+                probe = await ProbeUrl(item.Url, working);
+
+            if (probe is not { Ok: true })
+            {
+                foreach (List<HeadersModel> headers in HeaderVariants(item.Url))
+                {
+                    probe = await ProbeUrl(item.Url, headers);
+                    if (probe?.Ok == true)
+                    {
+                        working = headers;
+                        RememberHeaders(item.Url, headers);
+                        break;
+                    }
+                }
+            }
+
+            if (probe is { Ok: true })
+            {
+                result.Add(item with
+                {
+                    Url = probe.Url,
+                    Hls = probe.Hls,
+                    Headers = probe.Headers
+                });
+                continue;
+            }
+
+            // Still expose a local playlist URL so hls.js does not hit the CDN
+            // through /proxy with Origin / no-redirect. Playlist() retries.
+            result.Add(item with
+            {
+                Hls = !LooksLikeProgressive(item.Url),
+                Headers = StreamHeaders()
+            });
         }
 
         result.Sort((a, b) => b.Hls.CompareTo(a.Hls));
         return result;
     }
 
-    async Task<bool?> PeekIsHls(string url, List<HeadersModel> headers)
+    sealed record ProbeResult(bool Ok, bool Hls, string Url, List<HeadersModel> Headers);
+
+    async Task<ProbeResult> ProbeUrl(string url, List<HeadersModel> headers)
     {
         try
         {
-            var peekHeaders = new List<HeadersModel>(headers ?? new List<HeadersModel>())
-            {
-                new HeadersModel("Range", "bytes=0-1023"),
-                new HeadersModel("Accept", "*/*")
-            };
-
             var probe = await Http.BaseGet(
                 url,
-                timeoutSeconds: 8,
-                headers: peekHeaders,
+                timeoutSeconds: 12,
+                headers: headers,
                 statusCodeOK: false,
-                MaxResponseContentBufferSize: 8192,
+                MaxResponseContentBufferSize: 262144,
                 proxy: proxy,
                 useDefaultHeaders: false
             );
 
-            string body = probe.content;
-            if (string.IsNullOrEmpty(body))
-                return null;
-
+            int status = (int)(probe.response?.StatusCode ?? 0);
+            string body = probe.content ?? string.Empty;
             string trim = body.TrimStart();
-            if (trim.StartsWith("#EXTM3U", StringComparison.OrdinalIgnoreCase) ||
-                trim.StartsWith("#EXT-X-", StringComparison.OrdinalIgnoreCase))
+            string preview = PreviewOf(trim);
+            string finalUrl = StripHash(probe.response?.RequestMessage?.RequestUri?.AbsoluteUri ?? url);
+
+            if (status is 200 or 206)
             {
-                Console.WriteLine($"VidLink: peeked HLS at {HostOf(url)}");
-                return true;
+                if (IsExtM3u(trim))
+                {
+                    Console.WriteLine($"VidLink: {HostOf(url)} {status} hls {preview}");
+                    return new ProbeResult(true, true, finalUrl, headers);
+                }
+
+                if (LooksLikeMp4(body))
+                {
+                    Console.WriteLine($"VidLink: {HostOf(url)} {status} mp4 {preview}");
+                    return new ProbeResult(true, false, finalUrl, headers);
+                }
+
+                if (trim.StartsWith('{'))
+                {
+                    try
+                    {
+                        var root = JObject.Parse(trim);
+                        string inner = FirstString(root, "playlist", "url", "file", "src");
+                        if (!string.IsNullOrWhiteSpace(inner) &&
+                            !string.Equals(inner, url, StringComparison.OrdinalIgnoreCase) &&
+                            Uri.TryCreate(inner, UriKind.Absolute, out _))
+                        {
+                            Console.WriteLine($"VidLink: {HostOf(url)} {status} json→{HostOf(inner)}");
+                            return await ProbeUrl(inner, headers);
+                        }
+                    }
+                    catch
+                    {
+                    }
+                }
             }
 
-            if (trim.StartsWith("<", StringComparison.Ordinal) ||
-                trim.StartsWith("{", StringComparison.Ordinal))
-                return null;
-
-            if (body.Contains("ftyp", StringComparison.Ordinal) ||
-                body.Contains("moov", StringComparison.Ordinal))
-                return false;
-
-            return null;
+            Console.WriteLine($"VidLink: {HostOf(url)} {status} fail {preview}");
+            return new ProbeResult(false, false, url, headers);
         }
-        catch
+        catch (Exception ex)
         {
-            return null;
+            if (LooksLikeProgressive(url))
+            {
+                Console.WriteLine($"VidLink: {HostOf(url)} mp4-ex {ex.GetType().Name}");
+                return new ProbeResult(true, false, url, headers);
+            }
+
+            Console.WriteLine($"VidLink: {HostOf(url)} ex {ex.GetType().Name}");
+            return new ProbeResult(false, false, url, headers);
         }
+    }
+
+    async Task<(string body, string url, List<HeadersModel> headers)> FetchPlaylist(string url)
+    {
+        var variants = new List<List<HeadersModel>>();
+        string hostKey = $"vidlink:hdr:{HostOf(url)}";
+        if (hybridCache.TryGetValue(hostKey, out List<HeadersModel> remembered) && remembered?.Count > 0)
+            variants.Add(remembered);
+
+        foreach (List<HeadersModel> headers in HeaderVariants(url))
+            variants.Add(headers);
+
+        foreach (List<HeadersModel> headers in variants)
+        {
+            try
+            {
+                var probe = await Http.BaseGet(
+                    url,
+                    timeoutSeconds: 15,
+                    headers: headers,
+                    statusCodeOK: false,
+                    MaxResponseContentBufferSize: 1_000_000,
+                    proxy: proxy,
+                    useDefaultHeaders: false
+                );
+
+                int status = (int)(probe.response?.StatusCode ?? 0);
+                string body = probe.content ?? string.Empty;
+                string trim = body.TrimStart();
+                Console.WriteLine($"VidLink: playlist {HostOf(url)} {status} {PreviewOf(trim)}");
+
+                if (status is not (200 or 206) || !IsExtM3u(trim))
+                    continue;
+
+                string finalUrl = StripHash(probe.response?.RequestMessage?.RequestUri?.AbsoluteUri ?? url);
+                RememberHeaders(url, headers);
+                RememberHeaders(finalUrl, headers);
+                return (body, finalUrl, headers);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"VidLink: playlist {HostOf(url)} ex {ex.GetType().Name}");
+            }
+        }
+
+        return default;
+    }
+
+    string RewritePlaylist(string playlist, string sourceUrl, List<HeadersModel> headers)
+    {
+        var output = new StringBuilder(playlist.Length * 2);
+        var baseUri = new Uri(sourceUrl);
+        bool nextIsPlaylist = false;
+
+        foreach (string rawLine in playlist.Replace("\r", string.Empty).Split('\n'))
+        {
+            string line = rawLine.Trim();
+            if (line.Length == 0)
+            {
+                output.Append('\n');
+                continue;
+            }
+
+            if (line.StartsWith('#') )
+            {
+                if (line.StartsWith("#EXT-X-STREAM-INF", StringComparison.OrdinalIgnoreCase))
+                    nextIsPlaylist = true;
+
+                output.Append(RewriteTagUris(rawLine, baseUri, headers));
+                output.Append('\n');
+                continue;
+            }
+
+            bool nested = nextIsPlaylist || LooksLikeHls(line);
+            nextIsPlaylist = false;
+            output.Append(MapUri(baseUri, line, headers, nested)).Append('\n');
+        }
+
+        return output.ToString();
+    }
+
+    string RewriteTagUris(string line, Uri baseUri, List<HeadersModel> headers)
+    {
+        if (!line.Contains("URI=", StringComparison.OrdinalIgnoreCase))
+            return line;
+
+        bool key = line.StartsWith("#EXT-X-KEY", StringComparison.OrdinalIgnoreCase) ||
+                   line.StartsWith("#EXT-X-SESSION-KEY", StringComparison.OrdinalIgnoreCase) ||
+                   line.StartsWith("#EXT-X-MAP", StringComparison.OrdinalIgnoreCase);
+
+        return Regex.Replace(line, @"URI=""([^""]+)""", match =>
+        {
+            string value = match.Groups[1].Value;
+            bool playlist = !key && (LooksLikeHls(value) ||
+                line.StartsWith("#EXT-X-MEDIA", StringComparison.OrdinalIgnoreCase) ||
+                line.StartsWith("#EXT-X-I-FRAME", StringComparison.OrdinalIgnoreCase) ||
+                line.StartsWith("#EXT-X-STREAM-INF", StringComparison.OrdinalIgnoreCase));
+            return $"URI=\"{MapUri(baseUri, value, headers, playlist)}\"";
+        }, RegexOptions.IgnoreCase);
+    }
+
+    string MapUri(Uri baseUri, string value, List<HeadersModel> headers, bool playlist)
+    {
+        if (!Uri.TryCreate(baseUri, value, out Uri uri) ||
+            uri.Scheme is not ("http" or "https"))
+        {
+            return value;
+        }
+
+        return playlist
+            ? PlaylistLink(uri.AbsoluteUri)
+            : HostStreamProxy(uri.AbsoluteUri, headers: headers);
+    }
+
+    string PlaylistLink(string source)
+    {
+        return accsArgs($"{host}/lite/vidlink/playlist.m3u8?uri={HttpUtility.UrlEncode(EncryptQuery(source))}");
+    }
+
+    void RememberHeaders(string url, List<HeadersModel> headers)
+    {
+        if (string.IsNullOrWhiteSpace(url) || headers == null || headers.Count == 0)
+            return;
+
+        hybridCache.Set($"vidlink:hdr:{HostOf(url)}", headers, cacheTime(20));
+    }
+
+    IEnumerable<List<HeadersModel>> HeaderVariants(string url)
+    {
+        yield return HeadersModel.Init(
+            ("User-Agent", Http.UserAgent),
+            ("Referer", PlayerOrigin + "/"),
+            ("Accept", "*/*")
+        );
+
+        yield return HeadersModel.Init(
+            ("User-Agent", Http.UserAgent),
+            ("Referer", PlayerOrigin + "/"),
+            ("Origin", PlayerOrigin),
+            ("Accept", "*/*")
+        );
+
+        if (Uri.TryCreate(url, UriKind.Absolute, out Uri uri))
+        {
+            string origin = uri.GetLeftPart(UriPartial.Authority);
+            yield return HeadersModel.Init(
+                ("User-Agent", Http.UserAgent),
+                ("Referer", origin + "/"),
+                ("Accept", "*/*")
+            );
+        }
+
+        yield return HeadersModel.Init(
+            ("User-Agent", Http.UserAgent),
+            ("Accept", "*/*")
+        );
     }
 
     void Collect(JToken token, List<ResolvedStream> result, HashSet<string> seen, int depth)
@@ -412,32 +653,53 @@ public class VidLinkController : BaseENGController
         return result.Length > 80 ? result[..80] : result;
     }
 
-    static string WithHashExt(string url, string ext)
-    {
-        if (string.IsNullOrWhiteSpace(url))
-            return url;
-
-        int hash = url.IndexOf('#');
-        if (hash >= 0)
-            url = url[..hash];
-
-        return url + "#" + ext;
-    }
-
     static string HostOf(string url)
     {
         return Uri.TryCreate(url, UriKind.Absolute, out Uri uri) ? uri.Host : url;
     }
 
-    List<HeadersModel> FileHeaders()
+    static string StripHash(string url)
     {
-        // Origin on progressive MP4s is a common 403 trigger. Referer is enough.
-        return HeadersModel.Init(
-            ("User-Agent", Http.UserAgent),
-            ("Referer", PlayerOrigin + "/"),
-            ("Accept", "*/*")
-        );
+        if (string.IsNullOrWhiteSpace(url))
+            return url;
+
+        int hash = url.IndexOf('#');
+        return hash >= 0 ? url[..hash] : url;
     }
+
+    static bool IsHttpUrl(string value)
+        => Uri.TryCreate(value, UriKind.Absolute, out Uri uri)
+           && uri.Scheme is "http" or "https"
+           && !string.IsNullOrWhiteSpace(uri.Host);
+
+    static bool IsExtM3u(string body)
+    {
+        if (string.IsNullOrWhiteSpace(body))
+            return false;
+
+        string trim = body.TrimStart();
+        return trim.StartsWith("#EXTM3U", StringComparison.OrdinalIgnoreCase) ||
+               trim.StartsWith("#EXT-X-", StringComparison.OrdinalIgnoreCase);
+    }
+
+    static bool LooksLikeMp4(string body)
+    {
+        return !string.IsNullOrEmpty(body) &&
+               (body.Contains("ftyp", StringComparison.Ordinal) ||
+                body.Contains("moov", StringComparison.Ordinal));
+    }
+
+    static string PreviewOf(string body)
+    {
+        if (string.IsNullOrEmpty(body))
+            return "-";
+
+        string text = Regex.Replace(body.Trim(), @"\s+", " ");
+        return text.Length > 80 ? text[..80] : text;
+    }
+
+    List<HeadersModel> FileHeaders()
+        => StreamHeaders();
 
     List<HeadersModel> ApiHeaders()
     {
@@ -451,13 +713,11 @@ public class VidLinkController : BaseENGController
 
     List<HeadersModel> StreamHeaders()
     {
-        if (init.headers_stream != null && init.headers_stream.Count > 0)
-            return HeadersModel.Init(init.headers_stream);
-
+        // Origin on CDN GETs is a common 403. Referer is enough for most edges.
         return HeadersModel.Init(
             ("User-Agent", Http.UserAgent),
             ("Referer", PlayerOrigin + "/"),
-            ("Origin", PlayerOrigin)
+            ("Accept", "*/*")
         );
     }
 
