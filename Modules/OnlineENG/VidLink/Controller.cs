@@ -11,6 +11,7 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Numerics;
+using System.Net.Http;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -63,13 +64,11 @@ public class VidLinkController : BaseENGController
         var qualities = new StreamQualityTpl(resolved.Count);
         foreach (ResolvedStream item in resolved)
         {
-            // Never give hls.js a /proxy/…m3u8. Local playlist is the only
-            // URL that returns #EXTM3U on this origin.
             bool playlist = item.Hls || LooksLikeHls(item.Url) || !LooksLikeProgressive(item.Url);
-            if (playlist)
-                qualities.Append(PlaylistLink(item.Url), item.Label);
-            else
-                qualities.Append(HostStreamProxy(item.Url, headers: item.Headers), item.Label);
+            qualities.Append(
+                playlist ? PlaylistLink(item.Url) : MediaLink(item.Url, ".mp4"),
+                item.Label
+            );
         }
 
         if (qualities.IsEmpty)
@@ -113,7 +112,7 @@ public class VidLinkController : BaseENGController
     async Task<List<ResolvedStream>> Resolve(long tmdbId, short season, short episode)
     {
         string mediaType = season > 0 ? "tv" : "movie";
-        string memKey = $"vidlink:play3:{mediaType}:{tmdbId}:{season}:{episode}";
+        string memKey = $"vidlink:play4:{mediaType}:{tmdbId}:{season}:{episode}";
         if (hybridCache.TryGetValue(memKey, out List<ResolvedStream> cached) && cached?.Count > 0)
             return cached;
 
@@ -691,9 +690,12 @@ public class VidLinkController : BaseENGController
 
     static bool LooksLikeMp4(string body)
     {
-        return !string.IsNullOrEmpty(body) &&
-               (body.Contains("ftyp", StringComparison.Ordinal) ||
-                body.Contains("moov", StringComparison.Ordinal));
+        if (string.IsNullOrEmpty(body) || body.Length < 8)
+            return false;
+
+        int n = Math.Min(body.Length, 32);
+        int i = body.IndexOf("ftyp", 0, n, StringComparison.Ordinal);
+        return i is >= 0 and <= 8;
     }
 
     static string PreviewOf(string body)
@@ -1011,6 +1013,21 @@ public class VidLinkController : BaseENGController
             for (int i = 0; i < message.Length; i += 16)
             {
                 int n = Math.Min(16, message.Length - i);
+                byte[] block = new byte[n + 2];
+                message.Slice(i, n).CopyTo(block);
+                block[n] = 1;
+                h = ((h + new BigInteger(block, isUnsigned: true, isBigEndian: false)) * r) % p;
+            }
+
+            h += s;
+            byte[] tag = new byte[16];
+            byte[] raw = h.ToByteArray(isUnsigned: true, isBigEndian: false);
+            Buffer.BlockCopy(raw, 0, tag, 0, Math.Min(16, raw.Length));
+            return tag;
+        }
+    }
+}
+ge.Length - i);
                 byte[] block = new byte[n + 2];
                 message.Slice(i, n).CopyTo(block);
                 block[n] = 1;
