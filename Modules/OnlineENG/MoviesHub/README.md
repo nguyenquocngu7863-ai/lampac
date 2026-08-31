@@ -96,6 +96,39 @@ Referer theo đúng origin đó. Đặt một host cố định = 403 cho các m
 | `movieshub: blocked (enable=False…)` | bị chặn cấu hình (không phải lỗi resolver) |
 | `movieshub: tmdb meta fail` | TMDB/cub không trả metadata → không có tên để tìm Movies4U |
 
+## Bước extractor (học CSX: class HubCloud / class GDFlix trong Extractors.kt)
+
+Vòng test Mutiny 2026 cho thấy 8 nút nguồn là **đúng**, nhưng từ nút đó không trích ra link nào:
+trang chia sẻ của HubCloud **không chứa link chơi được** (log: `len=20070`, chỉ có
+`<title>(Movies4u.Foo).Mutiny.2026.480p...mkv</title>`). CSX phải đi thêm một tầng, và module
+giờ làm y hệt (`HubExtract` / `GdExtract` trong `HubController.cs`):
+
+```
+HubCloud:  GET {share}    -> <script> var url = '/xxx'        (vcloud: var url = atob(atob('..')))
+           GET {root+url} -> div.card-header (tên), i#size (dung lượng),
+                             <h2><a class="btn" href="…">FSL Server / Download File / Mega Server</a></h2>  ← file thô
+GDFlix:    GET {share}    -> <li>Name : …</li> <li>Size : …</li>
+                             <div class="text-center"><a href="…">FSL V2 / DIRECT DL / CLOUD DOWNLOAD [R2]</a></div>
+           + GD Index   → GET {link}?type=1 và 2, lấy a.btn-success
+           + FAST CLOUD → GET {link}, lấy a trong div.card-body
+           + Instant DL → đọc header Location, cắt sau "url="
+```
+
+Các nút khác: `pixeldrain` → `{root}/api/file/{id}?download`; `10Gbps` → theo 302 rồi cắt sau
+`link=`; `Buzz Server` → theo `.download-btn`; `GoFile` bỏ qua (CineStream đệ quy vào extractor
+riêng, Lampac không cần vì nó không phải file .mkv).
+
+Host của HubCloud/GDFlix/vcloud **đổi TLD liên tục** — CSX đọc
+`https://raw.githubusercontent.com/SaurabhKaperwan/Utils/refs/heads/main/urls.json` để lấy mirror
+mới nhất. Module dùng cùng nguồn, cache 180 phút vào hybridCache, và chỉ như fallback: json fail
+hoặc mirror mới cũng lỗi thì giữ nguyên host trong link (log nói rõ), không bao giờ chết cả nguồn.
+
+Quy ước khi sửa vùng này: **không viết verbatim string chứa `[""]`** — `HubExtract` vòng trước
+hỏng vì `class=[""']...` lệch một dấu nháy, C# nuốt hết code phía sau thành chuỗi. Muốn dò class/id
+trong HTML thì dùng `Block(html, tag, fragment)` / `Links(block, fragment)` (so `Contains` trên thẻ
+mở, nên miễn nhiễm nháy đơn/kép), còn biến JS thì dùng `JsVar(html, "url", out int atobCount)`
+(xử lý luôn atob và atob(atob())).
+
 ## Trang file HubCloud/GDFlix: vì sao phải thử nhiều cửa
 
 `https://hubcloud.cx/drive/<id>` là **app JS** — HTML không chứa link tải. Bằng chứng từ log thiết bị:
@@ -105,7 +138,7 @@ Referer theo đúng origin đó. Đặt một host cố định = 403 cho các m
 1. url đã là file (`.mkv/.mp4/…`) → dùng thẳng.
 2. `…/drive/download/<id>/<tên>.mkv` xuất hiện trần trong HTML (kể cả trong chuỗi JS, không cần `href`).
 3. Google Drive id (trong url hoặc trang) → `drive.usercontent.google.com/download?id=…`.
-4. `<url trang file>?downloadfile=true` + `Http.GetLocation`: engine GDFlix trả **302** vào file thô;
+4. (chỉ khi extractor ở trên fail) `<url trang file>?downloadfile=true` + `Http.GetLocation`: engine GDFlix trả **302** vào file thô;
    helper đó dùng `HttpCompletionOption.ResponseHeadersRead` nên **không tải body**, và vẫn đi qua
    proxy cấu hình trong Lampac (không tự `new HttpClient`).
 5. Không ra 302 thì dựng `{root}/{drive|dr|file}/{id}/{tên lấy từ <title>}.mkv` — engine map theo

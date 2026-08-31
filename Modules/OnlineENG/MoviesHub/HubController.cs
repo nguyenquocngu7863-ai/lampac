@@ -8,6 +8,7 @@ using Shared.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
@@ -226,12 +227,9 @@ public abstract class HubController : BaseENGController
             return gdrive;
 
         string html = await GetPage(url);
+        bool blocked = string.IsNullOrWhiteSpace(html);
 
-        if (string.IsNullOrWhiteSpace(html))
-        {
-            Console.WriteLine($"{Log(source)} trang file-host rỗng {Cut(url)}");
-            return found;
-        }
+        html ??= "";
 
         // drive link nằm ngay trong trang (nhiều bài nhét gdrive ở nút thứ hai)
         found.AddRange(FromGoogleDrive(html, label));
@@ -253,6 +251,25 @@ public abstract class HubController : BaseENGController
 
         if (found.Count > 0)
             return found.DistinctBy(x => x.Url).ToList();
+
+        // == extractor: bước BẮT BUỘC của hai engine này (CSX: class HubCloud / class GDFlix) ==
+        // Trang chia sẻ không chứa link chơi được, nên không thể chỉ regex trên HTML của nó.
+        if (IsHubHost(url) || IsGdHost(url))
+        {
+            var ext = IsHubHost(url) ? await HubExtract(source, url, html, label) : await GdExtract(source, url, html, label);
+
+            if (ext.Count > 0)
+            {
+                Console.WriteLine($"{Log(source)} extractor trả {ext.Count} link chơi được");
+                return ext;
+            }
+        }
+
+        if (blocked)
+        {
+            Console.WriteLine($"{Log(source)} trang file-host rỗng/blocked {Cut(url)} — host đổi hoặc Cloudflare challenge");
+            return found;
+        }
 
         // (d) Trang file của HubCloud/GDFlix là app JS: HTML không chứa link tải, và đó chính là
         //     tình huống trong log thiết bị ("len=20070, head=<title>(Movies4u.Foo).Mutiny.2026.
@@ -463,6 +480,395 @@ public abstract class HubController : BaseENGController
 
     // GetPage không nhận source, nên log của nó dùng prefix chung
     const string Hub = "hub";
+
+    #region extractor HubCloud / GDFlix (học CSX: class HubCloud, class GDFlix trong Extractors.kt)
+    //
+    // Trang chia sẻ của hai engine này KHÔNG chứa link chơi được, CSX phải đi thêm một bước:
+    //
+    //   HubCloud:  GET share   -> <script> var url = '/xxx'          (vcloud: var url = atob(atob('..')))
+    //              GET root+url-> div.card-header (tên file), i#size (dung lượng),
+    //                             <h2><a class="btn" href="...">FSL Server</a></h2> = file thô chơi được
+    //   GDFlix:    GET share   -> <li>Name : ...</li> <li>Size : ...</li>
+    //                             <div class="text-center"><a href="...">FSL V2 / DIRECT DL / GD Index</a></div>
+    //
+    // Host của chúng đổi TLD liên tục nên CSX đọc urls.json để lấy mirror mới nhất. Em dùng cùng
+    // nguồn nhưng CHỈ như fallback: json fail thì giữ host trong link, không để nó làm chết nguồn.
+    //
+    // Quy ước viết regex trong vùng này: KHÔNG dùng verbatim string chứa [""] (dễ lệch nháy), mà
+    // dùng plain string + helper Block()/JsVar() để khỏi phải escape HTML attribute.
+    const string CsxDomainsJson = "https://raw.githubusercontent.com/SaurabhKaperwan/Utils/refs/heads/main/urls.json";
+
+    protected static bool IsHubHost(string url)
+        => Regex.IsMatch(url ?? "", "(?i)hubcloud|hubcdn|hubdrive|vcloud");
+
+    protected static bool IsGdHost(string url)
+        => Regex.IsMatch(url ?? "", "(?i)gdflix|gdlink|go2link");
+
+    /// <summary>Nội dung bên trong phần tử mở đầu có class/id chứa fragment (hỗ trợ mọi loại nháy
+    /// vì chỉ so substring trên thẻ mở). Trả "" nếu không thấy.</summary>
+    protected static string Block(string html, string tag, string fragment = null, int take = 1)
+    {
+        var parts = new List<string>();
+
+        if (string.IsNullOrWhiteSpace(html))
+            return "";
+
+        foreach (Match open in Regex.Matches(html, "(?is)<" + tag + @"\b[^>]*>"))
+        {
+            if (fragment != null && !open.Value.Contains(fragment, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            int close = html.IndexOf("</" + tag, open.Index + open.Length, StringComparison.OrdinalIgnoreCase);
+
+            parts.Add(close < 0 ? html[(open.Index + open.Length)..] : html[(open.Index + open.Length)..close]);
+
+            if (parts.Count >= take)
+                break;
+        }
+
+        return parts.Count == 0 ? "" : parts[0];
+    }
+
+    /// <summary>Mọi anchor trong block, kèm nhãn đã bỏ tag; loc theo fragment ở thẻ mở nếu có.</summary>
+    protected static List<(string Href, string Text)> Links(string block, string fragment = null)
+        => [.. Regex.Matches(block ?? "", AnchorPattern)
+                 .Where(m => fragment == null || m.Value.Contains(fragment, StringComparison.OrdinalIgnoreCase))
+                 .Select(m => (Href: Unescape(HrefValue(m)), Text: Plain(m.Groups["t"].Value)))
+                 .Where(x => !string.IsNullOrWhiteSpace(x.Href))];
+
+    /// <summary>
+    /// Giá trị của  var NAME = 'chuỗi'  trong JS, tính cả dạng atob() / atob(atob()) mà vcloud dùng.
+    /// </summary>
+    protected static string JsVar(string html, string name, out int atobCount)
+    {
+        atobCount = 0;
+
+        var m = Regex.Match(html ?? "", "(?is)\\bvar\\s+" + name + "\\s*=\\s*((?:atob\\s*\\(\\s*)*['\"]([^'\"]*)['\"])");
+
+        if (!m.Success)
+            return null;
+
+        atobCount = Regex.Matches(m.Groups[1].Value, "atob").Count;
+
+        return m.Groups[2].Value;
+    }
+
+    /// <summary>JS atob(): bù padding nếu thiếu rồi base64-decode; null nếu không phải base64.</summary>
+    static string Atob(string b64)
+    {
+        if (string.IsNullOrWhiteSpace(b64))
+            return null;
+
+        b64 = b64.Trim();
+
+        int pad = b64.Length % 4;
+
+        if (pad == 2)
+            b64 += "==";
+        else if (pad == 3)
+            b64 += "=";
+        else if (pad != 0)
+            return null;
+
+        try { return Encoding.UTF8.GetString(Convert.FromBase64String(b64)); }
+        catch { return null; }
+    }
+
+    static string Root(string url)
+        => Uri.TryCreate(url, UriKind.Absolute, out Uri u) ? u.Scheme + "://" + u.Host : url;
+
+    static string Plain(string html)
+        => Regex.Replace(Regex.Replace(html ?? "", "<[^>]+>", " "), @"\s+", " ").Trim();
+
+    /// <summary>mirror mới nhất theo key ("hubcloud"/"vcloud"/"gdflix"); null nếu không lấy được json.</summary>
+    protected async Task<string> LatestRoot(string key)
+    {
+        Dictionary<string, string> map = null;
+
+        try
+        {
+            if (hybridCache.ContainsKey("movieshub_domains", out Dictionary<string, string> cached, out _))
+            {
+                map = cached;
+            }
+            else
+            {
+                string json = await Http.Get(CsxDomainsJson, timeoutSeconds: 10);
+
+                if (ParseJson(json) is JObject o)
+                {
+                    map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+                    foreach (var p in o.Properties())
+                        map[p.Name] = p.Value.ToString();
+
+                    hybridCache.Set("movieshub_domains", map, TimeSpan.FromMinutes(180), true);
+                }
+                else
+                {
+                    Console.WriteLine($"{Hub} urls.json không parse được (len={json?.Length ?? 0}) - dùng host trong link");
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine($"{Hub} urls.json fail ({e.GetType().Name}) - dùng host trong link");
+        }
+
+        if (map != null && map.TryGetValue(key, out string val) && Uri.TryCreate(val, UriKind.Absolute, out Uri u))
+            return u.Scheme + "://" + u.Host;
+
+        return null;
+    }
+
+    /// <summary>Đổi host của link sang mirror mới nhất; giữ nguyên nếu bên đó cũng không đọc được.</summary>
+    protected async Task<(string Url, string Html)> WithLatestMirror(string source, string url, string html, string key)
+    {
+        string root = Root(url);
+        string latest = await LatestRoot(key);
+
+        if (latest == null || latest == root)
+            return (url, html);
+
+        string rotated = url.Replace(root, latest);
+        string page = await GetPage(rotated);
+
+        if (string.IsNullOrWhiteSpace(page))
+        {
+            Console.WriteLine($"{Log(source)} mirror {Cut(latest)} cũng không đọc được - giữ {Cut(root)}");
+            return (url, html);
+        }
+
+        Console.WriteLine($"{Log(source)} đổi host {Cut(root)} -> {Cut(latest)}");
+        return (rotated, page);
+    }
+
+    /// <summary>pixeldrain: CSX nối root + /api/file/&lt;id&gt;?download — link đó chơi được luôn.</summary>
+    protected List<HubStream> Pixel(string shareLink, string pxl, string hint, string referer)
+    {
+        string link = string.IsNullOrWhiteSpace(pxl) ? shareLink : pxl;
+
+        if (!link.Contains("download", StringComparison.OrdinalIgnoreCase))
+            link = Root(link) + "/api/file/" + link.Split('?')[0].TrimEnd('/').Split('/').Last() + "?download";
+
+        return [new HubStream(link, QualityLabel(hint + " [Pixeldrain]", link), StreamHeaders(referer))];
+    }
+
+    /// <summary>HubCloud/VCloud: 2 trang — trang chia sẻ (var url) rồi trang download (nút h2 a.btn).</summary>
+    protected async Task<List<HubStream>> HubExtract(string source, string url, string html, string label)
+    {
+        var list = new List<HubStream>();
+
+        (url, html) = await WithLatestMirror(source, url, html, url.Contains("vcloud", StringComparison.OrdinalIgnoreCase) ? "vcloud" : "hubcloud");
+
+        if (string.IsNullOrWhiteSpace(html))
+            return list;
+
+        string root = Root(url);
+        string step = null;
+
+        if (url.Contains("/video/"))
+        {
+            step = Links(Block(html, "center")).Select(x => x.Href).FirstOrDefault();
+        }
+        else
+        {
+            // CSX: selectFirst("script:containsData(url)") — đúng <script> gán biến url
+            string script = Block(html, "script");
+
+            if (string.IsNullOrEmpty(script) || !script.Contains("var"))
+                script = Regex.Match(html, "(?is)<script[^>]*>[\\s\\S]*?var\\s+url[\\s\\S]*?</script>").Groups[0].Value;
+
+            step = JsVar(script, "url", out int atobCount);
+
+            for (int i = 0; i < atobCount && step != null; i++)
+                step = Atob(step);
+
+            if (string.IsNullOrWhiteSpace(step))
+            {
+                Console.WriteLine($"{Log(source)} HubCloud: trang chia sẻ không có biến url | len={html.Length} script={script.Length} head={Preview(html)}");
+                return list;
+            }
+        }
+
+        string page = Absolute(Unescape(step), root + "/");
+
+        if (!IsPlayable(page))
+        {
+            Console.WriteLine($"{Log(source)} HubCloud: biến url không ra url (step={Cut(step ?? "null")})");
+            return list;
+        }
+
+        if (IsMediaPath(page))
+        {
+            Console.WriteLine($"{Log(source)} HubCloud: biến url đã là file - {Cut(page)}");
+            return [new HubStream(page, QualityLabel(label, page), StreamHeaders(page))];
+        }
+
+        string inner = await GetPage(page, StreamHeaders(url));
+
+        if (string.IsNullOrWhiteSpace(inner))
+        {
+            Console.WriteLine($"{Log(source)} HubCloud: trang download rỗng {Cut(page)}");
+            return list;
+        }
+
+        string name = Plain(Block(inner, "div", "card-header"));
+        string size = Plain(Block(inner, "i", "size"));
+        string hint = label + " " + name + " " + size;
+
+        var buttons = Links(Regex.Match(inner, @"(?is)<h2[^>]*>[\s\S]*?</h2>").Value, "btn");
+
+        if (buttons.Count == 0)
+            buttons = Links(inner, "btn");
+
+        Console.WriteLine($"{Log(source)} HubCloud: {buttons.Count} nút server, file={Cut(name)} {size}");
+
+        foreach ((string href, string text) in buttons)
+        {
+            string link = Absolute(href, page);
+
+            if (Regex.IsMatch(text, "(?i)FSL|Download File|Mega Server|Direct"))
+            {
+                list.Add(new HubStream(link, QualityLabel(hint, link), StreamHeaders(page)));
+                continue;
+            }
+
+            if (link.Contains("pixeldra", StringComparison.OrdinalIgnoreCase))
+            {
+                list.AddRange(Pixel(link, JsVar(inner, "pxl", out _), hint, page));
+                continue;
+            }
+
+            if (Regex.IsMatch(text, "(?i)10Gbps"))
+            {
+                string loc = Absolute(await Http.GetLocation(link, referer: page, headers: StreamHeaders(page)), link);
+
+                if (loc != null && loc.Contains("link="))
+                    loc = loc.Substring(loc.IndexOf("link=", StringComparison.Ordinal) + 5);
+
+                if (IsPlayable(loc))
+                    list.Add(new HubStream(loc, QualityLabel(hint + " [Download]", loc), StreamHeaders(loc)));
+
+                continue;
+            }
+
+            if (Regex.IsMatch(text, "(?i)Buzz"))
+            {
+                string buzz = await GetPage(link, StreamHeaders(page));
+                string dl = Links(Block(buzz, "a", "download-btn")).Select(x => x.Href).FirstOrDefault();
+
+                if (!string.IsNullOrWhiteSpace(dl) && IsPlayable(Absolute(dl, link)))
+                    list.Add(new HubStream(Absolute(dl, link), QualityLabel(hint + " [Buzz]", dl), StreamHeaders(link)));
+
+                continue;
+            }
+        }
+
+        if (list.Count == 0)
+        {
+            // site đổi nhãn nút -> quét url file trần, thà còn link hơn là 0
+            foreach (Match m in Regex.Matches(inner, @"https?://[^\s<>""']+?\.(?:mkv|mp4|m4v|mov|avi)(?:\?[^\s<>""']+)?", RegexOptions.IgnoreCase))
+                list.Add(new HubStream(Unescape(m.Value), QualityLabel(hint, m.Value), StreamHeaders(page)));
+        }
+
+        if (list.Count == 0)
+            Console.WriteLine($"{Log(source)} HubCloud: {buttons.Count} nút mà không cái nào ra file | head={Preview(inner)}");
+
+        return list;
+    }
+
+    /// <summary>GDFlix: một trang, các nút nằm trong div.text-center (CSX class GDFlix).</summary>
+    protected async Task<List<HubStream>> GdExtract(string source, string url, string html, string label)
+    {
+        var list = new List<HubStream>();
+
+        (url, html) = await WithLatestMirror(source, url, html, "gdflix");
+
+        if (string.IsNullOrWhiteSpace(html))
+        {
+            Console.WriteLine($"{Log(source)} GDFlix: {Cut(url)} không đọc được (Cloudflare challenge - cần bật Playwright) - bỏ qua");
+            return list;
+        }
+
+        string name = Plain(Regex.Match(html, "(?is)<li[^>]*>[^<]*Name\\s*[:.]\\s*([^<]*)").Groups[1].Value);
+        string size = Plain(Regex.Match(html, "(?is)<li[^>]*>[^<]*Size\\s*[:.]\\s*([^<]*)").Groups[1].Value);
+        string hint = label + " " + name + " " + size;
+
+        var buttons = Links(Regex.Match(html, @"(?is)<div[^>]*text-center[^>]*>[\s\S]*?</div>").Value);
+
+        if (buttons.Count == 0)
+            buttons = Links(html);
+
+        Console.WriteLine($"{Log(source)} GDFlix: {buttons.Count} nút server, file={Cut(name)} {size}");
+
+        foreach ((string href, string text) in buttons)
+        {
+            string link = Absolute(href, url);
+
+            if (Regex.IsMatch(text, "(?i)FSL|DIRECT DL|DIRECT SERVER|CLOUD DOWNLOAD"))
+            {
+                list.Add(new HubStream(link, QualityLabel(hint, link), StreamHeaders(url)));
+                continue;
+            }
+
+            if (Regex.IsMatch(text, "(?i)GD Index"))
+            {
+                foreach (int type in new[] { 1, 2 })
+                {
+                    string ask = link.Contains('?') ? link + "&type=" + type : link + "?type=" + type;
+                    string idx = await GetPage(ask, StreamHeaders(url));
+
+                    foreach ((string cf, string _) in Links(idx, "btn-success"))
+                        if (IsPlayable(Absolute(cf, link)))
+                            list.Add(new HubStream(Absolute(cf, link), QualityLabel(hint + $" [CF{type}]", cf), StreamHeaders(url)));
+                }
+
+                continue;
+            }
+
+            if (Regex.IsMatch(text, "(?i)FAST CLOUD"))
+            {
+                string card = await GetPage(link, StreamHeaders(url));
+                string dl = Links(Block(card, "div", "card-body")).Select(x => x.Href).FirstOrDefault();
+
+                if (!string.IsNullOrWhiteSpace(dl) && IsPlayable(Absolute(dl, link)))
+                    list.Add(new HubStream(Absolute(dl, link), QualityLabel(hint + " [Cloud]", dl), StreamHeaders(url)));
+
+                continue;
+            }
+
+            if (link.Contains("pixeldra", StringComparison.OrdinalIgnoreCase))
+            {
+                list.AddRange(Pixel(link, null, hint, url));
+                continue;
+            }
+
+            if (Regex.IsMatch(text, "(?i)Instant DL"))
+            {
+                string loc = await Http.GetLocation(link, referer: url, headers: StreamHeaders(url));
+
+                if (!string.IsNullOrWhiteSpace(loc) && loc.Contains("url="))
+                    loc = loc.Substring(loc.IndexOf("url=", StringComparison.Ordinal) + 4);
+
+                if (IsPlayable(loc))
+                    list.Add(new HubStream(loc, QualityLabel(hint + " [Instant]", loc), StreamHeaders(url)));
+
+                continue;
+            }
+        }
+
+        if (list.Count == 0)
+            foreach (Match m in Regex.Matches(html, @"https?://[^\s<>""']+?\.(?:mkv|mp4|m4v|mov|avi)(?:\?[^\s<>""']+)?", RegexOptions.IgnoreCase))
+                list.Add(new HubStream(Unescape(m.Value), QualityLabel(hint, m.Value), StreamHeaders(url)));
+
+        if (list.Count == 0)
+            Console.WriteLine($"{Log(source)} GDFlix: {buttons.Count} nút mà không cái nào ra file | head={Preview(html)}");
+
+        return list;
+    }
+    #endregion
+
     #endregion
 
     #region DOM nghiệp dư (không phụ thuộc HtmlAgilityPack)
