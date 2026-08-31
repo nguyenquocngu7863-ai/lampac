@@ -561,7 +561,7 @@ sync_latest_modules() {
 }
 
 install_custom_modules() {
-    info "Installing custom KKPhim/K20/VsMov/WebStreamr/Sootio/AIOStreams/GStreamer module files..."
+    info "Installing custom VidCore/KKPhim/K20/VsMov/WebStreamr/Sootio/AIOStreams/GStreamer module files..."
 
     proot-distro login ubuntu -- bash -c "
         set -euo pipefail
@@ -577,6 +577,48 @@ install_custom_modules() {
                /root/lampac/mods/OnlineENG/OpenDirectory
         rm -f /root/lampac/module/NextHUB/sites/85po.yaml \
               /root/lampac/mods/NextHUB/sites/85po.yaml
+
+        # VidCore dat LEN DAU ham install_custom_modules(), khong phai ngau nhien:
+        # ca khoi nay chay trong guest script co set -euo pipefail, va nhung khoi o
+        # duoi (KKPhim/K20/VsMov/...) dung curl -f tran -> mot file 404 la dung ca
+        # ham, nguoi moi cai se khong bao gio co VidCore. Dat o day dam bao 3 lenh
+        # --install / --sync-all / --update luon kip chép module truoc khi co thu gi do chet.
+        # Module nay khong co trong lampac-nextgen.zip nen phai tu mkdir va lay ca
+        # manifest.json; dung [ -d ] nhu module co san thi se bi bo qua mai mai.
+        # (used for modules that already exist in the release) would skip it
+        # Tu 2026-08-31 module con nam trong sync nhe (sync_latest_modules), da xac minh
+        # chay duoc tren thiet bi nen khong con la "thu nghiem" nua.
+        # (sync_latest_modules), vi da xac minh chay duoc tren thiet bi.
+        #
+        # Comment quy tắc trong khoi nay: khong duoc dung backtick cung nhu dau
+        # nhay kep. Ca khoi la chuoi double-quote cua bash -c, nen mot cap
+        # backtick se bi host chay nhu command substitution va nut tron phan
+        # text toi backtick ke tiep; con dau nhay kep chua escape thi dong chuoi
+        # som, day phan con lai cua guest script ra chay o host. Kiem tra nhanh:
+        # grep -n 'setup-termux.sh$' khong duoc con tro toi script kiem tra nao
+        # (kiem tra bang bash -n tren guest script da duoc goi escape).
+        #
+        # Moi file lay doc lap va loi duoc bo qua: khoi nay chay trong guest
+        # script co set -euo pipefail, nen khi nguon khong co module (vi du
+        # vua lui LAMPAC_CUSTOM_SOURCE_BASE ve nhanh cu) ma curl -f fail thi
+        # cung khong duoc dung ca sync-all.
+#  LUU Y: block nay dung ?cb=$syncstamp cua ca ham, nen phai gan syncstamp
+#  o ngay trong block - neu khong, duoi set -u thi "syncstamp: unbound variable"
+#  la dung ca ham cai dat (da phat hien bang cach chay guest script voi curl stub).
+        # tai cho; dong duoi gan lai cung khong sao (chi la cache-buster).
+        syncstamp=\$(date +%s)
+        vidcorebase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineENG/VidCore\"
+        vidcoretarget=/root/lampac/module/OnlineENG/VidCore
+        for vidcorefile in manifest.json Controller.cs ModInit.cs; do
+            if curl -fsSL --retry 3 \"\$vidcorebase/\$vidcorefile?cb=\$syncstamp\" -o \"/tmp/vidcore-\$vidcorefile\"; then
+                mkdir -p \"\$vidcoretarget\"
+                mv \"/tmp/vidcore-\$vidcorefile\" \"\$vidcoretarget/\$vidcorefile\"
+                echo \"  [vidcore] \$vidcorefile\"
+            else
+                rm -f \"/tmp/vidcore-\$vidcorefile\"
+                echo \"  [vidcore] bo qua \$vidcorefile - khong co tren nguon: kiem tra LAMPAC_CUSTOM_SOURCE_BASE\"
+            fi
+        done
 
         kkbase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineVN/KKPhim\"
         kktarget=/root/lampac/module/OnlineVN/KKPhim
@@ -740,36 +782,6 @@ install_custom_modules() {
             done
         fi
 
-        # VidCore is a NEW module: it is not part of lampac-nextgen.zip, so the
-        # directory and manifest.json must be created here. A plain [ -d ] guard
-        # (used for modules that already exist in the release) would skip it
-        # forever. Sau 2026-08-31 module con duoc sync o ca --sync nhe
-        # (sync_latest_modules), vi da xac minh chay duoc tren thiet bi.
-        #
-        # Comment quy tắc trong khoi nay: khong duoc dung backtick cung nhu dau
-        # nhay kep. Ca khoi la chuoi double-quote cua bash -c, nen mot cap
-        # backtick se bi host chay nhu command substitution va nut tron phan
-        # text toi backtick ke tiep; con dau nhay kep chua escape thi dong chuoi
-        # som, day phan con lai cua guest script ra chay o host. Kiem tra nhanh:
-        # grep -n 'setup-termux.sh$' khong duoc con tro toi script kiem tra nao
-        # (kiem tra bang bash -n tren guest script da duoc goi escape).
-        #
-        # Moi file lay doc lap va loi duoc bo qua: khoi nay chay trong guest
-        # script co set -euo pipefail, nen khi nguon khong co module (vi du
-        # vua lui LAMPAC_CUSTOM_SOURCE_BASE ve nhanh cu) ma curl -f fail thi
-        # cung khong duoc dung ca sync-all.
-        vidcorebase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineENG/VidCore\"
-        vidcoretarget=/root/lampac/module/OnlineENG/VidCore
-        for vidcorefile in manifest.json Controller.cs ModInit.cs; do
-            if curl -fsSL --retry 3 \"\$vidcorebase/\$vidcorefile?cb=\$syncstamp\" -o \"/tmp/vidcore-\$vidcorefile\"; then
-                mkdir -p \"\$vidcoretarget\"
-                mv \"/tmp/vidcore-\$vidcorefile\" \"\$vidcoretarget/\$vidcorefile\"
-                echo \"  [vidcore] \$vidcorefile\"
-            else
-                rm -f \"/tmp/vidcore-\$vidcorefile\"
-                echo \"  [vidcore] bo qua \$vidcorefile - khong co tren nguon: kiem tra LAMPAC_CUSTOM_SOURCE_BASE\"
-            fi
-        done
 
         for proxymodule in CubProxy TmdbProxy; do
             proxytarget=\"/root/lampac/module/Proxy/\$proxymodule\"

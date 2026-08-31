@@ -831,6 +831,11 @@ TV `125988/1/1` (Silo S1E1) ra `1/5`, và mở player gốc `vidcore.io/tv/12598
 chỉ có Supreme + Prime không bị khiên đỏ: **số server sống bằng đúng số nguồn có**, không phải
 resolver hụt. 4K (`Premiere 4K`) chỉ xuất hiện ở phim lẻ mới phát hành.
 
+**Người dùng mới**: `bash setup-termux.sh --install` là đủ — khối VidCore được đặt **đầu**
+`install_custom_modules()` (ngay sau bước dọn module đã gỡ) và tự `mkdir`, nên dù các khối
+phía sau có 404 mà chết giữa hàm (`set -euo pipefail` + `curl -f` trần — lỗi có từ trước,
+không riêng VidCore) thì module vẫn được chép xuống. `lampac sync` sau đó cập nhật tiếp.
+
 Điểm cần biết: module **không có trong `lampac-nextgen.zip`**, nên lần đầu phải có
 `--install` / `--sync-all` / `--update` (các lệnh này tạo thư mục module + chép `manifest.json`
 qua `install_custom_modules()`). Sau khi xác minh thiết bị, nó **đã vào `--sync` nhẹ**
