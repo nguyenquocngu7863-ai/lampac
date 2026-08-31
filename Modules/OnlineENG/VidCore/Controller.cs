@@ -238,10 +238,19 @@ public class VidCoreController : BaseENGController
 
             try
             {
+                // LooseDecrypt có thể đã quét ra URL sẵn -> khỏi cần POST + dec nữa.
+                string direct = Text(server, "url", "stream_url", "file", "src");
+                if (IsHttpUrl(direct))
+                {
+                    Console.WriteLine($"VidCore: {Show(name)} ok (url trực tiếp)");
+                    return new ResolvedStream(direct, $"VidCore · {Show(name)}", headers);
+                }
+
                 string data = Text(server, "data", "id", "cid");
                 if (string.IsNullOrWhiteSpace(data))
                 {
-                    Console.WriteLine($"VidCore: {Show(name)} no data field");
+                    string keys = server is JObject so ? string.Join(",", so.Properties().Select(pr => pr.Name)) : server?.Type.ToString();
+                    Console.WriteLine($"VidCore: {Show(name)} no data field, server={keys}");
                     return null;
                 }
 
@@ -432,6 +441,10 @@ public class VidCoreController : BaseENGController
 
         List<JToken> list = ExtractList(ParseJson(decRaw));
 
+        // dec-vidcore hay trả chuỗi bị escape/url-encode, hoặc HTML chứa thẳng URL m3u8.
+        if (list.Count == 0)
+            list = LooseDecrypt(decRaw);
+
         if (list.Count == 0)
             Console.WriteLine($"VidCore: {what} dec rỗng, resp={Preview(decRaw)}");
 
@@ -444,6 +457,63 @@ public class VidCoreController : BaseENGController
     /// `{"result":{"0":{...},"1":{...}}}`. Đổ hết về một List ở đây, thay vì chỉ nhận
     /// đúng một hình rồi báo "no servers" giả như trước.
     /// </summary>
+    /// <summary>
+    /// Bước cuối khi dec-vidcore không trả JSON sạch. Ba đường, theo thứ tự đáng tin:
+    /// unescape rồi parse -> moi khối JSON/array đầu tiên trong text -> nếu chỉ còn
+    /// HTML/JS thì quét thẳng URL .m3u8/.mp4 thành pseudo-server để người dùng vẫn có link.
+    /// </summary>
+    static List<JToken> LooseDecrypt(string raw)
+    {
+        var list = new List<JToken>();
+        if (string.IsNullOrWhiteSpace(raw))
+            return list;
+
+        foreach (string candidate in new[]
+        {
+            raw,
+            Uri.UnescapeDataString(raw),
+            System.Net.WebUtility.HtmlDecode(raw)
+        })
+        {
+            list = ExtractList(ParseJson(candidate));
+            if (list.Count > 0)
+                return list;
+
+            int start = -1;
+            for (int i = 0; i < candidate.Length; i++)
+                if (candidate[i] is '[' or '{')
+                {
+                    start = i;
+                    break;
+                }
+
+            if (start < 0)
+                continue;
+
+            // khối JSON thường bị bọc trong text -> cắt từ ký tự mở đầu tiên tới ký tự
+            // đóng cuối, cả hai cách đều thử.
+            foreach (string cut in new[] { candidate[start..], candidate[start..Math.Min(candidate.Length, Math.Max(candidate.LastIndexOf(']'), candidate.LastIndexOf('}')) + 1)] })
+            {
+                list = ExtractList(ParseJson(cut));
+                if (list.Count > 0)
+                    return list;
+            }
+        }
+
+        var urls = Regex.Matches(raw, @"https?://[^""'\s<>]+?\.(?:m3u8|mp4)(?:\?[^""'\s<>]*)?")
+                        .Select(m => m.Value)
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .Take(8);
+
+        foreach (string url in urls)
+            list.Add(JObject.FromObject(new { name = "stream", data = "", url }));
+
+        if (list.Count > 0)
+            Console.WriteLine($"VidCore: dec không phải JSON, tự quét được {list.Count} URL stream");
+
+        return list;
+    }
+
     static List<JToken> ExtractList(JToken root, int depth = 0)
     {
         var list = new List<JToken>();
@@ -469,8 +539,10 @@ public class VidCoreController : BaseENGController
             if (obj["result"] is JToken inner && inner.Type != JTokenType.Null)
                 return ExtractList(inner, depth + 1);
 
-            if (obj["servers"] is JToken servers && servers.Type != JTokenType.Null)
-                return ExtractList(servers, depth + 1);
+            // dec-vidcore đổi tên key giữa các build -> thử hết các tên quen.
+            foreach (string key in new[] { "servers", "data", "streams", "list", "items", "results" })
+                if (obj[key] is JToken node && node.Type is JTokenType.Array or JTokenType.Object or JTokenType.String)
+                    return ExtractList(node, depth + 1);
 
             // { "0": {...}, "1": {...} }
             var children = obj.Properties()
@@ -572,7 +644,7 @@ public class VidCoreController : BaseENGController
             return "<empty>";
 
         raw = raw.Replace('\r', ' ').Replace('\n', ' ');
-        return raw.Length <= 180 ? raw : raw[..180] + "...";
+        return raw.Length <= 300 ? raw : raw[..300] + "...";
     }
 
     static string Show(string name)
