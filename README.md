@@ -831,7 +831,7 @@ VidCore (`vidcore.io`, có biến thể 4K). Không phụ thuộc Chromium nên 
 qua `install_custom_modules()`). Nó **không** nằm trong `--sync` nhẹ — đang ở giai đoạn thử nghiệm,
 theo đúng quy trình addon ở cuối README.
 
-Test nhanh bằng script riêng (chạy trong Termux, không cần clone repo) — dò 4 bước API, chép module,
+Test nhanh bằng script riêng (chạy trong Termux, không cần clone repo) — dò 5 hop API, chép module,
 bật server có log, rồi in lỗi compile nếu có:
 
 ```bash

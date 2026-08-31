@@ -5,7 +5,7 @@
 #   curl -fsSL "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05799-lampac/termux-test-vidcore.sh?cb=$(date +%s)" -o vidcore.sh && bash vidcore.sh
 #
 # Mode (mặc định = all):
-#   chain      chỉ dò 4 bước API (không đụng file, không restart Lampac)
+#   chain      chỉ dò 5 bước API (không đụng file, không restart Lampac)
 #   install    chép Controller.cs + ModInit.cs + manifest.json vào module, có backup
 #   serve      bật Lampac tách tiến trình + gọi thẳng route video + in log
 #   rollback   khôi phục bản backup gần nhất
@@ -43,7 +43,7 @@ guest() { proot-distro login ubuntu -- bash -s -- "$@"; }
 
 # ── 1) Dò chuỗi API: page → enc-vidcore → POST servers → dec-vidcore ─────────
 mode_chain() {
-    say "Dò 4 bước của VidCore (tmdb=$TMDB season=$SEASON episode=$EPISODE)"
+    say "Dò 5 bước của VidCore (tmdb=$TMDB season=$SEASON episode=$EPISODE)"
     guest "$TMDB" "$SEASON" "$EPISODE" "${VIDCORE_API:-https://enc-dec.app/api}" <<'CHAIN'
 set -u
 tmdb=${1:-155}; season=${2:-1}; episode=${3:-1}
@@ -54,7 +54,7 @@ if [ "$season" -gt 0 ] 2>/dev/null; then page="$host/tv/$tmdb/$season/$episode";
 step() { echo "  ── $1"; }
 die() { echo "  ✗ $1"; echo; echo "KẾT LUẬN: chuỗi VidCore hỏng ở bước này — báo lại dòng trên, đừng sửa module vội."; exit 0; }
 
-step "1/4  GET $page"
+step "1/5  GET $page"
 html=$(curl -fsSL -m 40 -A "$UA" "$page" 2>/dev/null) || die "không tải được trang embed (mạng/Cloudflare chặn IP thiết bị?)"
 [ -n "$html" ] || die "trang trả về rỗng"
 # VidCore nhét cipher vào chuỗi JS đã escape:  \"en\":\"<cipher>\"  (fallback "en":"<cipher>")
@@ -66,7 +66,7 @@ fi
 [ -n "$cipher" ] || die "không thấy \"en\"/\"token\" trong HTML — site đã đổi cách nhét token (module cũng sẽ fail; cần sửa regex)"
 echo "    ✓ cipher ${#cipher} ký tự: ${cipher%%?????}…"
 
-step "2/4  GET $api/enc-vidcore?text=…"
+step "2/5  GET $api/enc-vidcore?text=…"
 enc=$(curl -fsSL -m 40 --get --data-urlencode "text=$cipher" "$api/enc-vidcore" 2>/dev/null) \
     || die "enc-vidcore chết/bị chặn — endpoint đã bị gỡ (yêu cầu enc-dec.app) hoặc sai API"
 for k in servers stream token; do
@@ -78,7 +78,7 @@ token=$(printf '%s' "$enc"   | sed -n 's/.*"token"[[:space:]]*:[[:space:]]*"\([^
 echo "    ✓ servers = $servers"
 echo "    ✓ stream  = $stream"
 
-step "3/4  POST $servers (body rỗng → rồi {})"
+step "3/5  POST $servers ({} — đã xác minh bằng chain)
 H1=(-H "X-CSRF-Token: $token" -H 'X-Requested-With: XMLHttpRequest' -H 'Content-Type: application/json' -H "Referer: $host/" -H "Origin: $host" -A "$UA")
 p1=$(curl -fsSL -m 40 -X POST "${H1[@]}" "$servers" 2>/dev/null)
 how="body rỗng"
@@ -88,7 +88,7 @@ fi
 [ -n "$p1" ] || die "POST servers không trả gì với cả 2 cách body — module cũng sẽ fail ở đây (cs2: thử đổi headers)"
 echo "    ✓ $how, ${#p1} ký tự"
 
-step "4/4  POST $api/dec-vidcore"
+step "4/5  POST $api/dec-vidcore"
 # payload có thể là chuỗi trần hoặc JSON; nhét trần vào {"text":…} sẽ hỏng nếu là chuỗi
 case "$p1" in
     \{*|\[*|\"*|null*|true*|false*|[-0-9]*) ;;
@@ -97,9 +97,39 @@ esac
 dec=$(curl -fsSL -m 40 -X POST -H 'Content-Type: application/json' -d "{\"text\":$p1}" "$api/dec-vidcore" 2>/dev/null) \
     || die "dec-vidcore lỗi"
 printf '%s' "$dec" | grep -qE '"(name|data)"' || die "dec-vidcore không trả [{name,data}]: $(printf '%s' "$dec" | head -c 240)"
-echo "    ✓ danh sách server: $(printf '%s' "$dec" | grep -oE '"name"[[:space:]]*:[[:space:]]*"[^"]*"' | sed -E 's/.*"([^"]*)"$/\1/' | paste -sd, - | cut -c1-200)"
+echo "    ✓ danh sách server: $(printf '%s' "$dec" | tr -d '\\' | grep -oE '"name"[[:space:]]*:[[:space:]]*"[^"]*"' | sed -E 's/.*"([^"]*)"$/\1/' | paste -sd, - | cut -c1-200)"
+
+step "5/5  hop cuối: mỗi server → url (đây là phần module C# làm)"
+# `result` có thể là mảng JSON hoặc một CHUỖI JSON đã escape; gỡ backslash để grep chạy được cả hai
+flat=$(printf '%s' "$dec" | tr -d '\\')
+first=$(printf '%s' "$flat" | grep -oE '"data"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed -E 's/.*"([^"]*)"$/\1/')
+[ -n "$first" ] || die "dec-vidcore không có \"data\" cho từng server — module sẽ return null"
+svname=$(printf '%s' "$flat" | grep -oE '"name"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed -E 's/.*"([^"]*)"$/\1/')
+echo "    ── test server \"$svname\" → POST $stream/<data>"
+p2=$(curl -fsSL -m 40 -X POST "${H1[@]}" -d '{}' "$stream/$first" 2>/dev/null)
+[ -n "$p2" ] || die "POST $stream/<data> không trả gì (thiếu header? sai stream base?)"
+case "$p2" in
+    \{*|\[*|\"*|null*|true*|false*|[-0-9]*) ;;
+    *) p2="\"$p2\"" ;;
+esac
+dec2=$(curl -fsSL -m 40 -X POST -H 'Content-Type: application/json' -d "{\"text\":$p2}" "$api/dec-vidcore" 2>/dev/null) \
+    || die "dec-vidcore lần 2 lỗi"
+flat2=$(printf '%s' "$dec2" | tr -d '\\')
+m3u8=$(printf '%s' "$flat2" | grep -oE '"(url|stream_url)"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed -E 's/.*"([^"]*)"$/\1/' | sed 's#\\/#/#g')
+if [ -z "$m3u8" ]; then
+    echo "    ✗ giải mã được nhưng không thấy url/stream_url. JSON giải mã (300B đầu):"
+    printf '%s' "$dec2" | head -c 300; echo
+    echo
+    echo "KẾT LUẬN: 4 bước đầu OK, hop cuối khác shape — dán khối trên cho tôi để sửa module."
+    exit 0
+fi
+echo "    ✓ $svname → $m3u8"
+case "$m3u8" in
+    *m3u8*) echo "    ✓ là HLS — streamproxy của Lampac sẽ phát được" ;;
+    *)      echo "    (không phải .m3u8 — có thể mp4/ts trực tiếp; module vẫn nhận vì chỉ cần http(s))" ;;
+esac
 echo
-echo "KẾT LUẬN: 4 bước API còn sống. Bước còn lại (mỗi server → url m3u8) do module C# làm — chạy 'bash termux-test-vidcore.sh install' rồi 'serve'."
+echo "KẾT LUẬN: cả 5 hop còn sống, công thức port sang C# là đúng. Chạy 'bash termux-test-vidcore.sh' (install + serve) để test module."
 CHAIN
 }
 

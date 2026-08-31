@@ -165,8 +165,11 @@ public class VidCoreController : BaseENGController
         // Mỗi server một luồng — fan-out song song, con chết không kéo cả dãy.
         async Task<ResolvedStream> FetchServer(JToken server)
         {
-            string data = server.Value<string>("data");
-            string name = server.Value<string>("name");
+            if (server is not JObject serverObj)
+                return null;
+
+            string data = serverObj.Value<string>("data");
+            string name = serverObj.Value<string>("name");
             if (string.IsNullOrWhiteSpace(data))
                 return null;
 
@@ -180,8 +183,11 @@ public class VidCoreController : BaseENGController
                 addheaders: headers,
                 statusCodeOK: false);
 
-            JToken result = dec?["result"] ?? dec;
-            string m3u8 = result?.Value<string>("url") ?? result?.Value<string>("stream_url");
+            JToken result = Unwrap(dec?["result"] ?? dec);
+            if (result is not JObject streamObj)
+                return null;
+
+            string m3u8 = streamObj.Value<string>("url") ?? streamObj.Value<string>("stream_url");
             if (string.IsNullOrWhiteSpace(m3u8) || !IsHttpUrl(m3u8))
                 return null;
 
@@ -223,16 +229,18 @@ public class VidCoreController : BaseENGController
     }
 
     /// <summary>
-    /// CSX gọi các endpoint này bằng `app.post(url, headers=…)` — tức POST với body rỗng.
-    /// Một số build của VidCore lại đòi JSON object, nên thử rỗng trước rồi thử `{}`.
+    /// CSX gọi các endpoint này bằng `app.post(url, headers=…)` — tức POST không body.
+    /// Đo thực tế trên thiết bị (2026-08-31, `termux-test-vidcore.sh chain`): body rỗng
+    /// không trả gì, phải gửi `{}` mới nhận 1916 ký tự ciphertext. Nên thử `{}` trước
+    /// để đỡ mất một round-trip cho từng server; giữ body rỗng làm fallback cho build cũ.
     /// </summary>
     async Task<string> PostCipher(string url, List<HeadersModel> headers)
     {
-        string body = await httpHydra.Post(url, "", addheaders: headers, statusCodeOK: false);
+        string body = await httpHydra.Post(url, "{}", addheaders: headers, statusCodeOK: false);
         if (!string.IsNullOrWhiteSpace(body))
             return body;
 
-        return await httpHydra.Post(url, "{}", addheaders: headers, statusCodeOK: false);
+        return await httpHydra.Post(url, "", addheaders: headers, statusCodeOK: false);
     }
 
     /// <summary>
@@ -255,6 +263,38 @@ public class VidCoreController : BaseENGController
         return null;
     }
 
+    /// <summary>
+    /// enc-dec trả `result` khi là JSON object/array thật, khi là một CHUỖI JSON đã
+    /// escape (tuỳ build endpoint). Đọc Value&lt;T&gt;(key) trên JValue sẽ nổ, và chuỗi
+    /// không parse thì bị đếm thành "no servers" giả — nên chuẩn hoá ở đây một lần.
+    /// </summary>
+    static JToken Unwrap(JToken token)
+    {
+        if (token is JValue value && value.Value is string text && !string.IsNullOrWhiteSpace(text))
+        {
+            char first = '\0';
+            foreach (char c in text)
+                if (!char.IsWhiteSpace(c))
+                {
+                    first = c;
+                    break;
+                }
+
+            if (first is '[' or '{')
+            {
+                try
+                {
+                    return JToken.Parse(text);
+                }
+                catch (JsonReaderException)
+                {
+                }
+            }
+        }
+
+        return token;
+    }
+
     async Task<List<JToken>> DecryptList(string cipher, string api, List<HeadersModel> headers)
     {
         var list = new List<JToken>();
@@ -267,7 +307,7 @@ public class VidCoreController : BaseENGController
             addheaders: headers,
             statusCodeOK: false);
 
-        JToken result = dec?["result"] ?? dec;
+        JToken result = Unwrap(dec?["result"] ?? dec);
         if (result is JArray arr)
         {
             list.AddRange(arr.Children());

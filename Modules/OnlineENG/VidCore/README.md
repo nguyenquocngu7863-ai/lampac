@@ -66,6 +66,16 @@ lampac stop && lampac start
 `manifest.json`, `Controller.cs`, `ModInit.cs`. Chủ ý **không** nằm trong `--sync`
 (danh sách vá nhẹ) cho tới khi ổn định — xem "Quy trình làm addon" ở README gốc.
 
+## Đã xác minh trên thiết bị (2026-08-31, mode `chain`)
+
+- `vidcore.io/movie/155` còn sống, cipher bắt được bằng mẫu escaped.
+- `enc-vidcore` + `dec-vidcore` trên `enc-dec.app` trả đúng shape.
+- **`POST {result.servers}` phải gửi body `{}`** — body rỗng trả về 0 byte. `PostCipher`
+  vì vậy thử `{}` trước; body rỗng chỉ còn là fallback cho build cũ.
+- Server thực tế trả về: `Supreme, Prime, Orbit, Premiere 4K, Horizon`.
+- `result` của `dec-vidcore` có thể là mảng JSON **hoặc một chuỗi JSON đã escape** —
+  `Unwrap()` xử lý cả hai (và tránh `JToken.Value<T>(key)` nổ trên `JValue`).
+
 ## Kiểm tra nhanh
 
 Cách gọn nhất — script `termux-test-vidcore.sh` ở gốc repo, chạy trong Termux (không cần clone):
@@ -76,7 +86,7 @@ curl -fsSL "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/
 
 | Lệnh | Làm gì |
 |---|---|
-| `bash vidcore.sh chain` | Dò 4 bước API bằng curl **trong Ubuntu**, không đụng file, không restart. In ra đúng mắt xích hỏng (trang / cipher / `enc-vidcore` / `POST servers` / `dec-vidcore`) |
+| `bash vidcore.sh chain` | Dò **5 hop** API bằng curl **trong Ubuntu**, không đụng file, không restart. In ra đúng mắt xích hỏng: trang → cipher → `enc-vidcore` → `POST servers` → `dec-vidcore` → `stream/<data>` → url |
 | `bash vidcore.sh install` | Backup rồi chép `manifest.json`, `Controller.cs`, `ModInit.cs` vào `/root/lampac/module/OnlineENG/VidCore` |
 | `bash vidcore.sh serve` | Bật Lampac tách tiến trình (log `~/.vidcore-test.log`), gọi `/lite/vidcore` + `/lite/vidcore/video?id=…`, in `error CS` nếu module không compile |
 | `bash vidcore.sh rollback` | Trả lại bản backup (hoặc xoá module nếu chưa có backup) |
