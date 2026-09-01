@@ -253,27 +253,24 @@ public class Movies4UController : HubController
         into.Add(new HubEntry(text, url, 0, 0));
     }
 
+    /// <summary>
+    /// Danh sách mùa cho serial. Trước đây em đọc từ khối `downloads-btns-div` — trên bài Reacher
+    /// khối đó KHÔNG TỒN TẠI, nên module chỉ ra đúng một "Mùa 1" (log thiết bị 1/9). Giờ mùa được đúc
+    /// ra từ CHÍNH các nút "Download Links" của bài: số Season trong nhãn của nút = một mùa. Nhờ vậy
+    /// menu mùa và danh sách nhóm của mùa đó luôn cùng một nguồn, không bao giờ lệch nhau.
+    /// </summary>
     void CollectSeasons(string html, string postUrl, List<HubEntry> into)
     {
-        foreach (var block in DivBlocks(html, "downloads-btns-div", 30))
+        var groups = AllGroups(html, postUrl);
+        var found = groups.Where(x => x.Season > 0).Select(x => x.Season).Distinct().OrderBy(x => x).ToList();
+
+        foreach (short n in found)
         {
-            // heading của khối thường KHÔNG phải h1-h6 -> NearestLabelBefore mới lấy được dòng
-            // "Season 3 [Hindi ORG. + Multi Audio] 720p" nằm ngay trước khối
-            short n = SeasonNumber(string.IsNullOrWhiteSpace(block.Heading) ? NearestLabelBefore(html, block.Index) : block.Heading);
-
-            if (n <= 0 || into.Any(x => x.Season == n))
-                continue;
-
-            string url = block.Links.Count > 0 ? Absolute(Unescape(block.Links[0].Url), postUrl) : null;
-
-            if (string.IsNullOrWhiteSpace(url))
-                continue;
-
-            into.Add(new HubEntry($"Mùa {n}", url, n, 0));
+            var first = groups.First(x => x.Season == n);
+            into.Add(new HubEntry($"Mùa {n}", first.Url, n, 0));
         }
 
-        if (into.Count == 0)
-            Console.WriteLine($"{Tag} không nhận diện được mùa nào trong downloads-btns-div (heading={string.Join(" | ", DivBlocks(html, "downloads-btns-div", 5).Select(b => b.Heading))})");
+        Console.WriteLine($"{Tag} mùa: {found.Count} [{string.Join(", ", found)}] đúc từ {groups.Count} nút download");
     }
 
     async Task CollectEpisodes(string html, string postUrl, List<HeadersModel> headers, short season, List<HubEntry> into)
@@ -393,7 +390,7 @@ public class Movies4UController : HubController
             }
 
             if (links > 0)
-                Console.WriteLine($"{Tag} mùa {season}: trang nhóm không có downloads-btns-div -> {buckets.Count} heading tập, {links} link");
+                Console.WriteLine($"{Tag} mùa {season}: trang nhóm không có downloads-btns-div -> {headings.Count} heading tập, {links} link");
         }
 
         Console.WriteLine($"{Tag} mùa {season} nhóm {pick + 1}/{groups.Count} '{Cut(groups[pick].Heading)}': {epBlocks.Count} khối, {links} link");
@@ -402,9 +399,50 @@ public class Movies4UController : HubController
             Console.WriteLine($"{Tag} nhóm đã chọn không có file-host | len={inner.Length} a={Regex.Matches(inner, "(?i)<a[^>]+href=").Count} hosts={HostHistogram(inner, groupUrl)} classes={ClassHistogram(inner)}");
     }
 
-    /// <summary>Mọi nhóm release của một mùa. Ưu tiên khối `download-links-div` có heading nhắc đúng
-    /// mùa; nếu bài không dùng cấu trúc đó thì lấy mọi nút "DOWNLOAD LINKS" mà heading phía trước
-    /// nhắc mùa. Không giả định một khối một mùa — Seasons 1-4 thường nằm rải cùng một bài.</summary>
+    /// <summary>Toàn bộ nút nhóm của bài viết (mọi mùa): nhãn = heading ngay trước nút, Season đọc từ
+    /// nhãn đó. Đây là cấp cao nhất Movies4U đặt tên ổn định, và theo log thiết bị thì class cũng đổi,
+    /// nên module không dựa vào class ở tầng này nữa.</summary>
+    List<(string Heading, string Url, short Season)> AllGroups(string html, string postUrl)
+    {
+        var all = new List<(string Heading, string Url, short Season)>();
+        int batches = 0;
+
+        foreach (Match m in Regex.Matches(html ?? "", AnchorPattern))
+        {
+            string text = Plain(m.Groups["t"].Value);
+
+            // Nút của nhóm là nút có chữ "Download Links"; mọi thứ khác (Telegram, Telegram Filter,
+            // phụ đề, báo lỗi) không phải nhóm.
+            if (!Regex.IsMatch(text, @"(?i)download\s*-?\s*links?\b"))
+                continue;
+
+            // BATCH/ZIP: người dùng dặn đừng lấy. Nhiều nhóm trỏ CÙNG một id zip nên phải loại bằng
+            // CHỮ TRÊN NÚT TRƯỚC khi dedupe theo url, nếu không link thật bị mất.
+            if (Regex.IsMatch(text, @"(?i)batch|\.?zip\b"))
+            {
+                batches++;
+                continue;
+            }
+
+            string url = Absolute(Unescape(HrefValue(m)), postUrl);
+
+            if (!url.StartsWith("http", StringComparison.OrdinalIgnoreCase) || all.Any(x => x.Url == url))
+                continue;
+
+            string label = NearestLabelBefore(html, m.Index);
+
+            all.Add((string.IsNullOrWhiteSpace(label) ? $"Nhóm {all.Count + 1}" : label, url, SeasonNumber(label)));
+        }
+
+        if (batches > 0)
+            Console.WriteLine($"{Tag} bỏ {batches} nút BATCH/ZIP (đúng yêu cầu: không lấy pack trọn bộ)");
+
+        if (all.Count == 0)
+            Console.WriteLine($"{Tag} 0 nhóm | a={Regex.Matches(html ?? "", AnchorPattern).Count} classes={ClassHistogram(html)} hosts={HostHistogram(html, postUrl)}");
+
+        return all;
+    }
+
     /// <summary>
     /// Mọi nhóm release của MỘT mùa. Cấu trúc THẬT của new5.movies4u.clinic (đọc trực tiếp bài
     /// Reacher (Season 1-4) ngày 1/9, không đoán):
@@ -421,31 +459,8 @@ public class Movies4UController : HubController
     /// </summary>
     List<(string Heading, string Url)> GroupsForSeason(string html, string postUrl, short season)
     {
-        var all = new List<(string Heading, string Url)>();
-        int batches = 0;
-
-        foreach (Match m in Regex.Matches(html ?? "", AnchorPattern))
-        {
-            string text = Plain(m.Groups["t"].Value);
-
-            if (!Regex.IsMatch(text, @"(?i)download\s*-?\s*links?\b"))
-                continue;
-
-            if (Regex.IsMatch(text, @"(?i)batch|\.?zip\b"))
-            {
-                batches++;
-                continue;
-            }
-
-            string url = Absolute(Unescape(HrefValue(m)), postUrl);
-
-            if (!url.StartsWith("http", StringComparison.OrdinalIgnoreCase) || all.Any(x => x.Url == url))
-                continue;
-
-            string label = NearestLabelBefore(html, m.Index);
-
-            all.Add((string.IsNullOrWhiteSpace(label) ? $"Nhóm {all.Count + 1}" : label, url));
-        }
+        // kiểu tường minh: C# không suy được kiểu đích cho collection expression khi dùng var (CS9176)
+        List<(string Heading, string Url)> all = [.. AllGroups(html, postUrl).Select(x => (x.Heading, x.Url))];
 
         // Có nhãn nào tự nhắc mùa không? Có => BẮT BUỘC khớp mùa. Đây là chỗ sửa lỗi "cả 4 mùa hiện y
         // hệt nhau": mỗi nhóm trên site đều đề "Season N" nên tách được sạch; bài một mùa (không nhãn
@@ -460,9 +475,6 @@ public class Movies4UController : HubController
             Console.WriteLine($"{Tag} mùa {season}: {all.Count} nhóm nhưng không nhãn nào nhắc mùa {season} — dùng cả {all.Count} nhóm");
             picked = [.. all];
         }
-
-        if (batches > 0)
-            Console.WriteLine($"{Tag} mùa {season}: bỏ {batches} nút BATCH/ZIP (pack cả mùa trong một file, không phải nhóm tập)");
 
         if (picked.Count == 0)
             Console.WriteLine($"{Tag} mùa {season}: 0 nhóm | a={Regex.Matches(html ?? "", AnchorPattern).Count} nhãn=[{string.Join(" | ", all.Select(x => Cut(x.Heading)))}] | classes={ClassHistogram(html)}");

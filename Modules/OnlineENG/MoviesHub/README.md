@@ -323,6 +323,9 @@ giá trị qua `HrefValue(m)` (ba nhóm `d`/`s`/`n`, không dùng trùng tên nh
     **Không có class `downloads-btns-div` ở tầng này** => tập phải bucket theo heading gần nhất, còn
     `Episodes: 1` thì `EpisodeNumber` phải khớp được dạng "Episodes:" (mẫu `ep(?:isode)?` cũ là fail).
   Kết luận cho đời sau: ở module này, CHỮ TRÊN NÚT + HEADING là hợp đồng; class chỉ là tối ưu.
+- **MÙA cũng vậy**: `CollectSeasons` không còn đọc `downloads-btns-div` (khối đó không tồn tại trên bài
+  thật -> menu mùa chỉ ra đúng "Mùa 1"). Mùa được đúc từ chính các nút "Download Links": số Season
+  trong nhãn = một mùa, và menu mùa với danh sách nhóm của mùa đó dùng CHUNG một hàm `AllGroups`.
 - Sau mỗi commit sửa module: đổi `Build` (hiện `v19-m4ulinks`) và nhắc marker trong message commit,
   vì đó là cách duy nhất log tự chứng minh máy đang chạy bản nào (module compile trong bộ nhớ).
 
