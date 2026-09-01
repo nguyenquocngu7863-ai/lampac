@@ -255,9 +255,11 @@ public class Movies4UController : HubController
 
     void CollectSeasons(string html, string postUrl, List<HubEntry> into)
     {
-        foreach (var block in DivBlocks(html, "downloads-btns-div", 20))
+        foreach (var block in DivBlocks(html, "downloads-btns-div", 30))
         {
-            short n = SeasonNumber(block.Heading);
+            // heading của khối thường KHÔNG phải h1-h6 -> NearestLabelBefore mới lấy được dòng
+            // "Season 3 [Hindi ORG. + Multi Audio] 720p" nằm ngay trước khối
+            short n = SeasonNumber(string.IsNullOrWhiteSpace(block.Heading) ? NearestLabelBefore(html, block.Index) : block.Heading);
 
             if (n <= 0 || into.Any(x => x.Season == n))
                 continue;
@@ -366,57 +368,94 @@ public class Movies4UController : HubController
     /// <summary>Mọi nhóm release của một mùa. Ưu tiên khối `download-links-div` có heading nhắc đúng
     /// mùa; nếu bài không dùng cấu trúc đó thì lấy mọi nút "DOWNLOAD LINKS" mà heading phía trước
     /// nhắc mùa. Không giả định một khối một mùa — Seasons 1-4 thường nằm rải cùng một bài.</summary>
+    /// <summary>
+    /// Mọi nhóm release của MỘT mùa. Nhãn nhóm lấy bằng NearestLabelBefore (heading thật của nhóm
+    /// không nằm trong thẻ h1-h6, nên bản cũ chỉ bắt được chữ trên nút -> "Download Links 900MB"),
+    /// rồi CHÍNH NHÃN ĐÓ quyết định nhóm thuộc mùa nào — đây là chỗ chặn lỗi "cả 4 mùa hiện y hệt
+    /// nhau": khi không nhãn nào có heading, bản cũ cho qua mọi nhóm ở mọi mùa.
+    /// Nút BATCH/ZIP bị loại: đó là pack cả mùa trong một file, không phải nhóm tập.
+    /// </summary>
     List<(string Heading, string Url)> GroupsForSeason(string html, string postUrl, short season)
     {
-        var groups = new List<(string Heading, string Url)>();
+        var all = new List<(string Heading, string Url)>();
+        int batches = 0;
 
-        foreach (var b in DivBlocks(html, "download-links-div", 40))
+        void Add(int position, string rawHref)
         {
-            if (!SeasonHeadingMatches(b.Heading, season))
-                continue;
+            string url = Absolute(Unescape(rawHref), postUrl);
 
-            foreach ((string label, string raw) in b.Links)
+            if (!url.StartsWith("http", StringComparison.OrdinalIgnoreCase) || all.Any(x => x.Url == url))
+                return;
+
+            string label = NearestLabelBefore(html, position);
+
+            if (string.IsNullOrWhiteSpace(label))
+                label = $"Nhóm {all.Count + 1}";
+
+            if (Regex.IsMatch(label, @"(?i)batch|\.zip\b"))
             {
-                string url = Absolute(Unescape(raw), postUrl);
+                batches++;
+                return;
+            }
 
-                if (!url.StartsWith("http", StringComparison.OrdinalIgnoreCase) || groups.Any(x => x.Url == url))
+            all.Add((label, url));
+        }
+
+        // Một khối download-links-div = một nhóm: lấy nút đầu, các nút còn của cùng khối là host dự
+        // phòng (để lại mọi link thì sinh ra mấy "nhóm" trùng tên nhau trong bộ lọc).
+        foreach (var b in DivBlocks(html, "download-links-div", 60))
+        {
+            if (b.Links.Count > 0)
+                Add(b.Index, b.Links[0].Url);
+        }
+
+        if (all.Count == 0)
+        {
+            foreach (Match m in Regex.Matches(html ?? "", AnchorPattern))
+            {
+                if (!Regex.IsMatch(Plain(m.Groups["t"].Value), @"(?i)download\s*-?\s*link"))
                     continue;
 
-                groups.Add((string.IsNullOrWhiteSpace(b.Heading) ? label : b.Heading, url));
+                Add(m.Index, HrefValue(m));
             }
         }
 
-        if (groups.Count > 0)
-            return groups;
+        // Có nhãn nào tự nhắc mùa không? Có => BẮT BUỘC khớp mùa (mới là trường hợp của Movies4U,
+        // mỗi nhóm đề "Season 4 […]"); không => bài chỉ có một mùa, nhận hết.
+        bool require = all.Any(x => SeasonNumber(x.Heading) > 0);
 
-        foreach (Match m in Regex.Matches(html ?? "", AnchorPattern))
+        // kiểu tường minh: C# không suy kiểu đích cho collection expression khi để var (CS9176)
+        List<(string Heading, string Url)> picked = [.. all.Where(x => SeasonHeadingMatches(x.Heading, season, require))
+                                                           .DistinctBy(x => x.Heading)];
+
+        if (picked.Count == 0 && require)
         {
-            string url = Absolute(Unescape(HrefValue(m)), postUrl);
-
-            if (!url.StartsWith("http", StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            if (!Regex.IsMatch(Plain(m.Groups["t"].Value), @"(?i)download\s*-?\s*link"))
-                continue;
-
-            string head = NearestHeadingBefore(html, m.Index);
-
-            if (!SeasonHeadingMatches(head, season) || groups.Any(x => x.Url == url))
-                continue;
-
-            groups.Add((string.IsNullOrWhiteSpace(head) ? $"Nhóm {groups.Count + 1}" : head, url));
+            Console.WriteLine($"{Tag} mùa {season}: {all.Count} nhóm nhưng không nhãn nào nhắc mùa {season} — thôi, dùng cả {all.Count} nhóm");
+            picked = [.. all];
         }
 
-        return groups;
+        if (batches > 0)
+            Console.WriteLine($"{Tag} mùa {season}: bỏ {batches} nút BATCH/ZIP (pack cả mùa, không phải nhóm tập)");
+
+        if (picked.Count == 0)
+            Console.WriteLine($"{Tag} mùa {season}: 0 nhóm | download-links-div={DivBlocks(html, "download-links-div", 60).Count} nhãn=[{string.Join(" | ", all.Select(x => Cut(x.Heading)))}] | classes={ClassHistogram(html)}");
+
+        // Trả về nhãn ĐÃ làm ngắn (bỏ "Season N" thừa vì mùa đã chọn rồi). CollectionCore so khớp
+        // đúng chuỗi này nên chỉ có MỘT nguồn sự thật, không lệch giữa chỗ hiển thị và chỗ lọc.
+        return [.. picked.Select(x => (Heading: GroupShort(x.Heading) ?? x.Heading, Url: x.Url))];
     }
 
-    /// <summary>Heading có nhắc mùa đang xem không? Heading không nhắc mùa nào (bài chỉ có 1 mùa) thì
-    /// coi là thuộc mùa đang xem — nhờ vậy series một mùa không bị trả 0 nhóm.</summary>
-    static bool SeasonHeadingMatches(string heading, short season)
+    /// <summary>Nhãn có nhắc đúng mùa đang xem không. require=true (site CÓ ghi mùa trên từng nhóm)
+    /// thì nhãn không nhắc mùa bị loại — nhờ 4 mùa không dùng chung một danh sách. require=false (bài
+    /// một mùa, không nhãn nào nhắc season) thì nhận hết.</summary>
+    static bool SeasonHeadingMatches(string text, short season, bool require = false)
     {
-        short n = SeasonNumber(heading);
+        short n = SeasonNumber(text);
 
-        return n <= 0 || n == season;
+        if (n > 0)
+            return n == season;
+
+        return !require;
     }
 
     static short SeasonNumber(string text)

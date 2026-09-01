@@ -306,7 +306,15 @@ giá trị qua `HrefValue(m)` (ba nhóm `d`/`s`/`n`, không dùng trùng tên nh
   link. Nhưng **không** được chuẩn hóa bằng `Uri.AbsoluteUri` — query presigned lệch 1 ký tự là chết.
 - `HubEntry` có hai vai: `Episode > 0` = tập, `Episode == 0 && Group != null` = **phiếu nhóm**.
   Thêm bất kỳ loại nào khác mà quên cập nhật `CollectionCore` là menu rỗng không lý do.
-- Sau mỗi commit sửa module: đổi `Build` (hiện `v16-series-groups`) và nhắc marker trong message commit,
+- Nhãn của một khối nút **không phải lúc nào cũng là heading**: Movies4U ghi
+  "Season 4 [Hindi ORG. + Multi Audio] 1080p [900MB/E]" bằng thẻ thường (không `h1..h6`), nên
+  `NearestHeadingBefore` trả rỗng và nhãn rớt về đúng chữ trên nút -> bộ lọc toàn
+  "Download Links 900MB", nhìn không ra nhóm nào (ảnh thiết bị 31/8). Vì vậy mọi chỗ cần nhãn khối
+  phải đi qua `NearestLabelBefore()` (heading trước, không thì lấy đoạn text ngắn nhất có
+  season/quality/dung lượng ngay trước khối). Và **chính nhãn đó dùng để tách mùa**: bản cũ cho qua
+  mọi nhóm khi heading rỗng => cả 4 mùa hiện cùng một danh sách. Còn `BATCH/ZIP [x.xGB]` là pack cả
+  mùa trong một file, bị loại khỏi danh sách nhóm (log: `bỏ N nút BATCH/ZIP`).
+- Sau mỗi commit sửa module: đổi `Build` (hiện `v18-group-labels`) và nhắc marker trong message commit,
   vì đó là cách duy nhất log tự chứng minh máy đang chạy bản nào (module compile trong bộ nhớ).
 
 ## Bẫy đã né sẵn (đều là bài học từ VidCore, đọc trước khi sửa)

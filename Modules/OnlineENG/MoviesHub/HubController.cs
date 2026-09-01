@@ -58,7 +58,7 @@ public abstract class HubController : BaseENGController
     /// hash, phải đánh tay: mỗi commit sửa MoviesHub là đổi chuỗi này (luật trong README). Log ra
     /// marker khác = máy đang compile bản cũ -> dừng việc sửa code, kéo lại từ commit đó.
     /// </summary>
-    protected const string Build = "v17-voice-groups";
+    protected const string Build = "v18-group-labels";
 
     /// <summary>Nhóm release được chọn qua ?g= (0 = chưa chọn). Đặt tên đầy đủ vì nếu gọi là
     /// <c>Group</c> thì nó che kiểu System.Text.RegularExpressions.Group đang dùng trong
@@ -730,7 +730,47 @@ public abstract class HubController : BaseENGController
         string t = Regex.Replace(heading.Trim(), @"(?i)^season\s*\d+\s*[:\-]?\s*", "");
         t = Regex.Replace(t, @"\s+", " ").Trim();
 
-        return t.Length > 64 ? t[..64].TrimEnd() + "…" : (t.Length == 0 ? null : t);
+        // Chuỗi chỉ còn khoảng trắng sau khi cắt "Season N" => trả null để caller tự lo nhãn khác.
+        // Trả rỗng ở đây từng làm chip bộ lọc in đúng cái tên nút ("Download Links 900MB").
+        if (t.Length == 0)
+            return null;
+
+        return t.Length > 64 ? t[..64].TrimEnd() + "…" : t;
+    }
+
+    /// <summary>
+    /// Nhãn của một khối/nút: heading h1..h6 nếu có; không có thì lấy đoạn text ngắn nhất nằm ngay
+    /// trước nó. Movies4U ghi "Season 4 [Hindi ORG. + Multi Audio] 1080p [900MB/E]" trong thẻ KHÔNG
+    /// phải heading, nên NearestHeadingBefore trả rỗng và nhãn rớt về đúng chữ trên nút — log thiết bị
+    /// là cả bộ lọc toàn "Download Links 900MB", không nhận ra nhóm nào. Ưu tiên dòng có season /
+    /// chất lượng / dung lượng; không tìm được gì thì trả "" để caller tự xử lý.
+    /// </summary>
+    protected static string NearestLabelBefore(string html, int position)
+    {
+        string head = NearestHeadingBefore(html, position);
+
+        if (!string.IsNullOrWhiteSpace(head))
+            return head;
+
+        if (string.IsNullOrWhiteSpace(html) || position <= 0)
+            return "";
+
+        int from = Math.Max(0, position - 1200);
+        string[] blocks = [.. Regex.Split(html[from..position], @"</(?:p|div|h[1-6]|li|tr|blockquote|center)>")];
+
+        for (int i = blocks.Length - 1; i >= 0; i--)
+        {
+            string text = Regex.Replace(blocks[i], @"(?is)<[^>]+>", " ");
+            text = Regex.Replace(Unescape(text), @"\s+", " ").Trim();
+
+            if (text.Length is < 8 or > 220)
+                continue;
+
+            if (Regex.IsMatch(text, @"(?i)\d{3,4}p|\b4k\b|\bseason\b|\d+(?:[.,]\d+)?\s?(?:GB|MB)\b"))
+                return text;
+        }
+
+        return "";
     }
 
     protected static string Cut(string url)
