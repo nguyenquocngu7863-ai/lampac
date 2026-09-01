@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Shared;
 using Shared.Attributes;
+using Shared.Models.Base;
 using Shared.Models.SISI.Base;
 using Shared.Services;
 using Shared.Services.HTTP;
