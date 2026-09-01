@@ -911,7 +911,14 @@ họ chỉ cần sửa `manifest.json` trong repo (xem [công thức](notes/FILE
 BATCH/ZIP bị loại, chọn nhóm là dịch cả mùa của nhóm đó. Bài học lớn nhất của vòng này — đừng đoán
 DOM, phải đọc trang thật — nằm trong `notes/FILEHOST-SOURCE-FORMULA.md`.
 
-## UhdMovies (`uhdmovies.autos`) — chain + link worker OK trên máy thật; đang xử series/collection (vòng 5, build `v25-uhdmovies-collections`)
+## UhdMovies — đã đóng (2026-09-01), code giữ làm nguyên liệu cho XdMovies
+
+Test trên máy đã chạy được (tìm bài → 2 trang countdown → `driveseed /zfile/` → link `workers.dev` tua được,
+mỗi tập của Reacher S02 đều có nút, bài collection LOT R tách đúng 3 phim), nhưng **file của họ không được bảo trì**:
+bài cũ trả link mà stream không ra hình, site thiên về "tải về" hơn "xem". Nên rút khỏi `manifest.json` → `tree`
+và bỏ section config; `UhdmoviesController.cs` vẫn nằm trong repo vì XdMovies (notes/XDMOVIES.md) dùng lại
+cùng bộ máy: `Bypass`, `ResumeLink`, `LabelBlocks`, `Playable`, `IsResume`, `Unwrap`.
+
 
 Anh em họ UHDMovies/MoviesMod/TopMovies **không dùng HubCloud**: mỗi nút "Episode N"/chất lượng trỏ
 `…?sid=<blob mã hoá>` rồi đi qua trang verify của WordPress → shortener → trang file

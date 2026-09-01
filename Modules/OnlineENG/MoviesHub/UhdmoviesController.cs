@@ -15,6 +15,11 @@ using System.Threading.Tasks;
 namespace MoviesHub;
 
 /// <summary>
+/// ĐÃ ĐÓNG 2026-09-01 — không còn trong `manifest.json` → `tree`, thiết bị không compile file này
+/// nữa, và `ModInit` không đăng ký nguồn. Lý do ở notes/UHD-MOVIES.md mục 11. GIỮ LẠI vì máy đã
+/// xác minh cả chuỗi (search / countdown x2 / driveseed /zfile/ / worker link) và XdMovies sẽ dùng
+/// lại đúng các helper này: Bypass, ResumeLink, LabelBlocks, Playable, IsResume, Unwrap.
+///
 /// UhdMovies (`uhdmovies.autos`) — cùng họ bài-đặt-nút-download như Movies4U nhưng KHÁC resolver:
 /// mỗi nút trỏ `…?sid=<blob>` rồi phải qua 2 trang countdown của WordPress trước khi tới trang file
 /// DriveLeech/DriveSeed. Thuật toán port từ code CSX còn sống (`CineStreamExtractors.kt:2353`

@@ -632,3 +632,28 @@ Series: `uhdmovies: 5 nhóm / 40 nút | mùa=[1,2,3] | phim=[]` rồi `mùa 2 nh
 đều có nút. Collection: `bài collection: 3 phim, tmdb hỏi 'The Lord of the Rings: The Two Towers' (2002)
 -> '…'` rồi `movie: 3 nút từ 3/9 nhóm`. Nếu log in `KHÔNG KHỚP` thì `SameFilm` chưa đủ rộng — lúc đó
 in nguyên `phim=[…]` ra để so từng ký tự.
+
+---
+
+## 11. ĐÓNG DỰ ÁN (2026-09-01) — lý do, và những gì đã chốt được
+
+**Vì sao dừng (anh quyết, em ghi lại nguyên văn lý do để đời sau khỏi mở lại vô ích):**
+*Test thì ok rồi mà file nó không bảo trì, kiểu website thiên về download thôi, file cũ không stream
+được* ⇒ không phải module sai: chuỗi của mình chạy đúng trên máy thật, link worker `*.workers.dev`
+tua được, `Resume Cloud` (`/zfile/`) đã được ưu tiên đúng. Vấn đề là **nguồn**: họ đăng bài rồi bỏ,
+file Google Drive cũ chết/bị rate-limit, nên vào phim mới thì được mà phim cũ thì chịu.
+
+**Những gì đã chốt bằng máy (đừng đoán lại):**
+1. `uhdmovies.autos` = WordPress; bài tìm bằng `?s=<q>` (site tự chuyển sang `/search/<q>`), slug luôn
+   bắt đầu `download-`; `Anchors(...)` phải truyền `onlyFileHost: false`.
+2. Mỗi nút là `cloud.unblockedgames.world/?sid=<base64>` → **2 trang countdown** (POST `form#landing`,
+   cookie `_wp_http2`, `?go=`, meta-refresh) → `driveseed.org/r?key=` → `/file/<id>`; `rounds=2` là đủ.
+3. Trang file: `Resume Cloud` = `/zfile/<id>` (302 → `worker-*.workers.dev/<hex>::<hex>/<tên>.mkv`,
+   **tua được**); `Instant Download` = `cdn.video-gen.xyz/<hex>::<hex>` (302 → Google, chỉ tải);
+   `Login to download` = rác. Nhận link tua được bằng HOST, không bằng `::`.
+4. Series: một bài chứa nhiều mùa, 8 nút nằm cùng một dòng và mỗi href ~700 ký tự ⇒ phải quét nhãn
+   MỘT LƯỢT cho cả bài (window ngắn là bug đã trả giá). Collection: một bài nhiều phim, phân biệt bằng
+   `<h2>`, và IMDb id thì có NHIỀU cái trong bài.
+
+**Còn mở (không làm nữa):** `fls`/`pixel` của xdmovies — xem `notes/XDMOVIES.md`; `rch` cho trang
+challenge; nút "Cả mùa (ZIP)" cho uhd (lệnh cũ: không lấy BATCH/ZIP).

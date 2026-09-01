@@ -26,7 +26,6 @@ public class ModInit : IModuleLoaded, IModuleOnline
 {
     public static OnlinesSettings drive;
     public static OnlinesSettings fouru;
-    public static OnlinesSettings uhd;
 
     public List<ModuleOnlineItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, OnlineEventsModel args)
     {
@@ -46,10 +45,10 @@ public class ModInit : IModuleLoaded, IModuleOnline
         if (Allow(fouru))
             online.Add(new(fouru, "movies4u", "Movies4U", " (ENG)"));
 
-        // UhdMovies: resolver RIÊNG (countdown x2 -> DriveLeech/DriveSeed) nhưng cùng assembly để ăn
-        // CollectionCore/templates đã được thiết bị xác minh. Section config vẫn riêng.
-        if (Allow(uhd))
-            online.Add(new(uhd, "uhdmovies", "UhdMovies", " (ENG)"));
+        // UhdMovies ĐÓNG 2026-09-01 (log test OK nhưng file của họ không ai bảo trì: link cũ không
+        // stream được, site thiên về tải về). Code vẫn ở Modules/OnlineENG/MoviesHub/
+        // UhdmoviesController.cs, chỉ rút khỏi manifest tree -> thiết bị không compile nữa. Nó là
+        // nguyên liệu (Bypass/ResumeLink/LabelBlocks) cho XdMovies đang mở ở notes/XDMOVIES.md.
 
         return online;
     }
@@ -74,7 +73,6 @@ public class ModInit : IModuleLoaded, IModuleOnline
     {
         drive = Section("MoviesDrive", "https://new3.moviesdrive.christmas", 1017);
         fouru = Section("Movies4U", "https://new5.movies4u.clinic", 1018);
-        uhd = Section("UhdMovies", "https://uhdmovies.autos", 1019);
     }
 
     OnlinesSettings Section(string name, string host, int displayindex)
@@ -115,7 +113,7 @@ public class ModInit : IModuleLoaded, IModuleOnline
 
     private string OnlineApiQuality(EventOnlineApiQuality e)
     {
-        if (e.balanser is "moviesdrive" or "movies4u" or "uhdmovies")
+        if (e.balanser is "moviesdrive" or "movies4u")
             return " ~ 4K/1080p";
 
         return null;
