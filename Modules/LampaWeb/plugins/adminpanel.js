@@ -273,6 +273,12 @@
         el.append('<div class="settings-param__value">' + esc(value) + '</div>');
       if (descr)
         el.append('<div class="settings-param__descr">' + esc(descr) + '</div>');
+      // Focus (D-pad navigation / hover) must scroll the focused row into view.
+      // Without this the Scroll container never moves, so lists look stuck.
+      el.on('hover:focus', function () {
+        lastFocus = el[0];
+        try { scroll.update(el, true); } catch (e) { }
+      });
       el.on('hover:enter', function () {
         lastFocus = el[0];
         onEnter();
@@ -284,6 +290,7 @@
       scroll.clear();
       lastFocus = false;
       for (var i = 0; i < nodes.length; i++) scroll.append(nodes[i]);
+      try { scroll.reset(); } catch (e) { }
       Lampa.Controller.toggle('content');
     }
 
@@ -907,6 +914,19 @@
     this.create = function () {
       injectCss();
       html.append(scroll.render());
+      // Allow native touch/wheel scrolling inside the list on phones.
+      try {
+        var bodyEl = scroll.body ? scroll.body() : scroll.render();
+        if (bodyEl && bodyEl.css) {
+          bodyEl.css('-webkit-overflow-scrolling', 'touch');
+          bodyEl.on('wheel', function (e) {
+            try {
+              var d = e.originalEvent ? e.originalEvent.deltaY : 0;
+              if (d) scroll.wheel(d > 0 ? 1 : -1);
+            } catch (err) { }
+          });
+        }
+      } catch (e) { }
       boot();
     };
 
