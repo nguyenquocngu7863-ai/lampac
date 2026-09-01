@@ -1,12 +1,9 @@
 using Microsoft.AspNetCore.Mvc;
 using Shared;
 using Shared.Attributes;
-using Shared.Models.Base;
 using Shared.Models.SISI.Base;
-using Shared.Services;
-using Shared.Services.HTTP;
-using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading.Tasks;
 
 namespace Stripchat;
@@ -31,28 +28,21 @@ public class StripchatController : BaseSisiController
             List<PlaylistItem> playlists = null;
             int totalPages = 0;
             string url = StripchatTo.Uri(init.host, tag, pg);
-            bool responseReceived = false;
 
-            // Do not use httpHydra here: when an RCH client is connected Hydra silently routes
-            // this public API request through the client, so the callback may never run. The
-            // same URL is proven reachable directly from Ubuntu/Termux; force server-side HTTP.
-            var directHeaders = HeadersModel.Init(
-                ("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/151 Mobile Safari/537.36"),
-                ("Referer", "https://stripchat.com/"),
-                ("Accept", "application/json")
-            );
-            bool requestOk = await Http.GetSpan(url, span =>
-            {
-                responseReceived = true;
-                playlists = StripchatTo.Playlist(init.host, span, pg, out totalPages);
-            }, timeoutSeconds: Math.Max(20, init.httptimeout), headers: directHeaders,
-               proxy: null, httpversion: 1, useDefaultHeaders: false);
+            // .NET HttpClient fails TLS to this host in Android proot while the system curl
+            // succeeds from the exact same guest. Use curl as the narrow transport fallback;
+            // ArgumentList avoids shell interpolation and all URL values are server-generated.
+            var fetched = await CurlGet(url);
+            if (fetched.exitCode == 0 && !string.IsNullOrEmpty(fetched.body))
+                playlists = StripchatTo.Playlist(init.host, fetched.body.AsSpan(), pg, out totalPages);
 
             if (playlists == null || playlists.Count == 0)
             {
                 string reason = StripchatTo.LastError;
-                if (!responseReceived)
-                    reason = $"server HTTP callback not called (requestOk={requestOk})";
+                if (fetched.exitCode != 0)
+                    reason = $"curl exit={fetched.exitCode}: {fetched.error}";
+                else if (string.IsNullOrEmpty(fetched.body))
+                    reason = "curl returned an empty body";
                 return e.Fail($"playlists: {reason ?? "unknown parser result"}", refresh_proxy: true);
             }
             return e.Success((playlists, totalPages));
@@ -70,5 +60,41 @@ public class StripchatController : BaseSisiController
             StripchatTo.Menu(host, tag),
             total_pages: cache.Value.total_pages
         );
+    }
+
+    static async Task<(int exitCode, string body, string error)> CurlGet(string url)
+    {
+        try
+        {
+            var start = new ProcessStartInfo("curl")
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            foreach (string arg in new[]
+            {
+                "-fsSL", "--max-time", "20",
+                "-A", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/151 Mobile Safari/537.36",
+                "-H", "Referer: https://stripchat.com/",
+                "-H", "Accept: application/json",
+                url
+            })
+                start.ArgumentList.Add(arg);
+
+            using var process = Process.Start(start);
+            if (process == null)
+                return (-1, null, "cannot start curl");
+
+            Task<string> stdout = process.StandardOutput.ReadToEndAsync();
+            Task<string> stderr = process.StandardError.ReadToEndAsync();
+            await process.WaitForExitAsync();
+            return (process.ExitCode, await stdout, (await stderr).Trim());
+        }
+        catch (System.Exception ex)
+        {
+            return (-1, null, ex.Message);
+        }
     }
 }
