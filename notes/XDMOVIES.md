@@ -353,3 +353,21 @@ Hệ quả (v30-xdmovies-rch-pages): thêm `Read(url)` = thử `GetPage` 1 lần
 `rch.Headers(url)` rồi dùng `body`, và chỉ báo lỗi khi cả hai đều trắng. Trang tìm kiếm, trang bài và
 trang gate đều đi qua `Read`, nên khi Cloudflare chặn thì client Lampa (apk, đã nối `/nws`) lãnh đủ cả
 ba — không có chế độ "đọc bài bằng HTTP, bấm gate bằng rch" nửa vời.
+
+## 14. 01/9 — `rch len=0 cur=` nghĩa là gì (em gộp lỗi, anh thành nạn nhân của cái log)
+
+Máy báo mọi URL (trang chủ, `search.html?q=860508`, `…?q=The Whisper Man 2026`) đều
+`HTTP thường rỗng -> rch len=0 cur=` rồi em in "vẫn là trang challenge". **Sai**: `len=0` **và**
+`cur=` rỗng nghĩa là chưa có bất kỳ HTML nào — `rch.Headers()` trả `default` mà không tải trang.
+Hai cửa duy nhất gây ra thế (RchClient.cs):
+* `:235` `if (484 > InfoConnected()?.apkVersion) return default;` ⇒ app Lampa cũ hơn 484 là rch câm
+  hoàn toàn (đây là giả thuyết số 1 của em cho log của anh, vì `enable=true` — nếu không bật thì đã
+  in câu khác);
+* `SendHub` `:387-394` trả `null` khi `Nws == null` hoặc không chọn được client ⇒ client "có đăng ký"
+  trong `clients` nhưng không nhận lệnh.
+v31-xdmovies-rch-diag tách ba nhánh (rch tắt / apk<484 / client không tải / đúng-là-challenge), in
+`apk=` và `connectionMsg=`, và **fail-fast**: chết là nghỉ ngay, không gọi 4 lần cho một request (log
+trước lặp 4 dòng cùng một lý do). Đọc log giờ chỉ cần một dòng.
+
+Nếu đúng là apk < 484 thì đường scraping chết hẳn, chỉ còn đường "Lampa tự mở trang": module nhả nút
+dẫn thẳng `search.html?q=<TMDB id>` (webview) để anh bấm tay — quyết định đó để anh, em không tự làm.

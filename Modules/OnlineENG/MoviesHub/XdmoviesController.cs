@@ -470,6 +470,21 @@ public class XdmoviesController : HubController
     /// trông như "site trả rỗng"). Vậy nên: thử HTTP trước cho rẻ, rỗng là hỏi rch (trình thật của
     /// client Lampa) — client của anh đã nối (rchtype=apk), nên đường này thật sự có cửa.
     /// </summary>
+    /// <summary>
+    /// Đọc một trang của site này. HTTP thường ăn Cloudflare js-challenge (GetPage trả null, log bằng
+    /// prefix "MoviesHub:" nên người dùng grep "xdmovies:" không thấy). Nếu rỗng thì hỏi rch.
+    ///
+    /// PHẢI phân biệt ba trường hợp, gộp làm một là em đã sai ở v30 (log "vẫn là trang challenge" khi
+    /// thực ra chưa có HTML nào cả):
+    ///   1) rch không bật / không đủ điều kiện  -> nói rõ bật gì;
+    ///   2) client dưới 484: RchClient.cs:235 return default mà không tải gì (body=null, currentUrl=null)
+    ///      -> đúng triệu chứng "rch len=0 cur=" trên máy anh 1/9, không phải Cloudflare;
+    ///   3) rch tải thật nhưng trang trả về vẫn là challenge -> lúc đó mới là lỗi JS client.
+    /// Fail-fast: một khi rch chết thì cả request đó không gọi nữa (trước đây nó bị gọi 4 lần, log
+    /// lặp 4 lần cùng một lý do, rất khó đọc).
+    /// </summary>
+    bool _rchDead;
+
     async Task<string> Read(string url)
     {
         string html = await GetPage(url, SiteHeaders(), attempts: 1);
@@ -477,20 +492,41 @@ public class XdmoviesController : HubController
         if (!string.IsNullOrWhiteSpace(html))
             return html;
 
+        if (_rchDead)
+            return null;
+
         if (rch?.enable != true)
         {
-            Console.WriteLine($"{Tag} {Cut(url)}: HTTP thường bị chặn mà rhub đang TẮT (enable={rch?.enable}) — bật rch/init.conf + client Lampa >= 484");
+            _rchDead = true;
+            Console.WriteLine($"{Tag} HTTP thường bị chặn mà rhub không bật cho nguồn này (enable={rch?.enable}) — cần section XdMovies có \"rhub\": true và rch.enable trong init.conf");
+            return null;
+        }
+
+        int apk = rch.InfoConnected()?.apkVersion ?? 0;
+
+        if (apk < 484)
+        {
+            _rchDead = true;
+            Console.WriteLine($"{Tag} rch TỪ CHỐI vì client: apkVersion={apk} < 484 — RchClient.cs:235 return default ngay từ cửa, không tải gì cả. Cách duy nhất: cập nhật app Lampa (hoặc bật rhub cho web/cors). Module không làm được gì thêm.");
             return null;
         }
 
         var res = await rch.Headers(url, null, SiteHeaders());
         string body = res.body;
 
+        if (string.IsNullOrWhiteSpace(body) && string.IsNullOrWhiteSpace(res.currentUrl))
+        {
+            _rchDead = true;
+            Console.WriteLine($"{Tag} rch không trả gì (url={Cut(url)}, apk={apk}, connectionMsg='{rch.connectionMsg ?? ""}') => client nhận lệnh nhưng không tải trang, CHƯA PHẢI trang Cloudflare vì chưa có HTML nào được trả về");
+            return null;
+        }
+
         Console.WriteLine($"{Tag} {Cut(url)}: HTTP thường rỗng -> rch len={(body?.Length ?? 0)} cur={Cut(res.currentUrl ?? "")}");
 
         if (string.IsNullOrWhiteSpace(body) || body.Length < 9000 && Regex.IsMatch(body, @"(?i)just a moment|cf-browser-verification|attention required|__cf_chl"))
         {
-            Console.WriteLine($"{Tag} rch cũng không lấy được bài (vẫn là trang challenge) — nguồn này cần client chịu chạy JS đầy đủ");
+            _rchDead = true;
+            Console.WriteLine($"{Tag} rch tải xong nhưng vẫn là trang challenge của Cloudflare (len={(body?.Length ?? 0)}) — client không vượt được JS challenge, hết đường tự động");
             return null;
         }
 
