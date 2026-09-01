@@ -570,6 +570,23 @@ sync_latest_modules() {
             esac
         done
 
+        # overlay mods/ THANG module/ khi Lampac nap module, nen no cung phai duoc don + cap nhat:
+        # 1/9 may anh chet boot (signal 6) vi mods/OnlineENG/MoviesHub/manifest.json van khai bao
+        # XdmoviesController.cs trong khi file da bi xoa -> CSharpEval FileStream bo file khong co.
+        # Da guard o Shared/Services/CSharpEval.cs, nhung sync phai giu hai ban dong nhat.
+        if [ -d /root/lampac/mods/OnlineENG/MoviesHub ]; then
+            for oldcs in /root/lampac/mods/OnlineENG/MoviesHub/*.cs; do
+                [ -e \"\$oldcs\" ] || continue
+                orph=\$(basename \"\$oldcs\")
+                case \" \$movieshubfiles \" in
+                    *\" \$orph \"*) cp \"\$movieshubtarget/\$orph\" /root/lampac/mods/OnlineENG/MoviesHub/\$orph 2>/dev/null;;
+                    *) rm -f \"\$oldcs\"; echo \"  [sync] movieshub/mods: xoa \$orph\";;
+                esac
+            done
+            cp \"\$movieshubtarget/manifest.json\" /root/lampac/mods/OnlineENG/MoviesHub/manifest.json 2>/dev/null \
+                && echo \"  [sync] movieshub/mods: cap nhat manifest.json\"
+        fi
+
         for sisimod in /root/lampac/module/SISI /root/lampac/mods/SISI; do
             if [ -d \"\$sisimod\" ]; then
                 pull SISI/SisiApi.cs \"\$sisimod/SisiApi.cs\"

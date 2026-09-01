@@ -179,7 +179,7 @@ public static class CSharpEval
                     // vì manifest lệch là chuyện bình thường khi overlay mods/ cũ hơn module/.
                     if (!File.Exists(csfile))
                     {
-                        Log.Error($"CSharpEval: {mod.path} khai báo {csfile} trong tree/nhưng file không tồn tại - bỏ qua");
+                        Log.Error($"CSharpEval: {mod.path} khai báo {csfile} trong tree nhưng file không tồn tại - bỏ qua");
                         continue;
                     }
 
