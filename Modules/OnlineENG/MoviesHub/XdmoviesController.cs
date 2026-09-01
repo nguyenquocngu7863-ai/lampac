@@ -140,12 +140,20 @@ public class XdmoviesController : HubController
             string key = name.Trim();
 
             if (!queries.Any(x => x.Equals(key, StringComparison.OrdinalIgnoreCase)))
-                queries.Add(tv ? $"{key} season {System.Math.Max((int)season, 1)}" : $"{key} {meta.year}");
+                // Series: KHÔNG nhét "season N" vào query nữa — một bài của họ chứa cả series (bài
+                // Reacher 108978 có đủ các mùa), thêm chữ season chỉ làm trượt kết quả.
+                queries.Add(tv ? key : $"{key} {meta.year}");
         }
+
+        // CHÍNH SÁCH CỦA SITE, ghi ngay trong UI: "Can't find the exact title? Try searching with the
+        // TMDB ID from themoviedb.org." => q=<TMDB id> là đường đáng tin nhất (không trùng tên, không
+        // cần đoán năm). Đặt ĐẦU TIÊN vì tên của họ hay lệch dấu/ngoài tiếng Anh.
+        if (tmdbId > 0)
+            queries.Insert(0, tmdbId.ToString());
 
         if (queries.Count == 0)
         {
-            Console.WriteLine($"{Tag} TMDB không trả title để tìm (tmdb={tmdbId})");
+            Console.WriteLine($"{Tag} không có query nào để tìm (tmdb={tmdbId})");
             return null;
         }
 
@@ -162,17 +170,18 @@ public class XdmoviesController : HubController
                               : "=> đọc được bình thường; nếu bài không ra là do sai dạng URL, không phải bị chặn"));
 
 
-        // Tìm bài: ?s= rồi /search/. Chưa đọc trang search của site này nên điều kiện nhận bài là
-        // thứ chắc nhất em có: slug của họ CHỐT bằng TMDB id (`...-860508`).
-        foreach (string query in queries.Take(2))
+        // Dạng tìm kiếm ĐÚNG của site (anh cung cấp 1/9, sau hai vòng em đoán WordPress trật):
+        //   https://top.xdmovies.wtf/search.html?q=<urlencoded>
+        // Điều kiện nhận bài vẫn là thứ chắc nhất: slug luôn CHỐT bằng TMDB id (`...-860508`).
+        foreach (string query in queries.Take(4))
         {
-            foreach (string form in new[] { "?s={0}", "/search/{0}" })
+            foreach (string form in new[] { "search.html?q={0}" })
             {
                 string page = await GetPage($"{site}/{string.Format(form, Uri.EscapeDataString(query))}", headers);
 
                 if (string.IsNullOrWhiteSpace(page))
                 {
-                    Console.WriteLine($"{Tag} trang tìm rỗng (dạng {form}) q='{query}'");
+                    Console.WriteLine($"{Tag} trang tìm rỗng/blocked (dạng {form}) q='{query}' — nếu mọi dạng đều rỗng mà chẩn đoán trang chủ len>0 thì site chặn theo UA/IP");
                     continue;
                 }
 

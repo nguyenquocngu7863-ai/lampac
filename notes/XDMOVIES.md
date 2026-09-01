@@ -320,3 +320,20 @@ phần đuôi `-<id>`; (b) in một dòng chẩn đoán TRƯỚC mọi thứ: `G
 * `len=0` ở trang chủ ⇒ site chặn request thường ⇒ phải qua `rch` cho cả trang bài, không riêng gate
   (và khi đó module phải dùng `rch.Get`, không dùng `Http`).
 * `len>0` ⇒ chỉ sai dạng URL; dòng `dựng-theo-id … len=… ✓ có /download/` sẽ nói dạng nào ăn.
+
+## 12. 01/9 — DẠNG TÌM KIẾM THẬT (anh cung cấp, hết đoán)
+
+```text
+https://top.xdmovies.wtf/search.html?q=<truy vấn, urlencoded>
+```
+
+Và ghi chú ngay trong UI của họ: *"Can't find the exact title? Try searching with the TMDB ID from
+themoviedb.org."* ⇒ `q=<TMDB id>` là đường đáng tin nhất. `v29-xdmovies-search-html`:
+* `queries` được **chèn `tmdbId` lên đầu**, tên phim (kèm năm với phim lẻ) chỉ là fallback;
+* series **không** nhét "season N" vào query nữa — một bài chứa cả series (bài Reacher `-108978` có đủ
+  các mùa), thêm chữ season chỉ làm trượt kết quả. Mùa lọc ở bước `IdOf`/`ParseEpisode`;
+* form tìm duy nhất là `search.html?q=` (bỏ `?s=` và `/search/` — hai cái đó là em áp WordPress của
+  uhd vào site Next.js, mất 2 vòng vô ích).
+
+Bài học cho mọi nguồn mới: **hỏi người dùng dạng URL tìm kiếm trước khi đoán**, vì log "trang tìm rỗng"
+không phân biệt được 404-sai-đường với 403-bị-chặn (vì vậy mới có dòng `chẩn đoán … trang chủ len=`).
