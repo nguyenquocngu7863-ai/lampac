@@ -232,6 +232,12 @@ Bằng chứng, không bình luận:
   còn phần scrape thì bị bỏ; `urls.json` vẫn giữ `uhdmovies=uhdmovies.autos` vì file đó là bảng
   domain chung, không có nghĩa là provider còn chạy.
 
+> **SỬA LẠI (cùng ngày — xem 2g):** kết luận "họ cắt UHDMovies" là **em đọc sai**. Em chỉ đoán path
+> `providers/UhdMovies.kt` (404) rồi đếm commit message có chữ "uhd". Sự thật: provider **vẫn sống**,
+> ghi danh trong monolith `CineStream` — `ProviderRegistry.kt:199`, key `p_uhdmovies`. Phần phân tích
+> chi phí dưới đây vẫn dùng được (nó giải thích vì sao cách của họ không đủ cho mình), chỉ bỏ chữ
+> "cắt/bỏ bê".
+
 ⇒ **"Remove dead source" ở đây không phải "site chết"** — UHDMovies vẫn đăng bài hằng ngày, domain
 vẫn được hot-swap trong `domains.json` của tác giả khác. Nó là: **nguồn đắt hơn phần họ muốn trả**.
 Chuỗi của UHDMovies là countdown ×2 + cookie session + 4–6 request cho MỖI TẬP, trong khi
@@ -296,3 +302,54 @@ uhdmovies: sid step0 ok=… form#landing=… | step1 len=… | step3=<redirectUr
 uhdmovies: link cuối = https://…workers.dev/…mkv (via instant|worker|direct|resume|fallback)
 uhdmovies: 0 link | step3=<…> hosts=<histogram> | head=<500 ký tự>      <- nhánh chết phải tự giải thích
 ```
+
+---
+
+## 2g. MÓ CƯA code CSX hiện hành (đọc bằng `gh api` ngay trong sandbox — 2026-09-01)
+
+Cách làm (lần đầu dùng được, ghi lại vì từ trước tới giờ em toàn chịu chết với file lớn):
+
+```bash
+gh api repos/SaurabhKaperwan/CSX/contents/CineStream/src/main/kotlin/com/megix/CineStreamExtractors.kt \
+  --jq .content | base64 -d > /tmp/x.kt      # 4740 dòng
+grep -n -iE "uhd|driveleech|driveseed|sid=|bypassHrefli|entry-content" /tmp/x.kt
+```
+
+Theo độ hữu ích cho module của mình:
+
+1. **Provider vẫn đăng ký**: `ProviderRegistry.kt:199` — `key = "p_uhdmovies"`,
+   `executeStandard = { … if (!res.isBollywood) invokeUhdmovies(title, year, season, episode, …) }`.
+   Họ **gate theo "không phải Bollywood"** (UHDMovies mạnh ở series Netflix/HDR DoVi, yếu ở masala Hindi).
+   Nên học: mình cũng nên bỏ qua bài Hindi-only khi `original_language` đã là `hi`? Chưa vội — Lampa
+   đã lọc theo `original_language` ở `ModInit`.
+2. **Tìm bài**: `app.get("$uhdmoviesAPI/search/$title $year")` rồi `article div.entry-image a` → url bài.
+   `uhdmoviesAPI` KHÔNG phải JSON API: `ApiConstants.kt:91` → `api("uhdmovies")` = **domain hot-swap**
+   từ `urls.json` (chỗ đó gọi là "API" cho oai). Đường `/search/<query>` của site này nên được **thử
+   trước** `?s=<query>` (ít nhiễu trang hơn), `?s=` làm fallback.
+3. **Tách nhóm/tập** — hay hơn `NearestLabelBefore` của em, và nó XÁC NHẬN cấu trúc ở mục 1:
+   selector là `div.entry-content p:matches(<year>)` cho phim lẻ, `p:matches((?i)(S0?N|Season 0?N))`
+   cho series, rồi **`nextElementSibling()`** mới tới `a:matches((?i)(Episode N))` / `a:matches((?i)(Download))`.
+   ⇒ dòng release-name và dãy nút là **hai `<p>` anh-em ruột**. Luật thêm cho mình: nếu một anchor nằm
+   trong phần tử liền sau `<p>` khớp `S0?N|Season 0?N` thì tin nó thuộc mùa đó (mạnh hơn đoán heading).
+4. **Đường TẮT đáng giá**: `if (href.contains("driveleech") || href.contains("driveseed"))` ⇒ bỏ hẳn
+   bypass, chỉ `GET` rồi đọc `window.location.replace("…")` + `getBaseUrl` = **tiết kiệm 3 request/lượt**.
+5. **`bypassHrefli()` (CineStreamUtils.kt:869) GIỐNG HỆT `bypass()` của `Moviesmod/Utils.kt`**: 2 POST
+   `form#landing` (gửi TOÀN BỘ input), `skToken` từ `<script>` chứa `?go=`, cookie **tên = `skToken`**,
+   giá trị = `_wp_http2`, `meta refresh`, `replace("…")`, `/404` → null. ⇒ **2 POST là đủ**, khớp chính
+   xác "2 lần countdown" anh báo. Vòng lặp ≤5 ở mục 2c vẫn giữ: rẻ, và là bảo hiểm cho lần thứ 3.
+6. **Đuôi cùng như mình**: `loadSourceNameExtractor("UHDMovies", driveLink, …)` → dispatcher theo URL
+   (`CineStreamUtils.kt:792`: `driveleech.`/`driveseed.` → `Driveleech().getUrl`), `class Driveseed :
+   Driveleech()` ở `Extractors.kt:464`. ⇒ **mục 2b là bản mới nhất**, không có biến thể khác.
+7. **Chỗ mình làm khác (và nhiều hơn)**: họ lấy `.attr("href")` = **một link mỗi nhóm** và ném hết
+   cho extractor, không ưu tiên "Resume Cloud". Mình phải liệt kê **đủ tập** và chọn nút theo mục 2c.
+   Không phải họ hay hơn — họ chỉ không cần UI chọn mùa/nhóm.
+8. **`multiDecryptAPI = "https://enc-dec.app/api"`** vẫn nằm trong monolith (ngay dưới `vidlinkAPI`)
+   ⇒ xác nhận thêm cho lý do đóng Mapple: cả repo phụ thuộc `enc-dec.app`, endpoint chết là chết dây chuyền.
+
+### Bonus cho nguồn ĐÃ SHIP (Movies4U)
+
+CSX tìm Movies4U bằng `"$movies4uAPI/?s=<title>+season+<N>"` (series) hoặc `+<year>` (phim lẻ),
+headers `Cookie: xla=s4t` + UA desktop + `Referer: <site>/`, rồi lấy `article h3 a` ⇒ **`xla=s4t` là
+chuẩn** (khớp module mình), và **`+season+<N>`** là ý đáng thử: nó trả đúng bài của mùa cần tìm thay
+vì mò bài "Season 1-4" rồi lọc bằng nhãn. **Không đổi code vòng này** (MoviesHub `v20` đang chạy tốt);
+ghi để vòng sau, kèm log so sánh `0 bài ứng viên` có còn xảy ra không.
