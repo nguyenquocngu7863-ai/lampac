@@ -100,3 +100,49 @@ với webview *để người dùng tự bấm* thì khác, nó không phải fe
 * Nhóm theo `Sources:`/`Netflix Versions(7)` ⇒ cùng bài có thể có nhiều "version" (HQ/NF) ⇒ `SameFilm`
   của uhd dùng được nếu cần tách; series thì phải đọc bài Reacher trước (chưa đọc, đừng đoán).
 * Mỗi commit MoviesHub: sửa `Build` trong `HubController.cs`.
+
+## 5. 01/9 — hai phát hiện đổi hướng đi (đọc mục này trước khi code)
+
+**(a) `gamerxyt.com` là mặt nạ của chính kho này, và nó phát link HubCloud.**
+`https://gamerxyt.com/bgmi/` là trang **WordPress** (cấu trúc "Skip to content" + khối comment) —
+không phải kho phim. Nó là **trang ngụy trang**: không có `Referer` từ "trang trước" thì chỉ hiện
+link game; kèm referer thật thì hiện link phim. Referer anh đưa:
+
+    https://hubcloud.cx/drive/qosca4tao0ob1ss
+
+⇒ ý nghĩa kỹ thuật: request phải gửi `Referer: <link hubcloud>` (không phải User-Agent, không phải cookie).
+Đây là chi tiết DUY NHẤT khác một module WordPress bình thường.
+
+**(b) HubCloud không cần vượt rào — `HubController` đã có resolver và MÁY ĐÃ XÁC MINH.**
+`HubController.cs`: `#region hubcloud / gdrive resolver` (~408), `IsHubHost` (~811) nhận
+`hubcloud|hubcdn|hubdrive|vcloud`, `HubExtract` (~968) bóc `var url = '…'` trong `<script>` (vcloud:
+`atob(atob())`), `WithLatestMirror/LatestRoot` (~893~948) tự đổi sang mirror sống mới nhất, và
+`ResolveHub` đã xử `?downloadfile=true` + `/drive/<id>/<tên>.mkv`. **Movies4U chính là engine này** —
+comment ở `Movies4UController.cs:352` ghi nguyên văn kiểu link y hệt:
+`[🚀 Hub-Cloud [DD]](https://hubcloud.cx/drive/kk1lk7kvdmvim8m) [🚀 GDFlix](https://gdflix.dev/…)`.
+
+⇒ Kết luận chiến lược: **đừng đánh nhau với Turnstile của xdmovies nữa.** Nguồn mới nên là
+"gamerxyt (mở khoá bằng Referer) → link HubCloud/GDFlix → `ResolveHub` sẵn có". xdmovies giữ làm
+fallback nếu sau này cần, và khi đó mới tính `rch`.
+Caveat phải nói trước: HubCloud ăn file từ Google Drive nên **không bảo đảm `Accept-Ranges`** ⇒
+có thể tua kém (đúng bệnh của Movies4U/MoviesDrive hiện tại). Nếu `pixel` của xdmovies là
+pixeldrain.com thì nó mới là món tua được; cái đó nằm sau Turnstile ⇒ để vòng sau.
+
+**(c) `rch`/`rhub` là gì (anh hỏi) — trả lời ngắn:** `Shared/Services/HTTP/RchClient.cs` mở một
+kênh websocket `/nws`; mỗi client (app Lampa trên TV/điện thoại, hay một Lampac khác) đăng ký vào
+`RchClient.clients`, và Lampac có thể **nhờ client đó mở URL bằng trình duyệt thật**:
+`rch.Headers(url)` trả `(headers, currentUrl, body)` sau khi JS chạy xong — vì thế nó mới đi qua
+được Cloudflare/đếm ngược. Bật = `init.conf` có `"rhub": true` và `rch_access` (chuỗi cho phép
+`apk` / `cors` / `web`, xem `Shared/Models/Base/BaseSettings.cs:70-95`) — `RchClient.enable`
+(~123) là `init.rhub && enableRhub`; không bật thì `Http.Get(..., safety: true)` tự lặng lẽ về
+`Http` thường (nên bật hay không đều không hỏng gì). Nói cách khác: **điện thoại/TV của anh phải là
+trình duyệt chạy hộ Lampac** — Turnstile sẽ do máy anh giải, chứ server không tự qua được.
+Vòng này chưa cần: xem (a)(b).
+
+**(d) Ghi cho đời sau khỏi mất thì giờ:** sandbox coding **không vào được Internet mở** — chỉ
+`api.github.com` sống; `curl` vào gamerxyt/hubcloud/google đều `SSL_ERROR_SYSCALL` (allowlist, không
+phải site chết). `fetch_page` thì đọc được gamerxyt nhưng **không tự đặt header được** ⇒ muốn thử
+referer phải chạy curl trên máy anh:
+
+    curl -s -A "Mozilla/5.0" -e "https://hubcloud.cx/drive/qosca4tao0ob1ss" https://gamerxyt.com/bgmi/ \
+      | grep -Eo 'href="https?://[^"]+"' | sort -u | grep -Ev 'gamerxyt|wp-|gravatar' | head -40
