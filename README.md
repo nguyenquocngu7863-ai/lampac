@@ -918,7 +918,9 @@ Anh em họ UHDMovies/MoviesMod/TopMovies **không dùng HubCloud**: mỗi nút 
 DriveLeech/DriveSeed, link cuối là CDN (thường `.mkv` trên `*.workers.dev`/`.r2.dev`). Toàn bộ chuỗi
 request (5 bước, có 2 POST form + `CookieContainer` dùng chung) và cấu trúc bài viết đã được đọc trực
 tiếp và ghi lại ở [`notes/UHD-MOVIES.md`](notes/UHD-MOVIES.md) — module viết theo đúng spec đó, nằm ở
-`Modules/OnlineENG/UhdMovies/` (assembly riêng, để một file mới không làm sập MoviesHub đang chạy).
+`Modules/OnlineENG/MoviesHub/UhdmoviesController.cs` — cùng assembly với Movies4U/MoviesDrive để ăn
+lại `CollectionCore` + templates đã được thiết bị xác minh (module compile fail là Lampac không boot
+bất kể file hỏng nằm ở đâu, nên "để riêng cho an toàn" không mua được gì).
 
 ## VidLink — đã đóng (2026-09-01)
 

@@ -136,13 +136,48 @@ application/x-www-form-urlencoded`, và "allowRedirects=false + đọc header Lo
 Điểm **không** có trong CSX mà mình vẫn phải giữ: `Zip / Pack` (CSX không lọc pack), và luật "link
 `.mkv` để trên nút nguồn" của vùng này.
 
+## 2c. Bằng chứng THIẾT BỊ (2026-09-01, người dùng mở `?sid=` bằng Chrome)
+
+**Phải qua TỪNG ĐÓ hai lần countdown mới tới được trang driveseed.** Nghĩa là `bypass()` không được
+viết kiểu "POST hai lần" cứng như CSX — phải là **vòng lặp**:
+
+```
+cho tới khi trang hiện tại KHÔNG còn form#landing (tối đa 5 vòng, quá thì DỪNG + in html 400 ký tự):
+    POST action(form) với TOÀN BỘ input của form#landing, Referer = url trước đó
+hết form => đọc <script> chứa "?go="  => skToken
+GET  {host}?go={skToken}  +  cookie { skToken : _wp_http2 }   => meta refresh => url
+GET  url                                                 => window.location.replace("path") => trang file
+```
+
+Mỗi vòng là một cái countdown; site thêm/bớt bước countdown thì module vẫn sống — đó là lý do phải
+lặp thay vì đếm tay. `CookieContainer` **dùng chung từ vòng 0** (thiếu cookie là quay lại form đầu).
+
+**Từ trang file, thứ tự ưu tiên KHÔNG theo CSX mà theo "cái này chơi được hay không"** (người dùng
+test: *Resume Cloud hoặc worker CF là link play được; worker die thì chỉ còn link download, không
+resume được*):
+
+| # | Nút | Link ra gì | Dùng? |
+|---|---|---|---|
+| 1 | `Resume Cloud` | play được, **seek được** (Range) | mặc định |
+| 2 | `Direct Links` (`?type=1`, `?type=2` → `a.btn-success`) | play được (Cloudflare worker) | nếu 1 fail |
+| 3 | `Resume Worker Bot` | play được **khi worker còn sống** | nếu 1–2 fail; worker chết là **lỗi thường xuyên** ⇒ `catch` + log `worker die`, không được làm fail cả tập |
+| 4 | `Instant Download` / `Cloud Download` | **chỉ để tải**, không resume/seek | vẫn đưa vào UI nhưng **gắn nhãn `[download]`**, không bao giờ là mặc định |
+
+Vì resolve là lúc BẤM, `?srv=` phải chọn được nút: `lite/uhdmovies/video?src=<sid>&srv=resume|cf|worker|instant`
+— `srv` rỗng = chạy theo thứ tự trên và **in ra** `uhdmovies:.play <file> qua <srv>`. Nhãn `src` mang
+theo `label` (tên release + size) để log đọc được. Không cache link cuối (link worker/R2 hết hạn
+nhanh — cùng bệnh mọi họ DriveLeech).
+
 ## 3. Thiết kế module (quyết định, không phải gợi ý)
 
-1. **Module riêng `Modules/OnlineENG/UhdMovies/`**, KHÔNG nhét vào MoviesHub. Lý do đúng theo
-   luật đã ghi ở `notes/FILEHOST-SOURCE-FORMULA.md` mục 6: chỉ ở cùng assembly khi **dùng chung
-   resolver**; đây là resolver khác hoàn toàn (DriveLeech/DriveSeed + WP landing vs HubCloud). Để
-   riêng còn vì: module MoviesHub **đang chạy tốt**, một file mới trong assembly của nó mà biên dịch
-   fail là **sập cả Movies4U + MoviesDrive**.
+1. **ĐẶT TRONG MoviesHub** (`Modules/OnlineENG/MoviesHub/UhdmoviesController.cs`), không lập module
+   riêng. Em từng định để riêng vì sợ "file mới làm sập MoviesHub đang chạy", nhưng nghĩ lại thì
+   sợ sai chỗ: Lampac compile module bằng Roslyn và **module không compile được là Lampac không boot
+   được** (signal 6) — bất kể file hỏng nằm ở module nào, blast radius y hệt. Ở cùng assembly lại
+   tiết kiệm đúng phần đã được thiết bị xác minh: `CollectionCore` (TMDB + cache + `SeasonTpl`/
+   `VoiceTpl`/`EpisodeTpl` + `?g=`), `GetPage`, `HeadersModel`, log helpers — khoảng 600 dòng
+   battle-tested, viết lại lần hai chỉ để gặp lại lỗi cũ. resolver mới (`bypass` + trang file) là thứ
+   DUY NHẤT khác, và nó nằm gọn trong file mới.
 2. **Resolve lúc BẤM, không resolve lúc dựng danh sách.** Mỗi tập tốn 4–6 request (2 GET + 2 POST
    + file page). Một nhóm 10 tập × 5 nhóm = **hơn 250 request** nếu làm lúc mở phim ⇒ chết timeout,
    chết cả `httptimeout: 30`. Nên `HubEntry.Url` = **chính url `?sid=`**, còn route
