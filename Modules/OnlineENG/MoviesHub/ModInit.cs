@@ -26,6 +26,7 @@ public class ModInit : IModuleLoaded, IModuleOnline
 {
     public static OnlinesSettings drive;
     public static OnlinesSettings fouru;
+    public static OnlinesSettings uhd;
 
     public List<ModuleOnlineItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, OnlineEventsModel args)
     {
@@ -44,6 +45,11 @@ public class ModInit : IModuleLoaded, IModuleOnline
 
         if (Allow(fouru))
             online.Add(new(fouru, "movies4u", "Movies4U", " (ENG)"));
+
+        // UhdMovies: resolver RIÊNG (countdown x2 -> DriveLeech/DriveSeed) nhưng cùng assembly để ăn
+        // CollectionCore/templates đã được thiết bị xác minh. Section config vẫn riêng.
+        if (Allow(uhd))
+            online.Add(new(uhd, "uhdmovies", "UhdMovies", " (ENG)"));
 
         return online;
     }
@@ -68,6 +74,7 @@ public class ModInit : IModuleLoaded, IModuleOnline
     {
         drive = Section("MoviesDrive", "https://new3.moviesdrive.christmas", 1017);
         fouru = Section("Movies4U", "https://new5.movies4u.clinic", 1018);
+        uhd = Section("UhdMovies", "https://uhdmovies.autos", 1019);
     }
 
     OnlinesSettings Section(string name, string host, int displayindex)
@@ -108,7 +115,7 @@ public class ModInit : IModuleLoaded, IModuleOnline
 
     private string OnlineApiQuality(EventOnlineApiQuality e)
     {
-        if (e.balanser is "moviesdrive" or "movies4u")
+        if (e.balanser is "moviesdrive" or "movies4u" or "uhdmovies")
             return " ~ 4K/1080p";
 
         return null;

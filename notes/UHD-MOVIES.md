@@ -353,3 +353,55 @@ headers `Cookie: xla=s4t` + UA desktop + `Referer: <site>/`, rồi lấy `articl
 chuẩn** (khớp module mình), và **`+season+<N>`** là ý đáng thử: nó trả đúng bài của mùa cần tìm thay
 vì mò bài "Season 1-4" rồi lọc bằng nhãn. **Không đổi code vòng này** (MoviesHub `v20` đang chạy tốt);
 ghi để vòng sau, kèm log so sánh `0 bài ứng viên` có còn xảy ra không.
+
+---
+
+## 6. Code v1 đã viết (2026-09-01) — vì sao commit này tồn tại
+
+**Lý do commit (ghi ngay trong file, theo luật của repo):** anh revers lệnh hoãn ở vòng 24
+(“Nếu đã tìm được nguồn để học thì ta cứ làm thôi”), và vòng 25 tìm ra nguồn sống để học là
+`CineStream` monolith của CSX (mục 2g) ⇒ không còn lý do dừng ở spec. File này là hợp đồng
+giữa đặc tả và code: đọc code mà không đọc mục 1/2b/2c/2d thì không hiểu **vì sao** mỗi dòng
+regex lại hình dạng như vậy.
+
+**Vật tạo ra:** `Modules/OnlineENG/MoviesHub/UhdmoviesController.cs` (712 dòng) +
+`ModInit.cs` (section `"UhdMovies"`, host `https://uhdmovies.autos`, displayindex 1019,
+item `uhdmovies`, `OnlineApiQuality` “ ~ 4K/1080p”) + `manifest.json` → `tree` (để
+`lampac sync` tự kéo — luật vòng 17) + `HubController.Build` → `v21-uhdmovies-resolver`
+(mỗi commit chạm MoviesHub là đổi marker — luật README).
+
+**Ánh xạ spec → code:**
+
+| Đặc tả | Code |
+|---|---|
+| mục 1: bài đặt nút, nhãn nhóm là khối text ngay trước nút | `Groups()` + `NearestLabelBefore`, lọc theo `episode|download` trên text NÚT |
+| mục 1: BATCH/ZIP không lấy (dặn vòng 16) | bỏ khi text nút khớp `zip|pack|batch|rar`, in `bỏ N nút Zip/Pack/BATCH` |
+| mục 2b/2g: `/search/<q>` trước, `?s=` sau | `Collect`: `{site}/search/{q}` rồi fallback `/?s={q}` |
+| mục 2g: nháp `/download-` của phisher98 (đúng, không có source) | slug bắt buộc `/download-` + kiểm IMDb id trong bài |
+| mục 2b: `driveseed|driveleech` đi thẳng, bỏ countdown | `Resolve`: `if (!file.Contains("driveseed") && !file.Contains("driveleech"))` |
+| mục 2c: countdown LÀ MỘT VÒNG LẶP (dặn vòng 21) | `Bypass`: `for (i < 5)` trên `form#landing`, không đếm cứng 2 |
+| mục 2c: ưu tiên nút theo “tua được không” | `Buttons()`: resume→cf→worker→instant/cloud; 2 nút cuối gắn `[download]` |
+| mục 2c: worker die không phải lỗi chết | `try/catch` từng nút, log `nút X fail … thử nút kế tiếp` |
+| mục 2d: link thật là `workers.dev/<hex>::<hex>/Tên (2025) 2160p … .mkv` | `IsMedia()` bắt đúng đuôi `.mkv|.mp4|.m4v|.avi|.mov|.ts|.m3u8` |
+| vòng 15: link nào trả ra, phát link đó | `Video` → `RedirectToPlay(first.Url)` — **không** `VideoCore`, **không** `/proxy`, **không** HLS hop |
+
+**Ba quyết định kỹ thuật đáng nhớ:**
+1. `Video` tự viết thay vì gọi `VideoCore`: `ResolveHub` (`HubController.cs:413`) là `protected`
+   mà **không `virtual`**, còn `StreamHeaders`/`IsPlayable` là `private`. Sửa base để virtual =
+   đánh cược chuỗi play đã được thiết bị xác minh cho hai nguồn đang chạy ⇒ nguồn mới tự lo.
+2. **Resolve lúc BẤM, không lúc dựng danh sách**: một lượt bypass = 3–6 request; 10 tập × 5 nhóm
+   thì resolve trước là chết `httptimeout 30`. Nên `HubEntry.Url` CHỨA CHÍNH mồi `?sid=<base64>`,
+   `src` đi qua `Enc`/`Dec` vì blob có `+` và `=`.
+3. `sealed record Release` (không đặt tên `Group`) — base đã giải thích ở `HubController.cs:60`:
+   tên `Group` che `System.Text.RegularExpressions.Group` và file này dùng `Match.Groups` dày đặc.
+
+**Chưa có gì được xác minh bằng máy** — sandbox này không có compiler; Lampac compile module
+bằng Roslyn trong bộ nhớ. Vòng test đầu trên thiết bị phải trả lời đúng 3 câu, và log đã được
+in sẵn để trả lời:
+1. `0 bài ứng viên | q=… a=… hosts=… classes=…` → cách tìm bài (search slug) sai hay host config sai;
+   `không thấy bài nào` nhưng `a=` lớn → DOM bài khác giả định, đổi selector.
+2. `mùa -1: …` / `0 mùa trong bài | nhãn=[…]` → nhãn nhóm có chứa “Season N” hay không
+   (nếu không, menu mùa phải lấy từ TMDB, không từ bài viết).
+3. `bypass ok (rounds=N) -> …` + `ăn: resume https://…workers.dev/….mkv` → chuỗi countdown sống;
+   `bypass hết form (rounds=…) mà không thấy ?go=` → cần JS thật (lúc đó mới tính `rch`/`.cs3`).
+   `0 link chơi được trên … head=…` → thứ tự nút sai, không phải chuỗi sai.

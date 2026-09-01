@@ -58,7 +58,7 @@ public abstract class HubController : BaseENGController
     /// hash, phải đánh tay: mỗi commit sửa MoviesHub là đổi chuỗi này (luật trong README). Log ra
     /// marker khác = máy đang compile bản cũ -> dừng việc sửa code, kéo lại từ commit đó.
     /// </summary>
-    protected const string Build = "v20-seasons-from-buttons";
+    protected const string Build = "v21-uhdmovies-resolver";
 
     /// <summary>Nhóm release được chọn qua ?g= (0 = chưa chọn). Đặt tên đầy đủ vì nếu gọi là
     /// <c>Group</c> thì nó che kiểu System.Text.RegularExpressions.Group đang dùng trong

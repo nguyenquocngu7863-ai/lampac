@@ -911,14 +911,19 @@ họ chỉ cần sửa `manifest.json` trong repo (xem [công thức](notes/FILE
 BATCH/ZIP bị loại, chọn nhóm là dịch cả mùa của nhóm đó. Bài học lớn nhất của vòng này — đừng đoán
 DOM, phải đọc trang thật — nằm trong `notes/FILEHOST-SOURCE-FORMULA.md`.
 
-## UhdMovies (`uhdmovies.autos`) — mới ở giai đoạn spec (2026-09-01)
+## UhdMovies (`uhdmovies.autos`) — v1 đã viết (2026-09-01), chưa có log thiết bị
 
 Anh em họ UHDMovies/MoviesMod/TopMovies **không dùng HubCloud**: mỗi nút "Episode N"/chất lượng trỏ
 `…?sid=<blob mã hoá>` rồi đi qua trang verify của WordPress → shortener → trang file
 DriveLeech/DriveSeed, link cuối là CDN (thường `.mkv` trên `*.workers.dev`/`.r2.dev`). Toàn bộ chuỗi
 request (5 bước, có 2 POST form + `CookieContainer` dùng chung) và cấu trúc bài viết đã được đọc trực
 tiếp và ghi lại ở [`notes/UHD-MOVIES.md`](notes/UHD-MOVIES.md) — module viết theo đúng spec đó, nằm ở
-**Tạm hoãn 2026-09-01** (mục 2f giải thích vì sao nó "đắt"): spec đã khoá, khi nào làm thì viết
+**Trạng thái**: `Modules/OnlineENG/MoviesHub/UhdmoviesController.cs` đã viết theo đúng spec (mục 2b/2c/2d/2g),
+`Lite/uhdmovies[/video|file.mkv]`, section config `"UhdMovies"` (displayindex 1019) và `manifest.json`
+→ `tree` đã thêm file nên `lampac sync` tự kéo. **Chưa có log thiết bị** — vòng test đầu sẽ trả lời
+2 câu: (a) chuỗi `bypass` có vượt được 2 trang countdown mà không cần JS, (b) nút nào trên trang file
+còn sống. Module in `bypass ok (rounds=N) -> …`, `ăn: <kind> <link>`, `0 link chơi được … head=` nên
+một lần mở phim là đủ kết luận.
 `Modules/OnlineENG/MoviesHub/UhdmoviesController.cs` — cùng assembly với Movies4U/MoviesDrive để ăn
 lại `CollectionCore` + templates đã được thiết bị xác minh (module compile fail là Lampac không boot
 bất kể file hỏng nằm ở đâu, nên "để riêng cho an toàn" không mua được gì).
