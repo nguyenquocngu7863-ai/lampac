@@ -455,6 +455,24 @@ public class UhdmoviesController : HubController
             }
         }
 
+        // Trang file bị Cloudflare chặn? Lampac có sẵn đường vòng: httpHydra.Get(..., safety: true) đi
+        // qua rch/rhub (init.conf: rhub + rch_access). RCH KHÔNG giữ CookieContainer nên chỉ dùng được
+        // ở bước cuối này — chuỗi countdown vẫn phải tự chạy tay.
+        if (Challenge(page))
+        {
+            Console.WriteLine($"{Tag} trang file là challenge — thử qua rch (init.conf rhub)");
+
+            string viaRch = await httpHydra.Get(file, addheaders: PlayHeaders(), statusCodeOK: false, safety: true);
+
+            if (!string.IsNullOrWhiteSpace(viaRch) && !Challenge(viaRch) && viaRch.Length > (page ?? "").Length)
+            {
+                page = viaRch;
+                Console.WriteLine($"{Tag} rch ăn, trang file {page.Length}B");
+            }
+            else
+                Console.WriteLine($"{Tag} rch cũng không qua được (len={(viaRch ?? "").Length})");
+        }
+
         // Tên file + dung tích nằm ngay trên trang file => nhãn nút tốt hơn mọi suy đoán từ slug
         string fname = Text(page, @"list-group-item[^>]*>\s*Name\s*:?\s*(?<v>[^<\n]{3,300})");
         string fsize = Text(page, @"list-group-item[^>]*>\s*Size\s*:?\s*(?<v>[^<\n]{1,60})");
@@ -521,7 +539,7 @@ public class UhdmoviesController : HubController
         if (found.Count == 0)
         {
             string title = Text(page ?? "", @"(?is)<title[^>]*>(?<v>.*?)</title>");
-            bool challenge = Regex.IsMatch(page ?? "", @"(?i)just a moment|attention required|verify you are|access denied|cf-challenge|checking your browser|pardon our interruption|enable javascript|security check|before you can access");
+            bool challenge = Challenge(page);
 
             Console.WriteLine($"{Tag} 0 link chơi được trên {Cut(file)} | title='{title}' a={Regex.Matches(page ?? "", AnchorPattern).Count} hosts={HostHistogram(page, file)} nút=[{AnchorDump(page, 8)}] head={Cut(Regex.Replace(page ?? "", @"\s+", " "))}");
 
@@ -695,6 +713,11 @@ public class UhdmoviesController : HubController
     }
 
     static string StripAnchor(string url) => Regex.Replace(url ?? "", @"[#?].*$", "").TrimEnd('/');
+
+    /// <summary>Dấu vết trang Cloudflare/JS. Nhận ra nó để (a) log nói đúng bệnh,
+    /// (b) thử lại qua rch.</summary>
+    static bool Challenge(string html)
+        => Regex.IsMatch(html ?? "", @"(?i)just a moment|attention required|verify you are|access denied|cf-challenge|cf_clearance|checking your browser|pardon our interruption|enable javascript|security check|before you can access");
 
     /// <summary>driveleech/driveseed hay nhả Location kiểu `https://host/dl?url=&lt;file&gt;` — phần CHƠI
     /// ĐƯỢC là cái nằm sau `?url=` (CSX: instantLink = location.substringAfter("?url=")). Cả Location
