@@ -173,6 +173,16 @@ public static class CSharpEval
 
                 foreach (string csfile in syntaxPaths)
                 {
+                    // MỘT mục ma trong manifest.json (file đã bị xoá khỏi module/ hoặc mods/) từng làm
+                    // chết cả Lampac: FileStream ném FileNotFoundException ngay trong ConfigureServices
+                    // -> process abort (signal 6), không module nào khác chạy được. Bỏ qua + nói rõ,
+                    // vì manifest lệch là chuyện bình thường khi overlay mods/ cũ hơn module/.
+                    if (!File.Exists(csfile))
+                    {
+                        Log.Error($"CSharpEval: {mod.path} khai báo {csfile} trong tree/nhưng file không tồn tại - bỏ qua");
+                        continue;
+                    }
+
                     using (var fileStream = new FileStream(csfile, FileMode.Open, FileAccess.Read, FileShare.Read))
                     {
                         var sourceText = SourceText.From(fileStream, Encoding.UTF8);
