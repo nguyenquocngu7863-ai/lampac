@@ -4,6 +4,7 @@ using Shared.Attributes;
 using Shared.Models.SISI.Base;
 using Shared.Services;
 using Shared.Services.HTTP;
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
@@ -34,12 +35,17 @@ public class StripchatController : BaseSisiController
             // Do not use httpHydra here: when an RCH client is connected Hydra silently routes
             // this public API request through the client, so the callback may never run. The
             // same URL is proven reachable directly from Ubuntu/Termux; force server-side HTTP.
+            var directHeaders = HeadersModel.Init(
+                ("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/151 Mobile Safari/537.36"),
+                ("Referer", "https://stripchat.com/"),
+                ("Accept", "application/json")
+            );
             bool requestOk = await Http.GetSpan(url, span =>
             {
                 responseReceived = true;
                 playlists = StripchatTo.Playlist(init.host, span, pg, out totalPages);
-            }, timeoutSeconds: init.httptimeout, headers: httpHeaders(init), proxy: proxy,
-               httpversion: init.httpversion, useDefaultHeaders: true);
+            }, timeoutSeconds: Math.Max(20, init.httptimeout), headers: directHeaders,
+               proxy: null, httpversion: 1, useDefaultHeaders: false);
 
             if (playlists == null || playlists.Count == 0)
             {
