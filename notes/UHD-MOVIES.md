@@ -198,6 +198,27 @@ Năm thứ rút ra từ đúng chuỗi đó (đừng để vòng sau phải đo�
    link bằng: host khớp `workers\.dev|\.r2\.dev|video-leech` **và** `path.EndsWith` một trong
    `.mkv|.mp4|.m4v|.avi|.ts` — còn lại bỏ, và in `hosts=`/`tail=` để kết luận một lần.
 
+## 2e. Kiểm tra nguồn "UHDMovies của phisher98" (2026-09-01, vì anh bảo xem trước khi viết)
+
+| Điều | Kết quả |
+|---|---|
+| `phisher98/cloudstream-extensions-phisher` @ `builds`, file `UHDmoviesProvider.cs3` | build cuối **2026-08-26 05:27Z**, message `Minor fix uhd` (GitHub Actions) — tức ~1 tuần trước ✓ anh nói đúng là có sửa gần đây |
+| Nhánh `master` của repo đó | **chỉ còn `README.md` + `docs/`**; commit cuối 2026-07-09 chỉ đổi README. Repo chỉ có 2 nhánh (`builds`, `master`) ⇒ **source Kotlin KHÔNG còn ở public**, `.cs3` (ZIP chứa `plugin.apk`) là thứ duy nhất họ phát ra |
+| `phisher98/TVVVV` (repo nguồn cùng tác giả) | `domains.json` @ main: `"UHDMovies": "https://uhdmovies.autos"` ✓ khớp đúng domain anh đưa (nguồn còn sống, được hot-swap domain, không hardcode), `"movies4u": "new5.movies4u.clinic"`, `"hubcloud": "hubcloud.cx"`, `"moviesmod": "moviesmod.army"`, `"topMovies": "moviesleech.bar"` |
+| `UHDMoviesProvider.kt` trong TVVVV | 404 ở `app/src/main/java/com/lagradost/cloudstream3/animeproviders/` — em không đoán path tiếp, và cũng không nên: `Minor fix uhd` chỉ đọc được bằng cách **mổ `classes.dex` bên trong `plugin.apk`** |
+
+**Kết luận cho mình:** "fix" tuần trước của họ **không đọc được dưới dạng source**. Nhưng nó không
+chặn em viết module, vì phần logic chain (`form#landing` lặp + `?go=` cookie + meta refresh +
+`div.text-center > a`) đã có hai bản độc lập trùng nhau (CSX Kotlin `Moviesmod/Utils.kt` và
+Nuvio JS `linkResolver.js`) — và nếu họ sửa gì đó nhỏ, thứ hay đổi nhất là **domain** (đã có
+`domains.json`), không phải thuật toán.
+
+Nếu muốn em kiểm tra `Minor fix uhd` thật sự đổi gì: **tải `UHDmoviesProvider.cs3` về rồi bỏ vào
+workspace** (không cần dán link — fetch của em không đọc được binary). Em mở ZIP bằng `zipfile`,
+đọc `classes.dex` và quét chuỗi ASCII lấy mọi `https://…`, mọi regex chứa `go=`, `landing`,
+`workers.dev`, `driveleech|driveseed`, `type=1`. Không cần jadx: đối chiếu các hằng số đó với spec
+mục 2b/2c là đủ biết họ có thêm hop mới hay đổi host nào.
+
 ## 3. Thiết kế module (quyết định, không phải gợi ý)
 
 1. **ĐẶT TRONG MoviesHub** (`Modules/OnlineENG/MoviesHub/UhdmoviesController.cs`), không lập module
