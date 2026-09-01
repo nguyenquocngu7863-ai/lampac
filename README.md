@@ -911,6 +911,18 @@ họ chỉ cần sửa `manifest.json` trong repo (xem [công thức](notes/FILE
 BATCH/ZIP bị loại, chọn nhóm là dịch cả mùa của nhóm đó. Bài học lớn nhất của vòng này — đừng đoán
 DOM, phải đọc trang thật — nằm trong `notes/FILEHOST-SOURCE-FORMULA.md`.
 
+## VidLink — đã đóng (2026-09-01)
+
+Cùng một trang được test bằng **hai stack độc lập**: module Lampac (C#) và plugin CloudStream
+(Kotlin) — cả hai đều không lấy được link. Vậy `vidlink.pro` chặn theo chính sách **chỉ cho embed**
+(token/Referer/Origin sống chết theo session nhúng), không phải selector hay resolver sai. Không cày
+tiếp: module giữ nguyên code nhưng đổi mặc định về `enable: false, enabled: false` để mỗi lần mở
+phim không còn gọi `vidlink.pro` với `httptimeout: 20` cho một nguồn chết. Chi tiết và cách bật lại:
+[`Modules/OnlineENG/VidLink/README.md`](Modules/OnlineENG/VidLink/README.md).
+
+Kết luận rộng hơn (nguồn nào nên bỏ, nguồn nào đáng viết, và Kotlin còn thắng ở đâu) nằm ở mục 11
+của [`notes/FILEHOST-SOURCE-FORMULA.md`](notes/FILEHOST-SOURCE-FORMULA.md).
+
 ## Trạng thái nguồn ENG và Mirage
 
 Bản cài Termux mặc định dùng `disableEng: true` để ẩn nhóm ENG, nhưng Chromium được bật với đường dẫn rõ ràng `/usr/bin/google-chrome-stable`; các nguồn browser-backed khác vẫn có thể dùng Playwright. `--sync-all`/`--update` không nên ghi đè lựa chọn `disableEng` hoặc section Chromium chi tiết của người dùng. Muốn hiện nguồn ENG, đổi `disableEng` thành `false`. AIOStreams vẫn hoạt động độc lập khi section `AIOStreams` có `enable: true` và manifest hợp lệ.

@@ -164,3 +164,35 @@ Còn lại là:
 - [ ] `manifest.json` → `tree` thêm file (đây là chỗ DUY NHẤT phải sửa để `setup-termux.sh` biết)
 - [ ] `Build` mới + log đếm ở mọi nhánh; chạy scanner nội bộ ở mục 8
 - [ ] push, đối chiếu md5, gửi lệnh SHA-pinned
+
+## 11. Khi nào nên DỪNG — và điều vòng này thực sự chứng minh được
+
+**Nguồn chết thật ≠ selector sai.** Phép thử hai stack, làm trước khi bỏ thêm buổi nào vào một nguồn:
+
+| Quan sát | Kết luận |
+|---|---|
+| Lampac (C#) fail **và** plugin CloudStream (Kotlin) cũng fail trên cùng trang | site chặn theo **chính sách** (embed-only, token gắn session) → **dừng**, không có bug để sửa |
+| Lampac fail, CSX ăn được | mình còn thiếu bước: mở `Extractors.kt` của CSX dịch đúng chuỗi request (đã áp dụng cho HubCloud/GDrive — mục 3–4) |
+| Cả hai ăn, nhưng link chết sau vài phút | token ngắn hạn ⇒ resolve lúc bấm play, không cache link |
+
+VidLink đóng ngày 2026-09-01 đúng bằng dòng đầu tiên của bảng: hai stack độc lập cùng fail ⇒
+`vidlink.pro` chỉ cho embed. Cái duy nhất còn lại là **trình duyệt thật + nghe request của player**
+(kiểu Mirage/Playwright), không còn là công thức này nữa — và module đã đổi mặc định về tắt để
+không ai phải trả `httptimeout` cho một nguồn chết.
+
+**Điều vòng Movies4U chứng minh — và chỉ đúng điều này:** lớp nguồn "bài viết đặt nút Download +
+trang trung gian + file-host" (HubCloud, Google Drive, các site họ Movies4U/MoviesDrive) làm **trọn
+vẹn bằng C#/Lampac trên Termux**: parse hai tầng, dựng link, 302 trần cho player, GStreamer tự bật
+theo đuôi `.mkv`. Không cần viết plugin Kotlin nào.
+
+Kotlin/CloudStream vẫn hơn đúng ba chuyện:
+
+1. **DRM/Widevine** — Lampac trên Termux không có đường decrypt.
+2. **JS nặng** (token tính bằng VM, PoW/anti-bot): C# phải mượn Playwright/Chromium, chậm và giòn
+   hơn một JS engine trong app.
+3. **68 provider có sẵn** của CSX: ăn nhanh nếu chỉ dùng, không tiết kiệm nếu phải tự viết.
+
+Ngược lại, phần mà CSX không có và đây là lý do nên ở lại Lampac: section config sửa được trên thiết
+bị (host/timeout/bật-tắt mỗi nguồn độc lập), log tự chẩn đoán in ra `a=`/`classes=`/`hosts=` khi
+không lấy được gì, và site đổi markup thì chỉ cần kéo lại file `.cs` + `lampac stop && lampac start`
+— không build APK, không ký, không cài lại.
