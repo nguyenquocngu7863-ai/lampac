@@ -297,6 +297,12 @@ public class Movies4UController : HubController
         foreach ((string head, string url) in groups)
             into.Add(new HubEntry(head, url, season, 0, head));
 
+        if (groups.Count > 1)
+            // In MỌI nhãn nhóm mỗi lần mở mùa: đây là thứ duy nhất cho biết NearestLabelBefore lấy
+            // đúng dòng mô tả chưa (nếu nhãn vẫn là "Download Links 900MB" thì dòng text đó nằm SAU
+            // nút chứ không trước, và em cần đổi hướng quét) — khỏi phải hỏi anh thêm một vòng.
+            Console.WriteLine($"{Tag} mùa {season} nhãn nhóm: [{string.Join(" | ", groups.Select(g => g.Heading))}]");
+
         // Chưa chọn thì dùng nhóm đầu (Mirage cũng mặc định nhóm đầu tiên: "if (t == -1) t = id").
         int pick = ReleaseGroup > 0 ? Math.Min((int)ReleaseGroup, groups.Count) - 1 : 0;
         string groupUrl = groups[pick].Url;
