@@ -558,6 +558,18 @@ sync_latest_modules() {
             fi
         done
 
+        # File .cs da bi rut khoi tree (UhdmoviesController.cs tu 2026-09-01) PHAI bi xoa tren may:
+        # nam lai la dotnet build don no vao, no goi ModInit.uhd da go -> CS0117, module khong nap,
+        # log im lang. Sync = dong bo ca 2 chieu, khong chi them.
+        for oldcs in \"$movieshubtarget\"/*.cs; do
+            [ -e \"$oldcs\" ] || continue
+            orph=\$(basename \"$oldcs\")
+            case \" \$movieshubfiles \" in
+                *\" \$orph \"*;;
+                *) rm -f \"$oldcs\"; echo \"  [sync] movieshub: xoa \$orph (khong con trong tree)\";;
+            esac
+        done
+
         for sisimod in /root/lampac/module/SISI /root/lampac/mods/SISI; do
             if [ -d \"\$sisimod\" ]; then
                 pull SISI/SisiApi.cs \"\$sisimod/SisiApi.cs\"
