@@ -314,7 +314,16 @@ giá trị qua `HrefValue(m)` (ba nhóm `d`/`s`/`n`, không dùng trùng tên nh
   season/quality/dung lượng ngay trước khối). Và **chính nhãn đó dùng để tách mùa**: bản cũ cho qua
   mọi nhóm khi heading rỗng => cả 4 mùa hiện cùng một danh sách. Còn `BATCH/ZIP [x.xGB]` là pack cả
   mùa trong một file, bị loại khỏi danh sách nhóm (log: `bỏ N nút BATCH/ZIP`).
-- Sau mỗi commit sửa module: đổi `Build` (hiện `v18-group-labels`) và nhắc marker trong message commit,
+- **Cấu trúc THẬT của Movies4U (đọc trực tiếp bài Reacher + trang m4ulinks.site ngày 1/9, hết đoán):**
+  - bài viết: mỗi nhóm là `<h4>Season 4 [Hindi ORG. + English] 480p [250MB/E]</h4>` rồi MỘT anchor
+    có chữ `Download Links` trỏ `https://m4ulinks.site/number/<id>`; `BATCH/ZIP [1.5GB]` là anchor
+    KHÁC cùng dòng (nhiều nhóm trỏ cùng một id zip) -> loại bằng CHỮ TRÊN NÚT, không phải bằng heading.
+  - trang nhóm (`m4ulinks.site/number/<id>`): `##### -:Episodes: 1:-` rồi các anchor
+    `[🚀 Hub-Cloud [DD]](https://hubcloud.cx/drive/xxx)`, `[🚀 GDFlix](https://gdflix.dev/file/yyy)`.
+    **Không có class `downloads-btns-div` ở tầng này** => tập phải bucket theo heading gần nhất, còn
+    `Episodes: 1` thì `EpisodeNumber` phải khớp được dạng "Episodes:" (mẫu `ep(?:isode)?` cũ là fail).
+  Kết luận cho đời sau: ở module này, CHỮ TRÊN NÚT + HEADING là hợp đồng; class chỉ là tối ưu.
+- Sau mỗi commit sửa module: đổi `Build` (hiện `v19-m4ulinks`) và nhắc marker trong message commit,
   vì đó là cách duy nhất log tự chứng minh máy đang chạy bản nào (module compile trong bộ nhớ).
 
 ## Bẫy đã né sẵn (đều là bài học từ VidCore, đọc trước khi sửa)

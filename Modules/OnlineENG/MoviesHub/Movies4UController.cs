@@ -349,20 +349,51 @@ public class Movies4UController : HubController
 
         if (links == 0)
         {
-            // Dự phòng: nhóm không bọc tập trong downloads-btns-div -> mọi file-host là một tập, theo thứ tự
-            short n = 0;
+            // Tầng trang nhóm TRÊN SITE NÀY KHÔNG DÙNG CLASS NÀO CẢ. Đã đọc trực tiếp
+            // https://m4ulinks.site/number/62782:
+            //     ##### -:Episodes: 1:-
+            //     [🚀 Hub-Cloud [DD]](https://hubcloud.cx/drive/kk1lk7kvdmvim8m) [🚀 GDFlix](https://gdflix.dev/…)
+            //     ##### -:Episodes: 2:- …
+            // Nên mỗi tập = một heading, các anchor file-host ngay sau nó là các host của tập đó
+            // (GDFlix đã bị DeadHost chặn). Bucket theo heading là cách duy nhất không phụ thuộc class.
+            var headings = new List<string>();
+            var perHeading = new Dictionary<string, List<(string Label, string Url)>>();
 
-            foreach ((string label, string url, int _) in Anchors(inner, groupUrl, 60))
+            foreach (Match a in Regex.Matches(inner, AnchorPattern))
             {
+                string url = Absolute(Unescape(HrefValue(a)), groupUrl);
+
                 if (!LooksLikeFileHost(url) || DeadHost(url))
                     continue;
 
-                into.Add(new HubEntry($"Ep {++n} · {QualityLabel(label, url)}", url, season, n, groups[pick].Heading));
-                links++;
+                string head = NearestHeadingBefore(inner, a.Index);
+
+                if (!perHeading.TryGetValue(head, out var list))
+                {
+                    list = new List<(string Label, string Url)>();
+                    perHeading[head] = list;
+                    headings.Add(head);
+                }
+
+                list.Add((Plain(a.Groups["t"].Value), url));
+            }
+
+            for (int i = 0; i < headings.Count; i++)
+            {
+                short ep = EpisodeNumber(headings[i]);
+
+                if (ep <= 0)
+                    ep = (short)(i + 1);
+
+                foreach ((string label, string url) in perHeading[headings[i]].Take(6))
+                {
+                    into.Add(new HubEntry($"Ep {ep} · {QualityLabel(label, url)}", url, season, ep, groups[pick].Heading));
+                    links++;
+                }
             }
 
             if (links > 0)
-                Console.WriteLine($"{Tag} mùa {season}: không có downloads-btns-div, đánh số theo thứ tự anchor -> {links} tập");
+                Console.WriteLine($"{Tag} mùa {season}: trang nhóm không có downloads-btns-div -> {buckets.Count} heading tập, {links} link");
         }
 
         Console.WriteLine($"{Tag} mùa {season} nhóm {pick + 1}/{groups.Count} '{Cut(groups[pick].Heading)}': {epBlocks.Count} khối, {links} link");
@@ -375,79 +406,69 @@ public class Movies4UController : HubController
     /// mùa; nếu bài không dùng cấu trúc đó thì lấy mọi nút "DOWNLOAD LINKS" mà heading phía trước
     /// nhắc mùa. Không giả định một khối một mùa — Seasons 1-4 thường nằm rải cùng một bài.</summary>
     /// <summary>
-    /// Mọi nhóm release của MỘT mùa. Nhãn nhóm lấy bằng NearestLabelBefore (heading thật của nhóm
-    /// không nằm trong thẻ h1-h6, nên bản cũ chỉ bắt được chữ trên nút -> "Download Links 900MB"),
-    /// rồi CHÍNH NHÃN ĐÓ quyết định nhóm thuộc mùa nào — đây là chỗ chặn lỗi "cả 4 mùa hiện y hệt
-    /// nhau": khi không nhãn nào có heading, bản cũ cho qua mọi nhóm ở mọi mùa.
-    /// Nút BATCH/ZIP bị loại: đó là pack cả mùa trong một file, không phải nhóm tập.
+    /// Mọi nhóm release của MỘT mùa. Cấu trúc THẬT của new5.movies4u.clinic (đọc trực tiếp bài
+    /// Reacher (Season 1-4) ngày 1/9, không đoán):
+    ///
+    ///   &lt;h4&gt;Season 4 [Hindi ORG. + English] 480p [250MB/E]&lt;/h4&gt;
+    ///   &lt;a href="https://m4ulinks.site/number/62782"&gt;🚀 Download Links &lt;/a&gt;
+    ///   &lt;a href="https://m4ulinks.site/number/36737"&gt;🚀 BATCH/ZIP [1.5GB] 🚀&lt;/a&gt;   (cùng dòng, KHÁC nút)
+    ///
+    /// Nên: quét ANCHOR, không dựa vào class nào hết (class đổi là nguồn chết); một nhóm = một nút có
+    /// chữ "Download Links"; BATCH/ZIP loại bằng CHỮ TRÊN NÚT (bản cũ kiểm trên heading là sai, vì
+    /// heading của nhóm chứa BATCH nằm ở dòng khác — hệ quả là nhóm bị ăn nhầm và menu rỗng).
+    /// Link nhóm trỏ sang m4ulinks.site/number/&lt;id&gt; — trang trung gian, TỤT HẠ domain theo site nên
+    /// không được hardcode host: chỉ cần nút đúng chữ là nhận.
     /// </summary>
     List<(string Heading, string Url)> GroupsForSeason(string html, string postUrl, short season)
     {
         var all = new List<(string Heading, string Url)>();
         int batches = 0;
 
-        void Add(int position, string rawHref)
+        foreach (Match m in Regex.Matches(html ?? "", AnchorPattern))
         {
-            string url = Absolute(Unescape(rawHref), postUrl);
+            string text = Plain(m.Groups["t"].Value);
 
-            if (!url.StartsWith("http", StringComparison.OrdinalIgnoreCase) || all.Any(x => x.Url == url))
-                return;
+            if (!Regex.IsMatch(text, @"(?i)download\s*-?\s*links?\b"))
+                continue;
 
-            string label = NearestLabelBefore(html, position);
-
-            if (string.IsNullOrWhiteSpace(label))
-                label = $"Nhóm {all.Count + 1}";
-
-            if (Regex.IsMatch(label, @"(?i)batch|\.zip\b"))
+            if (Regex.IsMatch(text, @"(?i)batch|\.?zip\b"))
             {
                 batches++;
-                return;
+                continue;
             }
 
-            all.Add((label, url));
+            string url = Absolute(Unescape(HrefValue(m)), postUrl);
+
+            if (!url.StartsWith("http", StringComparison.OrdinalIgnoreCase) || all.Any(x => x.Url == url))
+                continue;
+
+            string label = NearestLabelBefore(html, m.Index);
+
+            all.Add((string.IsNullOrWhiteSpace(label) ? $"Nhóm {all.Count + 1}" : label, url));
         }
 
-        // Một khối download-links-div = một nhóm: lấy nút đầu, các nút còn của cùng khối là host dự
-        // phòng (để lại mọi link thì sinh ra mấy "nhóm" trùng tên nhau trong bộ lọc).
-        foreach (var b in DivBlocks(html, "download-links-div", 60))
-        {
-            if (b.Links.Count > 0)
-                Add(b.Index, b.Links[0].Url);
-        }
-
-        if (all.Count == 0)
-        {
-            foreach (Match m in Regex.Matches(html ?? "", AnchorPattern))
-            {
-                if (!Regex.IsMatch(Plain(m.Groups["t"].Value), @"(?i)download\s*-?\s*link"))
-                    continue;
-
-                Add(m.Index, HrefValue(m));
-            }
-        }
-
-        // Có nhãn nào tự nhắc mùa không? Có => BẮT BUỘC khớp mùa (mới là trường hợp của Movies4U,
-        // mỗi nhóm đề "Season 4 […]"); không => bài chỉ có một mùa, nhận hết.
+        // Có nhãn nào tự nhắc mùa không? Có => BẮT BUỘC khớp mùa. Đây là chỗ sửa lỗi "cả 4 mùa hiện y
+        // hệt nhau": mỗi nhóm trên site đều đề "Season N" nên tách được sạch; bài một mùa (không nhãn
+        // nào nhắc season) thì nhận hết.
         bool require = all.Any(x => SeasonNumber(x.Heading) > 0);
 
-        // kiểu tường minh: C# không suy kiểu đích cho collection expression khi để var (CS9176)
         List<(string Heading, string Url)> picked = [.. all.Where(x => SeasonHeadingMatches(x.Heading, season, require))
                                                            .DistinctBy(x => x.Heading)];
 
         if (picked.Count == 0 && require)
         {
-            Console.WriteLine($"{Tag} mùa {season}: {all.Count} nhóm nhưng không nhãn nào nhắc mùa {season} — thôi, dùng cả {all.Count} nhóm");
+            Console.WriteLine($"{Tag} mùa {season}: {all.Count} nhóm nhưng không nhãn nào nhắc mùa {season} — dùng cả {all.Count} nhóm");
             picked = [.. all];
         }
 
         if (batches > 0)
-            Console.WriteLine($"{Tag} mùa {season}: bỏ {batches} nút BATCH/ZIP (pack cả mùa, không phải nhóm tập)");
+            Console.WriteLine($"{Tag} mùa {season}: bỏ {batches} nút BATCH/ZIP (pack cả mùa trong một file, không phải nhóm tập)");
 
         if (picked.Count == 0)
-            Console.WriteLine($"{Tag} mùa {season}: 0 nhóm | download-links-div={DivBlocks(html, "download-links-div", 60).Count} nhãn=[{string.Join(" | ", all.Select(x => Cut(x.Heading)))}] | classes={ClassHistogram(html)}");
+            Console.WriteLine($"{Tag} mùa {season}: 0 nhóm | a={Regex.Matches(html ?? "", AnchorPattern).Count} nhãn=[{string.Join(" | ", all.Select(x => Cut(x.Heading)))}] | classes={ClassHistogram(html)}");
 
-        // Trả về nhãn ĐÃ làm ngắn (bỏ "Season N" thừa vì mùa đã chọn rồi). CollectionCore so khớp
-        // đúng chuỗi này nên chỉ có MỘT nguồn sự thật, không lệch giữa chỗ hiển thị và chỗ lọc.
+        // Nhãn làm ngắn (bỏ "Season N" thừa). CollectionCore so khớp đúng chuỗi này => một nguồn sự
+        // thật cho cả chỗ hiển thị lẫn chỗ lọc.
         return [.. picked.Select(x => (Heading: GroupShort(x.Heading) ?? x.Heading, Url: x.Url))];
     }
 
@@ -478,13 +499,28 @@ public class Movies4UController : HubController
 
     static short EpisodeNumber(string text)
     {
-        var m = Regex.Match(text ?? "", @"(?i)(?:ep(?:isode)?\.?\s*(\d{1,3})|\be(\d{2})\b)");
+        // "Episodes: 1" / "Ep 3" / "Episode 03" / "S04E05" / "-:Episodes: 12:-" — trang m4ulinks.site
+        // viết "-:Episodes: 1:-", mẫu cũ ep(?:isode)?\.?\s* không khớp nổi chữ "Episodes:" (có 's' và
+        // dấu chấm hỏi), nên mọi tập bị đánh số theo thứ tự thay vì theo heading.
+        var m = Regex.Match(text ?? "", @"(?is)e(?:pi)?sod(?:e|es)?[^0-9]{0,4}(?<n>\d{1,3})");
+
+        if (!m.Success)
+            m = Regex.Match(text ?? "", @"(?i)\bep\.?\s*(?<n>\d{1,3})\b");
+
+        if (!m.Success)
+            m = Regex.Match(text ?? "", @"(?i)\bS?\d{0,2}E(?<n>\d{1,3})\b");
+
+        if (!m.Success)
+        {
+            // "-:Episodes: 1:-" / "Tập 1" / "Ep. 1" — lấy số đứng một mình quanh dấu :-
+            m = Regex.Match(text ?? "", @"(?:^|[\s:.\-])(?<n>\d{1,3})(?=[\s:.\-]*[-:]?$)");
+        }
 
         if (!m.Success)
             return 0;
 
-        int.TryParse(m.Groups[1].Success ? m.Groups[1].Value : m.Groups[2].Value, out int n);
+        int.TryParse(m.Groups["n"].Value, out int num);
 
-        return (short)n;
+        return (short)Math.Clamp(num, 0, 999);
     }
 }
