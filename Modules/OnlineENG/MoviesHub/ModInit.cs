@@ -26,6 +26,7 @@ public class ModInit : IModuleLoaded, IModuleOnline
 {
     public static OnlinesSettings drive;
     public static OnlinesSettings fouru;
+    public static OnlinesSettings xd;
 
     public List<ModuleOnlineItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, OnlineEventsModel args)
     {
@@ -44,6 +45,9 @@ public class ModInit : IModuleLoaded, IModuleOnline
 
         if (Allow(fouru))
             online.Add(new(fouru, "movies4u", "Movies4U", " (ENG)"));
+
+        if (Allow(xd))
+            online.Add(new(xd, "xdmovies", "XdMovies", " (ENG)"));
 
         // UhdMovies ĐÓNG 2026-09-01 (log test OK nhưng file của họ không ai bảo trì: link cũ không
         // stream được, site thiên về tải về). Code vẫn ở Modules/OnlineENG/MoviesHub/
@@ -73,6 +77,7 @@ public class ModInit : IModuleLoaded, IModuleOnline
     {
         drive = Section("MoviesDrive", "https://new3.moviesdrive.christmas", 1017);
         fouru = Section("Movies4U", "https://new5.movies4u.clinic", 1018);
+        xd = Section("XdMovies", "https://top.xdmovies.wtf", 1019);
     }
 
     OnlinesSettings Section(string name, string host, int displayindex)
@@ -113,7 +118,7 @@ public class ModInit : IModuleLoaded, IModuleOnline
 
     private string OnlineApiQuality(EventOnlineApiQuality e)
     {
-        if (e.balanser is "moviesdrive" or "movies4u")
+        if (e.balanser is "moviesdrive" or "movies4u" or "xdmovies")
             return " ~ 4K/1080p";
 
         return null;

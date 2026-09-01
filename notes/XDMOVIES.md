@@ -146,3 +146,32 @@ referer phải chạy curl trên máy anh:
 
     curl -s -A "Mozilla/5.0" -e "https://hubcloud.cx/drive/qosca4tao0ob1ss" https://gamerxyt.com/bgmi/ \
       | grep -Eo 'href="https?://[^"]+"' | sort -u | grep -Ev 'gamerxyt|wp-|gravatar' | head -40
+
+## 6. 01/9 — đính chính của anh (quan trọng, đừng lặp lại lỗi em) + vòng 1 đã code
+
+**(a) Em kết luận SAI ở mục 5(b): không phải "khỏi vượt Turnstile".** Anh nói: *phải vượt được trang
+link mới có link hubcloud* ⇒ HubCloud là **kết quả SAU gate** (bước "Go to Link"), không phải đường
+tắt. Ghi lại cho đời sau: trình tự đúng là
+
+    bài post -> link.xdmovies.wtf/download/<token> -> [latestnewsonline.sbs/r/<code>: đếm ngược 6s +
+    Turnstile + 3 nút] -> server fls / pixel / **HubCloud** -> ResolveHub -> file
+
+**(b) rhub:** anh nói "tui đang dùng lampa và xem được pỏn hub nên chắc là có rhub". Chưa chắc:
+Pornhub/Onlyfans chạy bằng `Http` thường cũng được. Bằng chứng duy nhất là `rch.enable`
+= `init.rhub && enableRhub` (`RchClient.cs:123`) **và** client phải `apkVersion >= 484`
+(`RchClient.cs:236` — `Headers()` về `default` nếu dưới). Module mới in ra đúng câu đó khi tắt, nên
+log thiết bị sẽ trả lời dứt điểm, khỏi đoán.
+
+**(c) Vòng 1 (`v27-xdmovies-rch-gate`) — `Modules/OnlineENG/MoviesHub/XdmoviesController.cs`:**
+* `Collect`: `TmdbMeta` -> tìm `?s=`/`/search/` -> **nhận bài theo TMDB id cuối slug** (`IdOf`), đọc bài,
+  `Blocks()` quét MỘT LƯỢT (không cửa sổ ký tự — luật vòng 30 bên uhd), `FileNameNear` lấy tên file,
+  `QualityLabel`, `IsPack` bỏ zip/batch, `ParseEpisode` cho `S02E05`/`1x05`/`season..episode`,
+  `ShortGroup` giữ nhãn nhóm ("Netflix Versions"). `HubEntry(Label, Url=link /download/<tok>, S, E, Group=phim)`.
+* `Resolve`: `rch.Headers(token, <JS>, headers)` — JS tự chờ + bấm `Generate Link` -> `Continue/Step 2`
+  -> `Go to Link`, rồi trả `JSON` kèm mọi `href` khớp `hubcloud|gdflix|pixeldrain|fls|filelions|drive|.mkv|.mp4`.
+  `Rank()`: fls/filelions 5, pixel 4, hubcloud/vcloud/gdflix 3, media 2. HubCloud/GDFlix -> `ResolveHub`
+  (có sẵn, mirror rotation có sẵn); pixeldrain -> `Pixel()` (có sẵn, `/api/file/<id>?download` **tua được**).
+* Không có `rch` -> log một câu rõ, KHÔNG trả link giả (bài học "wins the wrong button").
+`data` (script) là thứ Ebalovo/Porntrex/VideoDB chưa dùng bao giờ -> có thể client bỏ qua; module log đủ
+`rch len=… cur=…` / `gate mở ra N url` để vòng 2 biết đường đổi sang `rch.Get`+bóc form hoặc bắt người
+dùng bấm.

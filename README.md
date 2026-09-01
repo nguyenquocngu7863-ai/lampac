@@ -911,6 +911,17 @@ họ chỉ cần sửa `manifest.json` trong repo (xem [công thức](notes/FILE
 BATCH/ZIP bị loại, chọn nhóm là dịch cả mùa của nhóm đó. Bài học lớn nhất của vòng này — đừng đoán
 DOM, phải đọc trang thật — nằm trong `notes/FILEHOST-SOURCE-FORMULA.md`.
 
+## XdMovies (`top.xdmovies.wtf`) — vòng 1, build `v27-xdmovies-rch-gate`
+
+Nguồn thay UhdMovies. Bài viết rất sạch (mỗi chất lượng một link, tên file = mediainfo nằm ngay trên link,
+**số cuối slug là TMDB id** ⇒ khớp id thay vì đoán tên). Cái khó là trang link: `link.xdmovies.wtf/download/<token>`
+→ `latestnewsonline.sbs/r/<code>` = đếm ngược 6s + **Cloudflare Turnstile** + 3 nút, và **chỉ sau gate mới có
+link server** (fls ưu tiên, pixel backup, HubCloud). Vì thế resolver đi qua `rch.Headers(token, <JS bấm nút>)`
+— client Lampa phải `apkVersion >= 484` và `init.conf` bật `rhub`; không có `rch` thì module log rõ một câu rồi
+trả lỗi, tuyệt đối không trả link trang đếm ngược cho player. Sau gate: HubCloud/GDFlix → `ResolveHub` (mirror
+rotation có sẵn), pixeldrain → `Pixel()` (`/api/file/<id>?download`, tua được). Toàn bộ chứng cứ + các bước
+đính chính: `notes/XDMOVIES.md`.
+
 ## UhdMovies — đã đóng (2026-09-01), code giữ làm nguyên liệu cho XdMovies
 
 Test trên máy đã chạy được (tìm bài → 2 trang countdown → `driveseed /zfile/` → link `workers.dev` tua được,
