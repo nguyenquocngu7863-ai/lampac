@@ -12,17 +12,15 @@ public static class StripchatTo
 
     public static string Uri(string host, string tag, int pg)
     {
-        tag = tag switch
-        {
-            "men" => "men",
-            "trans" => "trans",
-            "couples" => "couples",
-            _ => "girls"
-        };
-        // Stripchat rejects limit=90 with `invalid 'limit' value`; the current public
-        // endpoint accepts at most 60 records per request.
+        tag = NormalizeTag(tag);
+        // The /api/front/models (v1) listing returns a flat `models` array plus
+        // `filteredCount` for real pagination. The v2 variant is also accepted
+        // by the parser (blocks[*].models), but without the sort/group parameters
+        // below Stripchat answers with an empty payload on many edge nodes.
         int offset = pg > 1 ? (pg - 1) * 60 : 0;
-        return $"{host}/api/front/v2/models?limit=60&offset={offset}&primaryTag={tag}";
+        return $"{host}/api/front/models?improveTs=false&removeShows=false" +
+               $"&limit=60&offset={offset}&primaryTag={tag}" +
+               "&sortBy=stripRanking&rcmGrp=A&rbCnGr=true&prxCnGr=false&nic=false";
     }
 
     public static List<PlaylistItem> Playlist(string host, ReadOnlySpan<char> json, int pg, out int totalPages)
@@ -54,16 +52,41 @@ public static class StripchatTo
             return null;
         }
 
-        var tokens = root.SelectTokens("$.blocks[*].models[*]").ToList();
+        // Collect model objects from every response shape Stripchat currently
+        // ships: v1 flat `models` array, v2 `blocks[*].models`, and the
+        // featured `items[*].model` wrapper.
+        var tokens = root["models"] as JArray;
+        if (tokens is not { Count: > 0 })
+        {
+            tokens = new JArray();
+            if (root["blocks"] is JArray blocks)
+            {
+                foreach (var block in blocks.OfType<JObject>())
+                    if (block["models"] is JArray blockModels)
+                        foreach (var m in blockModels)
+                            tokens.Add(m);
+            }
+        }
         if (tokens.Count == 0)
         {
-            // Tolerate experiments that wrap/reorder blocks: a model object is uniquely
-            // recognizable by username + numeric id, regardless of its JSON nesting.
-            tokens = root.Descendants()
+            tokens = new JArray();
+            if (root["items"] is JArray items)
+            {
+                foreach (var item in items.OfType<JObject>())
+                    if (item["model"] is JObject wrapped)
+                        tokens.Add(wrapped);
+            }
+        }
+
+        if (tokens.Count == 0)
+        {
+            // Tolerate experiments that nest/wrap the payload: a model object is
+            // uniquely recognizable by username + numeric id regardless of nesting.
+            var fallback = root.Descendants()
                 .OfType<JObject>()
                 .Where(i => i["username"] != null && i["id"] != null)
-                .Cast<JToken>()
                 .ToList();
+            foreach (var m in fallback) tokens.Add(m);
         }
 
         if (tokens.Count == 0)
@@ -85,19 +108,37 @@ public static class StripchatTo
             if (id <= 0 || string.IsNullOrWhiteSpace(username) || !seen.Add(id))
                 continue;
 
-            // Depending on the geo/experiment block Stripchat sends either isLive or
-            // isOnline. The listing itself contains online rooms, so accept either flag.
+            // Depending on geo/experiment Stripchat sends isLive, isOnline or
+            // only a status string. The listing already consists of online rooms;
+            // accept anything that is not explicitly offline/private.
             bool isLive = model.Value<bool?>("isLive") == true || model.Value<bool?>("isOnline") == true;
             string status = model.Value<string>("status");
-            if (!isLive || (!string.IsNullOrEmpty(status) && status != "public"))
+            if (!IsPublicStatus(status, isLive))
             {
                 skippedNotLive++;
                 continue;
             }
 
-            string image = model.Value<string>("previewUrlThumbSmall") ?? model.Value<string>("avatarUrl");
-            if (!string.IsNullOrEmpty(image) && image.StartsWith('/'))
-                image = host + image;
+            string image = model.Value<string>("previewUrlThumbSmall")
+                ?? model.Value<string>("avatarUrl");
+            long? snap = model.Value<long?>("snapshotTimestamp") ?? model.Value<long?>("popularSnapshotTimestamp");
+            if (string.IsNullOrEmpty(image) && snap != null)
+                image = $"https://img.doppiocdn.net/thumbs/{snap}/{id}";
+            if (!string.IsNullOrEmpty(image) && image.StartsWith("//"))
+                image = "https:" + image;
+
+            // Stream: the API hands a ready-to-play playlist URL in hlsPlaylist
+            // (some variants nest it under stream.url). Fall back to the canonical
+            // edge-hls master URL with the lowLatency playlist type.
+            string video = model.Value<string>("hlsPlaylist");
+            if (string.IsNullOrEmpty(video))
+                video = model["stream"]?.Value<string>("url");
+            if (string.IsNullOrEmpty(video))
+                video = $"https://edge-hls.doppiocdn.net/hls/{id}/master/{id}_auto.m3u8?playlistType=lowLatency";
+            if (video.StartsWith("//"))
+                video = "https:" + video;
+            if (video.StartsWith("http://", StringComparison.Ordinal))
+                video = "https://" + video[7..];
 
             var presets = model["presets"]?.Values<string>().ToArray() ?? Array.Empty<string>();
             string quality = presets.FirstOrDefault(i => i.StartsWith("1080"))
@@ -110,15 +151,14 @@ public static class StripchatTo
                 name = username,
                 quality = quality,
                 picture = image,
-                video = $"https://edge-hls.doppiocdn.net/hls/{id}/master/{id}_auto.m3u8"
+                video = video
             });
         }
 
         if (result.Count == 0)
         {
             // JSON parsed and we found model entries, but every single one got
-            // filtered out by the isLive/public check. Log a sample so we can see
-            // whether Stripchat renamed these fields or changed their values.
+            // filtered out. Log a sample so field renames are easy to diagnose.
             string sample = tokens[0].ToString(Newtonsoft.Json.Formatting.None);
             if (sample.Length > 500) sample = sample[..500];
             LastError = $"parsed={tokens.Count}, accepted=0, sample={sample}";
@@ -126,9 +166,13 @@ public static class StripchatTo
             return null;
         }
 
-        // The public endpoint does not consistently return a total count. Keep Next available
-        // while a full page is returned; an empty following page naturally ends pagination.
-        totalPages = result.Count >= 55 ? pg + 1 : Math.Max(1, pg);
+        // Prefer the server-side total for an accurate Next page; otherwise keep
+        // paging while a full page came back.
+        long filtered = root.Value<long?>("filteredCount") ?? 0;
+        if (filtered > 0)
+            totalPages = (int)Math.Min(Math.Max(1, (filtered + 59) / 60), 100);
+        else
+            totalPages = result.Count >= 55 ? pg + 1 : Math.Max(1, pg);
         return result;
     }
 
@@ -151,6 +195,36 @@ public static class StripchatTo
             }
         };
     }
+
+    static readonly HashSet<string> privateStatuses = new()
+    {
+        "private", "groupShow", "p2p", "virtualPrivate", "p2pVoice", "off", "idle"
+    };
+
+    static bool IsPublicStatus(string status, bool isLive)
+    {
+        // Explicit private/offline statuses always exclude the room, even when
+        // isLive lingers true (group shows are still "live" but not openly
+        // playable). With no explicit status, trust the live flag; an online
+        // listing with public status is accepted.
+        if (!string.IsNullOrEmpty(status))
+        {
+            if (privateStatuses.Contains(status))
+                return false;
+            if (status != "public")
+                return false;
+            return true;
+        }
+        return isLive;
+    }
+
+    static string NormalizeTag(string tag) => tag switch
+    {
+        "men" => "men",
+        "trans" => "trans",
+        "couples" => "couples",
+        _ => "girls"
+    };
 
     static string Title(string tag) => tag switch
     {

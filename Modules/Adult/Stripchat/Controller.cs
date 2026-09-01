@@ -76,10 +76,12 @@ public class StripchatController : BaseSisiController
             };
             foreach (string arg in new[]
             {
-                "-fsSL", "--max-time", "20",
-                "-A", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/151 Mobile Safari/537.36",
+                "-fsSL", "--max-time", "20", "--compressed",
+                "-A", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Mobile Safari/537.36",
                 "-H", "Referer: https://stripchat.com/",
-                "-H", "Accept: application/json",
+                "-H", "Origin: https://stripchat.com",
+                "-H", "Accept: application/json, text/plain, */*",
+                "-H", "Accept-Language: en-US,en;q=0.9",
                 url
             })
                 start.ArgumentList.Add(arg);
