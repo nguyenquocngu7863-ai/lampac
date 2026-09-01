@@ -29,6 +29,7 @@
     css.id = 'lampac-admin-css';
     css.textContent =
       '.lampac-admin{min-height:100%}' +
+      '.lampac-admin-view{overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding-bottom:14vh;box-sizing:border-box}' +
       '.lampac-admin__head{padding:1.1em 1.5em 0.35em;font-size:2em;font-weight:700;line-height:1.25}' +
       '.lampac-admin__sub{padding:0 1.5em 1em;opacity:.65;font-size:1.2em;line-height:1.45}' +
       '.lampac-admin .settings-param{padding:1.35em 1.5em}' +
@@ -249,9 +250,35 @@
 
   function component() {
     var self = this;
-    try { console.log('[adminpanel] build scroll-fix v2'); } catch (e) { }
-    var scroll = new Lampa.Scroll({ mask: true, over: true, step: 200 });
-    var html = $('<div class="lampac-admin"></div>');
+    try { console.log('[adminpanel] build native-scroll v3'); } catch (e) { }
+    // Native scrolling container instead of Lampa.Scroll (which moves a mask via
+    // CSS transform, so browser scrollIntoView/scrollTop can never scroll it).
+    // A real overflow:auto element scrolls reliably with remote, wheel & touch.
+    var view = $('<div class="lampac-admin-view"></div>');
+    var html = $('<div class="lampac-admin"></div>').append(view);
+
+    function sizeView() {
+      try {
+        var top = view[0].getBoundingClientRect().top || 0;
+        var h = Math.max(220, (window.innerHeight || document.documentElement.clientHeight) - top - 16);
+        view.css('height', h + 'px');
+      } catch (e) { }
+    }
+
+    var scroll = {
+      render: function () { return view; },
+      append: function (n) { view.append(n); },
+      clear: function () { view.empty(); },
+      reset: function () { try { view[0].scrollTop = 0; } catch (e) { } },
+      update: function (el) {
+        try {
+          var node = el && el[0] ? el[0] : el;
+          if (node && node.scrollIntoView) node.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        } catch (e) { }
+      },
+      wheel: function (dir) { try { view[0].scrollTop += (dir > 0 ? 1 : -1) * Math.round(view[0].clientHeight * 0.7); } catch (e) { } },
+      destroy: function () { view.remove(); }
+    };
     var stack = [];
     var cache = {
       groups: [],
@@ -271,24 +298,10 @@
       return wrap;
     }
 
-    // Native "scroll into view": Lampa's Scroll.update() can be a no-op in some
-    // builds, so walk up and scroll every scrollable ancestor manually.
+    // Scroll the focused row into the native overflow:auto container.
     function ensureVisible(el) {
-      try { if (scroll && scroll.update) scroll.update($(el), true); } catch (e) { }
-      try {
-        el.scrollIntoView ? el.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-          : (el.scrollIntoViewIfNeeded && el.scrollIntoViewIfNeeded());
-      } catch (e) {
-        // Fallback: nudge every scrollable parent manually.
-        var node = el.parentElement;
-        while (node) {
-          if (node.scrollHeight > node.clientHeight && node.clientHeight > 0) {
-            var top = el.offsetTop, want = top - node.clientHeight / 2;
-            node.scrollTop = Math.max(0, want);
-          }
-          node = node.parentElement;
-        }
-      }
+      try { if (el && el.scrollIntoView) el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) { }
+      try { if (el && el.scrollIntoViewIfNeeded) el.scrollIntoViewIfNeeded(); } catch (e2) { }
     }
 
     function item(name, value, descr, onEnter) {
@@ -937,20 +950,11 @@
 
     this.create = function () {
       injectCss();
-      html.append(scroll.render());
-      // Allow native touch/wheel scrolling inside the list on phones.
-      try {
-        var bodyEl = scroll.body ? scroll.body() : scroll.render();
-        if (bodyEl && bodyEl.css) {
-          bodyEl.css('-webkit-overflow-scrolling', 'touch');
-          bodyEl.on('wheel', function (e) {
-            try {
-              var d = e.originalEvent ? e.originalEvent.deltaY : 0;
-              if (d) scroll.wheel(d > 0 ? 1 : -1);
-            } catch (err) { }
-          });
-        }
-      } catch (e) { }
+      sizeView();
+      if (window.addEventListener) {
+        window.addEventListener('resize', sizeView);
+        setTimeout(sizeView, 300);
+      }
       boot();
     };
 
