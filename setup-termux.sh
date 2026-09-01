@@ -534,9 +534,21 @@ sync_latest_modules() {
         done
 
         # MoviesHub cung duoc sync o day: lampac sync la du de cap nhat 2 nguoi nay.
+        # Danh sach file .cs KHONG hardcode nua: doc tu "tree" trong manifest.json cua chinh module.
+        # Them nguon cung kieu (lop Movies4U/MoviesDrive) => chi can sua manifest.json trong repo,
+        # khong phai dong setup-termux.sh. Tai manifest that bai (branch cu, mang che) thi quay ve
+        # danh sach da biet: khoi nay chay duoi set -euo pipefail nen mot file phu khong duoc phep
+        # dung ca sync.
         movieshubtarget=/root/lampac/module/OnlineENG/MoviesHub
         mkdir -p \"\$movieshubtarget\"
-        for movieshubfile in manifest.json ModInit.cs HubController.cs MoviesDriveController.cs Movies4UController.cs; do
+        if curl -fsSL --retry 3 \"\$base/Modules/OnlineENG/MoviesHub/manifest.json?cb=\$stamp\" -o \"\$movieshubtarget/manifest.json\"; then
+            echo \"  [sync] movieshub/manifest.json\"
+        else
+            rm -f \"\$movieshubtarget/manifest.json\"
+        fi
+        movieshubfiles=\$(grep -o '[A-Za-z0-9_.-]*\.cs' \"\$movieshubtarget/manifest.json\" 2>/dev/null | tr '\n' ' ' || true)
+        [ -n \"\$movieshubfiles\" ] || movieshubfiles=\"ModInit.cs HubController.cs MoviesDriveController.cs Movies4UController.cs\"
+        for movieshubfile in \$movieshubfiles; do
             if curl -fsSL --retry 3 \"\$base/Modules/OnlineENG/MoviesHub/\$movieshubfile?cb=\$stamp\" -o \"/tmp/movieshub-\$movieshubfile\"; then
                 mv \"/tmp/movieshub-\$movieshubfile\" \"\$movieshubtarget/\$movieshubfile\"
                 echo \"  [sync] movieshub/\$movieshubfile\"
@@ -633,12 +645,19 @@ install_custom_modules() {
             fi
         done
 
-        # MoviesHub = MoviesDrive + Movies4U + resolver HubCloud/GDrive dung chung (5 file tree).
+        # MoviesHub = MoviesDrive + Movies4U + resolver HubCloud/GDrive dung chung. Danh sach file
+        # lay tu "tree" trong manifest.json (giong khoi sync_latest_modules): them nguon cung ho
+        # khong can sua file nay; manifest khong co tren nguon thi dung danh sach cu.
         movieshubbase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineENG/MoviesHub\"
         movieshubtarget=/root/lampac/module/OnlineENG/MoviesHub
-        for movieshubfile in manifest.json ModInit.cs HubController.cs MoviesDriveController.cs Movies4UController.cs; do
+        mkdir -p \"\$movieshubtarget\"
+        if curl -fsSL --retry 3 \"\$movieshubbase/manifest.json?cb=\$syncstamp\" -o \"\$movieshubtarget/manifest.json\"; then
+            echo \"  [movieshub] manifest.json\"
+        fi
+        movieshubfiles=\$(grep -o '[A-Za-z0-9_.-]*\.cs' \"\$movieshubtarget/manifest.json\" 2>/dev/null | tr '\n' ' ' || true)
+        [ -n \"\$movieshubfiles\" ] || movieshubfiles=\"ModInit.cs HubController.cs MoviesDriveController.cs Movies4UController.cs\"
+        for movieshubfile in \$movieshubfiles; do
             if curl -fsSL --retry 3 \"\$movieshubbase/\$movieshubfile?cb=\$syncstamp\" -o \"/tmp/movieshub-\$movieshubfile\"; then
-                mkdir -p \"\$movieshubtarget\"
                 mv \"/tmp/movieshub-\$movieshubfile\" \"\$movieshubtarget/\$movieshubfile\"
                 echo \"  [movieshub] \$movieshubfile\"
             else

@@ -898,13 +898,18 @@ luồng, selector và cách đọc log.
 |---|---|
 | `lite/moviesdrive[/video]` | search theo IMDb id → link HubCloud theo quality (có 4K ở phim mới) |
 | — | mỗi link file-host (.mkv) là **một nút nguồn**, không vào menu chất lượng — để GStreamer của Lampac xử lý |
-| `lite/movies4u[/video]` | WordPress search `?s=` + `Cookie: xla=s4t` → `div.download-links-div` |
+| `lite/movies4u[/video]` | WordPress search theo tên+năm (TMDB) + `Cookie: xla=s4t`; series: mùa và nhóm release đọc từ **nút "Download Links" + heading ngay trước nó**, không dùng class |
 
 Cả hai được `install_custom_modules()` (khối `--install` / `--sync-all` / `--update`) và
 `sync_latest_modules()` (`lampac sync`) chép xuống, nằm cạnh khối VidCore ở **đầu** hàm để
-không bị các khối `curl -f` phía sau cắt ngang. **Trạng thái: chưa có log thiết bị** — vòng
-test đầu tiên sẽ cho biết selector còn đúng không; module in đếm ở mọi bước nên một lần chạy
-là đủ kết luận.
+không bị các khối `curl -f` phía sau cắt ngang. Từ 2026-09-01 danh sách file `.cs` không còn ghi
+hardcode trong script nữa: script tải `manifest.json` của module và lấy `tree`, nên thêm nguồn cùng
+họ chỉ cần sửa `manifest.json` trong repo (xem [công thức](notes/FILEHOST-SOURCE-FORMULA.md)).
+
+**Trạng thái: đã xác minh trên thiết bị 2026-09-01** với `v20-seasons-from-buttons` (Reacher Season
+1–4): `Mùa` ra đủ 4 mùa, mỗi mùa có danh sách nhóm riêng (`480p [250MB/E]` … `2160p 4K`), nút
+BATCH/ZIP bị loại, chọn nhóm là dịch cả mùa của nhóm đó. Bài học lớn nhất của vòng này — đừng đoán
+DOM, phải đọc trang thật — nằm trong `notes/FILEHOST-SOURCE-FORMULA.md`.
 
 ## Trạng thái nguồn ENG và Mirage
 

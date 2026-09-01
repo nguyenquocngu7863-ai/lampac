@@ -103,6 +103,12 @@ bash "$HOME/setup-termux-latest.sh" --sync-all
 lampac start
 ```
 
+**Ngoại lệ duy nhất: MoviesHub.** Từ 2026-09-01, khối MoviesHub trong script không còn giữ danh
+sách file riêng mà đọc `tree` từ `manifest.json` của module (`Modules/OnlineENG/MoviesHub`): thêm
+một nguồn cùng họ (thêm `XxxController.cs`) là `lampac sync` tự kéo theo, không cần bản
+`setup-termux.sh` mới. Nếu `manifest.json` không tải được (nhánh cũ), script dùng lại danh sách 4
+file đã biết và in `bo qua <file> (nguon khong co)` — sync không bao giờ dừng vì một file phụ.
+
 Khi `--sync` không kéo đúng file (list script cũ, hoặc chat bảo curl thẳng), dùng lệnh dài `proot-distro login ubuntu -- curl …` ghi **một file** vào `/root/lampac/module/…`. Không ghi vào `~/lampac` của Termux. Giải thích từng dòng và mẫu: [README — Curl một file thẳng vào Ubuntu](../README.md#curl-một-file-thẳng-vào-ubuntu).
 
 `--sync-all` dùng khi cần đồng bộ đầy đủ module tuỳ biến, AdminPanel, GStreamer và xoá module cũ. Với bản vá nhỏ chỉ cần các file trong danh sách sync:

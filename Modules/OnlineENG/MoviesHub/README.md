@@ -166,7 +166,12 @@ Referer theo đúng origin đó. Đặt một host cố định = 403 cho các m
 | `moviesdrive: search không trả JSON` | domain đổi → cập nhật `host` |
 | `moviesdrive: search 0 kết quả (q=tt…)` | IMDb id không có trong DB (phim mới/hiếm) |
 | `moviesdrive: N link file-host` rồi `0/N link giải được` | HubCloud đổi markup → xem `head=` in ra |
-| `movies4u: không có download-links-div … (a=123)` | selector sai, nhưng `a=` cho biết trang có bao nhiêu link |
+| `movies4u: mùa: N [1, 2, 3, 4] đúc từ X nút download` | **dòng quan trọng nhất của series**: tầng 1 có bao nhiêu mùa và lấy từ đâu. `mùa: 0 … đúc từ 0 nút` nghĩa là trang bài viết không có nút "Download Links" nào (bị chặn/AMP/khác markup) — gửi em dòng `classes=`/`hosts=` ngay sau nó |
+| `movies4u: bỏ N nút BATCH/ZIP (đúng yêu cầu: không lấy pack trọn bộ)` | pack cả mùa trong một file đã bị chặn đúng chỗ; N=0 nhưng vẫn thấy BATCH trong UI thì ảnh chụp cho em |
+| `movies4u: mùa 4 nhãn nhóm: [...]` | nhãn mà `NearestLabelBefore` bắt được cho từng nút. Nếu vẫn là `Download Links …` (không có "Season N …") thì site đặt mô tả SAU nút — em phải đổi hướng quét |
+| `movies4u: 0 nhóm \| a=… classes=… hosts=…` | tầng 1 không có nút nào khớp: `a=` = số anchor của bài (0 ⇒ trang rỗng/bị chặn, >0 ⇒ khác markup) |
+| `movies4u: mùa S: trang nhóm không có downloads-btns-div -> N heading tập, M link` | **bình thường** với Movies4U: tầng trang nhóm không dùng class nào cả, em bucket theo heading `-:Episodes: N:-` |
+| `movies4u: không có download-links-div … (a=123)` | còn lại ở đường PHIM LẺ (CollectMovie vẫn thử class trước). `a=` cho biết trang có bao nhiêu link |
 | `… build=<marker>` | marker bản build (`Build` trong HubController). Lampac compile module bằng Roslyn trong bộ nhớ nên không có dll trên đĩa để so — thấy marker trong log **khác** với bản vừa kéo là máy đang compile bản CŨ: `lampac stop`, xoá cache build của module (`rm -rf /root/lampac/module/OnlineENG/MoviesHub/obj /root/lampac/module/OnlineENG/MoviesHub/bin /root/lampac/module/OnlineENG/MoviesHub/*.dll` — không có cũng không sao), `lampac start` rồi mở lại phim |
 | `moviesdrive: play … [direct]` / `[proxy]` | `[direct]` = phát thẳng link extractor (mặc định). `[proxy]` = link đang đi qua `/proxy/{token}` vì init.conf bật `streamproxy` cho section đó — path sẽ mất `.mkv` nên GStreamer không bật |
 | `movies4u: mùa 4 có 5 nhóm release — đưa màn hình chọn (g=1..5)` | tầng chọn nhóm hoạt động (đó là cái anh hỏi) |
@@ -257,6 +262,25 @@ giá trị qua `HrefValue(m)` (ba nhóm `d`/`s`/`n`, không dùng trùng tên nh
   `\d+(\.\d+)?\s*(KB|MB|GB|TB)` thì mò 200 ký tự trước / 600 sau anchor — size thường đứng ở
   `<span>` cạnh nút. Dùng cho `Anchors()`, `Links()`, `DivBlocks()`, không tốn thêm request nào.
 
+## Thêm nguồn cùng kiểu (họ file-host 2 tầng) — công thức ở `notes/FILEHOST-SOURCE-FORMULA.md`
+
+Người dùng báo sẽ đưa thêm vài nguồn cùng dạng (bài viết có nút "Download Links" → trang trung
+gian chứa link theo tập). Toàn bộ công thức — cách đọc DOM thật trước khi viết, hợp đồng
+"chữ trên nút + heading", cách loại BATCH/ZIP, bucket tập theo heading, allow/deny host, đường
+phát trần, ánh xạ `Mùa`/`Thuyết minh`/`streamquality`, log, luật build, checklist — nằm ở
+[`notes/FILEHOST-SOURCE-FORMULA.md`](../../../notes/FILEHOST-SOURCE-FORMULA.md). Ba thứ chỉ có ở
+đây thì cần nhớ:
+
+- **`manifest.json` → `tree` là danh sách file duy nhất có giá trị.** `setup-termux.sh`
+  (`--sync`, `--install`, `--sync-all`) đọc `tree` để biết phải kéo file nào; kéo `manifest.json`
+  không được thì fallback về danh sách 4 file cũ. Nên thêm nguồn mới = sửa `manifest.json` trong
+  repo, **không sửa script**; nhưng muốn nhận file mới thì máy phải đang có script bản >= 2026-09-01.
+- Cùng assembly là bắt buộc nếu nguồn mới dùng lại resolver HubCloud/GDrive: dynamic module compile
+  từng thư mục riêng nên không tham chiếu chéo được (đó là lý do MoviesDrive ở đây chứ không phải
+  một module riêng).
+- Dù cùng assembly, mỗi nguồn vẫn phải có **section config riêng** (`"MoviesB"` chứ không mượn
+  `"Movies4U"`), và vẫn phải là **một nút nguồn cho mỗi link** chứ không vào menu chất lượng.
+
 ## Luật viết code của vùng này (toàn bộ từng làm hỏng build trên thiết bị)
 
 - `var x = [.. …]` **không compile được** (CS9176 — C# không suy kiểu cho collection expression khi
@@ -274,7 +298,8 @@ giá trị qua `HrefValue(m)` (ba nhóm `d`/`s`/`n`, không dùng trùng tên nh
   ```bash
   python3 -c 'F="<file.cs>"; s=open(F).read(); print("control chars ở dòng:", [i+1 for i,l in enumerate(s.split(chr(10))) if any(ord(c)<9 for c in l)])'
   ```
-- **Mỗi commit sửa MoviesHub phải bump `Build` trong HubController.cs** (hiện là `v14-json-direct`)
+- **Mỗi commit sửa MoviesHub phải bump `Build` trong HubController.cs** (hiện là
+  `v20-seasons-from-buttons`)
   và viết marker mới vào message commit. Đây là cách duy nhất để log tự chứng minh máy anh đang chạy
   bản nào, vì module không để dll lại trên đĩa.
 
