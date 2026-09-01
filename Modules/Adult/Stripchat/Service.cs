@@ -3,6 +3,7 @@ using Shared.Models.SISI.Base;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 
 namespace Stripchat;
 
@@ -10,17 +11,44 @@ public static class StripchatTo
 {
     public static string LastError { get; private set; }
 
+    // Real Stripchat usernames are lowercase tokens; banner/promo cards carry
+    // ad copy (spaces, capitals, emoji) in the same field and get filtered out.
+    static readonly Regex UsernameRx = new("^[a-z0-9_]{2,40}$", RegexOptions.Compiled);
+
+    // Fields an actual cam-room object always carries. Marketing banners and
+    // studio/promo objects miss all of them even when they expose username+id.
+    static readonly string[] RoomSignals =
+    {
+        "hlsPlaylist", "stream", "status", "isLive", "isOnline",
+        "previewUrlThumbSmall", "previewUrlThumbBig",
+        "snapshotTimestamp", "popularSnapshotTimestamp"
+    };
+
     public static string Uri(string host, string tag, int pg)
     {
         tag = NormalizeTag(tag);
-        // The /api/front/models (v1) listing returns a flat `models` array plus
-        // `filteredCount` for real pagination. The v2 variant is also accepted
-        // by the parser (blocks[*].models), but without the sort/group parameters
-        // below Stripchat answers with an empty payload on many edge nodes.
+        // /api/front/models (v1 listing) with the full sort/group parameter set
+        // the maintained Kodi cumination addon uses. Without recInFeatured/iem/
+        // decMb/ctryTop the edge node answers with the homepage feed, which is
+        // full of promo/banner cards instead of rooms.
         int offset = pg > 1 ? (pg - 1) * 60 : 0;
-        return $"{host}/api/front/models?improveTs=false&removeShows=false" +
-               $"&limit=60&offset={offset}&primaryTag={tag}" +
-               "&sortBy=stripRanking&rcmGrp=A&rbCnGr=true&prxCnGr=false&nic=false";
+        return $"{host}/api/front/models?removeShows=false&recInFeatured=false" +
+               $"&limit=60&offset={offset}&filterGroupTags=&sortBy=stripRanking" +
+               $"&parentTag=&nic=true&byw=false&rcmGrp=A&rbCnGr=true" +
+               $"&iem=true&decMb=true&ctryTop=true&primaryTag={tag}";
+    }
+
+    static bool LooksLikeRoom(JObject o)
+    {
+        if (o?["username"]?.Value<string>() is not string uname || !UsernameRx.IsMatch(uname))
+            return false;
+        long? id = o.Value<long?>("id");
+        if (id is null or <= 0)
+            return false;
+        foreach (string sig in RoomSignals)
+            if (o[sig] != null)
+                return true;
+        return false;
     }
 
     public static List<PlaylistItem> Playlist(string host, ReadOnlySpan<char> json, int pg, out int totalPages)
@@ -52,48 +80,71 @@ public static class StripchatTo
             return null;
         }
 
-        // Collect model objects from every response shape Stripchat currently
-        // ships: v1 flat `models` array, v2 `blocks[*].models`, and the
-        // featured `items[*].model` wrapper.
-        var tokens = root["models"] as JArray;
-        if (tokens is not { Count: > 0 })
+        // Collect model objects from every response shape Stripchat ships:
+        // v1 flat `models` array, v2 `blocks[*].models`, featured
+        // `items[*].model`, and a targeted fallback that only pulls objects
+        // living inside arrays named "models"/"items" — never a whole-tree
+        // scan, which used to pick up banner/promo cards.
+        string source = null;
+        var tokens = new List<JObject>();
+
+        if (root["models"] is JArray flat && flat.Count > 0)
         {
-            tokens = new JArray();
-            if (root["blocks"] is JArray blocks)
+            source = "models";
+            tokens = flat.OfType<JObject>().Where(LooksLikeRoom).ToList();
+        }
+
+        if (tokens.Count == 0 && root["blocks"] is JArray blocks)
+        {
+            var picked = new List<JObject>();
+            foreach (var block in blocks.OfType<JObject>())
+                if (block["models"] is JArray blockModels)
+                    picked.AddRange(blockModels.OfType<JObject>().Where(LooksLikeRoom));
+            if (picked.Count > 0)
             {
-                foreach (var block in blocks.OfType<JObject>())
-                    if (block["models"] is JArray blockModels)
-                        foreach (var m in blockModels)
-                            tokens.Add(m);
+                source = "blocks";
+                tokens = picked;
             }
         }
-        if (tokens.Count == 0)
+
+        if (tokens.Count == 0 && root["items"] is JArray items)
         {
-            tokens = new JArray();
-            if (root["items"] is JArray items)
+            var picked = new List<JObject>();
+            foreach (var item in items.OfType<JObject>())
             {
-                foreach (var item in items.OfType<JObject>())
-                    if (item["model"] is JObject wrapped)
-                        tokens.Add(wrapped);
+                if (item["model"] is JObject wrapped && LooksLikeRoom(wrapped))
+                    picked.Add(wrapped);
+                else if (LooksLikeRoom(item))
+                    picked.Add(item);
+            }
+            if (picked.Count > 0)
+            {
+                source = "items";
+                tokens = picked;
             }
         }
 
         if (tokens.Count == 0)
         {
-            // Tolerate experiments that nest/wrap the payload: a model object is
-            // uniquely recognizable by username + numeric id regardless of nesting.
-            var fallback = root.Descendants()
-                .OfType<JObject>()
-                .Where(i => i["username"] != null && i["id"] != null)
-                .ToList();
-            foreach (var m in fallback) tokens.Add(m);
+            var picked = new List<JObject>();
+            foreach (var prop in root.Properties())
+            {
+                if (prop.Value is not JArray arr || prop.Name is not ("models" or "items"))
+                    continue;
+                picked.AddRange(arr.OfType<JObject>().Where(LooksLikeRoom));
+            }
+            if (picked.Count > 0)
+            {
+                source = "fallback";
+                tokens = picked;
+            }
         }
 
         if (tokens.Count == 0)
         {
             string preview = raw.Length > 800 ? raw[..800] : raw;
-            LastError = $"JSON has no models; keys={string.Join(',', root.Properties().Select(i => i.Name))}";
-            Console.WriteLine($"[Stripchat] no model objects found; raw response:\n{preview}");
+            LastError = $"JSON has no rooms; keys={string.Join(',', root.Properties().Select(i => i.Name))}";
+            Console.WriteLine($"[Stripchat] no room objects found (source=none); root keys: {string.Join(',', root.Properties().Select(i => i.Name))}\n[Stripchat] raw response:\n{preview}");
             return null;
         }
 
@@ -101,7 +152,7 @@ public static class StripchatTo
         var seen = new HashSet<long>();
         int skippedNotLive = 0;
 
-        foreach (JToken model in tokens)
+        foreach (JObject model in tokens)
         {
             long id = model.Value<long?>("id") ?? 0;
             string username = model.Value<string>("username");
@@ -157,14 +208,16 @@ public static class StripchatTo
 
         if (result.Count == 0)
         {
-            // JSON parsed and we found model entries, but every single one got
+            // JSON parsed and we found room objects, but every single one got
             // filtered out. Log a sample so field renames are easy to diagnose.
             string sample = tokens[0].ToString(Newtonsoft.Json.Formatting.None);
             if (sample.Length > 500) sample = sample[..500];
-            LastError = $"parsed={tokens.Count}, accepted=0, sample={sample}";
-            Console.WriteLine($"[Stripchat] {tokens.Count} models parsed, 0 passed live/public filter (skipped={skippedNotLive}).\n[Stripchat] sample model:\n{sample}");
+            LastError = $"source={source}, rooms={tokens.Count}, accepted=0, sample={sample}";
+            Console.WriteLine($"[Stripchat] source={source}: {tokens.Count} room-like objects, 0 passed live/public filter (skipped={skippedNotLive}).\n[Stripchat] sample object:\n{sample}");
             return null;
         }
+
+        Console.WriteLine($"[Stripchat] source={source}: {tokens.Count} room-like objects -> {result.Count} live rooms (skipped={skippedNotLive})");
 
         // Prefer the server-side total for an accurate Next page; otherwise keep
         // paging while a full page came back.
