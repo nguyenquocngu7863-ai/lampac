@@ -911,33 +911,21 @@ họ chỉ cần sửa `manifest.json` trong repo (xem [công thức](notes/FILE
 BATCH/ZIP bị loại, chọn nhóm là dịch cả mùa của nhóm đó. Bài học lớn nhất của vòng này — đừng đoán
 DOM, phải đọc trang thật — nằm trong `notes/FILEHOST-SOURCE-FORMULA.md`.
 
-## XdMovies (`top.xdmovies.wtf`) — tạm dừng 2026-09-01: Cloudflare chặn MỌI trang, build `v31-xdmovies-rch-diag`
+## XdMovies — đã xóa 2026-09-01 (đủ nguồn cần dùng, chuyển sang hiệu năng)
 
-Nguồn thay UhdMovies, đã đi hết đường: tìm bài bằng `search.html?q=<TMDB id>` (chính site khuyên tìm bằng
-id), slug luôn kết thúc `-<TMDB id>`, mỗi chất lượng một link `link.xdmovies.wtf/download/<token>`, parser
-quét một lượt không dùng cửa sổ ký tự. **Bật ngờ ở bước cuối**: không riêng trang gate — trang chủ và
-trang phim cũng không đọc được bằng request thường, nên mọi thứ (tìm kiếm, bài, gate) phải đi qua `rch`
-(trình duyệt thật của client Lampa). Vòng 31 vẫn chưa loại được khả năng app Lampa < 484 (`rch.Headers`
-im lặng trả rỗng), chi tiết và lệnh đo ở `notes/XDMOVIES.md` mục 15. Muốn ẩn nguồn:
-`"XdMovies": {"enable": false}` trong `init.conf`, không cần sửa code.
+Đã thử hết đường và dừng ở kết luận: `top.xdmovies.wtf` đứng sau Cloudflare ở MỌI trang (kể cả trang chủ),
+nên không có chế độ "chỉ trang gate cần trình duyệt thật" — hoặc mọi request đi qua `rch` của app Lampa
+(client phải >= 484), hoặc không scrape được. Module, section config và `tree` entry đã gạch khỏi repo ở
+`Build v32-xdmovies-removed`; toàn bộ dữ kiện về site (dạng `search.html?q=`, TMDB id trong slug, thứ tự
+server fls/pixel) ở `notes/XDMOVIES.md` để đừng ai điều tra lại từ đầu.
 
-
-Nguồn thay UhdMovies. Bài viết rất sạch (mỗi chất lượng một link, tên file = mediainfo nằm ngay trên link,
-**số cuối slug là TMDB id** ⇒ khớp id thay vì đoán tên). Cái khó là trang link: `link.xdmovies.wtf/download/<token>`
-→ `latestnewsonline.sbs/r/<code>` = đếm ngược 6s + **Cloudflare Turnstile** + 3 nút, và **chỉ sau gate mới có
-link server** (fls ưu tiên, pixel backup, HubCloud). Vì thế resolver đi qua `rch.Headers(token, <JS bấm nút>)`
-— client Lampa phải `apkVersion >= 484` và `init.conf` bật `rhub`; không có `rch` thì module log rõ một câu rồi
-trả lỗi, tuyệt đối không trả link trang đếm ngược cho player. Sau gate: HubCloud/GDFlix → `ResolveHub` (mirror
-rotation có sẵn), pixeldrain → `Pixel()` (`/api/file/<id>?download`, tua được). Toàn bộ chứng cứ + các bước
-đính chính: `notes/XDMOVIES.md`.
-
-## UhdMovies — đã đóng (2026-09-01), code giữ làm nguyên liệu cho XdMovies
+## UhdMovies — đã đóng (2026-09-01), code giữ làm nguyên liệu cho nguồn phim khác
 
 Test trên máy đã chạy được (tìm bài → 2 trang countdown → `driveseed /zfile/` → link `workers.dev` tua được,
 mỗi tập của Reacher S02 đều có nút, bài collection LOT R tách đúng 3 phim), nhưng **file của họ không được bảo trì**:
 bài cũ trả link mà stream không ra hình, site thiên về "tải về" hơn "xem". Nên rút khỏi `manifest.json` → `tree`
-và bỏ section config; `UhdmoviesController.cs` vẫn nằm trong repo vì XdMovies (notes/XDMOVIES.md) dùng lại
-cùng bộ máy: `Bypass`, `ResumeLink`, `LabelBlocks`, `Playable`, `IsResume`, `Unwrap`.
+và bỏ section config; `UhdmoviesController.cs` vẫn nằm trong repo vì đó là bằng chứng chạy được
+của cả bộ máy: `Bypass`, `ResumeLink`, `LabelBlocks`, `Playable`, `IsResume`, `Unwrap`.
 
 
 Anh em họ UHDMovies/MoviesMod/TopMovies **không dùng HubCloud**: mỗi nút "Episode N"/chất lượng trỏ

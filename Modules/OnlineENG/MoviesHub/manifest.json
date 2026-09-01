@@ -5,7 +5,6 @@
     "ModInit.cs",
     "HubController.cs",
     "MoviesDriveController.cs",
-    "Movies4UController.cs",
-    "XdmoviesController.cs"
+    "Movies4UController.cs"
   ]
 }

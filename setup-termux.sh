@@ -19,10 +19,7 @@ LAMPAC_DIR="$HOME/lampac"
 LISTEN_PORT="${LAMPAC_PORT:-9118}"
 ROOT_PASSWORD="${LAMPAC_PASSWD:-lampac}"
 # Custom modules maintained in this repository. Override when using a private fork.
-# 2026-08-31: tạm trỏ arena/01a05799-lampac — nhánh đang giữ module VidCore (chưa có
-# trong lampac-nextgen.zip) và bản sửa `lampac update`. Đưa về arena/01a05241-lampac
-# sau khi merge, hoặc đặt LAMPAC_CUSTOM_SOURCE_BASE để đổi mà không sửa file này.
-CUSTOM_SOURCE_BASE="${LAMPAC_CUSTOM_SOURCE_BASE:-https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05799-lampac}"
+CUSTOM_SOURCE_BASE="${LAMPAC_CUSTOM_SOURCE_BASE:-https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05241-lampac}"
 
 MODE=""
 [[ "${1:-}" == "--install" ]] && MODE="install"
@@ -74,7 +71,7 @@ show_help() {
     printf "  ${CYAN}LAMPAC_PORT${RESET}     Listen port (default: 9118)\n"
     printf "  ${CYAN}LAMPAC_PASSWD${RESET}   Root password (default: lampac)\n"
     printf "  ${CYAN}LAMPAC_CUSTOM_SOURCE_BASE${RESET} Raw-git base URL for --sync/--sync-all\n"
-    printf "                      (default: .../lampac/arena/01a05799-lampac;\n"
+    printf "                      (default: .../lampac/arena/01a05241-lampac;\n"
     printf "                      không dùng main — nhánh đó đang chậm hơn)\n\n"
     printf "${BOLD}How it works:${RESET}\n"
     printf "  This script installs Lampac inside proot-distro Ubuntu.\n"
@@ -517,59 +514,6 @@ sync_latest_modules() {
                 pull Modules/OnlineENG/VidLink/ModInit.cs \"\$vidlink/ModInit.cs\"
             fi
         done
-        # VidCore: da xac minh thiet bi 2026-08-31 (movie 1288445 + tv 125988) -> duoc
-        # cho vao sync nhe. Khac VidLink/Videasy, thu muc module chua co san trong
-        # lampac-nextgen.zip nen phai tu mkdir va lay ca manifest.json; moi file bo qua
-        # an toan khi nguon khong co (khoi nay chay duoi set -euo pipefail).
-        vidcoretarget=/root/lampac/module/OnlineENG/VidCore
-        mkdir -p \"\$vidcoretarget\"
-        for vidcorefile in manifest.json Controller.cs ModInit.cs; do
-            if curl -fsSL --retry 3 \"\$base/Modules/OnlineENG/VidCore/\$vidcorefile?cb=\$stamp\" -o \"/tmp/vidcore-\$vidcorefile\"; then
-                mv \"/tmp/vidcore-\$vidcorefile\" \"\$vidcoretarget/\$vidcorefile\"
-                echo \"  [sync] vidcore/\$vidcorefile\"
-            else
-                rm -f \"/tmp/vidcore-\$vidcorefile\"
-                echo \"  [sync] vidcore: bo qua \$vidcorefile (nguon khong co)\"
-            fi
-        done
-
-        # MoviesHub cung duoc sync o day: lampac sync la du de cap nhat 2 nguoi nay.
-        # Danh sach file .cs KHONG hardcode nua: doc tu "tree" trong manifest.json cua chinh module.
-        # Them nguon cung kieu (lop Movies4U/MoviesDrive) => chi can sua manifest.json trong repo,
-        # khong phai dong setup-termux.sh. Tai manifest that bai (branch cu, mang che) thi quay ve
-        # danh sach da biet: khoi nay chay duoi set -euo pipefail nen mot file phu khong duoc phep
-        # dung ca sync.
-        movieshubtarget=/root/lampac/module/OnlineENG/MoviesHub
-        mkdir -p \"\$movieshubtarget\"
-        if curl -fsSL --retry 3 \"\$base/Modules/OnlineENG/MoviesHub/manifest.json?cb=\$stamp\" -o \"\$movieshubtarget/manifest.json\"; then
-            echo \"  [sync] movieshub/manifest.json\"
-        else
-            rm -f \"\$movieshubtarget/manifest.json\"
-        fi
-        movieshubfiles=\$(grep -o '[A-Za-z0-9_.-]*\.cs' \"\$movieshubtarget/manifest.json\" 2>/dev/null | tr '\n' ' ' || true)
-        [ -n \"\$movieshubfiles\" ] || movieshubfiles=\"ModInit.cs HubController.cs MoviesDriveController.cs Movies4UController.cs\"
-        for movieshubfile in \$movieshubfiles; do
-            if curl -fsSL --retry 3 \"\$base/Modules/OnlineENG/MoviesHub/\$movieshubfile?cb=\$stamp\" -o \"/tmp/movieshub-\$movieshubfile\"; then
-                mv \"/tmp/movieshub-\$movieshubfile\" \"\$movieshubtarget/\$movieshubfile\"
-                echo \"  [sync] movieshub/\$movieshubfile\"
-            else
-                rm -f \"/tmp/movieshub-\$movieshubfile\"
-                echo \"  [sync] movieshub: bo qua \$movieshubfile (nguon khong co)\"
-            fi
-        done
-
-        # File .cs da bi rut khoi tree (UhdmoviesController.cs tu 2026-09-01) PHAI bi xoa tren may:
-        # nam lai la dotnet build don no vao, no goi ModInit.uhd da go -> CS0117, module khong nap,
-        # log im lang. Sync = dong bo ca 2 chieu, khong chi them.
-        for oldcs in \"$movieshubtarget\"/*.cs; do
-            [ -e \"$oldcs\" ] || continue
-            orph=\$(basename \"$oldcs\")
-            case \" \$movieshubfiles \" in
-                *\" \$orph \"*) ;;
-                *) rm -f \"$oldcs\"; echo \"  [sync] movieshub: xoa \$orph (khong con trong tree)\";;
-            esac
-        done
-
         for sisimod in /root/lampac/module/SISI /root/lampac/mods/SISI; do
             if [ -d \"\$sisimod\" ]; then
                 pull SISI/SisiApi.cs \"\$sisimod/SisiApi.cs\"
@@ -598,7 +542,7 @@ sync_latest_modules() {
 }
 
 install_custom_modules() {
-    info "Installing custom VidCore/KKPhim/K20/VsMov/WebStreamr/Sootio/AIOStreams/GStreamer module files..."
+    info "Installing custom KKPhim/K20/VsMov/WebStreamr/Sootio/AIOStreams/GStreamer module files..."
 
     proot-distro login ubuntu -- bash -c "
         set -euo pipefail
@@ -614,69 +558,6 @@ install_custom_modules() {
                /root/lampac/mods/OnlineENG/OpenDirectory
         rm -f /root/lampac/module/NextHUB/sites/85po.yaml \
               /root/lampac/mods/NextHUB/sites/85po.yaml
-
-        # VidCore dat LEN DAU ham install_custom_modules(), khong phai ngau nhien:
-        # ca khoi nay chay trong guest script co set -euo pipefail, va nhung khoi o
-        # duoi (KKPhim/K20/VsMov/...) dung curl -f tran -> mot file 404 la dung ca
-        # ham, nguoi moi cai se khong bao gio co VidCore. Dat o day dam bao 3 lenh
-        # --install / --sync-all / --update luon kip chép module truoc khi co thu gi do chet.
-        # Module nay khong co trong lampac-nextgen.zip nen phai tu mkdir va lay ca
-        # manifest.json; dung [ -d ] nhu module co san thi se bi bo qua mai mai.
-        # (used for modules that already exist in the release) would skip it
-        # Tu 2026-08-31 module con nam trong sync nhe (sync_latest_modules), da xac minh
-        # chay duoc tren thiet bi nen khong con la "thu nghiem" nua.
-        # (sync_latest_modules), vi da xac minh chay duoc tren thiet bi.
-        #
-        # Comment quy tắc trong khoi nay: khong duoc dung backtick cung nhu dau
-        # nhay kep. Ca khoi la chuoi double-quote cua bash -c, nen mot cap
-        # backtick se bi host chay nhu command substitution va nut tron phan
-        # text toi backtick ke tiep; con dau nhay kep chua escape thi dong chuoi
-        # som, day phan con lai cua guest script ra chay o host. Kiem tra nhanh:
-        # grep -n 'setup-termux.sh$' khong duoc con tro toi script kiem tra nao
-        # (kiem tra bang bash -n tren guest script da duoc goi escape).
-        #
-        # Moi file lay doc lap va loi duoc bo qua: khoi nay chay trong guest
-        # script co set -euo pipefail, nen khi nguon khong co module (vi du
-        # vua lui LAMPAC_CUSTOM_SOURCE_BASE ve nhanh cu) ma curl -f fail thi
-        # cung khong duoc dung ca sync-all.
-#  LUU Y: block nay dung ?cb=$syncstamp cua ca ham, nen phai gan syncstamp
-#  o ngay trong block - neu khong, duoi set -u thi "syncstamp: unbound variable"
-#  la dung ca ham cai dat (da phat hien bang cach chay guest script voi curl stub).
-        # tai cho; dong duoi gan lai cung khong sao (chi la cache-buster).
-        syncstamp=\$(date +%s)
-        vidcorebase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineENG/VidCore\"
-        vidcoretarget=/root/lampac/module/OnlineENG/VidCore
-        for vidcorefile in manifest.json Controller.cs ModInit.cs; do
-            if curl -fsSL --retry 3 \"\$vidcorebase/\$vidcorefile?cb=\$syncstamp\" -o \"/tmp/vidcore-\$vidcorefile\"; then
-                mkdir -p \"\$vidcoretarget\"
-                mv \"/tmp/vidcore-\$vidcorefile\" \"\$vidcoretarget/\$vidcorefile\"
-                echo \"  [vidcore] \$vidcorefile\"
-            else
-                rm -f \"/tmp/vidcore-\$vidcorefile\"
-                echo \"  [vidcore] bo qua \$vidcorefile - khong co tren nguon: kiem tra LAMPAC_CUSTOM_SOURCE_BASE\"
-            fi
-        done
-
-        # MoviesHub = MoviesDrive + Movies4U + resolver HubCloud/GDrive dung chung. Danh sach file
-        # lay tu "tree" trong manifest.json (giong khoi sync_latest_modules): them nguon cung ho
-        # khong can sua file nay; manifest khong co tren nguon thi dung danh sach cu.
-        movieshubbase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineENG/MoviesHub\"
-        movieshubtarget=/root/lampac/module/OnlineENG/MoviesHub
-        mkdir -p \"\$movieshubtarget\"
-        if curl -fsSL --retry 3 \"\$movieshubbase/manifest.json?cb=\$syncstamp\" -o \"\$movieshubtarget/manifest.json\"; then
-            echo \"  [movieshub] manifest.json\"
-        fi
-        movieshubfiles=\$(grep -o '[A-Za-z0-9_.-]*\.cs' \"\$movieshubtarget/manifest.json\" 2>/dev/null | tr '\n' ' ' || true)
-        [ -n \"\$movieshubfiles\" ] || movieshubfiles=\"ModInit.cs HubController.cs MoviesDriveController.cs Movies4UController.cs\"
-        for movieshubfile in \$movieshubfiles; do
-            if curl -fsSL --retry 3 \"\$movieshubbase/\$movieshubfile?cb=\$syncstamp\" -o \"/tmp/movieshub-\$movieshubfile\"; then
-                mv \"/tmp/movieshub-\$movieshubfile\" \"\$movieshubtarget/\$movieshubfile\"
-                echo \"  [movieshub] \$movieshubfile\"
-            else
-                rm -f \"/tmp/movieshub-\$movieshubfile\"
-                echo \"  [movieshub] bo qua \$movieshubfile - khong co tren nguon: kiem tra LAMPAC_CUSTOM_SOURCE_BASE\"
-            fi
-        done
 
         kkbase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineVN/KKPhim\"
         kktarget=/root/lampac/module/OnlineVN/KKPhim
@@ -808,11 +689,7 @@ install_custom_modules() {
         done
 
         # Videasy is the first ENG resolver under isolated repair. Sync only
-        # this provider; the disableEng switch stays globally enabled.
-        # (KHONG duoc dung backtick trong comment o day: ca khoi la chuoi
-        #  double-quote cua bash -c, nen mot cap backtick se bi host chay nhu
-        #  command substitution va nut tron phan text toi backtick ke tiep.
-            #  Sau khi sua khoi nay, kiem tra guest script bang bash -n sau khi goi escape.)
+        # this provider; `disableEng` remains globally enabled.
         videasybase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineENG/Videasy\"
         videasytarget=/root/lampac/module/OnlineENG/Videasy
         if [ -d \"\$videasytarget\" ]; then
@@ -839,7 +716,6 @@ install_custom_modules() {
                 mv \"\$vidlinktarget/\$file.tmp\" \"\$vidlinktarget/\$file\"
             done
         fi
-
 
         for proxymodule in CubProxy TmdbProxy; do
             proxytarget=\"/root/lampac/module/Proxy/\$proxymodule\"
@@ -1009,52 +885,6 @@ case "${1:-}" in
     sync-all)
         bash "$(dirname "$0")/setup-termux.sh" --sync-all
         ;;
-    vidcore)
-        # Probe nhanh nguồn VidCore (4K) — chạy thẳng từ launcher, không cần script ngoài.
-        #   lampac vidcore                 -> movie, TMDB 155 (The Dark Knight)
-        #   lampac vidcore 680             -> movie khác theo TMDB id
-        #   lampac vidcore 2389 1 1        -> series: tmdb=2389 season=1 episode=1
-        TMDB_ID="${2:-155}"
-        VSEA="${3:--1}"
-        VEP="${4:--1}"
-
-        PORT=$(proot-distro login ubuntu -- bash -c "grep -oE '\"port\"[^0-9]+[0-9]+' /root/lampac/init.conf 2>/dev/null | head -1 | grep -oE '[0-9]+$'")
-        PORT=${PORT:-9118}
-
-        if ! proot-distro login ubuntu -- test -f /root/lampac/module/OnlineENG/VidCore/Controller.cs; then
-            echo "VidCore: module chưa được cài."
-            echo "  cài:  bash \"$(dirname \"$0\")/setup-termux.sh\" --sync-all   rồi  lampac stop && lampac start"
-            exit 1
-        fi
-
-        if ! curl -fsS -m 5 -o /dev/null "http://127.0.0.1:$PORT/" 2>/dev/null; then
-            echo "VidCore: Lampac không đáp ứng ở cổng $PORT — bật nó lên trước (lampac start)."
-            echo "        Chạy probe ở terminal khác để còn thấy log của module."
-            exit 1
-        fi
-
-        echo "VidCore probe  →  http://127.0.0.1:$PORT   tmdb=$TMDB_ID season=$VSEA episode=$VEP"
-
-        code=$(curl -s -o /dev/null -w '%{http_code}' -m 30 "http://127.0.0.1:$PORT/lite/vidcore?tmdb_id=$TMDB_ID&rjson=1")
-        ghost=$(curl -s -o /dev/null -w '%{http_code}' -m 30 "http://127.0.0.1:$PORT/lite/vidcore_khongcodau_han")
-        echo "  /lite/vidcore        HTTP $code     (route ma: $ghost)"
-        if [ "$code" = "$ghost" ]; then
-            echo "  route chưa đăng ký — tìm 'compilation VidCore' (OK) hoặc 'compilation error: VidCore' (lỗi) trong log khởi động."
-        fi
-
-        out=$(curl -s -m 120 -w '\n%{http_code}' "http://127.0.0.1:$PORT/lite/vidcore/video?id=$TMDB_ID&s=$VSEA&e=$VEP")
-        vcode=$(printf '%s' "$out" | tail -1)
-        body=$(printf '%s' "$out" | sed '$d')
-        echo "  .../vidcore/video    HTTP $vcode"
-        printf '%s\n' "$body" | head -c 500; echo
-
-        case "$body" in
-            *'"host"'*)    echo "  OK: có link stream. Mở Lampa -> Online -> VidCore để chọn host." ;;
-            *'resolve'*)   echo "  exception bên trong Resolve. Dòng 'VidCore: ex ...' trong log nói loại lỗi." ;;
-            *'stream'*)    echo "  không có stream. Tìm dòng 'VidCore: ...' trong log: token not found / enc-vidcore incomplete / servers POST empty / no servers / <name> no url." ;;
-            *)             echo "  không phân loại được. Bật \"exceptionHandlerLogTarget\": \"file\" trong init.conf để 500 được ghi vào /root/lampac/logs/exceptionHandler.log." ;;
-        esac
-        ;;
     restart)
         pkill -TERM -f '[C]ore\.dll' 2>/dev/null || true
         sleep 1
@@ -1063,15 +893,15 @@ case "${1:-}" in
         ;;
     branch)
         cur="$(cd "$(dirname "$0")" && git branch --show-current 2>/dev/null || echo unknown)"
-        base="${LAMPAC_CUSTOM_SOURCE_BASE:-default (arena/01a05799-lampac)}"
+        base="${LAMPAC_CUSTOM_SOURCE_BASE:-default (arena/01a05241-lampac)}"
         echo ""
         echo "  Git branch  : $cur"
         echo "  Source base : $base"
         echo ""
         echo "  Nhánh mới nhất (không dùng main):"
-        echo "    cd ~/lampac && git fetch origin && git checkout arena/01a05799-lampac"
-        echo "    echo 'export LAMPAC_CUSTOM_SOURCE_BASE=https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05799-lampac' >> ~/.bashrc"
-        echo "    source ~/.bashrc && lampac sync && lampac stop && lampac start"
+        echo "    cd ~/lampac && git fetch origin && git checkout arena/01a05241-lampac"
+        echo "    echo 'export LAMPAC_CUSTOM_SOURCE_BASE=https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05241-lampac' >> ~/.bashrc"
+        echo "    source ~/.bashrc && lampac sync && lampac restart"
         echo ""
         ;;
     info)
@@ -1091,14 +921,275 @@ case "${1:-}" in
         ;;
     update)
         echo "Updating Lampac..."
-        # FIX (2026-08-31): khối inline trước đây tham chiếu $KKBase / $VideasyBase /
-        # $LampaWebBase / $BaseConfUrl … — 22 biến không hề được định nghĩa trong
-        # script, nên mọi URL curl sinh ra đều thiếu host ("curl: (3) URL rejected:
-        # No host part") và `set -euo pipefail` làm dừng cả lệnh update. Bản gốc còn
-        # trong git show 8ed1ad8:setup-termux.sh (dòng 924-1192).
-        # --update ở CLI đã hoán đổi release rồi gọi install_custom_modules() với
-        # ${CUSTOM_SOURCE_BASE} được nội suy đúng, nên chỉ cần delegate (giống sync).
-        bash "$(dirname "$0")/setup-termux.sh" --update || exit 1
+        proot-distro login ubuntu -- bash -c '
+            set -euo pipefail
+            cd /tmp
+            curl -fSL --retry 3 -o lampac.zip "https://github.com/lampac-nextgen/lampac/releases/latest/download/lampac-nextgen.zip"
+            [[ ! -s lampac.zip ]] && echo "Download failed" && exit 1
+            STAGING="/tmp/lampac-staging"
+            rm -rf "$STAGING" && mkdir -p "$STAGING"
+            unzip -oq lampac.zip -d "$STAGING" && rm -f lampac.zip
+            subdirs=$(find "$STAGING" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
+            files_root=$(find "$STAGING" -mindepth 1 -maxdepth 1 -type f 2>/dev/null | wc -l)
+            if [[ "$subdirs" -eq 1 && "$files_root" -eq 0 ]]; then
+                subdir=$(find "$STAGING" -mindepth 1 -maxdepth 1 -type d | head -n1)
+                shopt -s dotglob nullglob
+                mv "$subdir"/* "$STAGING"/ 2>/dev/null || true
+                shopt -u dotglob nullglob
+                rmdir "$subdir" 2>/dev/null || true
+            fi
+            [[ ! -f "$STAGING/Core.dll" ]] && echo "Extraction failed" && exit 1
+            cp /root/lampac/init.conf /tmp/init.conf.bak 2>/dev/null || true
+            cp /root/lampac/passwd /tmp/passwd.bak 2>/dev/null || true
+            rm -rf /root/lampac && mv "$STAGING" /root/lampac
+            cp /tmp/init.conf.bak /root/lampac/ 2>/dev/null || true
+            cp /tmp/passwd.bak /root/lampac/ 2>/dev/null || true
+            rm -f /tmp/*.bak
+
+            # Re-apply the lightweight Termux profile. ENG providers remain
+            # paused; AIOStreams and Jackett have independent lifecycles.
+            file=/root/lampac/init.conf
+            if [ -f "$file" ]; then
+                sed -i "s/^[[:space:]]*}:,/  },/" "$file"
+                sed -i "s/\"GStreamer\",[[:space:]]*//g; s/,[[:space:]]*\"GStreamer\"//g" "$file"
+                if ! grep -q "^[[:space:]]*\"disableEng\"[[:space:]]*:" "$file" && grep -q "^[[:space:]]*\"listen\"[[:space:]]*:" "$file"; then
+                    sed -i "/^[[:space:]]*\"listen\"[[:space:]]*:/i\  \"disableEng\": true," "$file"
+                fi
+                if ! grep -q "^[[:space:]]*\"Jackett\"[[:space:]]*:" "$file" && grep -q "^[[:space:]]*\"listen\"[[:space:]]*:" "$file"; then
+                    sed -i "/^[[:space:]]*\"listen\"[[:space:]]*:/i\  \"Jackett\": { \"enable\": true, \"url\": \"\", \"port\": 9117, \"api_key\": \"\", \"proxy_downloads\": true }," "$file"
+                fi
+            fi
+
+            # Remove retired providers and stale site definitions so the dynamic
+            # module loader cannot load them from an earlier installation.
+            rm -rf /root/lampac/module/OnlineVN/NguonC \
+                   /root/lampac/module/OnlineENG/CineWave \
+                   /root/lampac/module/OnlineENG/Mapple4K \
+                   /root/lampac/module/OnlineENG/OpenDirectory \
+                   /root/lampac/mods/OnlineENG/CineWave \
+                   /root/lampac/mods/OnlineENG/Mapple4K \
+                   /root/lampac/mods/OnlineENG/OpenDirectory
+            rm -f /root/lampac/module/NextHUB/sites/85po.yaml \
+                  /root/lampac/mods/NextHUB/sites/85po.yaml
+
+            base="$KKBase"
+            target=/root/lampac/module/OnlineVN/KKPhim
+            mkdir -p "$target"
+            for file in Controller.cs Model.cs ModInit.cs manifest.json; do
+                curl -fSL --retry 3 "$base/$file" -o "$target/$file"
+            done
+
+            k20base="$K20Base"
+            k20target=/root/lampac/module/OnlineVN/K20
+            mkdir -p "$k20target"
+            for file in Controller.cs Model.cs ModInit.cs manifest.json; do
+                curl -fSL --retry 3 "$k20base/$file" -o "$k20target/$file"
+            done
+
+            vsmovbase="$VsMovBase"
+            vsmovtarget=/root/lampac/module/OnlineVN/VsMov
+            mkdir -p "$vsmovtarget"
+            for file in Controller.cs Model.cs ModInit.cs manifest.json; do
+                curl -fSL --retry 3 "$vsmovbase/$file" -o "$vsmovtarget/$file"
+            done
+
+            webbase="$WebBase"
+            webtarget=/root/lampac/module/OnlineENG/WebStreamr
+            mkdir -p "$webtarget"
+            for file in Controller.cs Model.cs ModInit.cs manifest.json; do
+                curl -fSL --retry 3 "$webbase/$file" -o "$webtarget/$file"
+            done
+
+            sootiobase="$SootioBase"
+            sootiotarget=/root/lampac/module/OnlineENG/Sootio
+            mkdir -p "$sootiotarget"
+            for file in Controller.cs Model.cs ModInit.cs manifest.json; do
+                curl -fSL --retry 3 "$sootiobase/$file" -o "$sootiotarget/$file"
+            done
+
+            aiobase="$AioBase"
+            aiotarget=/root/lampac/module/OnlineENG/AIOStreams
+            mkdir -p "$aiotarget"
+            for file in Controller.cs Model.cs ModInit.cs manifest.json; do
+                curl -fSL --retry 3 "$aiobase/$file" -o "$aiotarget/$file"
+            done
+
+            # Custom Online (Lampa client) plugin: wrapped info rows + full titles.
+            onlinebase="$OnlineBase"
+            onlinetarget=/root/lampac/module/Online
+            mkdir -p "$onlinetarget"
+            curl -fSL --retry 3 "$onlinebase/plugin.js" -o "$onlinetarget/plugin.js"
+
+            curl -fSL --retry 3 "$AioCtlUrl" -o /root/aioctl.sh
+            chmod +x /root/aioctl.sh
+
+            # Keep the dynamic LampaWeb subtitle/plugin selector in sync after
+            # replacing a release archive.
+            webbase="$LampaWebBase"
+
+            curl -fSL --retry 3 "$AioCtlUrl" -o /root/aioctl.sh
+            curl -fSL --retry 3 "$JackettCtlUrl" -o /root/jackettctl.sh
+            chmod +x /root/aioctl.sh /root/jackettctl.sh
+
+            syncstamp=$(date +%s)
+            nexthubrootbase="$NextHubRootBase"
+            nexthubroottarget=/root/lampac/module/NextHUB
+            nexthubtarget="$nexthubroottarget/sites"
+            if [ -d "$nexthubtarget" ]; then
+                for file in 24rolika.yaml 24video.yaml 3movs.yaml analdin.yaml batsa.yaml beeg.yaml bigboss.yaml brazzrus.yaml cam4.yaml crocotube.yaml ebasos.yaml ebun.yaml familyporn.yaml fapguru.yaml film-adult.yaml fpo.yaml gayporntube.yaml hellporno.yaml hochutv.yaml huyamba.yaml jopaonline.yaml lenkino.yaml lenporno.yaml noodlemagazine.yaml oxax.yaml perfektdamen.yaml porn4days.yaml porndig.yaml pornhub.yaml pornk.yaml porno365.yaml porno666.yaml pornoakt.yaml pornobolt.yaml pornobriz.yaml pornokaef.yaml pornone.yaml pornve.yaml prostoporno.yaml rusporno.yaml rusvideos.yaml sex-studentki.yaml sexporno.yaml sexxxxhub.yaml sosushka.yaml trahkino.yaml uporno.yaml veporn.yaml vporno.yaml vtrahe.yaml vtrahetv.yaml watchporn.yaml xasiat.yaml xozilla.yaml xxxperevod.yaml yaeby.yaml youjizz.yaml; do
+                    curl -fSL --retry 3 "$nexthubrootbase/sites/$file?cb=$syncstamp" -o "$nexthubtarget/$file.tmp"
+                    mv "$nexthubtarget/$file.tmp" "$nexthubtarget/$file"
+                done
+                for file in CategoryVi.cs manifest.json; do
+                    curl -fSL --retry 3 "$nexthubrootbase/$file" -o "$nexthubroottarget/$file.tmp"
+                    mv "$nexthubroottarget/$file.tmp" "$nexthubroottarget/$file"
+                done
+                curl -fSL --retry 3 "$nexthubrootbase/Controllers/ListController.cs" -o "$nexthubroottarget/Controllers/ListController.cs.tmp"
+                mv "$nexthubroottarget/Controllers/ListController.cs.tmp" "$nexthubroottarget/Controllers/ListController.cs"
+                curl -fSL --retry 3 "$nexthubrootbase/Controllers/ViewController.cs" -o "$nexthubroottarget/Controllers/ViewController.cs.tmp"
+                mv "$nexthubroottarget/Controllers/ViewController.cs.tmp" "$nexthubroottarget/Controllers/ViewController.cs"
+            fi
+
+            epornerbase="$EpornerBase"
+            epornertarget=/root/lampac/module/Adult/Eporner
+            if [ -d "$epornertarget" ]; then
+                for file in Controller.cs ModInit.cs Service.cs; do
+                    curl -fSL --retry 3 "$epornerbase/$file" -o "$epornertarget/$file.tmp"
+                    mv "$epornertarget/$file.tmp" "$epornertarget/$file"
+                done
+            fi
+
+            sisimodtarget=/root/lampac/module/SISI
+            if [ -d "$sisimodtarget" ]; then
+                curl -fSL --retry 3 "$SisiApiUrl" -o "$sisimodtarget/SisiApi.cs.tmp"
+                mv "$sisimodtarget/SisiApi.cs.tmp" "$sisimodtarget/SisiApi.cs"
+            fi
+            sisitarget=/root/lampac/module/SISI/plugins
+            if [ -d "$sisitarget" ]; then
+                rm -f "$sisitarget/sisi-layout.js" "$sisitarget/sisi-layout.js.tmp"
+                for file in sisi.js startpage.js sisi-restyle.js; do
+                    curl -fSL --retry 3 "$SisiPlugBase/$file" -o "$sisitarget/$file.tmp"
+                    mv "$sisitarget/$file.tmp" "$sisitarget/$file"
+                done
+            fi
+
+            for adultmodule in BongaCams Chaturbate Ebalovo Eporner HQporner PornHub Porntrex Runetki Spankbang Xhamster Xnxx Xvideos XvideosRED; do
+                adulttarget="/root/lampac/module/Adult/$adultmodule"
+                if [ -d "$adulttarget" ]; then
+                    curl -fSL --retry 3 "$csrc/Modules/Adult/$adultmodule/Service.cs?cb=$syncstamp" -o "$adulttarget/Service.cs.tmp"
+                    mv "$adulttarget/Service.cs.tmp" "$adulttarget/Service.cs"
+                fi
+            done
+
+            chaturbatebase="$ChaturbateBase"
+            chaturbatetarget=/root/lampac/module/Adult/Chaturbate
+            if [ -d "$chaturbatetarget" ]; then
+                for file in Controller.cs ModInit.cs; do
+                    curl -fSL --retry 3 "$chaturbatebase/$file?cb=$syncstamp" -o "$chaturbatetarget/$file.tmp"
+                    mv "$chaturbatetarget/$file.tmp" "$chaturbatetarget/$file"
+                done
+            fi
+
+            for adultmodinit in BongaCams Runetki Spankbang Ebalovo; do
+                adulttarget="/root/lampac/module/Adult/$adultmodinit"
+                if [ -d "$adulttarget" ]; then
+                    curl -fSL --retry 3 "$csrc/Modules/Adult/$adultmodinit/ModInit.cs?cb=$syncstamp" -o "$adulttarget/ModInit.cs.tmp"
+                    mv "$adulttarget/ModInit.cs.tmp" "$adulttarget/ModInit.cs"
+                fi
+            done
+
+            videasybase="$VideasyBase"
+            videasytarget=/root/lampac/module/OnlineENG/Videasy
+            if [ -d "$videasytarget" ]; then
+                for file in Controller.cs ModInit.cs; do
+                    curl -fSL --retry 3 "$videasybase/$file?cb=$syncstamp" -o "$videasytarget/$file.tmp"
+                    mv "$videasytarget/$file.tmp" "$videasytarget/$file"
+                done
+            fi
+
+            vidsrcbase="$VidSrcBase"
+            vidsrctarget=/root/lampac/module/OnlineENG/VidSrc
+            if [ -d "$vidsrctarget" ]; then
+                for file in Controller.cs ModInit.cs; do
+                    curl -fSL --retry 3 "$vidsrcbase/$file?cb=$syncstamp" -o "$vidsrctarget/$file.tmp"
+                    mv "$vidsrctarget/$file.tmp" "$vidsrctarget/$file"
+                done
+            fi
+
+            vidlinkbase="$VidLinkBase"
+            vidlinktarget=/root/lampac/module/OnlineENG/VidLink
+            if [ -d "$vidlinktarget" ]; then
+                for file in Controller.cs ModInit.cs; do
+                    curl -fSL --retry 3 "$vidlinkbase/$file?cb=$syncstamp" -o "$vidlinktarget/$file.tmp"
+                    mv "$vidlinktarget/$file.tmp" "$vidlinktarget/$file"
+                done
+            fi
+
+            for proxymodule in CubProxy TmdbProxy; do
+                proxytarget="/root/lampac/module/Proxy/$proxymodule"
+                if [ -d "$proxytarget" ]; then
+                    for file in Controller.cs ModInit.cs; do
+                        curl -fSL --retry 3 "$ProxyBase/$proxymodule/$file" -o "$proxytarget/$file.tmp"
+                        mv "$proxytarget/$file.tmp" "$proxytarget/$file"
+                    done
+                fi
+            done
+
+            # Keep the dynamic LampaWeb subtitle/plugin selector in sync after
+            # replacing a release archive.
+            webbase="$LampaWebBase"
+            webtarget=/root/lampac/module/LampaWeb
+            mkdir -p "$webtarget/Controllers" "$webtarget/Models" "$webtarget/Services" "$webtarget/plugins" "$webtarget/lang"
+            for file in Controllers/ApiController.cs ModInit.cs Models/InitPlugins.cs Services/LampaCron.cs Services/LampaVietnamese.cs lang/vi.js plugins/lampainit.js plugins/jackett.js plugins/online-compact.js plugins/vietnamese.js plugins/subsense-auto.js plugins/subsense.js plugins/subfinder.js plugins/stremiosub.js plugins/autotracks.js plugins/adminpanel.js; do
+                curl -fSL --retry 3 "$webbase/$file" -o "$webtarget/$file"
+            done
+            curl -fSL --retry 3 "$BaseConfUrl" -o /root/lampac/base.conf
+
+            gstbase="$GstBase"
+
+
+            mkdir -p "$webtarget/vendor/hls"
+            for file in hls.js LICENSE; do
+                curl -fSL --retry 3 "$webbase/vendor/hls/$file?cb=$syncstamp" -o "$webtarget/vendor/hls/$file.tmp"
+                mv "$webtarget/vendor/hls/$file.tmp" "$webtarget/vendor/hls/$file"
+            done
+            if [ -f /root/lampac/wwwroot/lampa-main/app.min.js ]; then
+                mkdir -p /root/lampac/wwwroot/lampa-main/vender/hls
+                cp "$webtarget/vendor/hls/hls.js" /root/lampac/wwwroot/lampa-main/vender/hls/hls.js.tmp
+                mv /root/lampac/wwwroot/lampa-main/vender/hls/hls.js.tmp /root/lampac/wwwroot/lampa-main/vender/hls/hls.js
+            fi
+
+            langdir=/root/lampac/wwwroot/lampa-main/lang
+            mkdir -p "$langdir"
+            cp "$webtarget/lang/vi.js" "$langdir/vi.js"
+
+            curl -fSL --retry 3 "$BaseConfUrl" -o /root/lampac/base.conf
+
+            gstbase="$GstBase"
+            gsttarget=/root/lampac/module/GStreamer
+            mkdir -p "$gsttarget/Services" "$gsttarget/plugins"
+            for file in Controller.cs ModInit.cs Services/GService.cs Services/GSProbe.cs Services/GStask.cs Services/HdrToneMappingBackend.cs Services/GStask.Pipeline.cs Services/GStask.Producer.cs plugins/gst.js; do
+                curl -fSL --retry 3 "$gstbase/$file" -o "$gsttarget/$file"
+            done
+
+            admintarget=/root/lampac/module/AdminPanel
+            if [ -d "$admintarget" ]; then
+                adminbase="$AdminBase"
+            adminstamp=$(date +%s)
+            for admintarget in /root/lampac/module/AdminPanel /root/lampac/mods/AdminPanel; do
+                [ -d "$admintarget" ] || continue
+                for file in AdminPanelController.cs ConfigSectionGroups.cs ModInit.cs manifest.json auth.html index.html; do
+                    curl -fSL --retry 3 "$adminbase/$file?cb=$adminstamp" -o "$admintarget/$file.tmp"
+                    mv "$admintarget/$file.tmp" "$admintarget/$file"
+                done
+                if ! grep -q src-adult-nexthub "$admintarget/ConfigSectionGroups.cs"; then
+                    echo "  [admin] ERROR: downloaded grouping is stale: $admintarget" >&2
+                    exit 1
+                fi
+                echo "  [admin] synced and verified: $admintarget"
+            done
+            echo "Update complete!"
+        '
         proot-distro login ubuntu -- bash -s <<'VI_LANG'
 set -euo pipefail
 src=/root/lampac/module/LampaWeb/lang/vi.js
@@ -1132,7 +1223,7 @@ patch_registry "$root/app.min.js"
 VI_LANG
         ;;
     *)
-        echo "Usage: lampac {start|stop|status|config|info|update|vidcore}"
+        echo "Usage: lampac {start|stop|status|config|info|update}"
         echo ""
         echo "  start   — Start Lampac server"
         echo "  stop    — Stop Lampac server"
@@ -1140,7 +1231,6 @@ VI_LANG
         echo "  config  — Edit config (init.conf)"
         echo "  info    — Show URL and port"
         echo "  update  — Update release and restore custom modules"
-        echo "  vidcore — Probe nguồn VidCore 4K: lampac vidcore [tmdb] [season] [episode]"
         ;;
 esac
 SHORTCUT

@@ -18,16 +18,8 @@ public class ModInit : IModuleLoaded, IModuleOnline
     {
         var online = new List<ModuleOnlineItem>();
 
-        // Trạng thái 2026-09-01: NGUỒN ĐÃ ĐÓNG, mặc định tắt. Người dùng test độc lập bằng
-        // plugin CloudStream (Kotlin) cùng trang vidlink.pro và vẫn fail => đây là tường
-        // "chỉ cho embed" của site (token/Referer/Origin sống chết theo session embed), không phải
-        // selector hay resolver sai. Code giữ nguyên: bật lại bằng
-        //   "VidLink": { "enable": true, "enabled": true }
-        // trong init.conf. Mặc định tắt vì mỗi lần mở phim module lại gọi vidlink.pro với
-        // httptimeout 20s — nguồn chết mà để trống thì trả giá bằng độ trễ cho mọi title.
-        if (conf?.enable != true)
-            return online;
-
+        // HTTP resolver — no Playwright required. `enabled: true` keeps VidLink
+        // visible when the rest of the ENG group is hidden by disableEng.
         bool allowWhenEngDisabled = conf?.enabled == true;
         if (CoreInit.conf.disableEng == false || allowWhenEngDisabled)
         {
@@ -60,11 +52,7 @@ public class ModInit : IModuleLoaded, IModuleOnline
             rhub = false,
             httptimeout = 20,
             streamproxy = true,
-
-            // MẶC ĐỊNH TẮT (đóng dự án 2026-09-01) — chỉ là giá trị khởi đầu, init.conf override
-            // được cả hai: enable để nguồn hoạt động, enabled để hiện khi disableEng:true.
-            enable = false,
-            enabled = false
+            enabled = true
         });
 
         conf.kit = false;

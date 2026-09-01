@@ -401,3 +401,16 @@ Ghi lại cho đúng, để đời sau không mở lại bằng cách đoán ti�
 Code vẫn nằm trong tree (`XdmoviesController.cs`, build từ `v31-xdmovies-rch-diag`): nguồn hiện trong
 danh sách nhưng luôn trả collection rỗng. Muốn ẩn thì `"XdMovies": {"enable": false}` trong `init.conf`
 hoặc tắt trong Admin Panel — không cần sửa code.
+
+## 16. 01/9 — XÓA DỰ ÁN (anh quyết), kiến thức giữ lại ở file này
+
+*"Thôi không quan trọng tui đã có đủ nguồn tui cần"* ⇒ không mở XdMovies nữa. Đã xoá sạch khỏi build:
+`XdmoviesController.cs` bị gạch khỏi repo, `manifest.json` → `tree` còn 4 file, `ModInit.cs` bỏ field
+`xd` / `Allow(xd)` / section `"XdMovies"` (kể cả `xd.rhub = true`), `Build` → `v32-xdmovies-rch-diag`
+thành `v32-xdmovies-removed`. **Không cần xoá §1–§15**: ba dữ kiện值钱 cho mọi nguồn phim kiểu này là
+(1) `search.html?q=` trả danh sách kết quả chứ không phải trang phim, (2) slug luôn kết thúc bằng TMDB id
+nên `q=<TMDB id>` là đường tìm đáng tin nhất, (3) Cloudflare của họ chặn ở MỌI trang (trang chủ cũng
+`len=0`) nên hoặc mọi trang đi qua `rch`, hoặc không đi được — đừng quay lại giữa đường.
+Máy ai còn dính file cũ: `rm -f /root/lampac/module/OnlineENG/MoviesHub/XdmoviesController.cs` (và trong
+`/root/lampac/mods/...` nếu có overlay), hoặc `bash setup-termux.sh --sync` — khối dọn orphan trong
+`sync_latest_modules()` tự xoá file không còn trong tree.
