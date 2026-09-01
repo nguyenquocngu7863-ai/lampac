@@ -204,7 +204,7 @@ public static class StripchatTo
                 // PREVIEW clip (not the live room). Resolve the real live stream
                 // from the per-model /cam endpoint at play time, and point the
                 // item at our resolver route for that.
-                string video = $"stripchat/play?u={Uri.EscapeDataString(username)}";
+                string video = $"stripchat/play?u={System.Uri.EscapeDataString(username)}";
 
                 var presets = model["presets"] is JArray presetArr
                     ? presetArr.Values<string>().Where(i => !string.IsNullOrEmpty(i)).ToArray()
@@ -255,7 +255,7 @@ public static class StripchatTo
         => !string.IsNullOrEmpty(u) && UsernameRx.IsMatch(u);
 
     public static string CamUri(string host, string username)
-        => $"{host}/api/front/v2/models/username/{Uri.EscapeDataString(username)}/cam?uniq={Uniq(16)}";
+        => $"{host}/api/front/v2/models/username/{System.Uri.EscapeDataString(username)}/cam?uniq={Uniq(16)}";
 
     static string Uniq(int n)
     {
