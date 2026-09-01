@@ -596,17 +596,6 @@ sync_latest_modules() {
                 && echo \"  [sync] movieshub/mods: cap nhat manifest.json\"
         fi
 
-        stripchattarget=/root/lampac/module/Adult/Stripchat
-        mkdir -p \"\$stripchattarget\"
-        for stripchatfile in manifest.json Controller.cs Service.cs ModInit.cs; do
-            pull Modules/Adult/Stripchat/\$stripchatfile \"\$stripchattarget/\$stripchatfile\"
-        done
-        if [ -d /root/lampac/mods/Adult/Stripchat ]; then
-            cp \"\$stripchattarget/manifest.json\" \"\$stripchattarget/Controller.cs\" \
-               \"\$stripchattarget/Service.cs\" \"\$stripchattarget/ModInit.cs\" \
-               /root/lampac/mods/Adult/Stripchat/
-        fi
-
         for sisimod in /root/lampac/module/SISI /root/lampac/mods/SISI; do
             if [ -d \"\$sisimod\" ]; then
                 pull SISI/SisiApi.cs \"\$sisimod/SisiApi.cs\"
@@ -825,15 +814,6 @@ install_custom_modules() {
                 mv \"\$sisitarget/\$file.tmp\" \"\$sisitarget/\$file\"
             done
         fi
-
-        # Stripchat is a custom live provider absent from the release archive.
-        stripchatbase=\"${CUSTOM_SOURCE_BASE}/Modules/Adult/Stripchat\"
-        stripchattarget=/root/lampac/module/Adult/Stripchat
-        mkdir -p \"\$stripchattarget\"
-        for file in manifest.json Controller.cs Service.cs ModInit.cs; do
-            curl -fSL --retry 3 \"\$stripchatbase/\$file?cb=\$syncstamp\" -o \"\$stripchattarget/\$file.tmp\"
-            mv \"\$stripchattarget/\$file.tmp\" \"\$stripchattarget/\$file\"
-        done
 
         for adultmodule in BongaCams Chaturbate Ebalovo Eporner HQporner PornHub Porntrex Runetki Spankbang Xhamster Xnxx Xvideos XvideosRED; do
             adulttarget=\"/root/lampac/module/Adult/\$adultmodule\"
