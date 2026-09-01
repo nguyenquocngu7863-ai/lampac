@@ -911,7 +911,7 @@ họ chỉ cần sửa `manifest.json` trong repo (xem [công thức](notes/FILE
 BATCH/ZIP bị loại, chọn nhóm là dịch cả mùa của nhóm đó. Bài học lớn nhất của vòng này — đừng đoán
 DOM, phải đọc trang thật — nằm trong `notes/FILEHOST-SOURCE-FORMULA.md`.
 
-## UhdMovies (`uhdmovies.autos`) — đang test trên thiết bị (vòng 2, build `v22-uhdmovies-searchfix`)
+## UhdMovies (`uhdmovies.autos`) — đang test trên thiết bị (vòng 3, build `v23-uhdmovies-driveseed`)
 
 Anh em họ UHDMovies/MoviesMod/TopMovies **không dùng HubCloud**: mỗi nút "Episode N"/chất lượng trỏ
 `…?sid=<blob mã hoá>` rồi đi qua trang verify của WordPress → shortener → trang file
@@ -931,9 +931,11 @@ boot bất kể file hỏng nằm ở đâu, nên "để riêng cho an toàn" kh
 v22: thử `?s=` trước `/search/`, nhận trang khi có chuỗi `/download-`, log in `dh=`/`sid=` để phân
 biệt "site không trả kết quả" với "mình lọc sai". Chi tiết + cấu trúc bài phim lẻ thật: note mục 7.
 
-**Chưa có gì được xác minh bằng máy ngoài vòng 1.** Vòng 2 cần thấy: `tìm ăn ở dạng ?s={0} (lần 1)`
-→ `movie: 4 nút từ 4 nhóm` → bấm nút → `bypass ok (rounds=N) -> …` → `ăn: resume https://…workers.dev/….mkv`.
-Nếu `bypass hết form mà không thấy ?go=` ⇒ site cần JS thật, lúc đó mới tính tới `rch`/`.cs3`.
+**Vòng 2 (1/9) đã xác minh được nửa đường**: `bypass ok (rounds=2)` ⇒ chuỗi countdown không cần JS, và
+trang file thật là `driveseed.org/r?key=<base64>` (không còn `/f/<id>`). Kẹt ở đoạn cuối vì module bắt
+link phải có đuôi `.mkv` còn `cdn.video-gen.xyz` thì không ⇒ v23 bỏ bắt buộc đó (`Playable`), học theo
+`div.text-center > a` + `?url=` của CSX và in nguyên trang anchor ra log khi vẫn trắng.
+Nếu log báo `ĐÂY LÀ TRANG CHALLENGE` ⇒ bật `rch` trong `init.conf`, không viết thêm code.
 
 ## VidLink — đã đóng (2026-09-01)
 

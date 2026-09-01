@@ -443,15 +443,16 @@ public class UhdmoviesController : HubController
         // Driveseed/Driveleech đôi khi nháy thêm một lần nữa
         string again = Regex.Match(page, @"replace\(\s*[""'](?<u>[^""']+)[""']\s*\)").Groups["u"].Value;
 
-        if (!string.IsNullOrWhiteSpace(again) && !again.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+        if (!string.IsNullOrWhiteSpace(again))
         {
-            page = await Get(Absolute(again, file), jar, OriginOf(file));
-            Console.WriteLine($"{Tag} trang file nháy tiếp -> {Cut(file + again)}");
-        }
-        else if (!string.IsNullOrWhiteSpace(again))
-        {
-            page = await Get(again, jar, OriginOf(file));
-            file = again;
+            string hop = Absolute(again, file);
+
+            if (hop != file)
+            {
+                page = await Get(hop, jar, OriginOf(file));
+                file = hop;   // PHẢI đổi base: href tương đối + HostOf phía sau tính theo trang MỚI
+                Console.WriteLine($"{Tag} trang file nháy tiếp -> {Cut(hop)}");
+            }
         }
 
         // Tên file + dung tích nằm ngay trên trang file => nhãn nút tốt hơn mọi suy đoán từ slug
@@ -460,6 +461,24 @@ public class UhdmoviesController : HubController
 
         if (string.IsNullOrWhiteSpace(fname))
             fname = Clean(Cut(Regex.Match(page ?? "", @"(?is)<title[^>]*>(?<t>.*?)</title>").Groups["t"].Value));
+
+        // driveseed.org/r?key=<base64> là endpoint ĐỔI LINK: nhiều khi nó 302 thẳng tới CDN. Một cú
+        // GetLocation (không tự follow) rẻ hơn cả loạt nút, và là đường duy nhất nếu trang là SPA.
+        string direct = await Http.GetLocation(file, referer: OriginOf(sid), headers: PlayHeaders());
+
+        if (!string.IsNullOrWhiteSpace(direct))
+        {
+            direct = Absolute(direct, file);
+
+            if (Playable(direct, file))
+            {
+                found.Add(new HubStream(direct, QualityLabel($"{fname} {fsize} · redirect", direct), PlayHeaders()));
+                Console.WriteLine($"{Tag} ăn: redirect {Cut(direct)} (khỏi cần đọc nút)");
+                return found;
+            }
+
+            Console.WriteLine($"{Tag} /r?key= không 302 ra file (Location={Cut(direct)}) — đọc nút");
+        }
 
         var buttons = Buttons(page, file);
 
@@ -470,19 +489,24 @@ public class UhdmoviesController : HubController
                 string link = kind switch
                 {
                     "resume" => await LinkFrom(Absolute(href, file), jar, file, @"btn-success"),
+                    "btn" => await LinkFrom(Absolute(href, file), jar, file, "btn"),
+                    "center" => IsMedia(Unwrap(Absolute(href, file))) ? Absolute(href, file)
+                              : await LinkFrom(Absolute(href, file), jar, file, "btn") ?? Absolute(href, file),
                     "cf" => await CfLinks(Absolute(href, file), jar, file),
                     "worker" => await WorkerLink(Absolute(href, file), jar, file),
                     _ => (await Http.GetLocation(Absolute(href, file), referer: OriginOf(file), headers: PlayHeaders())) is string loc && !string.IsNullOrWhiteSpace(loc)
                             ? Absolute(loc, file) : Absolute(href, file)
                 };
 
-                if (string.IsNullOrWhiteSpace(link) || !IsMedia(link))
+                link = Unwrap(link);
+
+                if (string.IsNullOrWhiteSpace(link) || !Playable(link, file, loose: kind is not ("media" or "ext" or "center")))
                     continue;
 
                 if (found.Any(x => x.Url == link))
                     continue;
 
-                string tag = kind == "instant" || kind == "cloud" ? " [download]" : "";
+                string tag = kind is "instant" or "cloud" or "ext" ? " [download]" : "";
 
                 found.Add(new HubStream(link, QualityLabel($"{fname} {fsize} · {kind}{tag}", link), PlayHeaders()));
                 Console.WriteLine($"{Tag} ăn: {kind} {Cut(link)}");
@@ -495,7 +519,15 @@ public class UhdmoviesController : HubController
         }
 
         if (found.Count == 0)
-            Console.WriteLine($"{Tag} 0 link chơi được trên {Cut(file)} | a={Regex.Matches(page ?? "", AnchorPattern).Count} hosts={HostHistogram(page, file)} head={Cut(Regex.Replace(page ?? "", @"\s+", " "))}");
+        {
+            string title = Text(page ?? "", @"(?is)<title[^>]*>(?<v>.*?)</title>");
+            bool challenge = Regex.IsMatch(page ?? "", @"(?i)just a moment|attention required|verify you are|access denied|cf-challenge|checking your browser|pardon our interruption|enable javascript|security check|before you can access");
+
+            Console.WriteLine($"{Tag} 0 link chơi được trên {Cut(file)} | title='{title}' a={Regex.Matches(page ?? "", AnchorPattern).Count} hosts={HostHistogram(page, file)} nút=[{AnchorDump(page, 8)}] head={Cut(Regex.Replace(page ?? "", @"\s+", " "))}");
+
+            if (challenge)
+                Console.WriteLine($"{Tag} ĐÂY LÀ TRANG CHALLENGE (Cloudflare/JS), không phải trang thiếu nút: hết đường không-JS -> bật rch trong init.conf rồi thử lại");
+        }
         else
             Console.WriteLine($"{Tag} {found.Count} link cho '{Cut($"{fname} {fsize}")}' (nút: {string.Join(",", buttons.Select(x => x.Kind))})");
 
@@ -593,6 +625,14 @@ public class UhdmoviesController : HubController
     static List<(string Href, string Kind, int Rank)> Buttons(string page, string file)
     {
         var list = new List<(string, string, int)>();
+        string fileHost = HostOf(file);
+
+        // CSX (Extractors.kt:556 Driveleech.getUrl) chỉ cần "div.text-center > a" là lấy được hết nút
+        // của driveseed/driveleech. Ghi lại các khối đó để nút KHÔNG TÊN (chỉ có icon) vẫn được nhận.
+        var centers = new List<(int A, int B)>();
+
+        foreach (Match c in Regex.Matches(page ?? "", @"(?is)<div[^>]*class\s*=\s*[""'][^""']*text-center[^""']*[""'][^>]*>(?<b>.*?)</div>"))
+            centers.Add((c.Groups["b"].Index, c.Groups["b"].Index + c.Groups["b"].Length));
 
         foreach (Match m in Regex.Matches(page ?? "", AnchorPattern))
         {
@@ -602,28 +642,121 @@ public class UhdmoviesController : HubController
             if (string.IsNullOrWhiteSpace(href) || href.StartsWith("#") || href.StartsWith("javascript", StringComparison.OrdinalIgnoreCase))
                 continue;
 
+            string abs = Absolute(href, file);
+
+            if (JunkLink(abs, text))
+                continue;
+
+            // Ba tầng nhận nút: (1) từ khoá DriveLeech cũ, (2) class btn* (UI mới của driveseed chỉ ghi
+            // "Download"), (3) link CÓ VẼ FILE = mang đuôi media hoặc ở host KHÁC host trang file.
+            // Log 1/9 chết vì thiếu tầng 2+3: trang có 11 anchor, cdn.video-gen.xyz:1 chính là file.
             string kind =
                 text.Contains("resume cloud") || text.Contains("cloud resume") ? "resume" :
                 text.Contains("direct link") ? "cf" :
                 text.Contains("worker") ? "worker" :
                 text.Contains("instant") ? "instant" :
-                text.Contains("cloud download") ? "cloud" : null;
+                text.Contains("cloud download") ? "cloud" :
+                Attr(m.Value, "class").Contains("btn", StringComparison.OrdinalIgnoreCase) ? "btn" :
+                IsMedia(abs) ? "media" :
+                centers.Any(r => m.Index >= r.A && m.Index < r.B) ? "center" :
+                !abs.Contains(fileHost, StringComparison.OrdinalIgnoreCase) ? "ext" : null;
 
-            if (kind == null || list.Any(x => x.Item2 == kind && x.Item1 == href))
+            if (kind == null || list.Any(x => x.Item1 == href))
                 continue;
 
-            list.Add((href, kind, kind switch { "resume" => 0, "cf" => 1, "worker" => 2, "instant" => 3, _ => 4 }));
+            list.Add((href, kind, kind switch { "resume" => 0, "cf" => 1, "worker" => 2, "instant" => 3, "cloud" => 4, "media" => 5, "btn" => 6, "center" => 7, _ => 8 }));
         }
 
         return [.. list];
     }
 
+    /// <summary>Rác trên trang file: menu, logo, kênh social, ảnh/js — không bao giờ là link xem.</summary>
+    static bool JunkLink(string url, string text)
+        => Regex.IsMatch(text ?? "", @"(?i)report|dmca|copyright|contact|privacy|polic|terms|\bhome\b|about|follow|channel|upload file|search")
+        || Regex.IsMatch(url ?? "", @"(?i)(?:^|//)(?:t\.me|telegram|twitter\.com|facebook\.com|instagram\.com|pinterest|wa\.me)|\.(?:png|jpe?g|webp|gif|ico|svg|css|js|woff2?)(?:\?|$)");
+
+    static string HostOf(string url)
+        => Uri.TryCreate(url, UriKind.Absolute, out Uri u) ? u.Host : "";
+
+    /// <summary>Link có được đưa vào menu play không. loose = nhận cả link cùng host (driveseed hay
+    /// nhét /dl/&lt;hash&gt; không đuôi) với điều kiện nó không phải chính trang vừa lấy.</summary>
+    static bool Playable(string url, string file, bool loose = false)
+    {
+        if (string.IsNullOrWhiteSpace(url) || !Uri.TryCreate(url, UriKind.Absolute, out Uri u))
+            return false;
+
+        if (Regex.IsMatch(u.AbsolutePath, @"(?i)\.(png|jpe?g|webp|gif|ico|svg|css|js|woff2?)$"))
+            return false;
+
+        if (IsMedia(url) || !u.Host.Equals(HostOf(file), StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return loose && StripAnchor(url) != StripAnchor(file);
+    }
+
+    static string StripAnchor(string url) => Regex.Replace(url ?? "", @"[#?].*$", "").TrimEnd('/');
+
+    /// <summary>driveleech/driveseed hay nhả Location kiểu `https://host/dl?url=&lt;file&gt;` — phần CHƠI
+    /// ĐƯỢC là cái nằm sau `?url=` (CSX: instantLink = location.substringAfter("?url=")). Cả Location
+    /// mà đưa cho player là ăn một trang HTML nhảy tiếp, đúng cái bẫy "link có mà không play".</summary>
+    static string Unwrap(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+            return url;
+
+        var m = Regex.Match(url, @"[?&]url=(?<v>[^&]+)", RegexOptions.IgnoreCase);
+
+        if (!m.Success)
+            return url;
+
+        string inner = Uri.UnescapeDataString(m.Groups["v"].Value);
+
+        return inner.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? inner : url;
+    }
+
+    /// <summary>Nguyên liệu cho vòng sửa selector: in mọi anchor của trang, kể cả cái bị bỏ.</summary>
+    static string AnchorDump(string html, int max = 8)
+    {
+        var dump = new List<string>();
+
+        foreach (Match m in Regex.Matches(html ?? "", AnchorPattern))
+        {
+            if (dump.Count >= max)
+                break;
+
+            string href = Unescape(HrefValue(m));
+
+            if (string.IsNullOrWhiteSpace(href))
+                continue;
+
+            string text = Plain(m.Groups["t"].Value);
+            dump.Add($"'{(string.IsNullOrWhiteSpace(text) ? "(trống)" : Cut(text))}'->{Cut(href)}");
+        }
+
+        return string.Join(" ;; ", dump);
+    }
+
     async Task<string> LinkFrom(string url, CookieContainer jar, string referer, string selector)
     {
         string html = await Get(url, jar, OriginOf(referer));
-        var m = Regex.Match(html ?? "", @"(?is)<a\b[^>]*class\s*=\s*[""'][^""']*" + selector + @"[^""']*[""'][^>]*>");
+        string first = null;
 
-        return m.Success ? Absolute(Unescape(HrefValue(m)), url) : null;
+        // Trang con của DriveLeech có thể vài nút btn* (Back / Report / Download). Lấy cái ĐẦU TIÊN
+        // trông như file, nếu không có thì mới quay lại cái đầu tiên.
+        foreach (Match m in Regex.Matches(html ?? "", @"(?is)<a\b[^>]*class\s*=\s*[""'][^""']*" + selector + @"[^""']*[""'][^>]*>"))
+        {
+            string href = Absolute(Unescape(HrefValue(m)), url);
+
+            if (string.IsNullOrWhiteSpace(href) || href.StartsWith("javascript", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (Playable(href, url))
+                return href;
+
+            first ??= href;
+        }
+
+        return first;
     }
 
     /// <summary>Direct Links = trang Cloudflare-type: ?type=1 rồi ?type=2, lấy a.btn-success.</summary>

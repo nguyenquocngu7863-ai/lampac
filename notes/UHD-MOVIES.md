@@ -458,3 +458,54 @@ uhdmovies: không lấy được bài nào (tmdb=860508, queries=2) | site=https
 `bypass ok (rounds=…) -> …driveleech|driveseed…` → `ăn: resume https://…workers.dev/….mkv`.
 Vẫn `0 bài ứng viên` mà `dh>0` ⇒ `Anchors` còn đang lọc gì đó, sửa tiếp; `dh=0` ⇒ site đổi trang tìm
 kiếm (lúc đó mới xem `uhdmovies.mov` có phải domain mới thật không).
+
+---
+
+## 8. Vòng 2 trên thiết bị (1/9): chuỗi bypass SỐNG, kẹt ở trang file — và vì sao
+
+```text
+uhdmovies: bypass ok (rounds=2) -> https://driveseed.org/r?key=QWNZTTJu…
+uhdmovies: trang file nháy tiếp -> https://driveseed.org/r?key=QWNZTTJu…
+uhdmovies: 0 link chơi được trên https://driveseed.org/r?key=… | a=11 hosts=driveseed.org:9 cdn.video-gen.xyz:1 t.me:1
+uhdmovies: 0 link chơi được từ https://cloud.unblockedgames.world/?sid=a3Y4azk3…
+GStreamer: add rejected source. Reason=probe process exited with code 0
+```
+
+Ba thứ đã được xác nhận bằng máy (không còn là suy luận):
+**`rounds=2` đúng như CSX** ⇒ chuỗi `form#landing` × 2 + `?go=` + cookie `_wp_http2` vượt được cả hai
+trang countdown, không cần JS. Và **`driveseed.org/r?key=<base64>` là trang file thật** (không phải
+`/f/<id>` như hồi mục 2d) — họ đã đổi endpoint sang `/r?key=`.
+
+Còn "0 link" là **lỗi của mình, không phải của site**: `hosts=driveseed.org:9 cdn.video-gen.xyz:1`
+nghĩa là trên trang CÓ một link sang `cdn.video-gen.xyz` — chính là file — nhưng `Resolve` bắt
+`IsMedia()` (phải có đuôi `.mkv/.mp4/...`) nên link không đuôi bị loại sạch.
+
+### Đối chiếu lại code CSX (`CineStream/src/main/kotlin/com/megix/Extractors.kt`, đọc 1/9)
+
+| CSX | Mình (v23) |
+|---|---|
+| `class Driveseed : Driveleech()` (dùng chung `getUrl`), `requiresReferer = false` | không đòi Referer khi play ✓ (`PlayHeaders()` chỉ UA+Accept) |
+| `if (url.contains("r?key="))` → `selectFirst("script").data().substringAfter("replace(").substringBefore(")")` → GET `baseUrl + temp` | `again` = regex `replace\(\s*["']…` trên TOÀN trang (rộng hơn) rồi GET + **đổi base** (fix log "nháy tiếp" vòng trước in `file+again` nên không đọc ra gì) |
+| nút lấy từ `div.text-center > a`, không cần biết chữ | thêm tier `center`: anchor nằm trong khối `text-center` được nhận kể cả khi nhãn rỗng/chỉ có icon |
+| `Cloud Download` → href trần; `Instant Download` → `app.get(href, allowRedirects=false).headers["location"].substringAfter("?url=")` | `Unwrap()`: nếu link/Location có `?url=` thì **dùng phần sau `?url=`** — đây là chỗ mình sẽ ăn trang HTML nhảy tiếp thay vì file nếu không cắt |
+| `Resume Cloud` → GET href → `a.btn-success`; `Direct Links` → `?type=1`/`?type=2` → `a.btn-success` | `LinkFrom(..., "btn-success")` / `CfLinks` ✓ (LinkFrom giờ chọn btn* ĐẦU TIÊN trông như file, không lấy bừa cái đầu) |
+| `Resume Worker Bot` → token + `fetch('/download?id=…')` + POST giữ `PHPSESSID` → JSON `.url` | `WorkerLink` ✓ y hệt |
+| `Name`/`Size` từ `ul > li.list-group-item` (`substringAfter("Name : ")`) | `Text(page, "list-group-item…Name…")` ✓ |
+
+### Thay đổi v23
+
+1. `IsMedia()` → **`Playable(url, file, loose)`**: nhận link tuyệt đối không phải ảnh/css/js;
+   `loose` cho cả link cùng host miễn khác trang vừa lấy (`/dl/<hash>`). `IsMedia` chỉ còn dùng để
+   XẾP HẠNG (media đứng trên link không đuôi, vì không đuôi thường là link chỉ-tải-về → dán `[download]`).
+2. Ba tầng nhận nút: từ khoá DriveLeech cũ → `class*="btn"` → `text-center`/host khác (tier `ext`).
+3. `JunkLink()`: loại menu, `t.me`, social, ảnh/js (log có `t.me:1` — nếu không lọc, nó thành "nút").
+4. Thăm `Http.GetLocation(file)` TRƯỚC khi mò nút: `/r?key=` nhiều khi 302 thẳng tới CDN ⇒ một request
+   là xong (`ăn: redirect …`).
+5. `AnchorDump(page, 8)` trong log "0 link chơi được" + bắt tên trang challenge
+   (`just a moment|attention required|cf-challenge|checking your browser|…`) và in thẳng câu
+   "đây là trang Cloudflare/JS → bật `rch`". Vòng sau KHÔNG cần đoán nữa: log sẽ nói luôn là
+   "không có nút" hay "có nút mà site chặn bằng JS".
+
+**Vòng 3 mong đợi**: `ăn: redirect https://cdn.video-gen.xyz/…` (hoặc `ăn: center/media/ext …`) rồi
+`play … direct` và video chạy. Nếu log in `!! ĐÂY LÀ TRANG CHALLENGE` ⇒ bật `rch` trong `init.conf`
+(Lampac đã có sẵn đường đó — `httpHydra` tự đi qua `rch.Get`), không cần viết gì thêm trong module.
