@@ -8,6 +8,8 @@ namespace Stripchat;
 
 public static class StripchatTo
 {
+    public static string LastError { get; private set; }
+
     public static string Uri(string host, string tag, int pg)
     {
         tag = tag switch
@@ -27,8 +29,10 @@ public static class StripchatTo
     {
         totalPages = 0;
 
+        LastError = null;
         if (json.IsEmpty)
         {
+            LastError = "empty upstream response";
             Console.WriteLine("[Stripchat] empty response body from listing request");
             return null;
         }
@@ -45,6 +49,7 @@ public static class StripchatTo
             // Most likely cause: Stripchat returned an HTML challenge/error page
             // instead of JSON (bot detection), so JSON.Parse blows up here.
             string preview = raw.Length > 800 ? raw[..800] : raw;
+            LastError = $"not JSON: {ex.Message}";
             Console.WriteLine($"[Stripchat] JSON parse failed: {ex.Message}\n[Stripchat] raw response (first 800 chars):\n{preview}");
             return null;
         }
@@ -52,12 +57,20 @@ public static class StripchatTo
         var tokens = root.SelectTokens("$.blocks[*].models[*]").ToList();
         if (tokens.Count == 0)
         {
-            // Parsed fine as JSON, but the expected blocks[*].models[*] path matched
-            // nothing. Likely Stripchat changed the response shape, or this is a
-            // structured error/challenge body. Dump it so we can see exactly what
-            // came back and fix the path instead of guessing.
+            // Tolerate experiments that wrap/reorder blocks: a model object is uniquely
+            // recognizable by username + numeric id, regardless of its JSON nesting.
+            tokens = root.Descendants()
+                .OfType<JObject>()
+                .Where(i => i["username"] != null && i["id"] != null)
+                .Cast<JToken>()
+                .ToList();
+        }
+
+        if (tokens.Count == 0)
+        {
             string preview = raw.Length > 800 ? raw[..800] : raw;
-            Console.WriteLine($"[Stripchat] no models found at $.blocks[*].models[*]\n[Stripchat] raw response (first 800 chars):\n{preview}");
+            LastError = $"JSON has no models; keys={string.Join(',', root.Properties().Select(i => i.Name))}";
+            Console.WriteLine($"[Stripchat] no model objects found; raw response:\n{preview}");
             return null;
         }
 
@@ -72,9 +85,11 @@ public static class StripchatTo
             if (id <= 0 || string.IsNullOrWhiteSpace(username) || !seen.Add(id))
                 continue;
 
-            bool isLive = model.Value<bool?>("isLive") == true;
+            // Depending on the geo/experiment block Stripchat sends either isLive or
+            // isOnline. The listing itself contains online rooms, so accept either flag.
+            bool isLive = model.Value<bool?>("isLive") == true || model.Value<bool?>("isOnline") == true;
             string status = model.Value<string>("status");
-            if (!isLive || status != "public")
+            if (!isLive || (!string.IsNullOrEmpty(status) && status != "public"))
             {
                 skippedNotLive++;
                 continue;
@@ -106,7 +121,8 @@ public static class StripchatTo
             // whether Stripchat renamed these fields or changed their values.
             string sample = tokens[0].ToString(Newtonsoft.Json.Formatting.None);
             if (sample.Length > 500) sample = sample[..500];
-            Console.WriteLine($"[Stripchat] {tokens.Count} models parsed, 0 passed isLive/public filter (skipped={skippedNotLive}).\n[Stripchat] sample model:\n{sample}");
+            LastError = $"parsed={tokens.Count}, accepted=0, sample={sample}";
+            Console.WriteLine($"[Stripchat] {tokens.Count} models parsed, 0 passed live/public filter (skipped={skippedNotLive}).\n[Stripchat] sample model:\n{sample}");
             return null;
         }
 

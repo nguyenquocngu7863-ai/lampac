@@ -47,7 +47,7 @@ public class StripchatController : BaseSisiController
             }
 
             if (playlists == null || playlists.Count == 0)
-                return e.Fail("playlists", refresh_proxy: true);
+                return e.Fail($"playlists: {StripchatTo.LastError ?? "unknown parser result"}", refresh_proxy: true);
             return e.Success((playlists, totalPages));
         });
 
