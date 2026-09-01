@@ -506,6 +506,13 @@ nghĩa là trên trang CÓ một link sang `cdn.video-gen.xyz` — chính là fi
    "đây là trang Cloudflare/JS → bật `rch`". Vòng sau KHÔNG cần đoán nữa: log sẽ nói luôn là
    "không có nút" hay "có nút mà site chặn bằng JS".
 
+6. **Tự thử lại qua `rch` khi gặp challenge**: `Challenge()` nhận ra Cloudflare/JS rồi gọi
+   `httpHydra.Get(file, safety: true)` — ở Lampac, `safety: true` chính là công tắc đổi sang
+   `rch.Get` (`Shared/Services/HTTP/HttpHydra.cs:48`), chỉ có tác dụng khi `init.conf` bật `rhub`
+   + `rch_access`; chưa bật thì nó vẫn là request thường, không hỏng gì. RCH **không** giữ
+   `CookieContainer` nên chỉ dùng cho bước cuối, không đưa chuỗi countdown qua đó được. Log:
+   `trang file là challenge — thử qua rch` -> `rch ăn, trang file …B` | `rch cũng không qua được`.
+
 **Vòng 3 mong đợi**: `ăn: redirect https://cdn.video-gen.xyz/…` (hoặc `ăn: center/media/ext …`) rồi
 `play … direct` và video chạy. Nếu log in `!! ĐÂY LÀ TRANG CHALLENGE` ⇒ bật `rch` trong `init.conf`
 (Lampac đã có sẵn đường đó — `httpHydra` tự đi qua `rch.Get`), không cần viết gì thêm trong module.
