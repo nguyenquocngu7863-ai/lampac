@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Shared;
 using Shared.Attributes;
 using Shared.Models.SISI.Base;
+using Shared.Services.HTTP;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
@@ -26,10 +27,24 @@ public class StripchatController : BaseSisiController
         {
             List<PlaylistItem> playlists = null;
             int totalPages = 0;
-            await httpHydra.GetSpan(StripchatTo.Uri(init.host, tag, pg), span =>
+            string url = StripchatTo.Uri(init.host, tag, pg);
+            if (rch?.enable == true || init.priorityBrowser == "http")
             {
-                playlists = StripchatTo.Playlist(init.host, span, pg, out totalPages);
-            });
+                await httpHydra.GetSpan(url, span =>
+                {
+                    playlists = StripchatTo.Playlist(init.host, span, pg, out totalPages);
+                });
+            }
+            else
+            {
+                // Stripchat may return an age or anti-bot page to plain server HTTP.
+                // Use the browser transport when available, as the livecam modules do.
+                var headers = httpHeaders(init);
+                await PlaywrightHttp.GetSpan(init.plugin, init.cors(url, headers, requestInfo), span =>
+                {
+                    playlists = StripchatTo.Playlist(init.host, span, pg, out totalPages);
+                }, headers, proxy_data);
+            }
 
             if (playlists == null || playlists.Count == 0)
                 return e.Fail("playlists", refresh_proxy: true);
