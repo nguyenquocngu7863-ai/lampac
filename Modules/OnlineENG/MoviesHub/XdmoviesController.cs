@@ -277,6 +277,13 @@ public class XdmoviesController : HubController
         if (!token.StartsWith("http", StringComparison.OrdinalIgnoreCase))
             token = $"{init.host.TrimEnd('/')}/download/{token}";
 
+        var info = rch?.InfoConnected();
+
+        // "Đo" trước khi đoán: dòng này trả lời dứt điểm rhub có bật và client là ai, đủ tuổi chưa
+        // (Headers() đòi apkVersion >= 484 — RchClient.cs:235). Không có client thì mọi script
+        // mình gửi đều vô nghĩa, và log phải nói rõ như vậy thay vì để anh đoán.
+        Console.WriteLine($"{Tag} rhub enable={rch?.enable} client={(info == null ? "KHONG CO (chưa có app Lampa nào đăng ký /nws)" : $"apk={info.apkVersion} type={info.rchtype} player={info.player}")}");
+
         if (rch?.enable != true)
         {
             Console.WriteLine($"{Tag} KHÔNG QUA GATE ĐƯỢC: trang link cần JS (đếm ngược 6s + Turnstile) mà rhub đang TẮT (rch.enable=false) — bật \"rhub\": true + rch_access trong init.conf, và client Lampa phải >= 484");

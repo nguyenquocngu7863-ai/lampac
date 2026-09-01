@@ -189,3 +189,84 @@ gì cả**, kể cả các nguồn khác. Hệ quả quy trình:
    `lampac stop; lampac start` (module cả cụm sẽ không nạp nhưng máy xem được tiếp).
 3. `--sync` của script CŨ không xoá file đã rút khỏi tree ⇒ `UhdmoviesController.cs` ở lại, gọi
    `ModInit.uhd` đã gỡ -> CS0117. Đã sửa trong `sync_latest_modules()` (commit `ea050cf`).
+
+## 8. Lệnh ĐO khi test trên máy (chụp một phát là đủ viết vòng 2 — đừng đoán nữa)
+
+Module đã tự log 4 thứ, đọc theo thứ tự này:
+
+| dòng log | ý nghĩa | nếu sai thì sao |
+|---|---|---|
+| `rhub enable=… client=…` | rhub bật chưa, client là app nào, `apkVersion` bao nhiêu | `client=KHONG CO` ⇒ không ai giải Turnstile hộ, mọi đường khác đều vô ích |
+| `tìm q=… bai=… khop_id=…` | trang tìm kiếm có bài không, bài có khớp TMDB id ở slug không | `bai=0` ⇒ site không dùng `?s=`, phải đọc HTML trang search (lệnh P2) |
+| `bài <url>: N nút từ M khối` | parser ăn được bao nhiêu link | `0 link /download/` ⇒ HTML không phải khối `<p>` (dùng P1 để biết thật sự là gì) |
+| `rch len=… cur=…` + `gate mở ra N url` | client có chạy JS mình gửi không, gate nhả những link nào | `len=0`/`cur=` rỗng ⇒ `data` bị bỏ qua, vòng 2 đổi sang `rch.Get` hoặc bấm tay |
+
+### P0 — gom log (chỉ gõ sau khi đã bấm một chất lượng trong Lampa)
+
+```bash
+lampac logs 2>/dev/null | grep -a "xdmovies:" | tail -60
+```
+
+### P1 — HTML THÔ của bài post (_markup thật_, không phải bản render)
+
+```bash
+cd ~
+curl -fsSL -A "Mozilla/5.0" "https://top.xdmovies.wtf/movies/the-whisper-man-2160p-1080p-hindi-english-download-860508" -o xd-post.html
+echo "size=$(wc -c < xd-post.html) nextdata=$(grep -c '__NEXT_DATA__' xd-post.html) dl=$(grep -o '/download/' xd-post.html | wc -l)"
+grep -oE 'href="[^"]*/download/[^"]*"' xd-post.html | head -3
+grep -oE '<(p|h[1-6]|li|div|td|a)[^>]{0,90}' xd-post.html | sort | uniq -c | sort -rn | head -18
+```
+
+Ba con số đó quyết định tất cả: `nextdata>0` ⇒ link nằm trong JSON của app (phải parse JSON, đừng
+parse HTML); `dl=0` ⇒ bài render bằng JS (⇒ module phải đọc qua `rch` luôn, kể cả trang post);
+đoạn `uniq -c` cho biết nhãn chất lượng nằm trong thẻ gì để `Blocks()` bắt đúng.
+
+### P2 — dựng URL thẳng từ TMDB id (bỏ được search thì bỏ)
+
+```bash
+for u in movies/x-860508 movies/-860508 movies/860508 movies/the-whisper-man-860508 series/x-108978; do
+  printf '%-34s ' "$u"
+  curl -s -o /dev/null -w 'code=%{http_code} size=%{size_download} -> %{redirect_url}\n' -A "Mozilla/5.0" "https://top.xdmovies.wtf/$u"
+done
+```
+
+`code=200 size>20000` ở dòng nào ⇒ module dựng URL theo đúng dạng đó, khỏi search, khỏi lộn mùa.
+
+### P3 — đo cái gate (quan trọng nhất)
+
+Lấy một token từ bài (nó nằm trong `href`), rồi:
+
+```bash
+T='<dán token 43 ký tự vào đây>'
+curl -fsSL -L -A "Mozilla/5.0" -c xd-ck.txt -e "https://top.xdmovies.wtf/" -o xd-gate.html \
+  -w 'code=%{http_code} url=%{url_effective} size=%{size_download}\n' "https://link.xdmovies.wtf/download/$T"
+echo "--- api/form mà trang gọi:"
+grep -oE '"/[a-z0-9_/-]*(api|link|generate|step|check)[a-z0-9_/-]*"|fetch\([^)]{0,70}|action="[^"]+"' xd-gate.html | sort -u | head -20
+echo "--- link server lọt ra ngoài chưa:"
+grep -oE 'https?://[^"'"'"' <>]+' xd-gate.html | grep -Ei 'fls|pixel|hubcloud|gdflix|drive|\\.mkv|\\.mp4' | sort -u | head -20
+echo "--- turnstile/cloudflare:"
+grep -oE 'turnstile|sitekey|cf-turnstile|challenges\.cloudflare' xd-gate.html | sort | uniq -c
+```
+
+Nếu `--- link server` đã có gì đó ⇒ gate nhả link trong HTML (HttpClient đủ, khỏi `rch`). Nếu rỗng mà
+`--- api/form` chỉ ra một endpoint POST ⇒ vòng 2 gọi đúng endpoint đó với token giả/xin.
+
+### P4 — referer của gamerxyt (thuyết "trang ngụy trang")
+
+```bash
+curl -s -A "Mozilla/5.0" -o gx-plain.html https://gamerxyt.com/bgmi/
+curl -s -A "Mozilla/5.0" -e "https://hubcloud.cx/drive/qosca4tao0ob1ss" -o gx-refer.html https://gamerxyt.com/bgmi/
+echo "plain=$(wc -c < gx-plain.html) refer=$(wc -c < gx-refer.html) khac=$(cmp -s gx-plain.html gx-refer.html && echo 0 || echo 1)"
+grep -oE 'href="https?://[^"]+"' gx-refer.html | grep -Ei 'hubcloud|gdflix|drive|\\.mkv' | sort -u | head -20
+```
+
+`khac=1` + có link hubcloud ⇒ đúng là mặt nạ, và khi đó gamerxyt (không cần gate) mới là đường chính.
+
+### Thoát kẹt khi module làm chết Lampac
+
+`error CS` của bất kỳ module nào cũng nổ `Startup.ConfigureServices` ⇒ Lampac không bật. Đường lùi:
+
+```bash
+proot-distro login ubuntu -- bash -c 'rm -f /root/lampac/module/OnlineENG/MoviesHub/XdmoviesController.cs; rm -rf /root/lampac/module/OnlineENG/MoviesHub/obj /root/lampac/module/OnlineENG/MoviesHub/bin'
+lampac stop; sleep 2; lampac start
+```
