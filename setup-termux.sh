@@ -565,7 +565,7 @@ sync_latest_modules() {
             [ -e \"$oldcs\" ] || continue
             orph=\$(basename \"$oldcs\")
             case \" \$movieshubfiles \" in
-                *\" \$orph \"*;;
+                *\" \$orph \"*) ;;
                 *) rm -f \"$oldcs\"; echo \"  [sync] movieshub: xoa \$orph (khong con trong tree)\";;
             esac
         done
