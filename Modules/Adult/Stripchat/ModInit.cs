@@ -37,6 +37,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
         conf = ModuleInvoke.Init("Stripchat", new SisiSettings("Stripchat", site)
         {
             spider = false,
+            priorityBrowser = "http",
             displayindex = 26,
             rch_access = "apk,cors",
             stream_access = "apk,cors,web",
@@ -47,6 +48,9 @@ public class ModInit : IModuleLoaded, IModuleSisi
             headers = HeadersModel.Init(("User-Agent", ua), ("Referer", site + "/"), ("Accept", "application/json")).ToDictionary(),
             headers_stream = HeadersModel.Init(("User-Agent", ua), ("Referer", site + "/"), ("Origin", site), ("Accept", "*/*")).ToDictionary()
         });
+        // The public JSON endpoint is directly reachable on Vietnamese networks; forcing
+        // plain HTTP avoids an unnecessary Chromium/RCH round-trip and its empty age-gate page.
+        conf.priorityBrowser = "http";
         conf.kit = false;
         conf.streamproxy = true;
     }
