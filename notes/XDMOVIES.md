@@ -270,3 +270,19 @@ grep -oE 'href="https?://[^"]+"' gx-refer.html | grep -Ei 'hubcloud|gdflix|drive
 proot-distro login ubuntu -- bash -c 'rm -f /root/lampac/module/OnlineENG/MoviesHub/XdmoviesController.cs; rm -rf /root/lampac/module/OnlineENG/MoviesHub/obj /root/lampac/module/OnlineENG/MoviesHub/bin'
 lampac stop; sleep 2; lampac start
 ```
+
+## 9. 01/9 — log máy thật vòng 1: `blocked ở collection`, `Collect` chưa chạy
+
+Anh gửi: `xdmovies: collection rỗng (tmdb=860508, imdb=tt11561116)` + `xdmovies: blocked ở collection
+(enable=True, rip=False)`, trong khi `moviesdrive: 8 link cho collection ... build=v27-...` chạy ngon.
+Suy ra đúng, không phải parser: `CollectionCore` gọi `IsRequestBlocked(rch: false)` TRƯỚC khi gọi
+`Collect` (`HubController.cs:130`) nên **không có dòng `tìm q=…` nào là bình thường** — module chưa tới
+được trang site. `enable=True, rip=False` loại 2 điều kiện đầu của `IsRequestBlockedRchOrDisable`, còn
+lại đúng 3 khả năng: `NoAccessGroup` (`BaseController.cs:1098`, chỉ chặn khi `init.group > 0`),
+`init.workinghours` (`BaseOnlineController.cs:203`), hoặc handler `EventListener.BadInitialization`
+của module khác (ForkPlayerXML / MsxNative / Potok). Log cũ in mỗi enable+rip nên KHÔNG phân biệt được
+⇒ từ build này in cả `group / user / workinghours / accsErr / badInit=<type>`.
+
+Cách đọc: `group>0` + `user=null` ⇒ section XdMovies bị gán nhóm truy cập (sửa trong Admin Panel hoặc
+`init.conf`); `workinghours>0` ⇒ họ/anh đặt giờ làm việc; `badInit=<Type>` mà accsErr=`-` ⇒ thủ phạm là
+handler của module khác chứ không phải config của XdMovies.

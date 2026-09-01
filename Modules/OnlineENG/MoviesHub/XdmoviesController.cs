@@ -72,7 +72,8 @@ public class XdmoviesController : HubController
 
         if (await IsRequestBlocked(rch: false, rch_check: !play))
         {
-            Console.WriteLine($"{Tag} blocked (enable={init.enable}, rip={init.rip})");
+            NoAccessGroup(init, out string accessErr);
+            Console.WriteLine($"{Tag} blocked ở video (enable={init.enable}, rip={init.rip}, group={init.group}, user={(requestInfo.user == null ? "null" : requestInfo.user.group.ToString())}, accsErr={accessErr ?? "-"}, badInit={badInitMsg?.GetType().Name ?? "-"})");
             return badInitMsg ?? OnError("disable", gbcache: false, statusCode: 403);
         }
 

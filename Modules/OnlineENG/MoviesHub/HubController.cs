@@ -129,7 +129,12 @@ public abstract class HubController : BaseENGController
 
         if (await IsRequestBlocked(rch: false))
         {
-            Console.WriteLine($"{Log(source)} blocked ở collection (enable={init.enable}, rip={init.rip})");
+            // "blocked" mà enable=True, rip=False thì thủ phạm chỉ có thể là NoAccessGroup (init.group)
+            // hoặc workinghours — log cũ không phân biệt được, thành ra mỗi lần đoán là một lần
+            // bắt người dùng bấm lại. In hết điều kiện + cả msg mà Lampa nhận được.
+            NoAccessGroup(init, out string accessErr);
+
+            Console.WriteLine($"{Log(source)} blocked ở collection (enable={init.enable}, rip={init.rip}, group={init.group}, user={(requestInfo.user == null ? "null" : requestInfo.user.group.ToString())}, workinghours={init.workinghours?.Length ?? 0}, accsErr={accessErr ?? "-"}, badInit={badInitMsg?.GetType().Name ?? "-"})");
             return badInitMsg ?? OnError("disable", gbcache: false, statusCode: 403);
         }
 
