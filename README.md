@@ -911,7 +911,7 @@ họ chỉ cần sửa `manifest.json` trong repo (xem [công thức](notes/FILE
 BATCH/ZIP bị loại, chọn nhóm là dịch cả mùa của nhóm đó. Bài học lớn nhất của vòng này — đừng đoán
 DOM, phải đọc trang thật — nằm trong `notes/FILEHOST-SOURCE-FORMULA.md`.
 
-## UhdMovies (`uhdmovies.autos`) — chain đã chạy trên máy thật, đang chỉnh chất lượng link (vòng 4, build `v24-uhdmovies-zfile-first`)
+## UhdMovies (`uhdmovies.autos`) — chain + link worker OK trên máy thật; đang xử series/collection (vòng 5, build `v25-uhdmovies-collections`)
 
 Anh em họ UHDMovies/MoviesMod/TopMovies **không dùng HubCloud**: mỗi nút "Episode N"/chất lượng trỏ
 `…?sid=<blob mã hoá>` rồi đi qua trang verify của WordPress → shortener → trang file

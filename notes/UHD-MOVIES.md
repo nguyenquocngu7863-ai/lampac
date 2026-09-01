@@ -569,3 +569,66 @@ dấu hiệu đúng ⇒ `IsResume()`.
 4. `JunkLink` chặn thêm `login|sign in|premium…` và `/login?` — nút "Login to download" không còn
    thành loại "btn" vô dụng như log v23b.
 5. Bỏ `LinkFrom`/`WorkerLink` đã chết (code không dùng = nói dối).
+
+---
+
+## 10. Series nhiều mùa + bài COLLECTION (ảnh 1/9) — cấu trúc thật và hai lỗi của mình
+
+### a) Reacher: MỘT bài chứa cả `Season 1-3`
+
+```text
+## **Download Reacher (2022-2025)(Season 1-3)** **1080p & 2160p** **Web-DL** **[Dual Audio]**
+<pre><code>Season 1</code></pre>                                   <- khối “Season N”
+**Reacher.S01.2160p.AMZN.WEB-DL.MULTI.DDP5.1.H.265-Telly**          <- dòng nhãn nhóm (<strong>)
+**[6.5 GB/E] [50 GB ZIP]**                                           <- dòng dung tích
+[Episode 1](?sid=…) [Episode 2](?sid=…) … [Episode 8](?sid=…) [Zip / Pack](?sid=…)   <- CÙNG MỘT DÒNG
+**Reacher.S01.1080p.AMZN.WEB-DL.DUAL.DDP5.1.H.264-YAGAMi**          <- nhóm kế
+…
+```
+
+**Vì sao ảnh 1/9 chỉ có Ep 1-2 có link:** `ReleaseLine()` tìm dòng nhãn trong **window 1500 ký tự**
+ngay trước nút. Mỗi nút `?sid=` ở họ này dài ~700 ký tự HTML ⇒ với 8 nút trên cùng một dòng, chỉ 2 nút
+CUỐI còn nhìn thấy dòng nhãn; 6 nút trước nhận nhãn rỗng → không mang `S02` → `SeasonMatches` bỏ.
+Không có log nào báo, nên phải nhìn ảnh mới thấy. ⇒ **bỏ window**: `LabelBlocks()` quét MỘT LƯỢT toàn
+bài (h1-h6 + `p`, phải có chất lượng VÀ (dung tích | năm)), mỗi nút tra khối cuối cùng trước vị trí nó.
+`Release.Season` tính ngay lúc gom (nhãn có `S0x` → dùng; không có → lấy `Season N` gần nhất phía trên,
+tức khối `<pre>` ở trên) ⇒ bộ lọc mùa không còn phụ thuộc vào độ dài chuỗi.
+
+Cũng nhân đây: bài Reacher KHÔNG có bài riêng cho từng mùa ⇒ search `reacher season 2` trả đúng bài
+`Season 1-3` ✓ cách tìm hiện tại ổn, chỉ cần lọc mùa trong bài (đã làm bằng `Release.Season`).
+
+### b) Lord of the Rings: bài COLLECTION, 3 phim một bài
+
+```text
+## The Lord of the Rings Collection (2001-2003)
+## The Lord of the Rings: The Fellowship of the Ring (2001)          <- MỖI PHIM một <h2>
+The Lord of the Rings – The Fellowship of the Ring (2001) EXTENDED UHD Remaster BluRay 2160p 10Bit HDR x265 HEVC […] ~ (strange) Tekno3D-EPS [27GB]
+[Download (G-Drive)](?sid=…)                                          <- nhãn TRẦN, không <strong>
+1. The Lord of the Rings – The Fellowship of the Ring (2001) EXTENDED 1080p 10bit Bluray x265 HEVC […] [9.72GB]
+[Download (G-Drive)](?sid=…)
+## The Lord of the Rings: The Two Towers (2002)
+…
+```
+
+Khác movie post bình thường ở hai chỗ: nhãn là `p` thường (không `strong`) và **một bài có nhiều phim**.
+⇒ `HeadingBlocks()` (h1-h4) cho mỗi nút biết nó thuộc phim nào (`Release.Film`); branch phim lẻ:
+
+* `films.Count > 1` ⇒ khớp `meta.originalTitle`/`meta.title` + năm với `Release.Film` (`SameFilm`: so
+  sau khi bỏ mọi thứ không phải chữ/số, nên "…Fellowship of the Ring" khớp cả khi nhãn có `(2001)` ở
+  cuối; hai bên đều có năm thì năm phải khớp — đừng để "(2002)" nhận vơ cho phim 2001);
+* khớp rồi ⇒ chỉ lấy nút của phim đó; **không khớp ⇒ giữ tất cả nhưng dán tên phim vào nhãn** để anh tự
+  chọn được, module không im lặng mất phim;
+* nhãn mỗi nút = `QualityLabel("{Film} {Heading} {Label}")` ⇒ "2160p · 27 GB" chứ không phải "1080p" trần.
+
+### c) IMDb id: bài collection có NHIỀU id
+
+Code cũ chỉ đọc id ĐẦU TIÊN rồi so ⇒ với bài LOTR (id của 3 phim) nó loại nhầm bài đúng. Giờ: lấy mọi
+`imdb.com/title/tt…` trong bài, **chặn chỉ khi bài có id mà không cái nào là của mình**; bài không ghi
+id nào thì cho qua (nhiều bài của họ không ghi).
+
+### d) Vòng kế
+
+Series: `uhdmovies: 5 nhóm / 40 nút | mùa=[1,2,3] | phim=[]` rồi `mùa 2 nhóm 1/4 '…': 8 tập` ⇒ 8 tập
+đều có nút. Collection: `bài collection: 3 phim, tmdb hỏi 'The Lord of the Rings: The Two Towers' (2002)
+-> '…'` rồi `movie: 3 nút từ 3/9 nhóm`. Nếu log in `KHÔNG KHỚP` thì `SameFilm` chưa đủ rộng — lúc đó
+in nguyên `phim=[…]` ra để so từng ký tự.

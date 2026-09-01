@@ -210,13 +210,21 @@ public class UhdmoviesController : HubController
                 if (string.IsNullOrWhiteSpace(page))
                     continue;
 
-                if (!string.IsNullOrWhiteSpace(imdb) && page.Contains("imdb.com/title/", StringComparison.OrdinalIgnoreCase))
+                if (!string.IsNullOrWhiteSpace(imdb))
                 {
-                    string found = Regex.Match(page, @"imdb\.com/title/(?<id>tt\d{6,8})").Groups["id"].Value;
+                    // Distinct + Contains: bài collection nhét imdb của TỪNG phim (LOT R có 3 id), chỉ
+                    // so id đầu tiên là loại nhầm bài đúng. Bài không có imdb nào thì cho qua (nhiều
+                    // bài của họ không ghi), chỉ chặn khi bài có id mà không cái nào là của mình.
+                    var ids = Regex.Matches(page ?? "", @"imdb\.com/title/(?<id>tt\d{6,8})");
+                    bool ok = ids.Count == 0;
 
-                    if (!string.IsNullOrWhiteSpace(found) && found != imdb)
+                    foreach (Match x in ids)
+                        if (x.Groups["id"].Value == imdb)
+                            ok = true;
+
+                    if (!ok)
                     {
-                        Console.WriteLine($"{Tag} bài lệch IMDb ({found} ≠ {imdb}) — bỏ {Cut(cand.Url)}");
+                        Console.WriteLine($"{Tag} bài lệch IMDb ({ids.Count} id, không có {imdb}) — bỏ {Cut(cand.Url)}");
                         continue;
                     }
                 }
@@ -252,9 +260,9 @@ public class UhdmoviesController : HubController
         {
             var seasons = new List<HubEntry>();
 
-            foreach (short n in all.Select(x => SeasonOf(x.Heading)).Where(x => x > 0).Distinct().OrderBy(x => x))
+            foreach (short n in all.Select(x => x.Season).Where(x => x > 0).Distinct().OrderBy(x => x))
             {
-                var first = all.First(x => SeasonOf(x.Heading) == n);
+                var first = all.First(x => x.Season == n);
                 seasons.Add(new HubEntry($"Mùa {n}", first.Links.Count > 0 ? first.Links[0].Url : postUrl, n, 0));
             }
 
@@ -273,8 +281,10 @@ public class UhdmoviesController : HubController
 
         if (tv)
         {
-            bool require = all.Any(x => SeasonOf(x.Heading) > 0);
-            List<Release> picked = [.. all.Where(x => SeasonMatches(x.Heading, season, require)).DistinctBy(x => x.Heading)];
+            // So theo Release.Season (đã tra lúc gom nhóm: nhãn S0x, nếu không có thì khối "Season N"
+            // phía trên) chứ không Regex lại trên chuỗi nhãn — đó là chỗ bản cũ đánh mất 6/8 tập.
+            bool require = all.Any(x => x.Season > 0);
+            List<Release> picked = [.. all.Where(x => x.Season == 0 ? !require : x.Season == season).DistinctBy(x => x.Heading)];
 
             if (picked.Count == 0)
             {
@@ -301,49 +311,57 @@ public class UhdmoviesController : HubController
             return into;
         }
 
-        // Phim lẻ: mỗi nút = một chất lượng = một nút nguồn (không menu chất lượng).
+        // Phim lẻ: mỗi nút = một chất lượng = một nút nguồn (không menu chất lượng). NHƯNG site này
+        // hay gộp cả bộ thành MỘT bài ("The Lord of the Rings Collection (2001-2003)" — 3 phim, không
+        // có bài riêng từng phim; bằng chứng 1/9). Khi đó mỗi nút thuộc một khối <h2> tên phim, nên:
+        // khớp phim đang xem (TMDB title/original_title + năm) rồi chỉ lấy nút của phim đó; không khớp
+        // được phim nào thì để hết nhưng DÁN TÊN PHIM vào nhãn để anh còn tự chọn, không nhầm phim.
+        List<string> films = [.. all.Select(x => x.Film).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct()];
+        List<Release> use = all;
+
+        if (films.Count > 1)
+        {
+            var hit = films.FirstOrDefault(f => SameFilm(f, meta.originalTitle, meta.year) || SameFilm(f, meta.title, meta.year));
+
+            Console.WriteLine($"{Tag} bài collection: {films.Count} phim, tmdb hỏi '{Cut(meta.title)} ({meta.year})' -> '{Cut(hit ?? $"KHÔNG KHỚP trong {films.Count} phim")}'");
+
+            if (!string.IsNullOrWhiteSpace(hit))
+                use = [.. all.Where(x => x.Film == hit)];
+        }
+
         var movie = new List<HubEntry>();
 
-        foreach (var g in all)
+        foreach (var g in use)
             foreach ((string label, string url, short ep) in g.Links)
                 if (!movie.Any(x => x.Url == url))
-                    movie.Add(new HubEntry(QualityLabel($"{g.Heading} {label}", url), url, 0, 0));
+                    movie.Add(new HubEntry(QualityLabel($"{g.Film} {g.Heading} {label}", url), url, 0, 0,
+                                            films.Count > 1 ? ShortLabel(g.Film) : null));
 
-        Console.WriteLine($"{Tag} movie: {movie.Count} nút từ {all.Count} nhóm");
+        Console.WriteLine($"{Tag} movie: {movie.Count} nút từ {use.Count}/{all.Count} nhóm");
 
         return movie;
     }
 
-    sealed record Release(string Heading, List<(string Label, string Url, short Ep)> Links);
-
-    /// <summary>Dòng <c>&lt;strong&gt;</c> gần nút nhất CÓ dấu vết chất lượng (2160p / 1080p / 4K /
-    /// x265) — tức tên bản release, chứ không phải dòng dung tích nằm sát nút.</summary>
-    static string ReleaseLine(string html, int before)
-    {
-        int from = Math.Max(0, before - 1500);
-        var strongs = Regex.Matches(html[from..before], @"(?is)<strong[^>]*>(?<t>.*?)</strong>");
-
-        for (int i = strongs.Count - 1; i >= 0; i--)
-        {
-            string t = Plain(strongs[i].Groups["t"].Value);
-
-            if (!string.IsNullOrWhiteSpace(t) && Regex.IsMatch(t, @"(?i)\d{3,4}p|\b4k\b|2160|x26[45]"))
-                return t;
-        }
-
-        return "";
-    }
+    sealed record Release(string Heading, string Film, short Season, List<(string Label, string Url, short Ep)> Links);
 
     /// <summary>
-    /// Mọi nút tải của bài viết. CSX chọn "dòng &lt;p&gt; nhắc S0?N/Season 0?N rồi lấy phần tử KẾ TIẾP"
-    /// (CineStreamExtractors.kt:2375) — tức release-name và dãy nút là hai khối anh-em. Em làm tương
-    /// đương mà không phụ thuộc cấu trúc cha/con: với mỗi anchor tải, nhãn nhóm = khối text ngay trước
-    /// nó (NearestLabelBefore đã bắt cả &lt;p&gt; lẫn h1-h6, và đã lọc theo 1080p/4K/GB).
-    /// "Zip / Pack" (pack cả mùa) loại bằng chữ TRÊN NÚT — người dùng dặn không lấy.
+    /// Toàn bộ nhóm release của một bài viết. Nhãn của từng nút được tra từ danh sách khối nhãn đã quét
+    /// MỘT LƯỢT trên cả bài — không phải window vài trăm ký tự: mỗi nút ở họ này mang `?sid=` ~700 ký
+    /// tự, nên window ngắn chỉ với tới 2 nút cuối của một nhóm 8 tập; 6 nút kia mất nhãn, mất luôn mã
+    /// S0x và bị bộ lọc mùa bỏ. Đó chính là bệnh trong ảnh 1/9 (Reacher S02 chỉ có Ep 1-2 có link).
+    ///
+    /// Hai kiểu bài, cùng xử lý ở đây (bằng chứng đọc trực tiếp 1/9, note mục 1 & 10):
+    ///   * Series: `Season 2` rồi `Reacher.S02.1080p.AMZN.WEB-DL.DUAL.DDP5.1.H.264-YAGAMi`
+    ///     + `[3.5 GB/E] [34 GB ZIP]` + `Episode 1..8` + `Zip / Pack` (Zip bỏ — lệnh của anh, vòng 16).
+    ///   * Collection phim lẻ: MỘT bài cho cả 3 phim, mỗi phim một `&lt;h2&gt;` tên phim + các dòng nhãn
+    ///     TRẦN (không có `&lt;strong&gt;`): "…Fellowship of the Ring (2001) EXTENDED UHD … [27GB]".
     /// </summary>
     List<Release> Groups(string html, string baseUrl)
     {
-        var byLabel = new List<(string Heading, string Url, short Ep, string Label)>();
+        var labels = LabelBlocks(html);
+        var seasons = SeasonBlocks(html);
+        var heads = HeadingBlocks(html);
+        var byLabel = new List<(string Heading, string Film, short Season, string Url, short Ep, string Label)>();
         int packs = 0;
 
         foreach (Match m in Regex.Matches(html ?? "", AnchorPattern))
@@ -364,15 +382,16 @@ public class UhdmoviesController : HubController
             if (!url.StartsWith("http", StringComparison.OrdinalIgnoreCase) || byLabel.Any(x => x.Url == url))
                 continue;
 
-            // Bài thật 1/9: dòng NGAY TRÊN nút chỉ là "**[16.42 GB]**", còn tên mang 2160p / x265 /
-            // (KRATOS-UHDMovies) nằm ở dòng trên nữa. Mỗi mình NearestLabelBefore thì 4 nút movie ra
-            // nhãn "16 GB / 13 GB..." không phân biệt được bản nào — gom cả hai dòng.
-            string label = NearestLabelBefore(html, m.Index);
-            string rel = ReleaseLine(html, m.Index);
-            string heading = string.IsNullOrWhiteSpace(rel) ? label
-                           : string.IsNullOrWhiteSpace(label) ? rel : $"{rel} {label}";
+            // Heading = dòng nhãn cuối cùng TRƯỚC nút. Dòng đó không mang mã mùa (vài bài chỉ ghi
+            // "1080p [900MB/E]") thì lấy mùa của khối "Season N" gần nhất phía trên.
+            string heading = LastBefore(labels, m.Index) ?? NearestLabelBefore(html, m.Index);
+            short season = SeasonOf(heading ?? "");
 
-            byLabel.Add((string.IsNullOrWhiteSpace(heading) ? "Nhóm" : heading, url, EpisodeOf(text), text));
+            if (season == 0)
+                season = LastBefore(seasons, m.Index);
+
+            byLabel.Add((string.IsNullOrWhiteSpace(heading) ? "Nhóm" : heading, LastBefore(heads, m.Index) ?? "", season,
+                         url, EpisodeOf(text), text));
         }
 
         if (packs > 0)
@@ -382,10 +401,10 @@ public class UhdmoviesController : HubController
 
         foreach (var x in byLabel)
         {
-            var g = out0.FirstOrDefault(gg => gg.Heading == x.Heading);
+            var g = out0.FirstOrDefault(gg => gg.Heading == x.Heading && gg.Film == x.Film);
 
             if (g == null)
-                out0.Add(g = new Release(x.Heading, new List<(string, string, short)>()));
+                out0.Add(g = new Release(x.Heading, x.Film, x.Season, new List<(string, string, short)>()));
 
             g.Links.Add((x.Label, x.Url, x.Ep));
         }
@@ -402,8 +421,91 @@ public class UhdmoviesController : HubController
                     auto = g.Links[i].Item3 + 1;
         }
 
+        Console.WriteLine($"{Tag} {out0.Count} nhóm / {byLabel.Count} nút | mùa=[{string.Join(",", out0.Select(x => x.Season).Distinct().OrderBy(x => x))}] | phim=[{string.Join(" ;; ", out0.Select(x => x.Film).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().Select(Cut))}]");
+
         return [.. out0.Where(g => g.Links.Count > 0)];
     }
+
+    /// <summary>Khối có vẻ là nhãn release/phim: h1..h6 hoặc p, mang CHẤT LƯỢNG và (dung tích hoặc năm).
+    /// Không lấy `div`: div bọc cả bài nên text của nó chứa mọi nhãn => gộp nhầm cả bài thành 1 nhóm.
+    /// Dãy nút ("Episode 1 Episode 2 … Zip / Pack") không mang 1080p/GB nên tự loại.</summary>
+    static List<(int End, string Text)> LabelBlocks(string html)
+    {
+        var list = new List<(int, string)>();
+
+        foreach (Match m in Regex.Matches(html ?? "", @"(?is)<(?<tag>h[1-6]|p)\b[^>]*>(?<body>.*?)</\k<tag>>"))
+        {
+            string t = Plain(m.Groups["body"].Value);
+
+            if (t.Length < 20 || !Regex.IsMatch(t, @"(?i)\d{3,4}p|\b4k\b|2160|x26[45]|remux"))
+                continue;
+
+            if (!Regex.IsMatch(t, @"(?i)\d+(?:[.,]\d+)?\s?(?:gb|mb)\b|\((?:19|20)\d{2}\)"))
+                continue;
+
+            list.Add((m.Index + m.Length, t));
+        }
+
+        return list;
+    }
+
+    /// <summary>Khối h1..h4 = tên phim (bài collection dựng mỗi phim một h2). Loại tiêu đề bài viết
+    /// ("Download Reacher (2022-2025)(Season 1-3) …") vì nó KHÔNG phải tên một phim.</summary>
+    static List<(int End, string Text)> HeadingBlocks(string html)
+        => [.. Regex.Matches(html ?? "", @"(?is)<(?<tag>h[1-4])\b[^>]*>(?<body>.*?)</\k<tag>>")
+                .Select(m => (End: m.Index + m.Length, Text: Plain(m.Groups["body"].Value)))
+                .Where(x => x.Text.Length > 6 && !Regex.IsMatch(x.Text, @"(?i)^download\b.*\b(season|collection)\b"))];
+
+    static List<(int End, short N)> SeasonBlocks(string html)
+        => [.. Regex.Matches(html ?? "", @"(?i)(?:season|serie)\s*\.?\s*(?<n>\d{1,2})\b")
+                .Select(m => (End: m.Index + m.Length, N: short.TryParse(m.Groups["n"].Value, out short n) ? n : (short)0))
+                .Where(x => x.N > 0)];
+
+    /// <summary>Khối CUỐI cùng kết thúc trước `pos`. Danh sách đã theo thứ tự xuất hiện nên duyệt
+    /// ngược là đủ — một bài chỉ vài chục khối, không cần nhị phân.</summary>
+    static string LastBefore(List<(int End, string Text)> blocks, int pos)
+    {
+        for (int i = blocks.Count - 1; i >= 0; i--)
+            if (blocks[i].End <= pos)
+                return blocks[i].Text;
+
+        return null;
+    }
+
+    static short LastBefore(List<(int End, short N)> blocks, int pos)
+    {
+        for (int i = blocks.Count - 1; i >= 0; i--)
+            if (blocks[i].End <= pos)
+                return blocks[i].N;
+
+        return 0;
+    }
+
+    /// <summary>Có phải cùng một phim không? Bài collection ghi "The Lord of the Rings: The Fellowship
+    /// of the Ring (2001)" còn TMDB trả "The Lord of the Rings: The Fellowship of the Ring" — so sau
+    /// khi bỏ mọi thứ không phải chữ/số, nên phần đuôi cũng khớp được.</summary>
+    static bool SameFilm(string heading, string want, int year)
+    {
+        string a = Norm(heading);
+        string b = Norm(want);
+
+        if (string.IsNullOrWhiteSpace(a) || string.IsNullOrWhiteSpace(b))
+            return false;
+
+        int same = a.Split(' ').Intersect(b.Split(' ')).Count();
+        int need = Math.Min(3, b.Split(' ').Length);
+
+        if (!(a.Contains(b) || b.Contains(a) || same >= need))
+            return false;
+
+        var years = Regex.Matches(heading ?? "", @"\((?<y>(?:19|20)\d{2})\)");
+
+        // Hai bên đều có năm thì năm phải khớp: nhãn "(2002)" không được nhận vơ cho phim 2001
+        return year <= 0 || years.Count == 0 || years.Any(y => y.Groups["y"].Value == year.ToString());
+    }
+
+    static string Norm(string v)
+        => string.Join(" ", Regex.Split((v ?? "").ToLowerInvariant().Replace("&", " and "), @"[^a-z0-9]+").Where(x => x.Length > 0));
 
     // ------------------------------------------------------------------------------- the extractor
 
@@ -1010,13 +1112,6 @@ public class UhdmoviesController : HubController
             return 0;
 
         return short.TryParse(m.Groups["a"].Success ? m.Groups["a"].Value : m.Groups["b"].Value, out short n) ? n : (short)0;
-    }
-
-    static bool SeasonMatches(string text, short season, bool require)
-    {
-        short n = SeasonOf(text);
-
-        return n > 0 ? n == season : !require;
     }
 
     static short EpisodeOf(string text)
