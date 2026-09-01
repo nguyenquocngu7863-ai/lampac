@@ -371,3 +371,33 @@ trước lặp 4 dòng cùng một lý do). Đọc log giờ chỉ cần một d
 
 Nếu đúng là apk < 484 thì đường scraping chết hẳn, chỉ còn đường "Lampa tự mở trang": module nhả nút
 dẫn thẳng `search.html?q=<TMDB id>` (webview) để anh bấm tay — quyết định đó để anh, em không tự làm.
+
+## 15. 01/9 — TẠM DỪNG: trang của site nằm sau Cloudflare *tương tác*, không phải chỉ trang gate
+
+Kết luận của anh sau vòng 31: *"Tìm đúng bài rồi nhưng không mở được page, ai biết tại sao đâu, chắc
+cloudflare nó bắt tích vào thủ công rồi, chịu thôi."*
+
+Ghi lại cho đúng, để đời sau không mở lại bằng cách đoán tiếp:
+
+* **Đã chắc**: dạng tìm kiếm là `https://top.xdmovies.wtf/search.html?q=<urlencoded>` và nó trả về
+  DANH SÁCH KẾT QUẢ — phải lấy link bài đầu tiên (ưu tiên bài có `-<TMDB id>` khớp). Slug luôn kết thúc
+  bằng TMDB id. Mỗi chất lượng một link `link.xdmovies.wtf/download/<token>`; tên file (x mediainfo) nằm
+  ngay trên link; `fls` thơm, `pixel` luôn sống là server sau gate.
+* **Đã chắc**: `top.xdmovies.wtf` chặn request thường ở MỌI trang (kể cả trang chủ — `chẩn đoán …
+  trang chủ len=0`), không riêng trang phim. Nên đây không phải bài toán "bypass một trang đếm ngược"
+  như uhd, mà là bài toán "mọi request phải đi qua trình duyệt thật".
+* **CHƯA chắc (điểm mù cuối cùng)**: log vòng 31 không có dòng `apkVersion=` nào ⇒ ta chưa biết
+  `rch.Headers` có được gọi thật hay không. Trước khi bỏ hẳn, chỉ cần chạy lại và lấy:
+
+      lampac logs | grep -aE "xdmovies:|MoviesHub:|rhub" | tail -30
+
+  - `rch TỪ CHỐI vì client: apkVersion=NNN < 484` → chỉ là app Lampa cũ; cập nhật là chơi tiếp.
+  - `rch không trả gì (connectionMsg=...)` → client nhận lệnh nhưng không tải.
+  - `rch tải xong nhưng vẫn là trang challenge` → đúng như anh đoán: Turnstile bắt tích bằng tay.
+* **Phương án còn để ngỏ (anh chưa chọn)**: bỏ scrape, XdMovies chỉ nhả MỘT nút "Tìm trên XDMovies" trỏ
+  `search.html?q=<TMDB id>` cho Lampa mở webview — anh bấm tay, không có danh sách chất lượng trong
+  Lampa. Ghi ở đây để nếu cần thì làm trong ~30 dòng, không phải điều tra lại từ đầu.
+
+Code vẫn nằm trong tree (`XdmoviesController.cs`, build từ `v31-xdmovies-rch-diag`): nguồn hiện trong
+danh sách nhưng luôn trả collection rỗng. Muốn ẩn thì `"XdMovies": {"enable": false}` trong `init.conf`
+hoặc tắt trong Admin Panel — không cần sửa code.

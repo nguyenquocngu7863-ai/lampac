@@ -911,7 +911,16 @@ họ chỉ cần sửa `manifest.json` trong repo (xem [công thức](notes/FILE
 BATCH/ZIP bị loại, chọn nhóm là dịch cả mùa của nhóm đó. Bài học lớn nhất của vòng này — đừng đoán
 DOM, phải đọc trang thật — nằm trong `notes/FILEHOST-SOURCE-FORMULA.md`.
 
-## XdMovies (`top.xdmovies.wtf`) — vòng 1, build `v27-xdmovies-rch-gate`
+## XdMovies (`top.xdmovies.wtf`) — tạm dừng 2026-09-01: Cloudflare chặn MỌI trang, build `v31-xdmovies-rch-diag`
+
+Nguồn thay UhdMovies, đã đi hết đường: tìm bài bằng `search.html?q=<TMDB id>` (chính site khuyên tìm bằng
+id), slug luôn kết thúc `-<TMDB id>`, mỗi chất lượng một link `link.xdmovies.wtf/download/<token>`, parser
+quét một lượt không dùng cửa sổ ký tự. **Bật ngờ ở bước cuối**: không riêng trang gate — trang chủ và
+trang phim cũng không đọc được bằng request thường, nên mọi thứ (tìm kiếm, bài, gate) phải đi qua `rch`
+(trình duyệt thật của client Lampa). Vòng 31 vẫn chưa loại được khả năng app Lampa < 484 (`rch.Headers`
+im lặng trả rỗng), chi tiết và lệnh đo ở `notes/XDMOVIES.md` mục 15. Muốn ẩn nguồn:
+`"XdMovies": {"enable": false}` trong `init.conf`, không cần sửa code.
+
 
 Nguồn thay UhdMovies. Bài viết rất sạch (mỗi chất lượng một link, tên file = mediainfo nằm ngay trên link,
 **số cuối slug là TMDB id** ⇒ khớp id thay vì đoán tên). Cái khó là trang link: `link.xdmovies.wtf/download/<token>`
