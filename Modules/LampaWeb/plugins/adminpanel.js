@@ -29,12 +29,16 @@
     css.id = 'lampac-admin-css';
     css.textContent =
       '.lampac-admin{min-height:100%}' +
-      '.lampac-admin__head{padding:1.4em 1.6em 0.4em;font-size:1.7em;font-weight:700}' +
-      '.lampac-admin__sub{padding:0 1.6em 1.1em;opacity:.65;font-size:1.05em;line-height:1.45}' +
-      '.lampac-admin .settings-param__value{margin-left:auto;opacity:.75;max-width:45%;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
-      '.lampac-admin-edit__ta{width:100%;min-height:42vh;background:rgba(0,0,0,.28);color:inherit;border:0;border-radius:.4em;padding:1em;font-family:ui-monospace,Consolas,monospace;font-size:1.12em;line-height:1.45}' +
+      '.lampac-admin__head{padding:1.1em 1.5em 0.35em;font-size:2em;font-weight:700;line-height:1.25}' +
+      '.lampac-admin__sub{padding:0 1.5em 1em;opacity:.65;font-size:1.2em;line-height:1.45}' +
+      '.lampac-admin .settings-param{padding:1.35em 1.5em}' +
+      '.lampac-admin .settings-param__name{font-size:1.4em;line-height:1.3;font-weight:600}' +
+      '.lampac-admin .settings-param__value{margin-left:auto;opacity:.8;max-width:46%;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:1.2em}' +
+      '.lampac-admin .settings-param__descr{margin-top:.35em;font-size:1.1em;opacity:.6;line-height:1.4}' +
+      '.lampac-admin-empty{padding:2em 1.5em;opacity:.6;font-size:1.3em}' +
+      '.lampac-admin-edit__ta{width:100%;min-height:42vh;background:rgba(0,0,0,.28);color:inherit;border:0;border-radius:.4em;padding:1em;font-family:ui-monospace,Consolas,monospace;font-size:1.35em;line-height:1.5}' +
       '.lampac-admin-edit__actions{display:flex;gap:.8em;margin-top:1em}' +
-      '.lampac-admin-empty{padding:2em 1.6em;opacity:.6}';
+      '.lampac-admin-edit__actions .simple-button{font-size:1.3em;padding:.9em 1.6em}';
     document.head.appendChild(css);
   }
 
@@ -245,6 +249,7 @@
 
   function component() {
     var self = this;
+    try { console.log('[adminpanel] build scroll-fix v2'); } catch (e) { }
     var scroll = new Lampa.Scroll({ mask: true, over: true, step: 200 });
     var html = $('<div class="lampac-admin"></div>');
     var stack = [];
@@ -266,6 +271,26 @@
       return wrap;
     }
 
+    // Native "scroll into view": Lampa's Scroll.update() can be a no-op in some
+    // builds, so walk up and scroll every scrollable ancestor manually.
+    function ensureVisible(el) {
+      try { if (scroll && scroll.update) scroll.update($(el), true); } catch (e) { }
+      try {
+        el.scrollIntoView ? el.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+          : (el.scrollIntoViewIfNeeded && el.scrollIntoViewIfNeeded());
+      } catch (e) {
+        // Fallback: nudge every scrollable parent manually.
+        var node = el.parentElement;
+        while (node) {
+          if (node.scrollHeight > node.clientHeight && node.clientHeight > 0) {
+            var top = el.offsetTop, want = top - node.clientHeight / 2;
+            node.scrollTop = Math.max(0, want);
+          }
+          node = node.parentElement;
+        }
+      }
+    }
+
     function item(name, value, descr, onEnter) {
       var el = $('<div class="settings-param selector"></div>');
       el.append('<div class="settings-param__name">' + esc(name) + '</div>');
@@ -274,10 +299,9 @@
       if (descr)
         el.append('<div class="settings-param__descr">' + esc(descr) + '</div>');
       // Focus (D-pad navigation / hover) must scroll the focused row into view.
-      // Without this the Scroll container never moves, so lists look stuck.
       el.on('hover:focus', function () {
         lastFocus = el[0];
-        try { scroll.update(el, true); } catch (e) { }
+        ensureVisible(el[0]);
       });
       el.on('hover:enter', function () {
         lastFocus = el[0];
