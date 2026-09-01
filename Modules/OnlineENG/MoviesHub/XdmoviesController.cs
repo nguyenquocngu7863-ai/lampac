@@ -70,7 +70,7 @@ public class XdmoviesController : HubController
         StatiCacheDisabled = true;
         SetHeadersNoCache();
 
-        if (await IsRequestBlocked(rch: false, rch_check: !play))
+        if (await IsRequestBlocked(rch: init.rhub, rch_check: !play))
         {
             NoAccessGroup(init, out string accessErr);
             Console.WriteLine($"{Tag} blocked ở video (enable={init.enable}, rip={init.rip}, group={init.group}, user={(requestInfo.user == null ? "null" : requestInfo.user.group.ToString())}, accsErr={accessErr ?? "-"}, badInit={badInitMsg?.GetType().Name ?? "-"})");
@@ -82,7 +82,7 @@ public class XdmoviesController : HubController
         if (string.IsNullOrWhiteSpace(token))
         {
             Console.WriteLine($"{Tag} src thiếu/hỏng trong query video");
-            return OnError("stream", 502);
+            return OnError("stream", gbcache: false, statusCode: 502);
         }
 
         label = string.IsNullOrWhiteSpace(Dec(label)) ? "stream" : Dec(label);
@@ -96,7 +96,7 @@ public class XdmoviesController : HubController
         {
             // Không được để nổ: Lampac trả 500 rỗng và mất hết dấu vết trong log.
             Console.WriteLine($"{Tag} ex {ex.GetType().Name} {ex.Message}");
-            return OnError("resolve", 502);
+            return OnError("resolve", gbcache: false, statusCode: 502);
         }
 
         HubStream first = found.FirstOrDefault();
@@ -104,7 +104,7 @@ public class XdmoviesController : HubController
         if (first == null)
         {
             Console.WriteLine($"{Tag} 0 link chơi được từ {Cut(token)}");
-            return OnError("stream", 502);
+            return OnError("stream", gbcache: false, statusCode: 502);
         }
 
         Console.WriteLine($"{Tag} play {Cut(first.Url)} [{(init.streamproxy ? "proxy" : "direct")}] ({(s > 0 ? $"S{s}E{e} · " : "")}{label}) qua '{first.Label}' build={Build}");

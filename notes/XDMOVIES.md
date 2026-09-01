@@ -286,3 +286,25 @@ của module khác (ForkPlayerXML / MsxNative / Potok). Log cũ in mỗi enable+
 Cách đọc: `group>0` + `user=null` ⇒ section XdMovies bị gán nhóm truy cập (sửa trong Admin Panel hoặc
 `init.conf`); `workinghours>0` ⇒ họ/anh đặt giờ làm việc; `badInit=<Type>` mà accsErr=`-` ⇒ thủ phạm là
 handler của module khác chứ không phải config của XdMovies.
+
+## 10. 01/9 — vì sao `blocked ở collection` với enable=True, rip=False (đọc trước khi ai đó sửa lại)
+
+Số đo từ máy: `group=0, user=null, workinghours=0, accsErr=-, badInit=StatusCodeResult` ⇒ loại
+NoAccessGroup và workinghours. `StatusCodeResult` + Lampa báo `503 Service Unavailable` chỉ có một nơi
+đặt: `IsCacheError` (`Shared/Controllers/BaseController.cs:1003-1017`). Ba sự thật rút ra:
+
+1. `IsCacheError` **chỉ chạy khi `init.rhub == false`** (dòng 1005: `if (init.rhub) return false;`).
+   `HubController.Section()` đặt `rhub = false` cho mọi section của MoviesHub ⇒ XdMovies bị chặn.
+2. Error cache ghi theo key của response (`ResponseCache.ErrorKey`) và `OnError(...)` mặc định
+   `gbcache: true` — nên một lần lỗi (502 không có link, resolve fail) là **đầu độc cả nguồn**:
+   mọi request sau đó bị trả 503 trước khi `Collect` chạy, không log dòng nào của module.
+   Triệu chứng đúng như máy anh báo: `collection rỗng` + `blocked` mà không có `tìm q=…`.
+3. `rch:` trong `IsRequestBlocked` không phải "nguồn này CÓ dùng rch hay không" mà là câu hỏi
+   "request này đến từ rch hay không": gọi `IsRequestBlocked(rch: false)` trên section có `rhub=true`
+   bị block ngay (`BaseOnlineController.cs:237-241`), nên CollectionCore phải hỏi `rch: init.rhub`.
+
+Sửa (build này): `CollectionCore` -> `IsRequestBlocked(rch: init.rhub, rch_check: false)`;
+`Video` của XdMovies -> `rch: init.rhub, rch_check: !play`; `xd.rhub = true` trong `ModInit`
+(vừa là điều kiện để `safety:true` thật sự đi qua rch, vừa làm `IsCacheError` tắt ngìm với nguồn này);
+mọi `OnError` trong XdMovies -> `gbcache: false` để không tự đầu độc nữa. MoviesDrive/Movies4U giữ
+`rhub=false` như cũ (chúng không cần rch).

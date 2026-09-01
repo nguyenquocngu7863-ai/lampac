@@ -78,6 +78,12 @@ public class ModInit : IModuleLoaded, IModuleOnline
         drive = Section("MoviesDrive", "https://new3.moviesdrive.christmas", 1017);
         fouru = Section("Movies4U", "https://new5.movies4u.clinic", 1018);
         xd = Section("XdMovies", "https://top.xdmovies.wtf", 1019);
+        // XdMovies BẮT BUỘC rhub=true: trang link của họ là đếm ngược JS + Cloudflare Turnstile,
+        // chỉ rch (trình thật của client) qua được. Hai hệ quả có lợi: (1) Http.Get(safety:true)
+        // mới thật sự đi qua rch (RchClient.enable => init.rhub && ...); (2) IsCacheError
+        // (BaseController.cs:1005) return false ngay khi rhub=true -> một lần lỗi không đầu độc
+        // cả nguồn bằng 503 nữa. MoviesDrive/Movies4U giữ rhub=false như cũ.
+        xd.rhub = true;
     }
 
     OnlinesSettings Section(string name, string host, int displayindex)

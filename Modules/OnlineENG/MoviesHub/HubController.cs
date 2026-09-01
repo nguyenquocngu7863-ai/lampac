@@ -127,7 +127,11 @@ public abstract class HubController : BaseENGController
         if (checksearch)
             return Content("data-json=", "application/json; charset=utf-8");
 
-        if (await IsRequestBlocked(rch: false))
+        // rch: init.rhub (KHÔNG phải false). Với section có rhub=true mà hỏi rch:false thì
+        // BaseOnlineController.cs:237-241 block thẳng bằng ShowError(RchClient.ErrorMsg) -> 503,
+        // module không bao giờ được gọi. rch_check=false: dựng menu thì chưa cần client rch đang
+        // nối; tới lúc play (Video) mới kiểm tra.
+        if (await IsRequestBlocked(rch: init.rhub, rch_check: false))
         {
             // "blocked" mà enable=True, rip=False thì thủ phạm chỉ có thể là NoAccessGroup (init.group)
             // hoặc workinghours — log cũ không phân biệt được, thành ra mỗi lần đoán là một lần
