@@ -219,6 +219,33 @@ workspace** (không cần dán link — fetch của em không đọc được bi
 `workers.dev`, `driveleech|driveseed`, `type=1`. Không cần jadx: đối chiếu các hằng số đó với spec
 mục 2b/2c là đủ biết họ có thêm hop mới hay đổi host nào.
 
+## 2f. Vì sao CSX coi UHDMovies là "dead source" trong khi nó sống khoẻ (2026-09-01)
+
+Bằng chứng, không bình luận:
+
+- Tìm trong toàn bộ lịch sử commit của `SaurabhKaperwan/CSX`: **`total_count: 1`** cho từ `uhd` —
+  commit duy nhất là **`8310abd` 2024-10-15 "CInestream : Fix NFmirrir & UHD"**. Tức UHDMovies được
+  sửa **đúng một lần, ~2 năm trước**, rồi không ai chạm nữa.
+- `master` hiện tại: **không có file UHDMovies nào** (`…/providers/UhdMovies.kt` 404), và module
+  `Moviesmod` chỉ khai `MoviesmodProvider.kt` + `TopMoviesProvider.kt` + `Utils.kt`. Thứ còn lại
+  của họ UHDMovies là **`bypass()` + `Driveleech/Driveseed` trong `Utils.kt`** — tức phần solver,
+  còn phần scrape thì bị bỏ; `urls.json` vẫn giữ `uhdmovies=uhdmovies.autos` vì file đó là bảng
+  domain chung, không có nghĩa là provider còn chạy.
+
+⇒ **"Remove dead source" ở đây không phải "site chết"** — UHDMovies vẫn đăng bài hằng ngày, domain
+vẫn được hot-swap trong `domains.json` của tác giả khác. Nó là: **nguồn đắt hơn phần họ muốn trả**.
+Chuỗi của UHDMovies là countdown ×2 + cookie session + 4–6 request cho MỖI TẬP, trong khi
+`4khdhub`/`moviesdrive`/`hdhub4u` (nhóm mà Nuvio mô tả là "dùng HubCloud/GDFlix + ROT13+atob thay vì
+hệ shortener") chỉ cần **một trang + một hàm giải mã**. Cùng 68 provider, người bảo trì thì ít ⇒
+họ cắt cái đắt, giữ cái rẻ. 4khdhub "ngon hơn" theo nghĩa đó, không phải theo nghĩa chất lượng file.
+
+**Bài học ghi cho mọi nguồn tương lai:** chi phí bảo trì phải được tính lúc CHỌN nguồn, không chỉ lúc
+viết. UHDMovies cho 2160p HDR DoVi `.mkv` seek được (link `*.workers.dev` — tốt nhất họ này) nhưng
+đổi lại là chuỗi verify mà mỗi lần site thêm một countdown là phải sửa code; 4khdhub cho cùng chất
+lượng mà chỉ phụ thuộc markup trang chia sẻ HubCloud — thứ MoviesHub **đã có sẵn** (`HubExtract`,
+`Atob`, `GdExtract`). Khi nào rảnh tay, **4khdhub là ứng viên số 1** cho nguồn mới của họ này;
+UHDMovies để sau, theo quyết định ngày 2026-09-01 (spec ở trên vẫn giữ nguyên, không viết lại).
+
 ## 3. Thiết kế module (quyết định, không phải gợi ý)
 
 1. **ĐẶT TRONG MoviesHub** (`Modules/OnlineENG/MoviesHub/UhdmoviesController.cs`), không lập module
