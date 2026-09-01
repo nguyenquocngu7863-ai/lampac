@@ -168,6 +168,36 @@ Vì resolve là lúc BẤM, `?srv=` phải chọn được nút: `lite/uhdmovies
 theo `label` (tên release + size) để log đọc được. Không cache link cuối (link worker/R2 hết hạn
 nhanh — cùng bệnh mọi họ DriveLeech).
 
+## 2d. HÌNH DẠNG link cuối (người dùng đưa thật ngày 2026-09-01, lấy từ nút "Resume Cloud")
+
+```
+https://worker-snowy-cell-60ac.kaxidaj969.workers.dev/<256 hex>::<32 hex>/Stolen%20Girl%20(2025)%202160p%20UHD%20BluRay%20HDR%2010bit%20HEVC%20[Hindi%20DDP%205.1%20%20English%20DD%205.1]%20x265%20(CYBER-UHDMovies).mkv
+```
+
+Năm thứ rút ra từ đúng chuỗi đó (đừng để vòng sau phải đoán lại):
+
+1. **Host = `worker-<...>.<sub>.workers.dev`** (Cloudflare Worker công khai). Không `Referer`, không
+   cookie cho link phát ⇒ `requiresReferer = false` như CSX, `StreamHeaders` chỉ cần `User-Agent`.
+   Anh xác nhận: **link nhãn `resume` tua bình thường** ⇒ có `Range` ⇒ `streamproxy = false` là đúng,
+   để player tự seek, và `Resume Cloud` xứng đáng làm mặc định.
+2. **`path` kết thúc bằng `.mkv`** ⇒ `RouteFor()` trả `file.mkv` ✓ gst.js của Lampac bật ✓ (nó test
+   path sau khi cắt query, nên query dài bao nhiêu cũng được).
+3. **Không có query string** — token nằm TRONG path, sau đó là tên file. ⇒ 302 verbatim là xong,
+   không được "làm sạch" url.
+4. **Tên file `%20`-encoded và có `(`, `)`, `[`, `]`, `::`** ⇒ hai luật sống còn:
+   - `href` lấy ra chỉ được `HtmlDecode` (`Unescape`), **tuyệt đối không** `Uri.UnescapeDataString`
+     link cuối: `%20` thành dấu cách rồi bỏ vào `Location` header là link hỏng.
+   - `Clean()` hiện tại vô hại với chuỗi này (nó chữa `&amp;` và `%252F`, không đụng `%20`) ⇒ dùng
+     tiếp được, nhưng đừng có "nâng cấp" nó bằng UrlDecode.
+5. **Tổng độ dài ~600 ký tự** ⇒ `src=` của route không được tự nhiên ghép chuỗi thô: may là
+   `Enc()`/`Dec()` đã bọc **base64** (`HubController.cs:663/665`), nên `?sid=<base64 có + / =>`
+   truyền qua query **không bị hỏng** (`+` thành dấu cách là chết token). UHDMovies dùng nguyên
+   cơ chế đó, không thêm escape gì.
+   -> Ghi thành luật chung cho họ này: **url nào cũng đi qua `Enc`, không bao giờ ghép `?src=<raw>`.**
+6. **Không regex theo độ dài token** (256/32 hex là của link này, worker khác có thể khác). Nhận
+   link bằng: host khớp `workers\.dev|\.r2\.dev|video-leech` **và** `path.EndsWith` một trong
+   `.mkv|.mp4|.m4v|.avi|.ts` — còn lại bỏ, và in `hosts=`/`tail=` để kết luận một lần.
+
 ## 3. Thiết kế module (quyết định, không phải gợi ý)
 
 1. **ĐẶT TRONG MoviesHub** (`Modules/OnlineENG/MoviesHub/UhdmoviesController.cs`), không lập module
