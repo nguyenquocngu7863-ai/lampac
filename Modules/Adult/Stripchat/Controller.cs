@@ -24,7 +24,8 @@ public class StripchatController : BaseSisiController
             return badInitMsg;
 
     rhubFallback:
-        var cache = await InvokeCacheResult<(List<PlaylistItem> playlists, int total_pages)>($"Stripchat:list:{tag}:{pg}", 3, async e =>
+        Console.WriteLine($"[Stripchat][v7] list request tag={tag} pg={pg}");
+        var cache = await InvokeCacheResult<(List<PlaylistItem> playlists, int total_pages)>($"Stripchat:list:{tag}:{pg}", 1, async e =>
         {
             List<PlaylistItem> playlists = null;
             int totalPages = 0;
@@ -33,14 +34,9 @@ public class StripchatController : BaseSisiController
             // Direct TLS to the apex stripchat.com is killed by some ISPs
             // (OpenSSL "unexpected eof while reading" = SNI reset), which hits
             // both HttpClient and system curl. Stripchat serves the identical
-            // API on geo/alt domains, so try the mirrors first and use the first
+            // API on geo/alt domains, so use the mirrors and take the first
             // host that answers with actual rooms.
-            var apiHosts = new List<string>();
-            foreach (string h in new[] { "https://vi.stripchat.com", "https://stripol.com", init.host })
-            {
-                if (!string.IsNullOrWhiteSpace(h) && !apiHosts.Contains(h))
-                    apiHosts.Add(h);
-            }
+            var apiHosts = MirrorHosts();
 
             foreach (string apiHost in apiHosts)
             {
@@ -94,6 +90,60 @@ public class StripchatController : BaseSisiController
         );
     }
 
+    [HttpGet]
+    [Route("stripchat/play")]
+    public async Task<ActionResult> Play(string u)
+    {
+        if (!StripchatTo.IsValidUsername(u))
+            return OnError("bad username", false);
+
+        if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
+            return badInitMsg;
+
+        Console.WriteLine($"[Stripchat][v7] play request u={u}");
+
+        var cache = await InvokeCacheResult($"Stripchat:play:{u}", 5, jsonContext.StreamItem, async e =>
+        {
+            foreach (string apiHost in MirrorHosts())
+            {
+                try
+                {
+                    string url = StripchatTo.CamUri(apiHost, u);
+                    var fetched = await CurlGet(url, apiHost);
+                    if (fetched.exitCode != 0 || string.IsNullOrEmpty(fetched.body))
+                    {
+                        Console.WriteLine($"[Stripchat] cam {apiHost} failed: exit={fetched.exitCode} {fetched.error}");
+                        continue;
+                    }
+
+                    var stream = StripchatTo.LiveStream(fetched.body.AsSpan());
+                    if (stream?.qualitys != null && stream.qualitys.Count > 0)
+                        return e.Success(stream);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[Stripchat] play {apiHost} exception: {ex.Message}");
+                }
+            }
+
+            return e.Fail("live stream not found (offline/private?)", refresh_proxy: true);
+        });
+
+        if (!cache.IsSuccess)
+            return OnError(cache.ErrorMsg);
+
+        return OnResult(cache);
+    }
+
+    static List<string> MirrorHosts()
+    {
+        var hosts = new List<string>();
+        foreach (string h in new[] { "https://vi.stripchat.com", "https://stripol.com" })
+            if (!hosts.Contains(h))
+                hosts.Add(h);
+        return hosts;
+    }
+
     static async Task<(int exitCode, string body, string error)> CurlGet(string url, string originHost)
     {
         try
@@ -108,7 +158,7 @@ public class StripchatController : BaseSisiController
             foreach (string arg in new[]
             {
                 "-fsSL", "--max-time", "12", "--compressed",
-                "-A", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Mobile Safari/537.36",
+                "-A", "Mozilla/5.0 (iPad; CPU OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1",
                 "-H", $"Referer: {originHost}/",
                 "-H", $"Origin: {originHost}",
                 "-H", "Accept: application/json, text/plain, */*",

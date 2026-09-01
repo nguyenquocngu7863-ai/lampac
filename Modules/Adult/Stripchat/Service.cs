@@ -1,8 +1,10 @@
 using Newtonsoft.Json.Linq;
 using Shared.Models.SISI.Base;
+using Shared.Models.SISI.OnResult;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace Stripchat;
@@ -178,37 +180,31 @@ public static class StripchatTo
                 if (id <= 0 || string.IsNullOrWhiteSpace(username) || !seen.Add(id))
                     continue;
 
-                // Depending on geo/experiment Stripchat sends isLive, isOnline or
-                // only a status string. The listing already consists of online rooms;
-                // accept anything that is not explicitly offline/private.
+                // The listing returns live rooms, but groupShow/private rooms are
+                // not openly playable. Require an explicit live flag + public
+                // status so promo/teaser/locked entries never make it to the UI.
                 bool isLive = model.Value<bool?>("isLive") == true || model.Value<bool?>("isOnline") == true;
                 string status = model.Value<string>("status");
-                if (!IsPublicStatus(status, isLive))
+                if (!isLive || status != "public")
                 {
                     skippedNotLive++;
                     continue;
                 }
 
-                string image = model.Value<string>("previewUrlThumbSmall")
-                    ?? model.Value<string>("avatarUrl");
+                // Live snapshot (refreshes constantly) — prefer the timestamped
+                // snapshot URL over any possibly-stale preview field.
                 long? snap = model.Value<long?>("snapshotTimestamp") ?? model.Value<long?>("popularSnapshotTimestamp");
-                if (string.IsNullOrEmpty(image) && snap != null)
-                    image = $"https://img.doppiocdn.net/thumbs/{snap}/{id}";
+                string image = snap != null
+                    ? $"https://img.doppiocdn.net/thumbs/{snap}/{id}"
+                    : model.Value<string>("previewUrlThumbSmall") ?? model.Value<string>("avatarUrl");
                 if (!string.IsNullOrEmpty(image) && image.StartsWith("//"))
                     image = "https:" + image;
 
-                // Stream: the API hands a ready-to-play playlist URL in hlsPlaylist
-                // (some variants nest it under stream.url). Fall back to the canonical
-                // edge-hls master URL with the lowLatency playlist type.
-                string video = model.Value<string>("hlsPlaylist");
-                if (string.IsNullOrEmpty(video) && model["stream"] is JObject streamObj)
-                    video = streamObj.Value<string>("url");
-                if (string.IsNullOrEmpty(video))
-                    video = $"https://edge-hls.doppiocdn.net/hls/{id}/master/{id}_auto.m3u8?playlistType=lowLatency";
-                if (video.StartsWith("//"))
-                    video = "https:" + video;
-                if (video.StartsWith("http://", StringComparison.Ordinal))
-                    video = "https://" + video[7..];
+                // The list endpoint's hlsPlaylist is only the short hover
+                // PREVIEW clip (not the live room). Resolve the real live stream
+                // from the per-model /cam endpoint at play time, and point the
+                // item at our resolver route for that.
+                string video = $"stripchat/play?u={Uri.EscapeDataString(username)}";
 
                 var presets = model["presets"] is JArray presetArr
                     ? presetArr.Values<string>().Where(i => !string.IsNullOrEmpty(i)).ToArray()
@@ -255,6 +251,90 @@ public static class StripchatTo
         return result;
     }
 
+    public static bool IsValidUsername(string u)
+        => !string.IsNullOrEmpty(u) && UsernameRx.IsMatch(u);
+
+    public static string CamUri(string host, string username)
+        => $"{host}/api/front/v2/models/username/{Uri.EscapeDataString(username)}/cam?uniq={Uniq(16)}";
+
+    static string Uniq(int n)
+    {
+        var rnd = new Random();
+        const string chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+        var sb = new StringBuilder(n);
+        for (int i = 0; i < n; i++)
+            sb.Append(chars[rnd.Next(chars.Length)]);
+        return sb.ToString();
+    }
+
+    // Pull the real live master playlist out of the per-model /cam response.
+    // The list endpoint's hlsPlaylist is just a short hover preview clip;
+    // this returns a {"auto": liveMasterM3u8} qualitys map, or null if the room
+    // is offline/private.
+    public static StreamItem LiveStream(ReadOnlySpan<char> json)
+    {
+        if (json.IsEmpty)
+            return null;
+
+        JObject root;
+        try { root = JObject.Parse(json.ToString()); }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Stripchat] cam JSON parse failed: {ex.Message}");
+            return null;
+        }
+
+        // cam.isCamStatus tells whether a room is actually live.
+        bool? isCam = root["cam"]?.Value<bool?>("isCam");
+        string camStatus = root["cam"]?.Value<string>("camStatus");
+        if (isCam == false || camStatus is not (null or "public"))
+            Console.WriteLine($"[Stripchat] room not live: isCam={isCam} camStatus={camStatus}");
+
+        // Collect every absolute m3u8 URL in the payload, best first.
+        var urls = new List<string>();
+        void Add(string u)
+        {
+            if (string.IsNullOrEmpty(u) || !u.Contains("m3u8", StringComparison.OrdinalIgnoreCase))
+                return;
+            if (urls.Contains(u))
+                return;
+            urls.Add(u);
+        }
+
+        // Explicit preferred fields.
+        Add(root["cam"]?["stream"]?.Value<string>("url"));
+        Add(root["cam"]?.Value<string>("hlsPlaylist"));
+        Add(root["cam"]?.Value<string>("hlsUrl"));
+        Add(root["stream"]?.Value<string>("url"));
+
+        // Any other m3u8 anywhere in the response.
+        foreach (JToken t in root.Descendants())
+        {
+            if (t is JValue v && v.Type == JTokenType.String && v.Value<string>() is string s)
+            {
+                foreach (Match m in Regex.Matches(s, "https?://[^\\s\"'\\\\]+\\.m3u8[^\\s\"'\\\\]*"))
+                    Add(m.Value);
+            }
+        }
+
+        if (urls.Count == 0)
+        {
+            Console.WriteLine($"[Stripchat] no live m3u8 found in cam response; keys={string.Join(',', root.Descendants().OfType<JProperty>().Select(p => p.Name).Distinct().Take(40))}");
+            return null;
+        }
+
+        // Prefer the edge-hls master (the actual live multi-bitrate playlist).
+        string best = urls.FirstOrDefault(u => u.Contains("edge-hls", StringComparison.OrdinalIgnoreCase))
+                   ?? urls.FirstOrDefault(u => u.Contains("media-hls", StringComparison.OrdinalIgnoreCase))
+                   ?? urls[0];
+
+        Console.WriteLine($"[Stripchat] live m3u8 candidates={urls.Count}, chosen={best[..Math.Min(120, best.Length)]}");
+        return new StreamItem
+        {
+            qualitys = new Dictionary<string, string> { ["auto"] = best }
+        };
+    }
+
     public static List<MenuItem> Menu(string host, string tag)
     {
         string url(string value) => value == "girls" ? $"{host}/stripchat" : $"{host}/stripchat?tag={value}";
@@ -273,28 +353,6 @@ public static class StripchatTo
                 }
             }
         };
-    }
-
-    static readonly HashSet<string> privateStatuses = new()
-    {
-        "private", "groupShow", "p2p", "virtualPrivate", "p2pVoice", "off", "idle"
-    };
-
-    static bool IsPublicStatus(string status, bool isLive)
-    {
-        // Explicit private/offline statuses always exclude the room, even when
-        // isLive lingers true (group shows are still "live" but not openly
-        // playable). With no explicit status, trust the live flag; an online
-        // listing with public status is accepted.
-        if (!string.IsNullOrEmpty(status))
-        {
-            if (privateStatuses.Contains(status))
-                return false;
-            if (status != "public")
-                return false;
-            return true;
-        }
-        return isLive;
     }
 
     static string NormalizeTag(string tag) => tag switch
