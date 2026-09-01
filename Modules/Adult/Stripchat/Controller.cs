@@ -44,24 +44,32 @@ public class StripchatController : BaseSisiController
 
             foreach (string apiHost in apiHosts)
             {
-                string url = StripchatTo.Uri(apiHost, tag, pg);
+                try
+                {
+                    string url = StripchatTo.Uri(apiHost, tag, pg);
 
-                // .NET HttpClient fails TLS to this host in Android proot while the system curl
-                // succeeds from the exact same guest. Use curl as the narrow transport fallback;
-                // ArgumentList avoids shell interpolation and all URL values are server-generated.
-                var fetched = await CurlGet(url, apiHost);
-                if (fetched.exitCode == 0 && !string.IsNullOrEmpty(fetched.body))
-                    playlists = StripchatTo.Playlist(apiHost, fetched.body.AsSpan(), pg, out totalPages);
+                    // .NET HttpClient fails TLS to this host in Android proot while the system curl
+                    // succeeds from the exact same guest. Use curl as the narrow transport fallback;
+                    // ArgumentList avoids shell interpolation and all URL values are server-generated.
+                    var fetched = await CurlGet(url, apiHost);
+                    if (fetched.exitCode == 0 && !string.IsNullOrEmpty(fetched.body))
+                        playlists = StripchatTo.Playlist(apiHost, fetched.body.AsSpan(), pg, out totalPages);
 
-                if (playlists != null && playlists.Count > 0)
-                    break;
+                    if (playlists != null && playlists.Count > 0)
+                        break;
 
-                if (fetched.exitCode != 0)
-                    lastReason = $"curl {apiHost} exit={fetched.exitCode}: {fetched.error}";
-                else if (string.IsNullOrEmpty(fetched.body))
-                    lastReason = $"curl {apiHost} returned an empty body";
-                else
-                    lastReason = StripchatTo.LastError ?? "no rooms in response";
+                    if (fetched.exitCode != 0)
+                        lastReason = $"curl {apiHost} exit={fetched.exitCode}: {fetched.error}";
+                    else if (string.IsNullOrEmpty(fetched.body))
+                        lastReason = $"curl {apiHost} returned an empty body";
+                    else
+                        lastReason = StripchatTo.LastError ?? "no rooms in response";
+                }
+                catch (Exception ex)
+                {
+                    lastReason = $"host {apiHost} exception: {ex.GetType().Name}: {ex.Message}";
+                    playlists = null;
+                }
 
                 Console.WriteLine($"[Stripchat] host {apiHost} failed: {lastReason}");
             }

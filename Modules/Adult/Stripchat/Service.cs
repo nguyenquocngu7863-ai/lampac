@@ -55,6 +55,23 @@ public static class StripchatTo
     {
         totalPages = 0;
 
+        try
+        {
+            return ParsePlaylist(host, json, pg, out totalPages);
+        }
+        catch (Exception ex)
+        {
+            totalPages = 0;
+            LastError = $"parse exception: {ex.GetType().Name}: {ex.Message}";
+            Console.WriteLine($"[Stripchat] {LastError}");
+            return null;
+        }
+    }
+
+    static List<PlaylistItem> ParsePlaylist(string host, ReadOnlySpan<char> json, int pg, out int totalPages)
+    {
+        totalPages = 0;
+
         LastError = null;
         if (json.IsEmpty)
         {
@@ -154,56 +171,65 @@ public static class StripchatTo
 
         foreach (JObject model in tokens)
         {
-            long id = model.Value<long?>("id") ?? 0;
-            string username = model.Value<string>("username");
-            if (id <= 0 || string.IsNullOrWhiteSpace(username) || !seen.Add(id))
-                continue;
-
-            // Depending on geo/experiment Stripchat sends isLive, isOnline or
-            // only a status string. The listing already consists of online rooms;
-            // accept anything that is not explicitly offline/private.
-            bool isLive = model.Value<bool?>("isLive") == true || model.Value<bool?>("isOnline") == true;
-            string status = model.Value<string>("status");
-            if (!IsPublicStatus(status, isLive))
+            try
             {
-                skippedNotLive++;
-                continue;
+                long id = model.Value<long?>("id") ?? 0;
+                string username = model.Value<string>("username");
+                if (id <= 0 || string.IsNullOrWhiteSpace(username) || !seen.Add(id))
+                    continue;
+
+                // Depending on geo/experiment Stripchat sends isLive, isOnline or
+                // only a status string. The listing already consists of online rooms;
+                // accept anything that is not explicitly offline/private.
+                bool isLive = model.Value<bool?>("isLive") == true || model.Value<bool?>("isOnline") == true;
+                string status = model.Value<string>("status");
+                if (!IsPublicStatus(status, isLive))
+                {
+                    skippedNotLive++;
+                    continue;
+                }
+
+                string image = model.Value<string>("previewUrlThumbSmall")
+                    ?? model.Value<string>("avatarUrl");
+                long? snap = model.Value<long?>("snapshotTimestamp") ?? model.Value<long?>("popularSnapshotTimestamp");
+                if (string.IsNullOrEmpty(image) && snap != null)
+                    image = $"https://img.doppiocdn.net/thumbs/{snap}/{id}";
+                if (!string.IsNullOrEmpty(image) && image.StartsWith("//"))
+                    image = "https:" + image;
+
+                // Stream: the API hands a ready-to-play playlist URL in hlsPlaylist
+                // (some variants nest it under stream.url). Fall back to the canonical
+                // edge-hls master URL with the lowLatency playlist type.
+                string video = model.Value<string>("hlsPlaylist");
+                if (string.IsNullOrEmpty(video) && model["stream"] is JObject streamObj)
+                    video = streamObj.Value<string>("url");
+                if (string.IsNullOrEmpty(video))
+                    video = $"https://edge-hls.doppiocdn.net/hls/{id}/master/{id}_auto.m3u8?playlistType=lowLatency";
+                if (video.StartsWith("//"))
+                    video = "https:" + video;
+                if (video.StartsWith("http://", StringComparison.Ordinal))
+                    video = "https://" + video[7..];
+
+                var presets = model["presets"] is JArray presetArr
+                    ? presetArr.Values<string>().Where(i => !string.IsNullOrEmpty(i)).ToArray()
+                    : Array.Empty<string>();
+                string quality = presets.FirstOrDefault(i => i.StartsWith("1080"))
+                    ?? presets.FirstOrDefault(i => i.StartsWith("960"))
+                    ?? presets.FirstOrDefault(i => i.StartsWith("720"))
+                    ?? presets.FirstOrDefault(i => i.StartsWith("480"));
+
+                result.Add(new PlaylistItem
+                {
+                    name = username,
+                    quality = quality,
+                    picture = image,
+                    video = video
+                });
             }
-
-            string image = model.Value<string>("previewUrlThumbSmall")
-                ?? model.Value<string>("avatarUrl");
-            long? snap = model.Value<long?>("snapshotTimestamp") ?? model.Value<long?>("popularSnapshotTimestamp");
-            if (string.IsNullOrEmpty(image) && snap != null)
-                image = $"https://img.doppiocdn.net/thumbs/{snap}/{id}";
-            if (!string.IsNullOrEmpty(image) && image.StartsWith("//"))
-                image = "https:" + image;
-
-            // Stream: the API hands a ready-to-play playlist URL in hlsPlaylist
-            // (some variants nest it under stream.url). Fall back to the canonical
-            // edge-hls master URL with the lowLatency playlist type.
-            string video = model.Value<string>("hlsPlaylist");
-            if (string.IsNullOrEmpty(video))
-                video = model["stream"]?.Value<string>("url");
-            if (string.IsNullOrEmpty(video))
-                video = $"https://edge-hls.doppiocdn.net/hls/{id}/master/{id}_auto.m3u8?playlistType=lowLatency";
-            if (video.StartsWith("//"))
-                video = "https:" + video;
-            if (video.StartsWith("http://", StringComparison.Ordinal))
-                video = "https://" + video[7..];
-
-            var presets = model["presets"]?.Values<string>().ToArray() ?? Array.Empty<string>();
-            string quality = presets.FirstOrDefault(i => i.StartsWith("1080"))
-                ?? presets.FirstOrDefault(i => i.StartsWith("960"))
-                ?? presets.FirstOrDefault(i => i.StartsWith("720"))
-                ?? presets.FirstOrDefault(i => i.StartsWith("480"));
-
-            result.Add(new PlaylistItem
+            catch (Exception ex)
             {
-                name = username,
-                quality = quality,
-                picture = image,
-                video = video
-            });
+                Console.WriteLine($"[Stripchat] skip model due to parse exception: {ex.GetType().Name}: {ex.Message}");
+            }
         }
 
         if (result.Count == 0)
