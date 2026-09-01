@@ -151,6 +151,16 @@ public class XdmoviesController : HubController
 
         string html = null;
         string postUrl = null;
+        // TỰ CHẨN ĐOÁN, vì hai loại lỗi trông y hệt nhau trong log ("trang tìm rỗng"): hoặc SAI DẠNG
+        // URL (404 -> rỗng), hoặc site CHẶN HttpClient (Cloudflare -> 403/503 -> rỗng). Trang chủ là
+        // phép thử rẻ nhất phân biệt được hai cái, nên đo nó trước khi làm gì khác.
+        string home = await GetPage(site + "/", headers);
+
+        Console.WriteLine($"{Tag} chẩn đoán {site}: trang chủ len={(home?.Length ?? 0)} " +
+                          (string.IsNullOrWhiteSpace(home)
+                              ? "=> trang nào cũng không đọc được bằng request thường, phải qua rch cho CẢ trang bài lẫn gate"
+                              : "=> đọc được bình thường; nếu bài không ra là do sai dạng URL, không phải bị chặn"));
+
 
         // Tìm bài: ?s= rồi /search/. Chưa đọc trang search của site này nên điều kiện nhận bài là
         // thứ chắc nhất em có: slug của họ CHỐT bằng TMDB id (`...-860508`).
@@ -204,6 +214,40 @@ public class XdmoviesController : HubController
 
             if (html != null)
                 break;
+        }
+
+        // KHÔNG có trang tìm kiếm kiểu WordPress ở site này (log máy 1/9: ?s= và /search/ đều rỗng =
+        // 404). Bỏ tìm kiếm, dựng URL thẳng: slug của họ LUÔN kết thúc bằng "-<TMDB id>"
+        // (bài The Whisper Man = ...-860508, Reacher = ...-108978) nên chỉ cần thử vài dạng là đủ.
+        if (html == null)
+        {
+            string slug = Slugify(meta.originalTitle ?? meta.title);
+            List<string> direct = [];
+
+            foreach (string kind in (tv ? new[] { "series", "tv", "show" } : new[] { "movies", "movie", "film" }))
+            {
+                direct.Add($"{site}/{kind}/x-{tmdbId}");
+                direct.Add($"{site}/{kind}/-{tmdbId}");
+                direct.Add($"{site}/{kind}/{tmdbId}");
+
+                if (!string.IsNullOrEmpty(slug))
+                    direct.Add($"{site}/{kind}/{slug}-{tmdbId}");
+            }
+
+            foreach (string url in direct.Distinct())
+            {
+                string page = await GetPage(url, headers);
+                bool hit = !string.IsNullOrWhiteSpace(page) && page.Contains("/download/");
+
+                Console.WriteLine($"{Tag} dựng-theo-id {Cut(url)} len={(page?.Length ?? 0)} {(hit ? "✓ có /download/" : "không có /download/")}");
+
+                if (hit)
+                {
+                    postUrl = url;
+                    html = page;
+                    break;
+                }
+            }
         }
 
         if (html == null)
@@ -440,6 +484,17 @@ public class XdmoviesController : HubController
             name = Regex.Match(blockText ?? "", @"^(?<n>.{4,60}?)\s*$").Groups["n"].Value;
 
         return Cut(name.Replace('.', ' ').Trim());
+    }
+
+    /// <summary>Tên -> slug để thử dựng URL (họ dùng kiểu WordPress-ish nhưng KHÔNG có ?s=).</summary>
+    static string Slugify(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+
+        string slug = Regex.Replace(value.ToLowerInvariant(), @"[^a-z0-9]+", "-").Trim('-');
+
+        return slug.Length > 60 ? slug.Substring(0, 60).Trim('-') : slug;
     }
 
     static bool IsPack(string file)

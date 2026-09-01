@@ -308,3 +308,15 @@ Sửa (build này): `CollectionCore` -> `IsRequestBlocked(rch: init.rhub, rch_ch
 (vừa là điều kiện để `safety:true` thật sự đi qua rch, vừa làm `IsCacheError` tắt ngìm với nguồn này);
 mọi `OnError` trong XdMovies -> `gbcache: false` để không tự đầu độc nữa. MoviesDrive/Movies4U giữ
 `rhub=false` như cũ (chúng không cần rch).
+
+## 11. 01/9 — máy báo "trang tìm rỗng": site này KHÔNG có search kiểu WordPress
+
+`?s=` và `/search/` đều rỗng với `top.xdmovies.wtf` (log `tìm q='The Whisper Man 2026'` 4 lần, rồi
+`không lấy được bài nào`) — trong khi `fetch_page` đọc bài `/movies/the-whisper-man-...-860508` bình
+thường ⇒ site là app kiểu Next.js, **không có trang tìm kiếm** ⇒ tìm bằng search là đường cụt, đừng sửa
+cách search. Thay vào đó: `Build v28-xdmovies-direct-id` (a) dựng URL thẳng từ TMDB id qua 12 dạng
+(`{movies|movie|film}/{series|tv|show}` × `x-<id>`, `-<id>`, `<id>`, `<slug>-<id>`) — em chỉ biết chắc
+phần đuôi `-<id>`; (b) in một dòng chẩn đoán TRƯỚC mọi thứ: `GET <site>/` len=...
+* `len=0` ở trang chủ ⇒ site chặn request thường ⇒ phải qua `rch` cho cả trang bài, không riêng gate
+  (và khi đó module phải dùng `rch.Get`, không dùng `Http`).
+* `len>0` ⇒ chỉ sai dạng URL; dòng `dựng-theo-id … len=… ✓ có /download/` sẽ nói dạng nào ăn.
