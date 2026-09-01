@@ -84,6 +84,58 @@ Step 5  Trên file page: đọc div.text-center > a, theo THỨ TỰ ưu tiên (
 vào menu chất lượng, để GStreamer của Lampac tự chơi. Không `/proxy`, không HLS hop: route chỉ việc
 **302 verbatim** (`method:"play"` + `accsArgs`) — y hệt MoviesHub round 15.
 
+## 2b. CSX đã làm thế nào (bản để port — `Moviesmod/src/main/kotlin/com/megix/Utils.kt`, repo `SaurabhKaperwan/CSX` @ `f1b19bd`, đọc 2026-09-01)
+
+Anh bảo kiểm tra CSX: **có**, và đúng là họ bỏ bê — provider này không còn file riêng, nó nằm
+chung module `Moviesmod` (cùng họ: MoviesMod/UHDMovies/TopMovies một chủ). Toàn bộ phần hard nhất
+nằm trong 2 hàm, và **không cần crypto**:
+
+```kotlin
+suspend fun bypass(url: String): String? {                     // ?sid= -> trang file
+    res = app.get(url).document
+    formUrl = res select "form#landing" attr("action");  formData = "form#landing input" (TẤT CẢ input)
+    res = app.post(formUrl, formData).document                 // lần 1
+    formUrl = ...; formData = ...                              // lần 2 (lặp lại đúng kiểu)
+    res = app.post(formUrl, formData).document
+    skToken  = res: script chứa "?go=" -> substringAfter("?go=").substringBefore("\"")
+    driveUrl = app.get("$host?go=$skToken", cookies = { skToken -> formData["_wp_http2"] })
+                  .document: meta[http-equiv=refresh] -> substringAfter("url=")
+    path     = app.get(driveUrl).text.substringAfter("replace(\"").substringBefore("\")")
+    if (path == "/404") return null
+    return fixUrl(path, getBaseUrl(driveUrl))                  // = URL trang file
+}
+```
+
+Bốn chỗ em ghi ở mục 2 theo bản JS **thiếu/sai** so với bản Kotlin này, và port thì phải theo Kotlin:
+
+1. POST **toàn bộ** `form#landing input` (không chọn mỗi `_wp_http`/`token`) ⇒ ít vỡ hơn khi họ thêm input.
+2. Phải POST form **hai lần liên tiếp** (bản JS chỉ một), rồi mới tới `?go=`.
+3. `skToken` không nằm trong form: nó nằm trong **`<script>` chứa `?go=`** của trang sau POST lần 2,
+   và **tên cookie** chính là `skToken`, giá trị là `_wp_http2` — quirky nhưng đó là cái chốt cửa.
+4. Sau `?go=` mới tới `meta refresh`, sau refresh mới tới `window.location.replace(...)`.
+
+`Driveleech` / `Driveseed` (`class Driveseed : Driveleech()`, `requiresReferer = false`) đọc trang file:
+
+- `ul > li.list-group-item:contains(Name)` → `Name : <tên file>` và `:contains(Size)` → `Size : <size>`
+  ⇒ **label và dung tích lấy từ chính trang file**, không cần đoán từ release name (tốt hơn:
+  `getIndexQuality(fileName)` = `(\d{3,4})[pP]`, rồi 8k/4k/2k).
+- duyệt `div.text-center > a` theo CHỮ trên nút (mọi nút đều được `callback`, không phải "cái đầu"):
+  `Cloud Download` → href thẳng; `Instant Download` → **`GET href` với `allowRedirects=false`, lấy
+  header `Location`, `substringAfter("?url=")`** (đơn giản hơn hẳn bản JS POST `/api`);
+  `Resume Worker Bot` → regex `formData\.append\('token', '([a-f0-9]+)'\)` +
+  `fetch\('/download\?id=([a-zA-Z0-9/+]+)'`, **giữ `PHPSESSID` từ response GET**, POST
+  `{base}/download?id=…` form `token=…` + headers `Origin`, `Sec-Fetch-Site: same-origin`, `Referer`
+  → JSON `{"url": …}`; `Direct Links` → `GET baseUrl+href + "?type=1"` **và** `"?type=2"` →
+  `a.btn-success[href]`; `Resume Cloud` → `GET baseUrl+href` → `a.btn-success`; `gofile` → `loadExtractor`.
+- Trang file có biến thể `r?key=`: phải đọc `replace("…")` trong `<script>` đầu tiên rồi GET tiếp.
+
+⇒ **Port sang C# là vừa**, mọi thứ đều có trong Lampac: `httpHydra.Get(url, cookieContainer: jar)`
+cho chuỗi `bypass`, POST form qua `httpHydra.Post(url, "_wp_http=…&…")` với `Content-Type:
+application/x-www-form-urlencoded`, và "allowRedirects=false + đọc header Location" =
+`Http.GetLocation(url, …, allowAutoRedirect: false)` (có sẵn, `Shared/Services/HTTP/Http.cs:418`).
+Điểm **không** có trong CSX mà mình vẫn phải giữ: `Zip / Pack` (CSX không lọc pack), và luật "link
+`.mkv` để trên nút nguồn" của vùng này.
+
 ## 3. Thiết kế module (quyết định, không phải gợi ý)
 
 1. **Module riêng `Modules/OnlineENG/UhdMovies/`**, KHÔNG nhét vào MoviesHub. Lý do đúng theo
