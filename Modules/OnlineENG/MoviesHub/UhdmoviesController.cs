@@ -506,17 +506,17 @@ public class UhdmoviesController : HubController
             {
                 string link = kind switch
                 {
-                    "resume" => await LinkFrom(Absolute(href, file), jar, file, @"btn-success"),
-                    "btn" => await LinkFrom(Absolute(href, file), jar, file, "btn"),
-                    "center" => IsMedia(Unwrap(Absolute(href, file))) ? Absolute(href, file)
-                              : await LinkFrom(Absolute(href, file), jar, file, "btn") ?? Absolute(href, file),
+                    // Resume Cloud / Resume Worker Bot / mọi nút không tên khác: Ở HỌ NÀY CÙNG MỘT
+                    // ĐƯỜNG — hoặc trang đích nhúng sẵn link worker, hoặc form /download?id= + token
+                    // trả JSON .url. Link worker là thứ DUY NHẤT tua được; người dùng báo 1/9:
+                    // "bạn toàn get nhầm link install download" vì Resume Cloud fail nên rơi xuống Instant.
+                    "resume" or "worker" or "btn" or "center" => await ResumeLink(Absolute(href, file), jar, file),
                     "cf" => await CfLinks(Absolute(href, file), jar, file),
-                    "worker" => await WorkerLink(Absolute(href, file), jar, file),
                     _ => (await Http.GetLocation(Absolute(href, file), referer: OriginOf(file), headers: PlayHeaders())) is string loc && !string.IsNullOrWhiteSpace(loc)
                             ? Absolute(loc, file) : Absolute(href, file)
                 };
 
-                link = Unwrap(link);
+                link = string.IsNullOrWhiteSpace(link) ? link : Unwrap(Clean(link));
 
                 if (string.IsNullOrWhiteSpace(link) || !Playable(link, file, loose: kind is not ("media" or "ext" or "center")))
                     continue;
@@ -524,10 +524,35 @@ public class UhdmoviesController : HubController
                 if (found.Any(x => x.Url == link))
                     continue;
 
-                string tag = kind is "instant" or "cloud" or "ext" ? " [download]" : "";
+                // Nhãn nói THẲNG vào mặt: tua được hay chỉ tải một lèo. video-downloads.googleusercontent.com
+                // play được nhưng không seek; worker-*.workers.dev/<hex>::<hex>/ten.mkv thì tua bình thường.
+                string tag = IsResume(link) ? " · tua được" : " [download]";
 
                 found.Add(new HubStream(link, QualityLabel($"{fname} {fsize} · {kind}{tag}", link), PlayHeaders()));
-                Console.WriteLine($"{Tag} ăn: {kind} {Cut(link)}");
+                Console.WriteLine($"{Tag} ăn: {kind}{tag} {Cut(link)}");
+
+                // Có link worker (tua được) rồi thì KHÔNG gọi thêm nút nào nữa — mỗi nút là 1-3 request
+                // mà init.httptimeout chỉ 30s cho cả một tập. Nhưng vẫn ăn MIỄN PHÍ các nút còn lại
+                // trên trang (chỉ đọc href, không request): người dùng cần bản "tải" phòng worker die
+                // (dặn vòng 21), mà Instant của driveseed lại là link cdn thẳng, không cần resolve.
+                if (IsResume(link))
+                {
+                    foreach (var rest in buttons)
+                    {
+                        if (rest.Rank < 3)
+                            continue;
+
+                        string alt = Unwrap(Clean(Absolute(rest.Href, file)));
+
+                        if (found.Any(f => f.Url == alt) || !Playable(alt, file))
+                            continue;
+
+                        found.Add(new HubStream(alt, QualityLabel($"{fname} {fsize} · {rest.Kind} [download]", alt), PlayHeaders()));
+                        Console.WriteLine($"{Tag} thêm miễn phí: {rest.Kind} {Cut(alt)}");
+                    }
+
+                    break;
+                }
             }
             catch (Exception ex)
             {
@@ -690,8 +715,8 @@ public class UhdmoviesController : HubController
 
     /// <summary>Rác trên trang file: menu, logo, kênh social, ảnh/js — không bao giờ là link xem.</summary>
     static bool JunkLink(string url, string text)
-        => Regex.IsMatch(text ?? "", @"(?i)report|dmca|copyright|contact|privacy|polic|terms|\bhome\b|about|follow|channel|upload file|search")
-        || Regex.IsMatch(url ?? "", @"(?i)(?:^|//)(?:t\.me|telegram|twitter\.com|facebook\.com|instagram\.com|pinterest|wa\.me)|\.(?:png|jpe?g|webp|gif|ico|svg|css|js|woff2?)(?:\?|$)");
+        => Regex.IsMatch(text ?? "", @"(?i)report|dmca|copyright|contact|privacy|polic|terms|\bhome\b|about|follow|channel|upload file|search|login|log in|sign in|register|premium|buy ")
+        || Regex.IsMatch(url ?? "", @"(?i)(?:^|//)(?:t\.me|telegram|twitter\.com|facebook\.com|instagram\.com|pinterest|wa\.me)|(?:^|/)login\?|\.(?:png|jpe?g|webp|gif|ico|svg|css|js|woff2?)(?:\?|$)");
 
     static string HostOf(string url)
         => Uri.TryCreate(url, UriKind.Absolute, out Uri u) ? u.Host : "";
@@ -759,30 +784,145 @@ public class UhdmoviesController : HubController
         return string.Join(" ;; ", dump);
     }
 
-    async Task<string> LinkFrom(string url, CookieContainer jar, string referer, string selector)
+    /// <summary>
+    /// RESUME CLOUD = <c>/zfile/&lt;id&gt;</c>. Đọc thẳng trang thật 1/9 (driveseed.org/file/b4cXjsCvPdz0nPXw8KnX):
+    ///   Resume Cloud      -> https://driveseed.org/zfile/b4cXjsCvPdz0nPXw8KnX
+    ///   Instant Download  -> https://cdn.video-gen.xyz/&lt;hex&gt;::&lt;hex&gt;   (302 sang Google = CHỈ TẢI, không seek)
+    ///   Login to download -> https://driveseed.org/login?ref=/file/…        (rác, JunkLink chặn)
+    /// Log vòng trước ("ăn: instant …google…") là hậu quả của việc /zfile/ fail nên Resolve rơi xuống
+    /// Instant. /zfile/ thường 302 THẲNG tới worker CF (link có tên file ở đuôi -> tua được) nên thử
+    /// GetLocation trước: một request, khỏi đọc HTML. Các bước sau là cho driveleech/UI cũ.
+    /// </summary>
+    async Task<string> ResumeLink(string url, CookieContainer jar, string referer)
     {
-        string html = await Get(url, jar, OriginOf(referer));
-        string first = null;
+        string loc = await Http.GetLocation(url, referer: OriginOf(referer), headers: PlayHeaders());
 
-        // Trang con của DriveLeech có thể vài nút btn* (Back / Report / Download). Lấy cái ĐẦU TIÊN
-        // trông như file, nếu không có thì mới quay lại cái đầu tiên.
-        foreach (Match m in Regex.Matches(html ?? "", @"(?is)<a\b[^>]*class\s*=\s*[""'][^""']*" + selector + @"[^""']*[""'][^>]*>"))
+        if (!string.IsNullOrWhiteSpace(loc))
         {
-            string href = Absolute(Unescape(HrefValue(m)), url);
+            loc = Clean(Absolute(loc, url));
+
+            if (IsResume(loc) || IsMedia(loc))
+                return loc;
+        }
+
+        string page = await Get(url, jar, OriginOf(referer));
+        string hit = WorkerUrl(page);
+
+        if (!string.IsNullOrWhiteSpace(hit))
+            return Clean(hit);
+
+        hit = BtnUrl(page, url);
+
+        if (!string.IsNullOrWhiteSpace(hit))
+            return hit;
+
+        hit = await DownloadIdLink(page, url, jar);
+
+        if (!string.IsNullOrWhiteSpace(hit))
+            return hit;
+
+        Console.WriteLine($"{Tag} resume fail: {Cut(url)} | len={(page ?? "").Length} title='{Text(page ?? "", @"(?is)<title[^>]*>(?<v>.*?)</title>")}' — rơi xuống nút khác");
+        return null;
+    }
+
+    /// <summary>Link worker/R2: thứ DUY NHẤT trong họ này tua được (Range + resume). Link Google
+    /// (video-downloads…) và cdn.video-gen.xyz chỉ là link tải — chơi một lèo, không seek.</summary>
+    static bool IsResume(string url)
+        => !string.IsNullOrWhiteSpace(url) && Regex.IsMatch(url, @"(?i)workers\.dev|r2\.dev|video-leech\.pro");
+
+    /// <summary>Worker link nhúng sẵn trong HTML/JS (`window.location = "https://worker-….workers.dev/…"`).</summary>
+    static string WorkerUrl(string page)
+    {
+        var m = Regex.Match(page ?? "", @"https?://[A-Za-z0-9\.\-_]+(?:workers\.dev|r2\.dev|video-leech\.pro)[A-Za-z0-9\.\-_/?:=%&+]*");
+
+        if (m.Success)
+            return Unescape(m.Value);
+
+        // "<256 hex>::<32 hex>" không host cũng đủ nhận ra — cả họ này chỉ file mới mang ::
+        var h = Regex.Match(page ?? "", @"""(?<u>https?://[^""]*::[^""]+)""");
+
+        return h.Success ? Unescape(h.Groups["u"].Value) : null;
+    }
+
+    /// <summary>Nút <c>class*="btn"</c> đầu tiên trông như file (DriveLeech cũ: a.btn-success).</summary>
+    static string BtnUrl(string page, string baseUrl)
+    {
+        foreach (Match m in Regex.Matches(page ?? "", AnchorPattern))
+        {
+            if (!Attr(m.Value, "class").Contains("btn", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            string href = Unescape(HrefValue(m));
 
             if (string.IsNullOrWhiteSpace(href) || href.StartsWith("javascript", StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            if (Playable(href, url))
-                return href;
+            string abs = Clean(Absolute(href, baseUrl));
 
-            first ??= href;
+            if (IsResume(abs) || IsMedia(abs) || Playable(abs, baseUrl))
+                return abs;
         }
 
-        return first;
+        return null;
     }
 
-    /// <summary>Direct Links = trang Cloudflare-type: ?type=1 rồi ?type=2, lấy a.btn-success.</summary>
+    /// <summary>Resume Worker Bot: token + <c>/download?id=</c> trong script, POST giữ cookie -> JSON .url.</summary>
+    async Task<string> DownloadIdLink(string page, string url, CookieContainer jar)
+    {
+        if (string.IsNullOrWhiteSpace(page))
+            return null;
+
+        string token = Regex.Match(page, @"(?i)token['""\s]*[:=,]\s*[""'](?<v>[A-Za-z0-9+/=_\-]{8,})[""']").Groups["v"].Value;
+        string path = Regex.Match(page, @"(?<p>/download\?id=[A-Za-z0-9+/=_%\-]+)").Groups["p"].Value;
+
+        if (string.IsNullOrWhiteSpace(token) || string.IsNullOrWhiteSpace(path))
+            return null;
+
+        string json = await Post($"{OriginOf(url)}{path}", new List<(string, string)> { ("token", token) }, jar, url, xhr: true);
+        string link = JsonUrl(json);
+
+        return string.IsNullOrWhiteSpace(link) ? null : Clean(Absolute(link, url));
+    }
+
+    static string JsonUrl(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return null;
+
+        try
+        {
+            var t = JObject.Parse(json);
+
+            foreach (string key in new[] { "url", "link", "file", "download" })
+            {
+                string v = t.Value<string>(key);
+
+                if (!string.IsNullOrWhiteSpace(v))
+                    return v;
+            }
+
+            var d = t["data"];
+
+            if (d != null)
+                foreach (string key in new[] { "url", "link" })
+                {
+                    string v = d.Value<string>(key);
+
+                    if (!string.IsNullOrWhiteSpace(v))
+                        return v;
+                }
+        }
+        catch (Exception)
+        {
+            // JSON hỏng / lẫn HTML: còn đường regex bên dưới, không nổ cả tập vì một nút
+        }
+
+        var m = Regex.Match(json, @"https?://[^""\\ ]+(?:::|workers\.dev)[^""\\ ]*");
+
+        return m.Success ? m.Value : null;
+    }
+
+    /// <summary>Trang DriveLeech kiểu Cloudflare: <c>?type=1</c> rồi <c>?type=2</c>, lấy a.btn-success.</summary>
     async Task<string> CfLinks(string url, CookieContainer jar, string referer)
     {
         foreach (string t in new[] { "1", "2" })
@@ -804,34 +944,9 @@ public class UhdmoviesController : HubController
         return null;
     }
 
-    /// <summary>
-    /// Resume Worker Bot: token + id nằm trong <script>, POST /download?id=... rồi ăn JSON .url.
-    /// Worker chết là thường (báo cáo thiết bị) => exception được nuốt ở Resolve và thử nút kế.
-    /// </summary>
-    async Task<string> WorkerLink(string url, CookieContainer jar, string referer)
-    {
-        string html = await Get(url, jar, OriginOf(referer));
-
-        if (string.IsNullOrWhiteSpace(html))
-            return null;
-
-        string token = Regex.Match(html, @"formData\.append\(\s*['""]token['""]\s*,\s*['""](?<v>[a-fA-F0-9]+)['""]\s*\)").Groups["v"].Value;
-        string id = Regex.Match(html, @"fetch\(\s*['""](?<p>/download\?id=[^'""]+)['""]\s*\)").Groups["p"].Value;
-
-        if (string.IsNullOrWhiteSpace(token) || string.IsNullOrWhiteSpace(id))
-        {
-            Console.WriteLine($"{Tag} worker: không thấy token/id trong script | len={html.Length}");
-            return null;
-        }
-
-        string json = await Post($"{OriginOf(url)}{id}", new List<(string, string)> { ("token", token) }, jar, url, xhr: true);
-        string link = json == null ? null : (JObject.Parse(json).Value<string>("url") ?? "");
-
-        return string.IsNullOrWhiteSpace(link) ? null : Absolute(link, url);
-    }
-
     // -------------------------------------------------------------------------------------- plumbing
 
+    /// <summary>Header cho lúc play: UA là bắt buộc — Google/CF cắt request không User-Agent.</summary>
     List<HeadersModel> PlayHeaders()
         => HeadersModel.Init(("User-Agent", Http.UserAgent), ("Accept", "*/*"));
 

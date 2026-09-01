@@ -516,3 +516,56 @@ nghĩa là trên trang CÓ một link sang `cdn.video-gen.xyz` — chính là fi
 **Vòng 3 mong đợi**: `ăn: redirect https://cdn.video-gen.xyz/…` (hoặc `ăn: center/media/ext …`) rồi
 `play … direct` và video chạy. Nếu log in `!! ĐÂY LÀ TRANG CHALLENGE` ⇒ bật `rch` trong `init.conf`
 (Lampac đã có sẵn đường đó — `httpHydra` tự đi qua `rch.Get`), không cần viết gì thêm trong module.
+
+---
+
+## 9. Vòng 3 (1/9): play ĐƯỢC rồi, nhưng toàn ăn link Instant — và hình dạng thật của trang file
+
+Log anh gửi:
+
+```text
+uhdmovies: ăn: instant https://video-downloads.googleusercontent.com/ADGPM2…
+uhdmovies: 1 link cho '…2160p NF WEB-DL SDR…' (nút: resume,instant,btn)
+uhdmovies: /r?key= không 302 ra file (Location=https://driveseed.org/file/b4cXjsCvPdz0nPXw8KnX) — đọc nút
+```
+
+⇒ Chuỗi `sid -> 2 countdown -> /r?key= -> /file/<id>` ĐÃ CHẠY XONG TRÊN MÁY THẬT, tìm đúng 3 nút.
+Nhưng `resume` fail im lặng (v23b gọi `LinkFrom(..., "btn-success")` — hình dạng **DriveLeech cũ**),
+nên `found` chỉ còn toàn link Instant = `video-downloads.googleusercontent.com` = **link tải**,
+play một lèo không seek ⇒ anh báo "bạn toàn get nhầm link install download".
+
+### Trang thật `driveseed.org/file/<id>` (đọc trực tiếp 1/9, không suy luận)
+
+| Nút | href | Bản chất |
+|---|---|---|
+| `Resume Cloud` (trên đầu, xem ảnh chụp) | `https://driveseed.org/zfile/<id>` | **302 thẳng tới worker CF** ⇒ link tua được |
+| `Instant Download` | `https://cdn.video-gen.xyz/<256hex>::<32hex>` | 302 sang `video-downloads.googleusercontent.com` ⇒ chỉ tải |
+| `Login to download` | `https://driveseed.org/login?ref=/file/<id>` | rác, phải loại |
+
+Link ĐÚNG để play (anh gửi, khớp `worker-silent-shadow-953c.xegol92519.workers.dev`):
+
+```text
+https://worker-<tên>.<account>.workers.dev/<256 hex>::<32 hex>/The%20Whisper%20Man%20(2026)%202160p….mkv
+```
+
+Khác hẳn link Instant ở hai chỗ: **host `*.workers.dev`** và **có tên file ở đuôi** — đó là lý do nó
+Range/seek được (khớp vòng 22: "link gắn nhãn resume thì tua bình thường").
+
+**Quyết định quan trọng, ghi lại kẻo vòng sau tối ưu nhầm:** đừng dùng chuỗi `::` làm dấu hiệu "tua
+được" — CẢ HAI loại link đều mang `::<hex>`. Chỉ host (`workers.dev|r2.dev|video-leech.pro`) mới là
+dấu hiệu đúng ⇒ `IsResume()`.
+
+### v24 làm gì
+
+1. `ResumeLink()` 4 bước, đúng theo trang thật: (a) `Http.GetLocation(/zfile/…)` — một request, không
+   đọc HTML; (b) tìm link worker nhúng trong HTML/JS; (c) `a.btn*` (DriveLeech cũ); (d) form
+   `/download?id=` + token → JSON `.url` (bước này giờ chịu được nhiều hình dạng JS hơn và chấp nhận
+   key `url|link|file|download`, có fallback regex khi JSON hỏng). Fail thì in `resume fail: … len=…
+   title=…` thay vì im lặng như v23b.
+2. `IsResume(link)` → nhãn ` · tua được`; mọi link khác → ` [download]`. Người dùng nhìn menu là biết.
+3. **Dừng ngay khi có link worker** (mỗi nút 1–3 request, `httptimeout` 30s cho cả tập) NHƯNG vẫn
+   "thêm miễn phí" các nút còn lại bằng cách đọc href trần, 0 request ⇒ menu luôn còn một bản tải
+   phòng worker die (dặn vòng 21).
+4. `JunkLink` chặn thêm `login|sign in|premium…` và `/login?` — nút "Login to download" không còn
+   thành loại "btn" vô dụng như log v23b.
+5. Bỏ `LinkFrom`/`WorkerLink` đã chết (code không dùng = nói dối).

@@ -911,7 +911,7 @@ họ chỉ cần sửa `manifest.json` trong repo (xem [công thức](notes/FILE
 BATCH/ZIP bị loại, chọn nhóm là dịch cả mùa của nhóm đó. Bài học lớn nhất của vòng này — đừng đoán
 DOM, phải đọc trang thật — nằm trong `notes/FILEHOST-SOURCE-FORMULA.md`.
 
-## UhdMovies (`uhdmovies.autos`) — đang test trên thiết bị (vòng 3, build `v23-uhdmovies-driveseed`)
+## UhdMovies (`uhdmovies.autos`) — chain đã chạy trên máy thật, đang chỉnh chất lượng link (vòng 4, build `v24-uhdmovies-zfile-first`)
 
 Anh em họ UHDMovies/MoviesMod/TopMovies **không dùng HubCloud**: mỗi nút "Episode N"/chất lượng trỏ
 `…?sid=<blob mã hoá>` rồi đi qua trang verify của WordPress → shortener → trang file
@@ -931,11 +931,13 @@ boot bất kể file hỏng nằm ở đâu, nên "để riêng cho an toàn" kh
 v22: thử `?s=` trước `/search/`, nhận trang khi có chuỗi `/download-`, log in `dh=`/`sid=` để phân
 biệt "site không trả kết quả" với "mình lọc sai". Chi tiết + cấu trúc bài phim lẻ thật: note mục 7.
 
-**Vòng 2 (1/9) đã xác minh được nửa đường**: `bypass ok (rounds=2)` ⇒ chuỗi countdown không cần JS, và
-trang file thật là `driveseed.org/r?key=<base64>` (không còn `/f/<id>`). Kẹt ở đoạn cuối vì module bắt
-link phải có đuôi `.mkv` còn `cdn.video-gen.xyz` thì không ⇒ v23 bỏ bắt buộc đó (`Playable`), học theo
-`div.text-center > a` + `?url=` của CSX và in nguyên trang anchor ra log khi vẫn trắng.
-Nếu log báo `ĐÂY LÀ TRANG CHALLENGE` ⇒ bật `rch` trong `init.conf`, không viết thêm code.
+**Vòng 3 (1/9) — chain chạy thật trên máy**: `?sid=` → 2 countdown → `driveseed.org/r?key=` →
+`/file/<id>` → tìm đủ 3 nút, video play được. Còn sai ở CHỌN NÚT: `Resume Cloud` (`/zfile/<id>`,
+302 tới `*.workers.dev/<hex>::<hex>/<tên file>.mkv` — link duy nhất tua được) fail im lặng nên module
+rơi xuống `Instant Download` (`cdn.video-gen.xyz` → Google `video-downloads…` = link tải, không seek).
+v24: gọi `/zfile/` bằng `GetLocation` trước, ưu tiên tuyệt đối theo host `workers.dev|r2.dev`
+(không theo `::` — cả hai loại đều có `::`), dán nhãn ` · tua được` / ` [download]`, dừng ngay khi có
+link worker nhưng vẫn thêm bản tải bằng href trần (0 request). Toàn bộ hiện trường: note mục 9.
 
 ## VidLink — đã đóng (2026-09-01)
 
