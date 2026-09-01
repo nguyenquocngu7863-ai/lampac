@@ -306,7 +306,7 @@ public class XdmoviesController : HubController
 
         string body = res.body ?? "";
 
-        foreach (Match m in Regex.Matches(body, @@"https?://[^\s""'<>\\]+", RegexOptions.IgnoreCase))
+        foreach (Match m in Regex.Matches(body, @"https?://[^\s""'<>\\]+", RegexOptions.IgnoreCase))
             urls.Add(m.Value.Replace("\\/", "/"));
 
         List<string> ranked = [.. urls.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => Clean(x)).Distinct()
