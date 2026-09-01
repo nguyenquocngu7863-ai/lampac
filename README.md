@@ -911,6 +911,15 @@ họ chỉ cần sửa `manifest.json` trong repo (xem [công thức](notes/FILE
 BATCH/ZIP bị loại, chọn nhóm là dịch cả mùa của nhóm đó. Bài học lớn nhất của vòng này — đừng đoán
 DOM, phải đọc trang thật — nằm trong `notes/FILEHOST-SOURCE-FORMULA.md`.
 
+## UhdMovies (`uhdmovies.autos`) — mới ở giai đoạn spec (2026-09-01)
+
+Anh em họ UHDMovies/MoviesMod/TopMovies **không dùng HubCloud**: mỗi nút "Episode N"/chất lượng trỏ
+`…?sid=<blob mã hoá>` rồi đi qua trang verify của WordPress → shortener → trang file
+DriveLeech/DriveSeed, link cuối là CDN (thường `.mkv` trên `*.workers.dev`/`.r2.dev`). Toàn bộ chuỗi
+request (5 bước, có 2 POST form + `CookieContainer` dùng chung) và cấu trúc bài viết đã được đọc trực
+tiếp và ghi lại ở [`notes/UHD-MOVIES.md`](notes/UHD-MOVIES.md) — module viết theo đúng spec đó, nằm ở
+`Modules/OnlineENG/UhdMovies/` (assembly riêng, để một file mới không làm sập MoviesHub đang chạy).
+
 ## VidLink — đã đóng (2026-09-01)
 
 Cùng một trang được test bằng **hai stack độc lập**: module Lampac (C#) và plugin CloudStream
