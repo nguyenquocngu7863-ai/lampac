@@ -19,10 +19,10 @@ LAMPAC_DIR="$HOME/lampac"
 LISTEN_PORT="${LAMPAC_PORT:-9118}"
 ROOT_PASSWORD="${LAMPAC_PASSWD:-lampac}"
 # Custom modules maintained in this repository. Override when using a private fork.
-# 2026-08-31: tạm trỏ arena/01a05799-lampac — nhánh đang giữ module VidCore (chưa có
+# 2026-08-31: tạm trỏ arena/01a05c4e-lampac — nhánh đang giữ module VidCore (chưa có
 # trong lampac-nextgen.zip) và bản sửa `lampac update`. Đưa về arena/01a05241-lampac
 # sau khi merge, hoặc đặt LAMPAC_CUSTOM_SOURCE_BASE để đổi mà không sửa file này.
-CUSTOM_SOURCE_BASE="${LAMPAC_CUSTOM_SOURCE_BASE:-https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05799-lampac}"
+CUSTOM_SOURCE_BASE="${LAMPAC_CUSTOM_SOURCE_BASE:-https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05c4e-lampac}"
 
 MODE=""
 [[ "${1:-}" == "--install" ]] && MODE="install"
@@ -74,7 +74,7 @@ show_help() {
     printf "  ${CYAN}LAMPAC_PORT${RESET}     Listen port (default: 9118)\n"
     printf "  ${CYAN}LAMPAC_PASSWD${RESET}   Root password (default: lampac)\n"
     printf "  ${CYAN}LAMPAC_CUSTOM_SOURCE_BASE${RESET} Raw-git base URL for --sync/--sync-all\n"
-    printf "                      (default: .../lampac/arena/01a05799-lampac;\n"
+    printf "                      (default: .../lampac/arena/01a05c4e-lampac;\n"
     printf "                      không dùng main — nhánh đó đang chậm hơn)\n\n"
     printf "${BOLD}How it works:${RESET}\n"
     printf "  This script installs Lampac inside proot-distro Ubuntu.\n"
@@ -533,6 +533,16 @@ sync_latest_modules() {
             fi
         done
 
+        # VK Video quoc te: tim ca original_title va giu HLS/DASH multi-audio.
+        for vkmovie in /root/lampac/module/OnlineRUS/VkMovie /root/lampac/mods/OnlineRUS/VkMovie; do
+            if [ -d \"\$vkmovie\" ]; then
+                pull Modules/OnlineRUS/VkMovie/Controller.cs \"\$vkmovie/Controller.cs\"
+                pull Modules/OnlineRUS/VkMovie/Model.cs \"\$vkmovie/Model.cs\"
+                pull Modules/OnlineRUS/VkMovie/ModInit.cs \"\$vkmovie/ModInit.cs\"
+                pull Modules/OnlineRUS/VkMovie/manifest.json \"\$vkmovie/manifest.json\"
+            fi
+        done
+
         # MoviesHub cung duoc sync o day: lampac sync la du de cap nhat 2 nguoi nay.
         # Danh sach file .cs KHONG hardcode nua: doc tu "tree" trong manifest.json cua chinh module.
         # Them nguon cung kieu (lop Movies4U/MoviesDrive) => chi can sua manifest.json trong repo,
@@ -561,19 +571,18 @@ sync_latest_modules() {
         # File .cs da bi rut khoi tree (UhdmoviesController.cs tu 2026-09-01) PHAI bi xoa tren may:
         # nam lai la dotnet build don no vao, no goi ModInit.uhd da go -> CS0117, module khong nap,
         # log im lang. Sync = dong bo ca 2 chieu, khong chi them.
-        for oldcs in \"$movieshubtarget\"/*.cs; do
-            [ -e \"$oldcs\" ] || continue
-            orph=\$(basename \"$oldcs\")
+        for oldcs in \"\$movieshubtarget\"/*.cs; do
+            [ -e \"\$oldcs\" ] || continue
+            orph=\$(basename \"\$oldcs\")
             case \" \$movieshubfiles \" in
                 *\" \$orph \"*) ;;
-                *) rm -f \"$oldcs\"; echo \"  [sync] movieshub: xoa \$orph (khong con trong tree)\";;
+                *) rm -f \"\$oldcs\"; echo \"  [sync] movieshub: xoa \$orph (khong con trong tree)\";;
             esac
         done
 
         # overlay mods/ THANG module/ khi Lampac nap module, nen no cung phai duoc don + cap nhat:
-        # 1/9 may anh chet boot (signal 6) vi mods/OnlineENG/MoviesHub/manifest.json van khai bao
-        # XdmoviesController.cs trong khi file da bi xoa -> CSharpEval FileStream bo file khong co.
-        # Da guard o Shared/Services/CSharpEval.cs, nhung sync phai giu hai ban dong nhat.
+        # Manifest cu trong mods/ co the van khai bao controller da bi xoa, khien CSharpEval mo
+        # file khong ton tai va module khong nap. Sync phai giu hai ban dong nhat.
         if [ -d /root/lampac/mods/OnlineENG/MoviesHub ]; then
             for oldcs in /root/lampac/mods/OnlineENG/MoviesHub/*.cs; do
                 [ -e \"\$oldcs\" ] || continue
@@ -585,6 +594,17 @@ sync_latest_modules() {
             done
             cp \"\$movieshubtarget/manifest.json\" /root/lampac/mods/OnlineENG/MoviesHub/manifest.json 2>/dev/null \
                 && echo \"  [sync] movieshub/mods: cap nhat manifest.json\"
+        fi
+
+        stripchattarget=/root/lampac/module/Adult/Stripchat
+        mkdir -p \"\$stripchattarget\"
+        for stripchatfile in manifest.json Controller.cs Service.cs ModInit.cs; do
+            pull Modules/Adult/Stripchat/\$stripchatfile \"\$stripchattarget/\$stripchatfile\"
+        done
+        if [ -d /root/lampac/mods/Adult/Stripchat ]; then
+            cp \"\$stripchattarget/manifest.json\" \"\$stripchattarget/Controller.cs\" \
+               \"\$stripchattarget/Service.cs\" \"\$stripchattarget/ModInit.cs\" \
+               /root/lampac/mods/Adult/Stripchat/
         fi
 
         for sisimod in /root/lampac/module/SISI /root/lampac/mods/SISI; do
@@ -656,8 +676,8 @@ install_custom_modules() {
         # script co set -euo pipefail, nen khi nguon khong co module (vi du
         # vua lui LAMPAC_CUSTOM_SOURCE_BASE ve nhanh cu) ma curl -f fail thi
         # cung khong duoc dung ca sync-all.
-#  LUU Y: block nay dung ?cb=$syncstamp cua ca ham, nen phai gan syncstamp
-#  o ngay trong block - neu khong, duoi set -u thi "syncstamp: unbound variable"
+#  LUU Y: block nay dung mot cache-busting timestamp cua ca ham, nen phai gan
+#  syncstamp o ngay trong block; neu khong guest shell voi set -u se dung sync.
 #  la dung ca ham cai dat (da phat hien bang cach chay guest script voi curl stub).
         # tai cho; dong duoi gan lai cung khong sao (chi la cache-buster).
         syncstamp=\$(date +%s)
@@ -677,6 +697,16 @@ install_custom_modules() {
         # MoviesHub = MoviesDrive + Movies4U + resolver HubCloud/GDrive dung chung. Danh sach file
         # lay tu "tree" trong manifest.json (giong khoi sync_latest_modules): them nguon cung ho
         # khong can sua file nay; manifest khong co tren nguon thi dung danh sach cu.
+        # Patched VK Video source is not part of the upstream release archive yet.
+        vkmoviebase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineRUS/VkMovie\"
+        mkdir -p /root/lampac/module/OnlineRUS/VkMovie
+        for vkmovietarget in /root/lampac/module/OnlineRUS/VkMovie /root/lampac/mods/OnlineRUS/VkMovie; do
+            [ -d \"\$vkmovietarget\" ] || continue
+            for vkmoviefile in manifest.json Controller.cs Model.cs ModInit.cs; do
+                curl -fSL --retry 3 \"\$vkmoviebase/\$vkmoviefile?cb=\$syncstamp\" -o \"\$vkmovietarget/\$vkmoviefile\"
+            done
+        done
+
         movieshubbase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineENG/MoviesHub\"
         movieshubtarget=/root/lampac/module/OnlineENG/MoviesHub
         mkdir -p \"\$movieshubtarget\"
@@ -795,6 +825,15 @@ install_custom_modules() {
                 mv \"\$sisitarget/\$file.tmp\" \"\$sisitarget/\$file\"
             done
         fi
+
+        # Stripchat is a custom live provider absent from the release archive.
+        stripchatbase=\"${CUSTOM_SOURCE_BASE}/Modules/Adult/Stripchat\"
+        stripchattarget=/root/lampac/module/Adult/Stripchat
+        mkdir -p \"\$stripchattarget\"
+        for file in manifest.json Controller.cs Service.cs ModInit.cs; do
+            curl -fSL --retry 3 \"\$stripchatbase/\$file?cb=\$syncstamp\" -o \"\$stripchattarget/\$file.tmp\"
+            mv \"\$stripchattarget/\$file.tmp\" \"\$stripchattarget/\$file\"
+        done
 
         for adultmodule in BongaCams Chaturbate Ebalovo Eporner HQporner PornHub Porntrex Runetki Spankbang Xhamster Xnxx Xvideos XvideosRED; do
             adulttarget=\"/root/lampac/module/Adult/\$adultmodule\"
@@ -1080,14 +1119,14 @@ case "${1:-}" in
         ;;
     branch)
         cur="$(cd "$(dirname "$0")" && git branch --show-current 2>/dev/null || echo unknown)"
-        base="${LAMPAC_CUSTOM_SOURCE_BASE:-default (arena/01a05799-lampac)}"
+        base="${LAMPAC_CUSTOM_SOURCE_BASE:-default (arena/01a05c4e-lampac)}"
         echo ""
         echo "  Git branch  : $cur"
         echo "  Source base : $base"
         echo ""
         echo "  Nhánh mới nhất (không dùng main):"
-        echo "    cd ~/lampac && git fetch origin && git checkout arena/01a05799-lampac"
-        echo "    echo 'export LAMPAC_CUSTOM_SOURCE_BASE=https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05799-lampac' >> ~/.bashrc"
+        echo "    cd ~/lampac && git fetch origin && git checkout arena/01a05c4e-lampac"
+        echo "    echo 'export LAMPAC_CUSTOM_SOURCE_BASE=https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05c4e-lampac' >> ~/.bashrc"
         echo "    source ~/.bashrc && lampac sync && lampac stop && lampac start"
         echo ""
         ;;

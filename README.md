@@ -13,7 +13,7 @@ Bản hướng dẫn này dành cho cách chạy Lampac trên **Android qua Term
 
 ## Cài đặt nhanh
 
-> Nhánh đang dùng: **`arena/01a05799-lampac`** — nhánh thử nghiệm đang giữ module `VidCore` và bản sửa `lampac update`.
+> Nhánh đang dùng: **`arena/01a05c4e-lampac`** — nhánh thử nghiệm đang giữ module `VidCore` và bản sửa `lampac update`.
 > Đừng clone `main` — `main` đang chậm hơn và thiếu bản vá. Nhánh dự phòng: **`arena/01a04e63-lampac`**.
 >
 > `LAMPAC_CUSTOM_SOURCE_BASE` (nơi `--sync` / `--sync-all` / `install_custom_modules()` tải module về máy) cũng mặc định
@@ -23,7 +23,7 @@ Mở Termux, tải script rồi chạy:
 
 ```bash
 pkg update -y && pkg install -y git curl
-git clone --depth 1 --branch arena/01a05799-lampac https://github.com/nguyenquocngu7863-ai/lampac.git
+git clone --depth 1 --branch arena/01a05c4e-lampac https://github.com/nguyenquocngu7863-ai/lampac.git
 cd lampac
 bash setup-termux.sh --install
 ```
@@ -105,7 +105,7 @@ Có **ba lệnh**. Script trên điện thoại tự chứa danh sách file, nê
 > sync**, gộp thành một lệnh duy nhất:
 >
 > ```bash
-> curl -fsSL "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05799-lampac/setup-termux.sh?cb=$(date +%s)" -o setup-termux.sh \
+> curl -fsSL "https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05c4e-lampac/setup-termux.sh?cb=$(date +%s)" -o setup-termux.sh \
 >   && bash setup-termux.sh --sync && lampac stop && lampac start
 > ```
 >
@@ -113,12 +113,12 @@ Có **ba lệnh**. Script trên điện thoại tự chứa danh sách file, nê
 >
 > **Clone nhánh chưa đủ.** `--sync` / `--sync-all` / `--update` curl file từ
 > `LAMPAC_CUSTOM_SOURCE_BASE`, không phải từ `git branch` đang checkout.
-> Mặc định hiện tại: nhánh `arena/01a05799-lampac`. Đừng dùng `main`.
+> Mặc định hiện tại: nhánh `arena/01a05c4e-lampac`. Đừng dùng `main`.
 > Dự phòng: `arena/01a04e63-lampac`.
 
 ```bash
 # Bước 0 — lấy script mới (làm một lần sau mỗi patch)
-curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05799-lampac/setup-termux.sh -o setup-termux.sh
+curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05c4e-lampac/setup-termux.sh -o setup-termux.sh
 ```
 
 ### `LAMPAC_CUSTOM_SOURCE_BASE` — nguồn file khi sync
@@ -128,19 +128,19 @@ curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/0
 Mặc định trong script:
 
 ```text
-https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05799-lampac
+https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05c4e-lampac
 ```
 
 Kiểm tra đang trỏ đâu:
 
 ```bash
-echo "${LAMPAC_CUSTOM_SOURCE_BASE:-https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05799-lampac}"
+echo "${LAMPAC_CUSTOM_SOURCE_BASE:-https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05c4e-lampac}"
 ```
 
 Dùng **một lần** (fork riêng, hoặc quay về nhánh dự phòng 63):
 
 ```bash
-LAMPAC_CUSTOM_SOURCE_BASE='https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05799-lampac' \
+LAMPAC_CUSTOM_SOURCE_BASE='https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05c4e-lampac' \
   bash setup-termux.sh --sync
 lampac stop && lampac start
 ```
@@ -148,7 +148,7 @@ lampac stop && lampac start
 Gắn **vĩnh viễn** trong Termux:
 
 ```bash
-echo "export LAMPAC_CUSTOM_SOURCE_BASE=https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05799-lampac" >> ~/.bashrc
+echo "export LAMPAC_CUSTOM_SOURCE_BASE=https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05c4e-lampac" >> ~/.bashrc
 source ~/.bashrc
 echo "$LAMPAC_CUSTOM_SOURCE_BASE"
 bash setup-termux.sh --sync && lampac stop && lampac start
@@ -174,7 +174,7 @@ Mẫu — **URL ghi cứng trong Ubuntu** (copy nguyên khối). Không dùng `\
 ```bash
 proot-distro login ubuntu -- bash -lc '
 set -e
-base=https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05799-lampac
+base=https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05c4e-lampac
 stamp=$(date +%s)
 curl -fSL --retry 3 "$base/Modules/LampaWeb/plugins/lampainit.js?cb=$stamp" \
   -o /root/lampac/module/LampaWeb/plugins/lampainit.js.tmp
@@ -190,7 +190,7 @@ grep -n hasCyrillicText /root/lampac/module/LampaWeb/plugins/lampainit.js
 
 Từng dòng:
 
-1. `base=https://…/arena/01a05799-lampac` — URL raw **trong Ubuntu**. Giữ nhánh 5799; 63 chỉ dự phòng. `export` Termux vẫn dùng cho `--sync`, không cần cho lệnh này.
+1. `base=https://…/arena/01a05c4e-lampac` — URL raw **trong Ubuntu**. Giữ nhánh hiện tại; 63 chỉ dự phòng. `export` Termux vẫn dùng cho `--sync`, không cần cho lệnh này.
 2. `stamp=$(date +%s)` rồi `?cb=$stamp` — chạy **trong** Ubuntu; né cache `raw.githubusercontent.com`.
 3. `proot-distro login ubuntu -- bash -lc '…'` — nháy **đơn** quanh script. Nháy kép + `\$VAR` dễ mất host.
 4. `curl … -o ….tmp` rồi `mv` — ghi xong mới thay file, tránh file dở khi mạng đứt.
@@ -222,7 +222,7 @@ lampac stop && lampac start
 Hoặc một lệnh (vẫn nên tải script mới trước):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05799-lampac/setup-termux.sh | bash -s -- --sync
+curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05c4e-lampac/setup-termux.sh | bash -s -- --sync
 lampac stop && lampac start
 ```
 
@@ -308,7 +308,7 @@ proot-distro login ubuntu -- bash -lc '
 Không cần clone Git:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05799-lampac/setup-termux.sh \
+curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05c4e-lampac/setup-termux.sh \
   | bash -s -- --update
 ```
 
@@ -714,7 +714,7 @@ curl -s http://127.0.0.1:9118/lampainit.js | grep -oE 'StremioSub[^" ]*|stremios
 Nếu lệnh không in ra `stremiosub.js`, đồng bộ đầy đủ LampaWeb rồi khởi động lại:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05799-lampac/setup-termux.sh | bash -s -- --sync-all
+curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05c4e-lampac/setup-termux.sh | bash -s -- --sync-all
 lampac stop
 lampac start
 ```
@@ -866,7 +866,7 @@ proot-distro login ubuntu -- bash -lc '
 set -e
 d=/root/lampac/module/OnlineENG/VidCore
 mkdir -p "$d"
-base=https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05799-lampac/Modules/OnlineENG/VidCore
+base=https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05c4e-lampac/Modules/OnlineENG/VidCore
 stamp=$(date +%s)
 for f in manifest.json Controller.cs ModInit.cs; do
     curl -fSL --retry 3 "$base/$f?cb=$stamp" -o "$d/$f"
@@ -910,14 +910,6 @@ họ chỉ cần sửa `manifest.json` trong repo (xem [công thức](notes/FILE
 1–4): `Mùa` ra đủ 4 mùa, mỗi mùa có danh sách nhóm riêng (`480p [250MB/E]` … `2160p 4K`), nút
 BATCH/ZIP bị loại, chọn nhóm là dịch cả mùa của nhóm đó. Bài học lớn nhất của vòng này — đừng đoán
 DOM, phải đọc trang thật — nằm trong `notes/FILEHOST-SOURCE-FORMULA.md`.
-
-## XdMovies — đã xóa 2026-09-01 (đủ nguồn cần dùng, chuyển sang hiệu năng)
-
-Đã thử hết đường và dừng ở kết luận: `top.xdmovies.wtf` đứng sau Cloudflare ở MỌI trang (kể cả trang chủ),
-nên không có chế độ "chỉ trang gate cần trình duyệt thật" — hoặc mọi request đi qua `rch` của app Lampa
-(client phải >= 484), hoặc không scrape được. Module, section config và `tree` entry đã gạch khỏi repo ở
-`Build v32-xdmovies-removed`; toàn bộ dữ kiện về site (dạng `search.html?q=`, TMDB id trong slug, thứ tự
-server fls/pixel) ở `notes/XDMOVIES.md` để đừng ai điều tra lại từ đầu.
 
 ## UhdMovies — đã đóng (2026-09-01), code giữ làm nguyên liệu cho nguồn phim khác
 
@@ -1058,7 +1050,7 @@ proot-distro login ubuntu -- bash -lc '
   mkdir -p /root/lampac-backups
   [ -f /root/lampac/init.conf ] && cp -a /root/lampac/init.conf /root/lampac-backups/init.conf.before-recovery
   [ -f /root/lampac/passwd ] && cp -a /root/lampac/passwd /root/lampac-backups/passwd.before-recovery
-  curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05799-lampac/config/termux-recovery.init.conf \
+  curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05c4e-lampac/config/termux-recovery.init.conf \
     -o /root/lampac/init.conf
 '
 ```

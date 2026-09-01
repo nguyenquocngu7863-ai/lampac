@@ -19,7 +19,7 @@ namespace MoviesHub;
 /// nữa, và `ModInit` không đăng ký nguồn. Lý do ở notes/UHD-MOVIES.md mục 11. GIỮ LẠI vì máy đã
 /// xác minh cả chuỗi (search / countdown x2 / driveseed /zfile/ / worker link). GIỮ LẠI vì đó là bằng chứng
 /// chạy được của bộ helper Bypass / ResumeLink / LabelBlocks / Playable / IsResume / Unwrap — ai mở
-/// nguồn mới (kiểu XdMovies, đã xoá 2026-09-01: notes/XDMOVIES.md 16) lấy nguyên bộ này dùng.
+/// nguồn file-host mới có cùng luồng xác minh và chuyển hướng lấy nguyên bộ này dùng.
 ///
 /// UhdMovies (`uhdmovies.autos`) — cùng họ bài-đặt-nút-download như Movies4U nhưng KHÁC resolver:
 /// mỗi nút trỏ `…?sid=<blob>` rồi phải qua 2 trang countdown của WordPress trước khi tới trang file
