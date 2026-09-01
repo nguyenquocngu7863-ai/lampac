@@ -407,7 +407,7 @@ hoặc tắt trong Admin Panel — không cần sửa code.
 *"Thôi không quan trọng tui đã có đủ nguồn tui cần"* ⇒ không mở XdMovies nữa. Đã xoá sạch khỏi build:
 `XdmoviesController.cs` bị gạch khỏi repo, `manifest.json` → `tree` còn 4 file, `ModInit.cs` bỏ field
 `xd` / `Allow(xd)` / section `"XdMovies"` (kể cả `xd.rhub = true`), `Build` → `v32-xdmovies-rch-diag`
-thành `v32-xdmovies-removed`. **Không cần xoá §1–§15**: ba dữ kiện值钱 cho mọi nguồn phim kiểu này là
+thành `v32-xdmovies-removed`. **Không xoá §1–§15**: ba dữ kiệnđáng giá cho mọi nguồn phim kiểu này là
 (1) `search.html?q=` trả danh sách kết quả chứ không phải trang phim, (2) slug luôn kết thúc bằng TMDB id
 nên `q=<TMDB id>` là đường tìm đáng tin nhất, (3) Cloudflare của họ chặn ở MỌI trang (trang chủ cũng
 `len=0`) nên hoặc mọi trang đi qua `rch`, hoặc không đi được — đừng quay lại giữa đường.
