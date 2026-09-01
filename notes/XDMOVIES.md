@@ -175,3 +175,17 @@ log thiết bị sẽ trả lời dứt điểm, khỏi đoán.
 `data` (script) là thứ Ebalovo/Porntrex/VideoDB chưa dùng bao giờ -> có thể client bỏ qua; module log đủ
 `rch len=… cur=…` / `gate mở ra N url` để vòng 2 biết đường đổi sang `rch.Get`+bóc form hoặc bắt người
 dùng bấm.
+
+## 7. 01/9 — bài học từ lần biên dịch đầu tiên trên máy (đừng lặp)
+
+Log thiết bị: `XdmoviesController.cs(309,49): error CS9008` (em đánh nhầm `@@"` -> `\@` bị hiểu là
+escape) và **hậu quả không chỉ là module không nạp**: `Core.Startup.ConfigureServices` nổ
+`Unhandled exception` rồi `proot info: vpid 1: terminated with signal 6` ⇒ **Lampac không bật được
+gì cả**, kể cả các nguồn khác. Hệ quả quy trình:
+1. Trước khi ship file .cs phải tự soi ba thứ: `@@`, escape trong string thường (`\s`, `\.` phải là
+   `\\s`/`\\.` hoặc chuyển sang verbatim `@"..."`), và ngoặc cân bằng.
+2. `error CS` của module nào cũng làm chết cả tiến trình, không "tử tế" bỏ qua module lỗi.
+   Đường thoát cho anh khi kẹt: `rm -f /root/lampac/module/OnlineENG/MoviesHub/<file>.cs` rồi
+   `lampac stop; lampac start` (module cả cụm sẽ không nạp nhưng máy xem được tiếp).
+3. `--sync` của script CŨ không xoá file đã rút khỏi tree ⇒ `UhdmoviesController.cs` ở lại, gọi
+   `ModInit.uhd` đã gỡ -> CS0117. Đã sửa trong `sync_latest_modules()` (commit `ea050cf`).
