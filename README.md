@@ -911,22 +911,29 @@ họ chỉ cần sửa `manifest.json` trong repo (xem [công thức](notes/FILE
 BATCH/ZIP bị loại, chọn nhóm là dịch cả mùa của nhóm đó. Bài học lớn nhất của vòng này — đừng đoán
 DOM, phải đọc trang thật — nằm trong `notes/FILEHOST-SOURCE-FORMULA.md`.
 
-## UhdMovies (`uhdmovies.autos`) — v1 đã viết (2026-09-01), chưa có log thiết bị
+## UhdMovies (`uhdmovies.autos`) — đang test trên thiết bị (vòng 2, build `v22-uhdmovies-searchfix`)
 
 Anh em họ UHDMovies/MoviesMod/TopMovies **không dùng HubCloud**: mỗi nút "Episode N"/chất lượng trỏ
 `…?sid=<blob mã hoá>` rồi đi qua trang verify của WordPress → shortener → trang file
 DriveLeech/DriveSeed, link cuối là CDN (thường `.mkv` trên `*.workers.dev`/`.r2.dev`). Toàn bộ chuỗi
-request (5 bước, có 2 POST form + `CookieContainer` dùng chung) và cấu trúc bài viết đã được đọc trực
-tiếp và ghi lại ở [`notes/UHD-MOVIES.md`](notes/UHD-MOVIES.md) — module viết theo đúng spec đó, nằm ở
-**Trạng thái**: `Modules/OnlineENG/MoviesHub/UhdmoviesController.cs` đã viết theo đúng spec (mục 2b/2c/2d/2g),
-`Lite/uhdmovies[/video|file.mkv]`, section config `"UhdMovies"` (displayindex 1019) và `manifest.json`
-→ `tree` đã thêm file nên `lampac sync` tự kéo. **Chưa có log thiết bị** — vòng test đầu sẽ trả lời
-2 câu: (a) chuỗi `bypass` có vượt được 2 trang countdown mà không cần JS, (b) nút nào trên trang file
-còn sống. Module in `bypass ok (rounds=N) -> …`, `ăn: <kind> <link>`, `0 link chơi được … head=` nên
-một lần mở phim là đủ kết luận.
-`Modules/OnlineENG/MoviesHub/UhdmoviesController.cs` — cùng assembly với Movies4U/MoviesDrive để ăn
-lại `CollectionCore` + templates đã được thiết bị xác minh (module compile fail là Lampac không boot
-bất kể file hỏng nằm ở đâu, nên "để riêng cho an toàn" không mua được gì).
+request (5 bước, có 2 POST form + `CookieContainer` dùng chung) và cấu trúc bài viết đã đọc trực tiếp
+từ code CSX còn sống + trang thật, ghi lại ở [`notes/UHD-MOVIES.md`](notes/UHD-MOVIES.md).
+
+Module: `Modules/OnlineENG/MoviesHub/UhdmoviesController.cs` — **cùng assembly** với Movies4U/MoviesDrive
+để ăn lại `CollectionCore` + templates đã được thiết bị xác minh (module compile fail là Lampac không
+boot bất kể file hỏng nằm ở đâu, nên "để riêng cho an toàn" không mua được gì). Route
+`Lite/uhdmovies[/video|file.mkv]`, section config riêng `"UhdMovies"` (displayindex 1019), và
+`manifest.json` → `tree` đã liệt kê file nên `lampac sync` tự kéo, không phải sửa `setup-termux.sh`.
+
+**Vòng 1 (1/9) fail ngay ở tìm bài** — `0 bài ứng viên` với `a=26`: `Anchors()` để mặc định
+`onlyFileHost: true` nên link kết quả (nằm trên chính `uhdmovies.autos`) bị lọc sạch, và code chỉ thử
+`?s=` khi trang trả về RỖNG trong khi trang "không kết quả" của site lại không rỗng. Cả hai đã sửa ở
+v22: thử `?s=` trước `/search/`, nhận trang khi có chuỗi `/download-`, log in `dh=`/`sid=` để phân
+biệt "site không trả kết quả" với "mình lọc sai". Chi tiết + cấu trúc bài phim lẻ thật: note mục 7.
+
+**Chưa có gì được xác minh bằng máy ngoài vòng 1.** Vòng 2 cần thấy: `tìm ăn ở dạng ?s={0} (lần 1)`
+→ `movie: 4 nút từ 4 nhóm` → bấm nút → `bypass ok (rounds=N) -> …` → `ăn: resume https://…workers.dev/….mkv`.
+Nếu `bypass hết form mà không thấy ?go=` ⇒ site cần JS thật, lúc đó mới tính tới `rch`/`.cs3`.
 
 ## VidLink — đã đóng (2026-09-01)
 

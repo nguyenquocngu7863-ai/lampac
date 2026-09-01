@@ -405,3 +405,56 @@ in sẵn để trả lời:
 3. `bypass ok (rounds=N) -> …` + `ăn: resume https://…workers.dev/….mkv` → chuỗi countdown sống;
    `bypass hết form (rounds=…) mà không thấy ?go=` → cần JS thật (lúc đó mới tính `rch`/`.cs3`).
    `0 link chơi được trên … head=…` → thứ tự nút sai, không phải chuỗi sai.
+
+---
+
+## 7. Vòng 1 trên thiết bị (1/9, `The Whisper Man (2026)`, tmdb 860508) — hai lỗi thật, của MÌNH
+
+Log anh gửi:
+
+```text
+uhdmovies: 0 bài ứng viên | q='The Whisper Man 2026' a=26 hosts=uhdmovies.autos:22 uhdmovies.mov:2 modlist.in:2 classes=(không class nào gợi ý nút tải)
+uhdmovies: 0 bài ứng viên | q='The Whisper Man' a=26 ...
+uhdmovies: không lấy được bài nào (tmdb=860508, queries=2) | site=https://uhdmovies.autos
+```
+
+`a=26` GIỐNG HỆT nhau cho hai query = cùng một trang vô dụng (menu + links `uhdmovies.mov`,
+`modlist.in`). Đối chiếu lại trang thật bằng tay, ra hai nguyên nhân:
+
+1. **`Anchors(...)` giữ nguyên mặc định `onlyFileHost: true`.** Mặc định đó chỉ giữ hubcloud / gdflix /
+   driveseed... còn link KẾT QUẢ TÌM KIẾM nằm trên chính `uhdmovies.autos` ⇒ bị lọc sạch, "0 bài ứng
+   viên" dù trang CÓ bài. Movies4U truyền `onlyFileHost: false` từ lâu — đây là chỗ em chép thiếu.
+2. **Điều kiện "trang tìm kiếm hợp lệ" là trang không rỗng.** `…/search/<q>` (mã hoá `%20`) trả trang
+   "không kết quả" nhưng HTML vẫn đầy menu ⇒ code cũ coi là hợp lệ và không bao giờ thử `?s=`. Bằng
+   chứng: `https://uhdmovies.autos/?s=the+whisper+man` được chính site chuyển về
+   `/search/the+whisper+man` và trả đúng `/download-the-whisper-man-2026-…/`.
+   ⇒ v22 thử `?s=` TRƯỚC, `/search/` sau; điều kiện nhận trang là **có chuỗi `/download-`**; mỗi lần thử
+   in `tìm ăn ở dạng …` hoặc `dạng … không có bài (lần N, a=…)`.
+
+### Cấu trúc bài PHIM LẺ thật (khác bài series ở mục 1 — ghi lại để khỏi đoán)
+
+```text
+## **Download The Whisper Man (2026)** **1080p Web-DL** **[Dual Audio]**
+**The Whisper Man (2026) 2160p NF WEB-DL DV HDR 10bit HEVC [Hindi DDP 5.1 + English DDP 5.1] x265 (KRATOS-UHDMovies)**
+**[16.42 GB]**
+[Download (G-Drive)](https://cloud.unblockedgames.world/?sid=<blob>)
+... lặp lại: 2160p SDR [13.39 GB], 1080p x264 [6.61 GB], 1080p HEVC 10bit [2.60 GB]
+```
+
+* 4 "nhóm" = 4 bản release, mỗi nhóm đúng MỘT nút `Download (G-Drive)` ⇒ movies branch dựng 4 nút
+  nguồn, không có menu chất lượng — đúng luật vòng 13/15.
+* Nhãn nằm ở HAI dòng: tên release (2160p/x265/tên encoder) rồi dòng `[dung tích]` sát nút.
+  `NearestLabelBefore` một mình chỉ bắt được `[16.42 GB]` ⇒ 4 nút cùng kiểu nhãn "16 GB", không phân
+  biệt được bản nào. Thêm `ReleaseLine()`: quét `<strong>` NGƯỢC từ nút (window 1500 ký tự), lấy dòng
+  đầu tiên có `\d{3,4}p|4k|2160|x26[45]` rồi nối với nhãn cũ.
+* Bài cũng có ~6 anchor `?sid=` MỒI (1080p x264, 4k HDR, UHDMOVIES, HEVC…) dài ~88 ký tự để câu view;
+  `sid` thật dài ~344. Vẫn an toàn vì lọc theo CHỮ TRÊN NÚT (`episode|download`) chứ không theo host
+  `?sid=` (kết luận ở mục 1). Nếu cần phân biệt thật thì dùng độ dài blob, đừng đoán host.
+* Không có nhãn "Season N" nào ở bài phim lẻ ⇒ `SeasonOf` trả 0, movies branch không đụng mùa ✓.
+
+### Vòng 2 cần thấy gì
+
+`tìm ăn ở dạng ?s={0} (lần 1)` → `movie: 4 nút từ 4 nhóm` → bấm nút →
+`bypass ok (rounds=…) -> …driveleech|driveseed…` → `ăn: resume https://…workers.dev/….mkv`.
+Vẫn `0 bài ứng viên` mà `dh>0` ⇒ `Anchors` còn đang lọc gì đó, sửa tiếp; `dh=0` ⇒ site đổi trang tìm
+kiếm (lúc đó mới xem `uhdmovies.mov` có phải domain mới thật không).

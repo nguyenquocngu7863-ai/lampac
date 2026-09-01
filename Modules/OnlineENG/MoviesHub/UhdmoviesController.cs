@@ -43,7 +43,7 @@ public class UhdmoviesController : HubController
         => HeadersModel.Init(
             ("User-Agent", Http.UserAgent),
             ("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"),
-            ("Referer", "https://uhdmovies.autos/"));
+            ("Referer", init.host.TrimEnd('/') + "/"));   // host trong config, không hardcode: họ đổi domain là cái chết
 
     // ----------------------------------------------------------------------------------- routes
 
@@ -121,7 +121,6 @@ public class UhdmoviesController : HubController
         var headers = SiteHeaders();
         var meta = await TmdbMeta(tmdbId, tv);
 
-        // /search/<q> là route tìm kiếm riêng của họ (CSX dùng nó); ?s= chỉ để phòng hờ.
         var queries = new List<string>();
 
         foreach (string name in new[] { meta.originalTitle, meta.title })
@@ -144,12 +143,39 @@ public class UhdmoviesController : HubController
         string postUrl = null;
         string html = null;
 
+        // ?s= TRƯỚC, /search/<q> sau. Bằng chứng 1/9: `/?s=the+whisper+man` được site tự chuyển về
+        // /search/the+whisper+man và trả đúng bài; gọi thẳng /search/<q> (mã hoá %20) lại ra trang
+        // "không kết quả" mà HTML vẫn đầy menu (26 anchor) => kiểu cũ "trang đầu tiên thắng, chỉ đổi
+        // dạng khi trang RỖNG" không bao giờ thử ?s=. Điều kiện để nhận một trang: có "/download-".
+        string[] forms = { "?s={0}", "/search/{0}" };
+        int attempt = 0;
+
         foreach (string query in queries.Take(2))
         {
-            string search = await GetPage($"{site}/search/{Uri.EscapeDataString(query)}", headers);
+            string search = null;
 
-            if (string.IsNullOrWhiteSpace(search))
-                search = await GetPage($"{site}/?s={Uri.EscapeDataString(query)}", headers);
+            foreach (string form in forms)
+            {
+                attempt++;
+
+                string page = await GetPage($"{site}/{string.Format(form, Uri.EscapeDataString(query))}", headers);
+
+                if (string.IsNullOrWhiteSpace(page))
+                {
+                    Console.WriteLine($"{Tag} dạng {form} trả trang rỗng/blocked (lần {attempt})");
+                    continue;
+                }
+
+                if (page.Contains("/download-"))
+                {
+                    search = page;
+                    Console.WriteLine($"{Tag} tìm ăn ở dạng {form} (lần {attempt})");
+                    break;
+                }
+
+                search ??= page;   // giữ trang cuối làm nguyên liệu log
+                Console.WriteLine($"{Tag} dạng {form} không có bài (lần {attempt}, a={Regex.Matches(page, "(?i)<a[^>]+href=").Count}) — thử dạng kế");
+            }
 
             if (string.IsNullOrWhiteSpace(search))
             {
@@ -157,16 +183,20 @@ public class UhdmoviesController : HubController
                 continue;
             }
 
-            // Slug bài của họ luôn bắt đầu bằng /download- (2 bài người dùng gửi đều vậy) — chắc
-            // hơn nhiều so với giả định <article>/h3.
-            List<(string Url, string Label)> candidates = [.. Anchors(search, site + "/", 40)
+            // Slug bài của họ luôn bắt đầu bằng /download- (bài thật đọc lại 1/9 xác nhận) — chắc hơn
+            // giả định <article>/h3 rất nhiều.
+            // onlyFileHost: PHẢI TẮT. Mặc định của Anchors là chỉ giữ link hubcloud/gdflix/driveseed...,
+            // còn link KẾT QUẢ TÌM KIẾM nằm ngay trên uhdmovies.autos => bị lọc sạch. Đây là thủ phạm
+            // "0 bài ứng viên" trong log 1/9 dù trang tìm kiếm CÓ bài (xem lại tay: /?s=the+whisper+man
+            // trả đúng /download-the-whisper-man-2026-.../).
+            List<(string Url, string Label)> candidates = [.. Anchors(search, site + "/", 40, onlyFileHost: false)
                                 .Where(a => a.Url.Contains("/download-", StringComparison.OrdinalIgnoreCase))
                                 .Select(a => (Url: a.Url, Label: Plain(a.Label)))
                                 .DistinctBy(x => x.Url)];
 
             if (candidates.Count == 0)
             {
-                Console.WriteLine($"{Tag} 0 bài ứng viên | q='{query}' a={Regex.Matches(search, "(?i)<a[^>]+href=").Count} hosts={HostHistogram(search, site)} classes={ClassHistogram(search)}");
+                Console.WriteLine($"{Tag} 0 bài ứng viên | q='{query}' a={Regex.Matches(search, "(?i)<a[^>]+href=").Count} dh={Regex.Matches(search, "/download-").Count} sid={Regex.Matches(search, @"[?&]sid=").Count} hosts={HostHistogram(search, site)} classes={ClassHistogram(search)}");
                 continue;
             }
 
@@ -286,6 +316,24 @@ public class UhdmoviesController : HubController
 
     sealed record Release(string Heading, List<(string Label, string Url, short Ep)> Links);
 
+    /// <summary>Dòng <c>&lt;strong&gt;</c> gần nút nhất CÓ dấu vết chất lượng (2160p / 1080p / 4K /
+    /// x265) — tức tên bản release, chứ không phải dòng dung tích nằm sát nút.</summary>
+    static string ReleaseLine(string html, int before)
+    {
+        int from = Math.Max(0, before - 1500);
+        var strongs = Regex.Matches(html[from..before], @"(?is)<strong[^>]*>(?<t>.*?)</strong>");
+
+        for (int i = strongs.Count - 1; i >= 0; i--)
+        {
+            string t = Plain(strongs[i].Groups["t"].Value);
+
+            if (!string.IsNullOrWhiteSpace(t) && Regex.IsMatch(t, @"(?i)\d{3,4}p|\b4k\b|2160|x26[45]"))
+                return t;
+        }
+
+        return "";
+    }
+
     /// <summary>
     /// Mọi nút tải của bài viết. CSX chọn "dòng &lt;p&gt; nhắc S0?N/Season 0?N rồi lấy phần tử KẾ TIẾP"
     /// (CineStreamExtractors.kt:2375) — tức release-name và dãy nút là hai khối anh-em. Em làm tương
@@ -316,9 +364,15 @@ public class UhdmoviesController : HubController
             if (!url.StartsWith("http", StringComparison.OrdinalIgnoreCase) || byLabel.Any(x => x.Url == url))
                 continue;
 
+            // Bài thật 1/9: dòng NGAY TRÊN nút chỉ là "**[16.42 GB]**", còn tên mang 2160p / x265 /
+            // (KRATOS-UHDMovies) nằm ở dòng trên nữa. Mỗi mình NearestLabelBefore thì 4 nút movie ra
+            // nhãn "16 GB / 13 GB..." không phân biệt được bản nào — gom cả hai dòng.
             string label = NearestLabelBefore(html, m.Index);
+            string rel = ReleaseLine(html, m.Index);
+            string heading = string.IsNullOrWhiteSpace(rel) ? label
+                           : string.IsNullOrWhiteSpace(label) ? rel : $"{rel} {label}";
 
-            byLabel.Add((string.IsNullOrWhiteSpace(label) ? "Nhóm" : label, url, EpisodeOf(text), text));
+            byLabel.Add((string.IsNullOrWhiteSpace(heading) ? "Nhóm" : heading, url, EpisodeOf(text), text));
         }
 
         if (packs > 0)
