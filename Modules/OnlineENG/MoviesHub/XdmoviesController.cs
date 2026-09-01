@@ -162,7 +162,7 @@ public class XdmoviesController : HubController
         // TỰ CHẨN ĐOÁN, vì hai loại lỗi trông y hệt nhau trong log ("trang tìm rỗng"): hoặc SAI DẠNG
         // URL (404 -> rỗng), hoặc site CHẶN HttpClient (Cloudflare -> 403/503 -> rỗng). Trang chủ là
         // phép thử rẻ nhất phân biệt được hai cái, nên đo nó trước khi làm gì khác.
-        string home = await GetPage(site + "/", headers);
+        string home = await Read(site + "/");
 
         Console.WriteLine($"{Tag} chẩn đoán {site}: trang chủ len={(home?.Length ?? 0)} " +
                           (string.IsNullOrWhiteSpace(home)
@@ -175,9 +175,12 @@ public class XdmoviesController : HubController
         // Điều kiện nhận bài vẫn là thứ chắc nhất: slug luôn CHỐT bằng TMDB id (`...-860508`).
         foreach (string query in queries.Take(4))
         {
-            foreach (string form in new[] { "search.html?q={0}" })
+            // ĐƯỜNG ĐÚNG (anh cung cấp): search.html?q=... trả về DANH SÁCH KẾT QUẢ, bấm kết quả đầu
+            // tiên (ưu tiên bài khớp TMDB id). Không mò dựng URL từng biến thể nữa — lần trước em thử
+            // 12 dạng, mất 12 request vô ích, bị anh mắng là đúng.
+        foreach (string form in new[] { "search.html?q={0}" })
             {
-                string page = await GetPage($"{site}/{string.Format(form, Uri.EscapeDataString(query))}", headers);
+                string page = await Read($"{site}/{string.Format(form, Uri.EscapeDataString(query))}");
 
                 if (string.IsNullOrWhiteSpace(page))
                 {
@@ -204,7 +207,7 @@ public class XdmoviesController : HubController
 
                 foreach (var cand in picked.Take(3))
                 {
-                    string post = await GetPage(cand.Url, headers);
+                    string post = await Read(cand.Url);
 
                     if (string.IsNullOrWhiteSpace(post) || !post.Contains("/download/"))
                     {
@@ -223,40 +226,6 @@ public class XdmoviesController : HubController
 
             if (html != null)
                 break;
-        }
-
-        // KHÔNG có trang tìm kiếm kiểu WordPress ở site này (log máy 1/9: ?s= và /search/ đều rỗng =
-        // 404). Bỏ tìm kiếm, dựng URL thẳng: slug của họ LUÔN kết thúc bằng "-<TMDB id>"
-        // (bài The Whisper Man = ...-860508, Reacher = ...-108978) nên chỉ cần thử vài dạng là đủ.
-        if (html == null)
-        {
-            string slug = Slugify(meta.originalTitle ?? meta.title);
-            List<string> direct = [];
-
-            foreach (string kind in (tv ? new[] { "series", "tv", "show" } : new[] { "movies", "movie", "film" }))
-            {
-                direct.Add($"{site}/{kind}/x-{tmdbId}");
-                direct.Add($"{site}/{kind}/-{tmdbId}");
-                direct.Add($"{site}/{kind}/{tmdbId}");
-
-                if (!string.IsNullOrEmpty(slug))
-                    direct.Add($"{site}/{kind}/{slug}-{tmdbId}");
-            }
-
-            foreach (string url in direct.Distinct())
-            {
-                string page = await GetPage(url, headers);
-                bool hit = !string.IsNullOrWhiteSpace(page) && page.Contains("/download/");
-
-                Console.WriteLine($"{Tag} dựng-theo-id {Cut(url)} len={(page?.Length ?? 0)} {(hit ? "✓ có /download/" : "không có /download/")}");
-
-                if (hit)
-                {
-                    postUrl = url;
-                    html = page;
-                    break;
-                }
-            }
         }
 
         if (html == null)
@@ -495,15 +464,37 @@ public class XdmoviesController : HubController
         return Cut(name.Replace('.', ' ').Trim());
     }
 
-    /// <summary>Tên -> slug để thử dựng URL (họ dùng kiểu WordPress-ish nhưng KHÔNG có ?s=).</summary>
-    static string Slugify(string value)
+    /// <summary>
+    /// Đọc một trang của site này. HTTP thường ăn Cloudflare js-challenge (GetPage trả null, và nó
+    /// log với prefix "MoviesHub:" nên trong log toàn xdmovies: thì KHÔNG thấy — đó là lý do vòng trước
+    /// trông như "site trả rỗng"). Vậy nên: thử HTTP trước cho rẻ, rỗng là hỏi rch (trình thật của
+    /// client Lampa) — client của anh đã nối (rchtype=apk), nên đường này thật sự có cửa.
+    /// </summary>
+    async Task<string> Read(string url)
     {
-        if (string.IsNullOrWhiteSpace(value))
-            return "";
+        string html = await GetPage(url, SiteHeaders(), attempts: 1);
 
-        string slug = Regex.Replace(value.ToLowerInvariant(), @"[^a-z0-9]+", "-").Trim('-');
+        if (!string.IsNullOrWhiteSpace(html))
+            return html;
 
-        return slug.Length > 60 ? slug.Substring(0, 60).Trim('-') : slug;
+        if (rch?.enable != true)
+        {
+            Console.WriteLine($"{Tag} {Cut(url)}: HTTP thường bị chặn mà rhub đang TẮT (enable={rch?.enable}) — bật rch/init.conf + client Lampa >= 484");
+            return null;
+        }
+
+        var res = await rch.Headers(url, null, SiteHeaders());
+        string body = res.body;
+
+        Console.WriteLine($"{Tag} {Cut(url)}: HTTP thường rỗng -> rch len={(body?.Length ?? 0)} cur={Cut(res.currentUrl ?? "")}");
+
+        if (string.IsNullOrWhiteSpace(body) || body.Length < 9000 && Regex.IsMatch(body, @"(?i)just a moment|cf-browser-verification|attention required|__cf_chl"))
+        {
+            Console.WriteLine($"{Tag} rch cũng không lấy được bài (vẫn là trang challenge) — nguồn này cần client chịu chạy JS đầy đủ");
+            return null;
+        }
+
+        return body;
     }
 
     static bool IsPack(string file)

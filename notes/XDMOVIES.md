@@ -337,3 +337,19 @@ themoviedb.org."* ⇒ `q=<TMDB id>` là đường đáng tin nhất. `v29-xdmovi
 
 Bài học cho mọi nguồn mới: **hỏi người dùng dạng URL tìm kiếm trước khi đoán**, vì log "trang tìm rỗng"
 không phân biệt được 404-sai-đường với 403-bị-chặn (vì vậy mới có dòng `chẩn đoán … trang chủ len=`).
+
+## 13. 01/9 — hai cú sửa vì em đoán (anh phải chỉnh cả hai)
+
+1. **`search.html?q=` trả về DANH SÁCH KẾT QUẢ, không phải trang phim.** Phải lấy link bài đầu tiên
+   trong danh sách rồi mới đọc bài. Vòng trước em không hiểu nên sinh ra trò "dựng 12 biến thể URL"
+   (`/movies/x-<id>`, `/movie/<id>`, …) — sai hoàn toàn, mất 12 request cho một lần mở phim. Đã bỏ.
+   `q=<TMDB id>` vẫn là query tốt nhất vì chính site khuyên thế, nhưng nó chỉ là **bước 1**.
+2. **`chẩn đoán: trang chủ len=0` không có nghĩa là "mạng hỏng"**: `GetPage` của HubController in câu
+   `bị Cloudflare chặn (js challenge)` với prefix **`MoviesHub:`**, không phải `xdmovies:` ⇒ ai lọc log
+   theo `xdmovies:` thì KHÔNG BAO GIỜ thấy nó. Bài học: prefix log của helper chung phải được nhắc tới
+   khi bảo người dùng grep. Site này đứng sau Cloudflare ở MỌI trang.
+
+Hệ quả (v30-xdmovies-rch-pages): thêm `Read(url)` = thử `GetPage` 1 lần (rẻ) → nếu rỗng thì
+`rch.Headers(url)` rồi dùng `body`, và chỉ báo lỗi khi cả hai đều trắng. Trang tìm kiếm, trang bài và
+trang gate đều đi qua `Read`, nên khi Cloudflare chặn thì client Lampa (apk, đã nối `/nws`) lãnh đủ cả
+ba — không có chế độ "đọc bài bằng HTTP, bấm gate bằng rch" nửa vời.
