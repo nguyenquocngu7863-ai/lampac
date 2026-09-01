@@ -26,22 +26,59 @@ public static class StripchatTo
     public static List<PlaylistItem> Playlist(string host, ReadOnlySpan<char> json, int pg, out int totalPages)
     {
         totalPages = 0;
+
         if (json.IsEmpty)
+        {
+            Console.WriteLine("[Stripchat] empty response body from listing request");
             return null;
+        }
+
+        string raw = json.ToString();
 
         JObject root;
-        try { root = JObject.Parse(json.ToString()); }
-        catch { return null; }
+        try
+        {
+            root = JObject.Parse(raw);
+        }
+        catch (Exception ex)
+        {
+            // Most likely cause: Stripchat returned an HTML challenge/error page
+            // instead of JSON (bot detection), so JSON.Parse blows up here.
+            string preview = raw.Length > 800 ? raw[..800] : raw;
+            Console.WriteLine($"[Stripchat] JSON parse failed: {ex.Message}\n[Stripchat] raw response (first 800 chars):\n{preview}");
+            return null;
+        }
+
+        var tokens = root.SelectTokens("$.blocks[*].models[*]").ToList();
+        if (tokens.Count == 0)
+        {
+            // Parsed fine as JSON, but the expected blocks[*].models[*] path matched
+            // nothing. Likely Stripchat changed the response shape, or this is a
+            // structured error/challenge body. Dump it so we can see exactly what
+            // came back and fix the path instead of guessing.
+            string preview = raw.Length > 800 ? raw[..800] : raw;
+            Console.WriteLine($"[Stripchat] no models found at $.blocks[*].models[*]\n[Stripchat] raw response (first 800 chars):\n{preview}");
+            return null;
+        }
 
         var result = new List<PlaylistItem>(60);
         var seen = new HashSet<long>();
-        foreach (JToken model in root.SelectTokens("$.blocks[*].models[*]"))
+        int skippedNotLive = 0;
+
+        foreach (JToken model in tokens)
         {
             long id = model.Value<long?>("id") ?? 0;
             string username = model.Value<string>("username");
-            if (id <= 0 || string.IsNullOrWhiteSpace(username) || !seen.Add(id) ||
-                model.Value<bool?>("isLive") != true || model.Value<string>("status") != "public")
+            if (id <= 0 || string.IsNullOrWhiteSpace(username) || !seen.Add(id))
                 continue;
+
+            bool isLive = model.Value<bool?>("isLive") == true;
+            string status = model.Value<string>("status");
+            if (!isLive || status != "public")
+            {
+                skippedNotLive++;
+                continue;
+            }
 
             string image = model.Value<string>("previewUrlThumbSmall") ?? model.Value<string>("avatarUrl");
             if (!string.IsNullOrEmpty(image) && image.StartsWith('/'))
@@ -60,6 +97,17 @@ public static class StripchatTo
                 picture = image,
                 video = $"https://edge-hls.doppiocdn.net/hls/{id}/master/{id}_auto.m3u8"
             });
+        }
+
+        if (result.Count == 0)
+        {
+            // JSON parsed and we found model entries, but every single one got
+            // filtered out by the isLive/public check. Log a sample so we can see
+            // whether Stripchat renamed these fields or changed their values.
+            string sample = tokens[0].ToString(Newtonsoft.Json.Formatting.None);
+            if (sample.Length > 500) sample = sample[..500];
+            Console.WriteLine($"[Stripchat] {tokens.Count} models parsed, 0 passed isLive/public filter (skipped={skippedNotLive}).\n[Stripchat] sample model:\n{sample}");
+            return null;
         }
 
         // The public endpoint does not consistently return a total count. Keep Next available
