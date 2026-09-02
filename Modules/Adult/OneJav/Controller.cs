@@ -2,6 +2,7 @@ using HtmlAgilityPack;
 using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json.Linq;
 using Shared;
+using Shared.Models.Base;
 using Shared.Models.Module;
 using Shared.Services;
 using Shared.Services.RxEnumerate;
