@@ -5,8 +5,10 @@ using Shared.Attributes;
 using Shared.Models.Base;
 using Shared.Models.Templates;
 using Shared.PlaywrightCore;
+using Shared.Services;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
@@ -36,11 +38,15 @@ public class VidSrcController : BaseENGController
         if (await IsRequestBlocked(rch: false, rch_check: !play))
             return badInitMsg;
 
-        string embed = $"{init.host}/v2/embed/movie/{id}?autoPlay=true&poster=false";
+        // The official API is an iframe API, not a direct stream endpoint.
+        // Load the documented embed URL inside Lampac's neutral parent page,
+        // then interact with the player frame and capture its HLS request.
+        string embed = $"{init.host}/embed/movie/{id}";
         if (s > 0)
-            embed = $"{init.host}/v2/embed/tv/{id}/{s}/{e}?autoPlay=true&poster=false";
+            embed = $"{init.host}/embed/tv/{id}/{s}/{e}";
 
-        var result = await black_magic(id, embed);
+        string iframePage = PlaywrightBase.IframeUrl(embed);
+        var result = await black_magic(id, iframePage);
         if (result.m3u8 == null)
             return OnError("m3u8", 502);
 
@@ -102,8 +108,11 @@ public class VidSrcController : BaseENGController
                                 }
 
                                 PlaywrightBase.ConsoleLog(() => ($"Playwright: SET {route.Request.Url}", cache.headers));
-                                browser.SetPageResult(route.Request.Url);
-                                await route.AbortAsync();
+                                browser.completionSource.TrySetResult(route.Request.Url);
+
+                                // Let the manifest complete so VidSrc can set
+                                // up its session and child-playlist cookies.
+                                await route.ContinueAsync();
                                 return;
                             }
 
@@ -116,15 +125,56 @@ public class VidSrcController : BaseENGController
                     });
 
                     PlaywrightBase.GotoAsync(page, uri);
+                    await Task.Delay(2500);
 
-                    var playBtn = page.Locator("button:has(svg)");
-
-                    await playBtn.ClickAsync(new LocatorClickOptions
+                    // VidSrc changes the play control between nested buttons,
+                    // overlays and iframe players. Click the small set of
+                    // controls used by its current player.
+                    foreach (IFrame frame in page.Frames)
                     {
-                        Timeout = 15000
-                    });
+                        try
+                        {
+                            await frame.EvaluateAsync(
+                                @"() => {
+                                    const selectors = '[aria-label*=""play"" i], [data-action*=""play"" i], [class*=""play"" i], .vjs-big-play-button, button:has(svg), video';
+                                    Array.from(document.querySelectorAll(selectors)).slice(0, 5).forEach(node => {
+                                        if (node.tagName === 'VIDEO') node.play().catch(() => {});
+                                        else node.click();
+                                    });
+                                }"
+                            );
+                        }
+                        catch { }
+                    }
 
-                    cache.m3u8 = await browser.WaitPageResult();
+                    cache.m3u8 = await browser.WaitPageResult(15);
+
+                    // Service-worker requests can bypass page.RouteAsync.
+                    // Recover the HLS URL from each frame's Performance API.
+                    if (cache.m3u8 == null)
+                    {
+                        foreach (IFrame frame in page.Frames)
+                        {
+                            try
+                            {
+                                string[] resources = await frame.EvaluateAsync<string[]>(
+                                    "() => performance.getEntriesByType('resource').map(item => item.name)"
+                                );
+                                string hls = resources?.FirstOrDefault(url =>
+                                    url.Contains(".m3u8", StringComparison.OrdinalIgnoreCase));
+                                if (hls == null)
+                                    continue;
+
+                                cache.m3u8 = hls;
+                                cache.headers = HeadersModel.Init(
+                                    ("User-Agent", Http.UserAgent),
+                                    ("Referer", frame.Url)
+                                );
+                                break;
+                            }
+                            catch { }
+                        }
+                    }
                 }
 
                 if (cache.m3u8 == null)

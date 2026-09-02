@@ -9232,6 +9232,7 @@
     if (params.genres) u = add$5(u, 'genre=' + params.genres);
     if (params.page) u = add$5(u, 'page=' + params.page);
     if (params.query) u = add$5(u, 'query=' + params.query);
+    if (params.results) u = add$5(u, 'results=' + params.results);
 
     if (params.filter) {
       for (var i in params.filter) {
@@ -9269,6 +9270,10 @@
     var params = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : {};
     var oncomplite = arguments.length > 1 ? arguments[1] : undefined;
     var onerror = arguments.length > 2 ? arguments[2] : undefined;
+
+    // The CUB endpoint supports the same `results` override used by the
+    // releases feed. Ask for 30 cards per home row instead of its default 20.
+    params.results = 30;
     var status = new status$1(11);
 
     status.onComplite = function () {
@@ -9332,7 +9337,9 @@
     if (params.url !== 'tv') total--;
     var show = ['tv', 'movie'].indexOf(params.url) > -1;
     var books = show ? Favorite.continues(params.url) : [];
-    var recomend = show ? Arrays.shuffle(Recomends.get(params.url)).slice(0, 19) : [];
+    // CUB's local recommendation cache contains more items than the default
+    // row limit. Keep TMDB at its original limit, but expose a larger CUB row.
+    var recomend = show ? Arrays.shuffle(Recomends.get(params.url)).slice(0, 30) : [];
     var status = new status$1(total);
 
     status.onComplite = function () {
@@ -12665,6 +12672,30 @@
     };
   }
 
+  // SISI layout addon hook. The stock category behaviour remains unchanged
+  // unless the addon explicitly marks the current activity as SISI.
+  function sisiLayoutCategoryColumns() {
+    var columns = 7;
+
+    if (typeof document !== 'undefined' && document.body && document.body.classList && document.body.classList.contains('lampac-sisi-layout')) {
+      var configured = parseInt(window.lampac_sisi_layout_columns, 10);
+      if (!isNaN(configured)) columns = Math.max(3, Math.min(8, configured));
+    }
+
+    return columns;
+  }
+
+  function sisiLayoutCategoryRows() {
+    var rows = 1000000;
+
+    if (typeof document !== 'undefined' && document.body && document.body.classList && document.body.classList.contains('lampac-sisi-layout')) {
+      var configured = parseInt(window.lampac_sisi_layout_rows, 10);
+      if (!isNaN(configured)) rows = Math.max(1, Math.min(6, configured));
+    }
+
+    return rows;
+  }
+
   function component$c(object) {
     var network = new create$q();
     var scroll = new create$p({
@@ -12724,8 +12755,9 @@
 
           if (info) {
             info.update(card_data);
-            var maxrow = Math.ceil(items.length / 7) - 1;
-            if (Math.ceil(items.indexOf(card) / 7) >= maxrow) _this2.next();
+            var categoryColumns = sisiLayoutCategoryColumns();
+            var maxrow = Math.min(Math.ceil(items.length / categoryColumns) - 1, sisiLayoutCategoryRows() - 1);
+            if (Math.ceil(items.indexOf(card) / categoryColumns) >= maxrow) _this2.next();
           }
         };
 
@@ -13150,8 +13182,9 @@
 
           if (info) {
             info.update(card_data);
-            var maxrow = Math.ceil(items.length / 7) - 1;
-            if (Math.ceil(items.indexOf(card) / 7) >= maxrow) _this3.next();
+            var categoryColumns = sisiLayoutCategoryColumns();
+            var maxrow = Math.min(Math.ceil(items.length / categoryColumns) - 1, sisiLayoutCategoryRows() - 1);
+            if (Math.ceil(items.indexOf(card) / categoryColumns) >= maxrow) _this3.next();
           }
         };
 
@@ -14720,8 +14753,9 @@
           last = target;
           scroll.update(card.render(), true);
           Background.change(item_data.movie ? Utils.cardImgBackground(item_data.movie) : element.poster);
-          var maxrow = Math.ceil(items.length / 7) - 1;
-          if (Math.ceil(items.indexOf(card) / 7) >= maxrow) _this2.next();
+          var categoryColumns = sisiLayoutCategoryColumns();
+          var maxrow = Math.min(Math.ceil(items.length / categoryColumns) - 1, sisiLayoutCategoryRows() - 1);
+          if (Math.ceil(items.indexOf(card) / categoryColumns) >= maxrow) _this2.next();
         };
 
         card.onEnter = function (target, card_data) {
@@ -14871,8 +14905,9 @@
           if (info) {
             info.update(card_data);
             Background.change(Utils.cardImgBackground(card_data));
-            var maxrow = Math.ceil(items.length / 7) - 1;
-            if (Math.ceil(items.indexOf(card) / 7) >= maxrow) _this2.next();
+            var categoryColumns = sisiLayoutCategoryColumns();
+            var maxrow = Math.min(Math.ceil(items.length / categoryColumns) - 1, sisiLayoutCategoryRows() - 1);
+            if (Math.ceil(items.indexOf(card) / categoryColumns) >= maxrow) _this2.next();
           }
         };
 
@@ -15076,8 +15111,9 @@
           last = target;
           scroll.update(card.render(), true);
           Background.change(Utils.cardImgBackground(card_data));
-          var maxrow = Math.ceil(items.length / 7) - 1;
-          if (Math.ceil(items.indexOf(card) / 7) >= maxrow) _this3.next();
+          var categoryColumns = sisiLayoutCategoryColumns();
+          var maxrow = Math.min(Math.ceil(items.length / categoryColumns) - 1, sisiLayoutCategoryRows() - 1);
+          if (Math.ceil(items.indexOf(card) / categoryColumns) >= maxrow) _this3.next();
         };
 
         card.onEnter = function (target, card_data) {

@@ -6,15 +6,11 @@ namespace Music;
 
 public static class MusicSourceMatchService
 {
-    const string CacheKeyPrefix = "music:sourcematch:v3";
-    const string MissingCacheKeyPrefix = "music:sourcematch-miss:v2";
+    const string CacheKeyPrefix = "music:sourcematch:v2";
+    const string MissingCacheKeyPrefix = "music:sourcematch-miss:v1";
     static readonly TimeSpan MatchTtl = TimeSpan.FromDays(180);
     static readonly TimeSpan MissingTtl = TimeSpan.FromMinutes(30);
-    const long MatchCacheSizeLimit = 10_000;
-    static readonly MemoryCache matchCache = new(new MemoryCacheOptions
-    {
-        SizeLimit = MatchCacheSizeLimit
-    });
+    static readonly MemoryCache matchCache = new(new MemoryCacheOptions());
     static readonly MemoryCache missingCache = new(new MemoryCacheOptions());
 
     static string ScopeProviderId(string providerId, string playbackMode)
@@ -39,7 +35,7 @@ public static class MusicSourceMatchService
         var dbMatch = await ReadDbMatchAsync(trackId, scopedProviderId, cancellationToken);
         if (dbMatch != null)
         {
-            SetMatchCache(cacheKey, dbMatch);
+            matchCache.Set(cacheKey, dbMatch, MatchTtl);
             return dbMatch;
         }
 
@@ -49,7 +45,7 @@ public static class MusicSourceMatchService
             // hybrid — территория авто-подбора: pinned авторитетен только из БД,
             // иначе legacy-запись воскресит сброшенный пользователем выбор
             entry.value.pinned = false;
-            SetMatchCache(cacheKey, entry.value);
+            matchCache.Set(cacheKey, entry.value, MatchTtl);
         }
 
         return entry.succes ? entry.value : null;
@@ -136,7 +132,7 @@ public static class MusicSourceMatchService
             HybridCache.Get().Set(cacheKey, match, MatchTtl, textJson: true);
         }
 
-        SetMatchCache(cacheKey, match);
+        matchCache.Set(cacheKey, match, MatchTtl);
         missingCache.Remove(BuildMissingCacheKey(trackId, scopedProviderId));
         HybridCache.Get().Set(BuildMissingCacheKey(trackId, scopedProviderId), false, MissingTtl, textJson: true);
         return true;
@@ -188,18 +184,6 @@ public static class MusicSourceMatchService
             MissingCacheKeyPrefix,
             NormalizeTrackId(trackId),
             NormalizeProviderScope(scopedProviderId));
-    }
-
-    static void SetMatchCache(string cacheKey, MusicAudioMatch match)
-    {
-        if (string.IsNullOrWhiteSpace(cacheKey) || match == null)
-            return;
-
-        matchCache.Set(cacheKey, match, new MemoryCacheEntryOptions
-        {
-            AbsoluteExpirationRelativeToNow = MatchTtl,
-            Size = 1
-        });
     }
 
     static async Task<MusicAudioMatch> ReadDbMatchAsync(string trackId, string scopedProviderId, CancellationToken cancellationToken)

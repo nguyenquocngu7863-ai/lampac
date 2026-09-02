@@ -16,15 +16,12 @@ public class ModInit : IModuleLoaded, IModuleOnline
 
     public List<ModuleOnlineItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, OnlineEventsModel args)
     {
-        if (args.serial == -1 || args.serial == 0)
+        // Movies and series are both supported. Series are searched by original/localized
+        // title and then grouped from SxxExx / season-episode markers in VK upload titles.
+        return new List<ModuleOnlineItem>()
         {
-            return new List<ModuleOnlineItem>()
-            {
-                new(conf, plugin: "vkmovie", name: "VK Видео")
-            };
-        }
-
-        return null;
+            new(conf, plugin: "vkmovie", name: "VK Видео")
+        };
     }
 
     public void Loaded(InitspaceModel baseconf)

@@ -66,8 +66,8 @@ public static class ConfigSectionGroups
         new("src-rus", "Nguồn · Nga và CIS (Modules/OnlineRUS)", "Nguồn VOD/CDN Nga.",
             new[]
             {
-                "CDNvideohub", "Collaps", "FanCDN", "FlixCDN", "Gencit", "HDVB", "Kinobase",
-                "Kinogo", "Kinotochka", "LeProduction", "PizdatoeHD", "RutubeMovie",
+                "CDNvideohub", "Collaps", "FanCDN", "FlixCDN", "Gencit", "HDVB", "Kinobase", "Kinogo",
+                "Kinotochka", "LeProduction", "PizdatoeHD", "RutubeMovie",
                 "Spectre", "VeoVeo", "Vibix", "VideoDB", "Videoseed", "VkMovie", "Zetflix", "ZetflixDB"
 
                 // Mirage/Phantom nằm ở nhóm "Nguồn cần trình duyệt" (cần Chromium).

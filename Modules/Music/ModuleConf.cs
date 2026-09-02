@@ -1,18 +1,9 @@
 using Shared.Models.AppConf;
-using Shared.Models.Base;
 
 namespace Music;
 
-public class ModuleConf : Iproxy
+public class ModuleConf
 {
-    public bool useproxy { get; set; }
-
-    public bool useproxystream { get; set; }
-
-    public string globalnameproxy { get; set; }
-
-    public ProxySettings proxy { get; set; }
-
     public string default_metadata_provider { get; set; }
 
     public string default_audio_provider { get; set; }
@@ -35,10 +26,6 @@ public class ModuleConf : Iproxy
     // потому default off; деградирует в «как без него» без падений.
     public bool spotify_search_fallback_enabled { get; set; }
 
-    public bool spotify_discovery_enabled { get; set; }
-
-    public string spotify_country { get; set; }
-
     public bool sefon_audio_enabled { get; set; }
 
     public bool soundcloud_enabled { get; set; }
@@ -50,9 +37,6 @@ public class ModuleConf : Iproxy
     public bool soundcloud_auth_enabled { get; set; }
 
     public string applemusic_country { get; set; }
-
-    // auto | applemusic | spotify | soundcloud | musicbrainz
-    public string applemusic_album_resolver { get; set; }
 
     public string soundcloud_client_id { get; set; }
 

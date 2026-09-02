@@ -11,6 +11,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Web;
 
@@ -28,43 +29,71 @@ public class VkMovieController : BaseOnlineController
 
     [HttpGet, Staticache(manually: true)]
     [Route("lite/vkmovie")]
-    public async Task<ActionResult> Index(string title, string original_title, short year, byte serial, bool rjson = false)
+    public async Task<ActionResult> Index(string title, string original_title, short year, byte serial, short s = -1, bool rjson = false)
     {
-        if (serial == 1)
-            return OnError();
-
         if (await IsRequestBlocked(rch: true))
             return badInitMsg;
 
         if (!await EnsureAnonymToken(init, proxy))
             return ShowError("token");
 
-        string searchTitle = SearchNameTo.Convert(title);
-        if (searchTitle == null)
+        string localName = SearchNameTo.Convert(title);
+        string originalName = SearchNameTo.Convert(original_title);
+        if (localName == null && originalName == null)
             return OnError("searchTitle");
 
+        // VK search is heavily localized: querying only the TMDB display title tends to put
+        // Russian voice-overs first. Search the original title first, then the localized title,
+        // and merge by owner/id. This also catches international uploads whose title contains no
+        // Cyrillic at all.
+        var queryList = new List<string> { original_title, title };
+        if (serial == 1 && s > 0)
+        {
+            queryList.Add($"{original_title ?? title} season {s}");
+            queryList.Add($"{title ?? original_title} сезон {s}");
+            queryList.Add($"{original_title ?? title} S{s:00}E");
+        }
+
+        var queries = queryList
+            .Where(i => !string.IsNullOrWhiteSpace(i))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        string cacheTitle = string.Join("|", queries.Select(query => SearchNameTo.Convert(query)));
+
     rhubFallback:
-        var cache = await InvokeCacheResult<List<CatalogVideo>>(ipkey($"vkmovie:view:{searchTitle}:{year}"), 20, textJson: true, onget: async e =>
+        var cache = await InvokeCacheResult<List<CatalogVideo>>(ipkey($"vkmovie:view:v3:{cacheTitle}:{year}:{serial}:{s}"), 20, textJson: true, onget: async e =>
         {
             if (init.httpversion == 2)
                 httpHydra.RegisterHttp(http2Client);
 
             string url = $"{init.host}/method/catalog.getVideoSearchWeb2?v=5.264&client_id={client_id}";
-            string data = $"screen_ref=search_video_service&input_method=keyboard_search_button&q={HttpUtility.UrlEncode($"{title} {year}")}&access_token={access_token}";
+            var merged = new Dictionary<string, CatalogVideo>();
 
-            var root = await httpHydra.Post<Root>(url, data, textJson: true);
+            foreach (string query in queries)
+            {
+                string data = $"screen_ref=search_video_service&input_method=keyboard_search_button&q={HttpUtility.UrlEncode($"{query} {year}")}&access_token={access_token}";
+                var root = await httpHydra.Post<Root>(url, data, textJson: true);
+                if (root?.response?.catalog_videos == null)
+                    continue;
 
-            var videos = root?.response?.catalog_videos;
-            if (videos == null || videos.Count == 0)
+                foreach (var item in root.response.catalog_videos)
+                {
+                    var video = item?.video;
+                    if (video != null)
+                        merged[$"{video.owner_id}_{video.id}"] = item;
+                }
+            }
+
+            if (merged.Count == 0)
                 return e.Fail("catalog_videos");
 
-            return e.Success(
-                videos
-                    .OrderByDescending(i => i.video?.files?.mp4_2160 != null)
-                    .ThenByDescending(i => i.video?.files?.mp4_1440 != null)
-                    .ThenByDescending(i => i.video?.files?.mp4_1080 != null)
-                    .ToList()
-            );
+            return e.Success(merged.Values
+                .OrderByDescending(i => MatchScore(i.video, originalName, localName, year))
+                .ThenByDescending(i => HasAdaptive(i.video?.files))
+                .ThenByDescending(i => i.video?.files?.mp4_2160 != null)
+                .ThenByDescending(i => i.video?.files?.mp4_1440 != null)
+                .ThenByDescending(i => i.video?.files?.mp4_1080 != null)
+                .ToList());
         });
 
         if (IsRhubFallback(cache))
@@ -72,6 +101,51 @@ public class VkMovieController : BaseOnlineController
 
         return ContentTpl(cache, () =>
         {
+            if (serial == 1)
+            {
+                var parsed = cache.Value
+                    .Select(item => (item, episode: ParseEpisode(item?.video?.title)))
+                    .Where(i => i.item?.video?.files != null && i.episode.season > 0 && i.episode.episode > 0)
+                    .ToList();
+
+                if (s == -1)
+                {
+                    var seasons = parsed.Select(i => i.episode.season).Distinct().OrderBy(i => i).ToList();
+                    if (seasons.Count == 0)
+                        seasons.Add(1);
+
+                    var stpl = new SeasonTpl(seasons.Count);
+                    string args = $"title={HttpUtility.UrlEncode(title)}&original_title={HttpUtility.UrlEncode(original_title)}&year={year}&serial=1&rjson={rjson}";
+                    foreach (short season in seasons)
+                        stpl.Append($"Season {season}", $"{host}/lite/vkmovie?{args}&s={season}", season);
+                    return stpl;
+                }
+
+                var etpl = new EpisodeTpl(parsed.Count);
+                foreach (var entry in parsed.Where(i => i.episode.season == s).OrderBy(i => i.episode.episode))
+                {
+                    var video = entry.item.video;
+                    if (video.duration < 300)
+                        continue;
+
+                    var streams = BuildStreams(video.files);
+                    if (streams.IsEmpty)
+                        continue;
+
+                    var subtitles = BuildSubtitles(video.subtitles);
+                    etpl.Append(
+                        $"Episode {entry.episode.episode}", title, s, entry.episode.episode,
+                        streams.Firts().link,
+                        streamquality: streams,
+                        subtitles: subtitles,
+                        headers: HeadersModel.Init(init.headers),
+                        vast: init.vast
+                    );
+                }
+
+                return etpl;
+            }
+
             var mtpl = new MovieTpl(title, original_title, cache.Value.Count);
 
             foreach (var item in cache.Value)
@@ -81,22 +155,22 @@ public class VkMovieController : BaseOnlineController
                     continue;
 
                 string name = SearchNameTo.Convert(video.title);
-                if (name == null || !name.Contains(searchTitle))
+                int score = MatchScore(video, originalName, localName, year);
+                if (name == null || score < 3)
                     continue;
 
-                if (!(name.Contains(year.ToString()) || name.Contains((year + 1).ToString()) || name.Contains((year - 1).ToString())))
-                    continue;
-
-                if (video.duration < 3000)
+                // Feature films normally exceed 45 minutes. Do not reject words such as
+                // "series/season": some VK uploaders use them for movie collections and the old
+                // filter discarded otherwise perfect international releases.
+                if (video.duration < 2700)
                     continue;
 
                 if (name.Contains("трейлер") || name.Contains("trailer") ||
-                    name.Contains("премьера") || name.Contains("обзор") ||
-                    name.Contains("сезон") || name.Contains("сериал") ||
-                    name.Contains("серия") || name.Contains("серий"))
+                    name.Contains("тизер") || name.Contains("teaser") ||
+                    name.Contains("обзор"))
                     continue;
 
-                if (string.IsNullOrEmpty(video.files.mp4_2160) &&
+                if (!HasAdaptive(video.files) && string.IsNullOrEmpty(video.files.mp4_2160) &&
                     string.IsNullOrEmpty(video.files.mp4_1440) &&
                     string.IsNullOrEmpty(video.files.mp4_1080) &&
                     string.IsNullOrEmpty(video.files.mp4_720))
@@ -110,6 +184,13 @@ public class VkMovieController : BaseOnlineController
                         streams.Append(HostStreamProxy(url), quality);
                 }
 
+                // Adaptive manifests preserve alternate audio renditions. MP4 links flatten the
+                // upload to one audio track, so expose HLS first and keep MP4 as a reliable
+                // quality fallback for old clients.
+                append(video.files.hls_fmp4, "HLS fMP4 • multi-audio");
+                append(video.files.hls, "HLS");
+                append(video.files.dash_sep, "DASH • multi-audio");
+                append(video.files.dash_streams, "DASH streams");
                 append(video.files.mp4_2160, "2160p");
                 append(video.files.mp4_1440, "1440p");
                 append(video.files.mp4_1080, "1080p");
@@ -156,6 +237,106 @@ public class VkMovieController : BaseOnlineController
 
             return mtpl;
         });
+    }
+
+    StreamQualityTpl BuildStreams(VideoFiles files)
+    {
+        var streams = new StreamQualityTpl();
+        void add(string url, string quality)
+        {
+            if (!string.IsNullOrEmpty(url))
+                streams.Append(HostStreamProxy(url), quality);
+        }
+
+        // VK Mobile keeps alternate audio in this manifest on supported uploads.
+        add(files?.hls_fmp4, "HLS fMP4 • multi-audio");
+        add(files?.hls, "HLS");
+        add(files?.dash_streams, "DASH streams");
+        add(files?.dash_sep, "DASH");
+        add(files?.mp4_2160, "2160p");
+        add(files?.mp4_1440, "1440p");
+        add(files?.mp4_1080, "1080p");
+        add(files?.mp4_720, "720p");
+        add(files?.mp4_480, "480p");
+        add(files?.mp4_360, "360p");
+        add(files?.mp4_240, "240p");
+        add(files?.mp4_144, "144p");
+        return streams;
+    }
+
+    SubtitleTpl BuildSubtitles(VideoSubtitle[] source)
+    {
+        if (source == null || source.Length == 0)
+            return null;
+
+        var result = new SubtitleTpl(source.Length);
+        foreach (var subtitle in source)
+        {
+            if (string.IsNullOrEmpty(subtitle?.url))
+                continue;
+            string label = subtitle.manifest_name ?? subtitle.title ?? subtitle.lang;
+            result.Append(label, HostStreamProxy(subtitle.url));
+        }
+        return result.IsEmpty ? null : result;
+    }
+
+    static (short season, short episode) ParseEpisode(string title)
+    {
+        if (string.IsNullOrWhiteSpace(title))
+            return default;
+
+        foreach (string pattern in new[]
+        {
+            @"(?i)\bS(?<s>\d{1,2})[ ._-]*E(?<e>\d{1,3})\b",
+            @"(?i)\b(?<s>\d{1,2})x(?<e>\d{1,3})\b",
+            @"(?i)\bseason\s*(?<s>\d{1,2}).{0,20}?episode\s*(?<e>\d{1,3})\b",
+            @"(?i)\b(?<s>\d{1,2})\s*сезон.{0,20}?(?<e>\d{1,3})\s*сер(?:ия|ии|ию)\b",
+            @"(?i)\bсезон\s*(?<s>\d{1,2}).{0,20}?сер(?:ия|ии|ию)?\s*(?<e>\d{1,3})\b"
+        })
+        {
+            var match = Regex.Match(title, pattern);
+            if (match.Success && short.TryParse(match.Groups["s"].Value, out short season) &&
+                short.TryParse(match.Groups["e"].Value, out short episode))
+                return (season, episode);
+        }
+
+        return default;
+    }
+
+    static bool HasAdaptive(VideoFiles files)
+        => files != null && (!string.IsNullOrEmpty(files.hls) ||
+            !string.IsNullOrEmpty(files.hls_fmp4) ||
+            !string.IsNullOrEmpty(files.dash_sep) ||
+            !string.IsNullOrEmpty(files.dash_streams));
+
+    static int MatchScore(Video video, string originalName, string localName, short year)
+    {
+        if (video == null)
+            return 0;
+
+        string name = SearchNameTo.Convert(video.title);
+        if (string.IsNullOrEmpty(name))
+            return 0;
+
+        int score = 0;
+        if (!string.IsNullOrEmpty(originalName) && name.Contains(originalName))
+            score += 8;
+        if (!string.IsNullOrEmpty(localName) && name.Contains(localName))
+            score += 5;
+        if (name.Contains(year.ToString()))
+            score += 3;
+        else if (name.Contains((year - 1).ToString()) || name.Contains((year + 1).ToString()))
+            score += 1;
+
+        string metadata = $"{video.title} {video.description}".ToLowerInvariant();
+        if (metadata.Contains("original") || metadata.Contains("english") ||
+            metadata.Contains("multi audio") || metadata.Contains("multi-audio") ||
+            metadata.Contains("multiple audio") || metadata.Contains("оригинал"))
+            score += 2;
+        if (HasAdaptive(video.files))
+            score += 1;
+
+        return score;
     }
 
     async Task<bool> EnsureAnonymToken(BaseSettings init, WebProxy proxy)

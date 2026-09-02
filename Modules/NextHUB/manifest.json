@@ -2,6 +2,7 @@
   "enable": true,
   "tree": [
     "Controllers",
+    "CategoryVi.cs",
     "GlobalUsings.cs",
     "ModInit.cs",
     "ModuleConf.cs",

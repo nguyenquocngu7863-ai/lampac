@@ -10,9 +10,9 @@ streamproxy_preview: true
 
 menu:
   sort:
-    Недавно добавленные: latest-updates/{page}/
-    Самые просматриваемые: most-viewed/all-time/{page}/
-    Топ рейтинг: top-rated/all-time/{page}/
+    Mới nhất: latest-updates/{page}/
+    Xem nhiều nhất: most-viewed/all-time/{page}/
+    Đánh giá cao: top-rated/all-time/{page}/
 
 list:
   uri: latest-updates/{page}/

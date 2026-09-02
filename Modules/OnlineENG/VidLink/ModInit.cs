@@ -5,7 +5,6 @@ using Shared.Models.Events;
 using Shared.Models.Module;
 using Shared.Models.Module.Interfaces;
 using Shared.Models.Online.Settings;
-using Shared.PlaywrightCore;
 using Shared.Services;
 using System.Collections.Generic;
 
@@ -19,13 +18,13 @@ public class ModInit : IModuleLoaded, IModuleOnline
     {
         var online = new List<ModuleOnlineItem>();
 
-        if ((args.original_language == null || args.original_language == "en") && CoreInit.conf.disableEng == false)
+        // HTTP resolver — no Playwright required. `enabled: true` keeps VidLink
+        // visible when the rest of the ENG group is hidden by disableEng.
+        bool allowWhenEngDisabled = conf?.enabled == true;
+        if (CoreInit.conf.disableEng == false || allowWhenEngDisabled)
         {
             if (args.source != null && (args.source is "tmdb" or "cub") && long.TryParse(args.id, out long id) && id > 0)
-            {
-                if (PlaywrightBrowser.Status != PlaywrightStatus.disabled)
-                    online.Add(new(conf, "vidlink", "VidLink", " (ENG)"));
-            }
+                online.Add(new(conf, "vidlink", "VidLink", " (ENG)"));
         }
 
         return online;
@@ -49,8 +48,23 @@ public class ModInit : IModuleLoaded, IModuleOnline
         conf = ModuleInvoke.Init("VidLink", new OnlinesSettings("VidLink", "https://vidlink.pro")
         {
             displayindex = 1015,
-            streamproxy = true
+            kit = false,
+            rhub = false,
+            httptimeout = 20,
+            streamproxy = true,
+            enabled = true
         });
+
+        conf.kit = false;
+        conf.rhub = false;
+        conf.httptimeout = 20;
+        conf.streamproxy = true;
+        // Origin on CDN GETs is a common 403. Referer is enough.
+        conf.headers_stream = HeadersModel.Init(
+            ("User-Agent", Http.UserAgent),
+            ("Referer", "https://vidlink.pro/"),
+            ("Accept", "*/*")
+        ).ToDictionary();
     }
 
     private string OnlineApiQuality(EventOnlineApiQuality e)

@@ -1,6 +1,6 @@
 # Videasy
 
-Онлайн-источник **Videasy** (`https://player.videasy.net`) для ENG по тем же правилам, что **MovPI** (**`disableEng`**, **`tmdb`/`cub`**, Playwright).
+Онлайн-источник **Videasy** (`https://player.videasy.to`) для ENG. Актуальный resolver работает напрямую через metadata/seed API `speedracelight.com` и расшифровывает payload `enc=2`; Playwright больше не требуется. Реализация протокола сверена с MIT-референсом `KitsuneKode/kunai` и проверена на его публичном fixture `wings-enc2-neon2` (magic `mvm1`, 2 sources).
 
 ## Интерфейс
 
@@ -10,6 +10,16 @@
 
 Плагин **`videasy`**, имя **`Videasy`**, суффикс **` (ENG)`** — см. **`ModInit`**.
 
+Для изолированной проверки при глобальном `"disableEng": true` задайте:
+
+```json
+"Videasy": {
+  "enabled": true
+}
+```
+
+Поле `enabled` здесь является явным opt-in только для Videasy; оно не включает остальные ENG-модули.
+
 ## Глобальный поиск
 
 Нет **`with_search.Add`** в **`ModInit`**.
@@ -18,7 +28,7 @@
 
 Секция в `init.conf`: **`Videasy`** (`OnlinesSettings`).
 
-По умолчанию: **`displayindex = 1020`**, **`streamproxy = true`**.
+По умолчанию: **`displayindex = 1020`**, **`streamproxy = true`**. Resolver опрашивает все уникальные активные endpoint'ы `cdn`, `neon2`, `ym`, `jett`, `m4uhd`, `hdmovie`, `meine`, `lamovie`, `superflix`, `downloader2`, удаляет URL-дубликаты и возвращает все варианты в меню качества Lampa (Yoru/Neon/Sage/Jett/Breach/Vyse-Fade/Killjoy/Omen/Raze/Cypher, включая 4K при наличии).
 
 ## Подпись качества
 

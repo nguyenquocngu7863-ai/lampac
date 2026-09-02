@@ -289,20 +289,20 @@ public static class PornHubTo
             {
                 new MenuItem()
                 {
-                    title = "Поиск",
+                    title = "Tìm kiếm",
                     search_on = "search_on",
                     playlist_url = url,
                 },
                 new MenuItem()
                 {
-                    title = $"Сортировка: {getSortName(sort, "Наиболее актуальное")}",
+                    title = $"Sắp xếp: {getSortName(sort, "Phù hợp nhất")}",
                     playlist_url = "submenu",
                     submenu = new List<MenuItem>(4)
                     {
-                        new("Наиболее актуальное", $"{url}?search={encodesearch}"),
+                        new("Phù hợp nhất", $"{url}?search={encodesearch}"),
                         new("Новейшее", $"{url}?search={encodesearch}&sort=mr"),
-                        new("Лучшие", $"{url}?search={encodesearch}&sort=tr"),
-                        new("Больше просмотров",$"{url}?search={encodesearch}&sort=mv")
+                        new("Tốt nhất", $"{url}?search={encodesearch}&sort=tr"),
+                        new("Nhiều lượt xem",$"{url}?search={encodesearch}&sort=mv")
                     }
                 }
             };
@@ -319,20 +319,20 @@ public static class PornHubTo
         {
             new MenuItem()
             {
-                title = "Поиск",
+                title = "Tìm kiếm",
                 search_on = "search_on",
                 playlist_url = url,
             },
             new MenuItem()
             {
-                title = $"Сортировка: {getSortName(sort, "Недавно в избранном")}",
+                title = $"Sắp xếp: {getSortName(sort, "Mới thêm vào yêu thích")}",
                 playlist_url = "submenu",
                 submenu = new List<MenuItem>(4)
                 {
-                    new("Недавно в избранном", $"{url}?hd={hd}&c={c}"),
+                    new("Mới thêm vào yêu thích", $"{url}?hd={hd}&c={c}"),
                     new("Новейшее", $"{url}?hd={hd}&c={c}&sort=cm"),
                     new("Самые горячие", $"{url}?hd={hd}&c={c}&sort=ht"),
-                    new("Лучшие", $"{url}?hd={hd}&c={c}&sort=tr")
+                    new("Tốt nhất", $"{url}?hd={hd}&c={c}&sort=tr")
                 }
             }
         };
@@ -341,11 +341,11 @@ public static class PornHubTo
         {
             menu.Insert(1, new MenuItem()
             {
-                title = $"Качество: {(hd == "2" ? "1080p" : hd == "3" ? "1440p" : hd == "4" ? "2160p" : "все")}",
+                title = $"Chất lượng: {(hd == "2" ? "1080p" : hd == "3" ? "1440p" : hd == "4" ? "2160p" : "tất cả")}",
                 playlist_url = "submenu",
                 submenu = new List<MenuItem>(4)
                 {
-                    new("Все", $"{url}?sort={sort}&c={c}"),
+                    new("Tất cả", $"{url}?sort={sort}&c={c}"),
                     new("2160p", $"{url}?sort={sort}&c={c}&hd=4"),
                     new("1440p", $"{url}?sort={sort}&c={c}&hd=3"),
                     new("1080p", $"{url}?sort={sort}&c={c}&hd=2")
@@ -356,13 +356,13 @@ public static class PornHubTo
         {
             menu.Add(new MenuItem()
             {
-                title = $"Ориентация: {(plugin == "phubgay" ? "Геи" : plugin == "phubsml" ? "Трансы" : "Гетеро")}",
+                title = $"Xu hướng: {(plugin == "phubgay" ? "Đồng tính nam" : plugin == "phubsml" ? "Chuyển giới" : "Dị tính")}",
                 playlist_url = "submenu",
                 submenu = new List<MenuItem>(3)
                 {
-                    new("Гетеро", $"{host}/phub"),
-                    new("Геи", $"{host}/phubgay"),
-                    new("Трансы", $"{host}/phubsml")
+                    new("Dị tính", $"{host}/phub"),
+                    new("Đồng tính nam", $"{host}/phubgay"),
+                    new("Chuyển giới", $"{host}/phubsml")
                 }
             });
         }
@@ -371,7 +371,7 @@ public static class PornHubTo
         {
             var submenu = new List<MenuItem>(35)
             {
-                new("Все", $"{url}?hd={hd}&sort={sort}"),
+                new("Tất cả", $"{url}?hd={hd}&sort={sort}"),
                 new("Азиаты", $"{url}?hd={hd}&sort={sort}&c=48"),
                 new("Без презерватива", $"{url}?hd={hd}&sort={sort}&c=40"),
                 new("Большие члены", $"{url}?hd={hd}&sort={sort}&c=58"),
@@ -409,7 +409,7 @@ public static class PornHubTo
 
             menu.Add(new MenuItem()
             {
-                title = $"Категория: {submenu.FirstOrDefault(i => i.playlist_url.EndsWith($"&c={c}"))?.title ?? "все"}",
+                title = $"Danh mục: {submenu.FirstOrDefault(i => i.playlist_url.EndsWith($"&c={c}"))?.title ?? "tất cả"}",
                 playlist_url = "submenu",
                 submenu = submenu
             });
@@ -418,7 +418,7 @@ public static class PornHubTo
         {
             var submenu = new List<MenuItem>(90)
             {
-                new("Все", $"{url}?hd={hd}&sort={sort}"),
+                new("Tất cả", $"{url}?hd={hd}&sort={sort}"),
                 new("Женский Выбор", $"{url}?hd={hd}&sort={sort}&c=73"),
                 new("Русское", $"{url}?hd={hd}&sort={sort}&c=99"),
                 new("Немецкое", $"{url}?hd={hd}&sort={sort}&c=95"),
@@ -508,7 +508,7 @@ public static class PornHubTo
 
             menu.Add(new MenuItem()
             {
-                title = $"Категория: {submenu.FirstOrDefault(i => i.playlist_url.EndsWith($"&c={c}"))?.title ?? "все"}",
+                title = $"Danh mục: {submenu.FirstOrDefault(i => i.playlist_url.EndsWith($"&c={c}"))?.title ?? "tất cả"}",
                 playlist_url = "submenu",
                 submenu = submenu
             });

@@ -270,14 +270,6 @@ public static class Z3FmSupport
         cancellationToken.ThrowIfCancellationRequested();
 
         var headers = CreateBrowserHeaders();
-        var proxyData = GetBrowserProxyData();
-        MusicProxyLease proxyLease = null;
-        if (string.IsNullOrWhiteSpace(proxyData.ip))
-        {
-            proxyLease = MusicProxyService.Acquire(AudioProviderId, MusicProxyPurpose.Api);
-            proxyData = proxyLease.Data;
-        }
-
         var init = new BaseSettings
         {
             plugin = "music.z3fm",
@@ -287,7 +279,7 @@ public static class Z3FmSupport
         try
         {
             using var browser = new PlaywrightBrowser(init.priorityBrowser);
-            var page = await browser.NewPageAsync(init.plugin, headers, proxyData, keepopen: true, imitationHuman: false, deferredDispose: false).ConfigureAwait(false);
+            var page = await browser.NewPageAsync(init.plugin, headers, GetBrowserProxyData(), keepopen: true, imitationHuman: false, deferredDispose: false).ConfigureAwait(false);
             if (page == null)
                 return null;
 
@@ -303,13 +295,9 @@ public static class Z3FmSupport
 
             html ??= await page.ContentAsync().ConfigureAwait(false);
             if (string.IsNullOrWhiteSpace(html) || IsBlockedHtml(html))
-            {
-                proxyLease?.Failure();
                 return null;
-            }
 
             var cookies = await page.Context.CookiesAsync().ConfigureAwait(false);
-            proxyLease?.Success();
             return new Z3FmBrowserPage
             {
                 Url = url,
@@ -319,7 +307,6 @@ public static class Z3FmSupport
         }
         catch
         {
-            proxyLease?.Failure();
             return null;
         }
     }

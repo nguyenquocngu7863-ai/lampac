@@ -1,12 +1,12 @@
 # SISI
 
-Модуль контента **18+** для Lampac: плагин Lampa **`/sisi.js`**, история просмотров и закладки в **SQLite** (`SisiContext`), общие лимиты **WAF** для маршрутов платформ.
+Модуль контента **18+** для Lampac: плагин Lampa **`/sisi.js`**, addon bố cục **`/sisi-layout.js`**, история просмотров и закладки в **SQLite** (`SisiContext`), общие лимиты **WAF** для маршрутов платформ.
 
 ## Структура в репозитории
 
 | Часть | Путь | Роль |
 | --- | --- | --- |
-| **Ядро SISI** | каталог **`SISI/`** в корне решения | `ModInit`, `SisiApi` (`/sisi.js`), контекст БД, закладки/история, подмешивание `limit_map` в WAF |
+| **Ядро SISI** | каталог **`SISI/`** в корне решения | `ModInit`, `SisiApi` (`/sisi.js`, `/sisi-layout.js`), контекст БД, закладки/история, подмешивание `limit_map` в WAF |
 | **Платформы 18+** | **`Modules/Adult/<Имя>/`** | Отдельный .NET-проект на каждый источник: контроллеры, маршруты (`/phub`, `/xnx`, …), `manifest.json` |
 
 При публикации **`Core`** исходники копируются в **`module/SISI/…`** и **`module/Adult/…`** (см. `Core/Core.csproj`). Общая карта решения — [`NextGen.slnx`](../NextGen.slnx), обзор архитектуры — [корневой README](../README.md) (разделы «Архитектура», «Модули»).
@@ -36,6 +36,12 @@
 | `XvideosRED` | `/xdsred` | `Modules/Adult/XvideosRED/` | |
 
 Дополнительные вложенные маршруты (`/vidosik`, `/stars` и т.д.) см. в соответствующих файлах `Controllers/*.cs` внутри каждого проекта **`Modules/Adult/...`**.
+
+## Addon bố cục 18+ / SISI
+
+Khi `initPlugins.sisi` bật, Lampac đồng bộ theo thứ tự **`/sisi.js` → `/sisi-layout.js` → `/startpage.js`** trong danh sách plugin built-in. Thiết bị có thể tải addon trực tiếp từ cùng host bằng URL **`/sisi-layout.js`**.
+
+Addon tạo mục **«18+ / SISI — giao diện»** trong Settings của Lampa và lưu bằng `Lampa.Storage`. Có thể chỉnh số cột (3–8), số hàng trước mỗi lần tải thêm (1–6; số card tương ứng là cột × hàng) và chiều cao poster (135%, 150%, 165%). CSS chỉ được bật khi activity có component `sisi_*`; các catalog phim thông thường, line collection/preview, filter, lịch sử và bookmark không bị thay đổi.
 
 ## Связь с NextHUB
 

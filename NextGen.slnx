@@ -81,6 +81,9 @@
     <Project Path="Modules/OnlineENG/Videasy/Videasy.csproj" />
     <Project Path="Modules/OnlineENG/VidLink/VidLink.csproj" />
     <Project Path="Modules/OnlineENG/VidSrc/VidSrc.csproj" />
+    <Project Path="Modules/OnlineENG/WebStreamr/WebStreamr.csproj" />
+    <Project Path="Modules/OnlineENG/Sootio/Sootio.csproj" />
+    <Project Path="Modules/OnlineENG/AIOStreams/AIOStreams.csproj" />
   </Folder>
   <Folder Name="/Modules/OnlineGEO/">
     <Project Path="Modules/OnlineGEO/AsiaGe/AsiaGe.csproj" />
@@ -103,7 +106,6 @@
     <Project Path="Modules/OnlineRUS/Collaps/Collaps.csproj" />
     <Project Path="Modules/OnlineRUS/FanCDN/FanCDN.csproj" />
     <Project Path="Modules/OnlineRUS/FlixCDN/FlixCDN.csproj" />
-    <Project Path="Modules/OnlineRUS/Gencit/Gencit.csproj" />
     <Project Path="Modules/OnlineRUS/HDVB/HDVB.csproj" />
     <Project Path="Modules/OnlineRUS/Kinobase/Kinobase.csproj" />
     <Project Path="Modules/OnlineRUS/Kinogo/Kinogo.csproj" />
@@ -121,6 +123,11 @@
     <Project Path="Modules/OnlineRUS/VkMovie/VkMovie.csproj" />
     <Project Path="Modules/OnlineRUS/Zetflix/Zetflix.csproj" />
     <Project Path="Modules/OnlineRUS/ZetflixDB/ZetflixDB.csproj" />
+  </Folder>
+  <Folder Name="/Modules/OnlineVN/">
+    <Project Path="Modules/OnlineVN/KKPhim/KKPhim.csproj" />
+    <Project Path="Modules/OnlineVN/K20/K20.csproj" />
+    <Project Path="Modules/OnlineVN/VsMov/VsMov.csproj" />
   </Folder>
   <Folder Name="/Modules/OnlineUKR/">
     <Project Path="Modules/OnlineUKR/Ashdi/Ashdi.csproj" />

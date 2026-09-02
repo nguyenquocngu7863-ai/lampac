@@ -2,9 +2,10 @@
   "enable": false,
   "dynamic": true,
   "tree": [
+    "GcTask.cs",
     "ModInit.cs",
-    "RelayServer.cs",
-    "ShadowHost.cs",
-    "WatchTogetherController.cs"
+    "RoomDb.cs",
+    "WatchTogetherController.cs",
+    "WsEvents.cs"
   ]
 }

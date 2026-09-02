@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
@@ -15,6 +15,7 @@ using System.IO.Compression;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using System.Web;
 using IO = System.IO;
 
@@ -157,6 +158,7 @@ public class ApiController : BaseController
         }
 
         string file = IO.File.ReadAllText($"wwwroot/{type}/app.min.js");
+        file = LampaVietnamese.EnsureLanguageRegistry(file);
 
         #region appReplace
         if (ModInit.conf.appReplace != null)
@@ -299,149 +301,83 @@ public class ApiController : BaseController
     #endregion
 
     #region Widgets
-    static readonly System.Threading.Lock WidgeLock = new();
-    static readonly System.Threading.Lock IpkLock = new();
-
-    string WidgetHost(string overwritehost)
-    {
-        if (string.IsNullOrWhiteSpace(overwritehost))
-            return host;
-
-        string value = overwritehost.Trim();
-
-        if (!Regex.IsMatch(value, "^https?://", RegexOptions.IgnoreCase))
-            value = "http://" + value;
-
-        if (value.Length > 2048 || !Uri.TryCreate(value, UriKind.Absolute, out Uri uri) ||
-            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps) ||
-            string.IsNullOrWhiteSpace(uri.Host))
-            throw new ArgumentException("overwritehost: invalid URL");
-
-        return uri.GetLeftPart(UriPartial.Authority);
-    }
-
     [HttpGet, AllowAnonymous]
     [Route("samsung.wgt")]
-    public ActionResult SamsWgt(string overwritehost, string tizen)
+    public ActionResult SamsWgt(string overwritehost)
     {
         if (!ModInit.conf.widgets.samsung)
             return NotFound();
 
-        SetHeadersNoCache();
+        string cache = $"cache/widgets/samsung/{Shared.Services.Utilities.CrypTo.md5(overwritehost ?? host + "v4")}";
+        string wgt = $"{cache}.wgt";
 
-        try
-        {
-            string replaceHost = WidgetHost(overwritehost);
-            bool legacy = double.TryParse(tizen, System.Globalization.CultureInfo.InvariantCulture, out double tizenver) && tizenver <= 3;
-
-            string cache = $"cache/widgets/samsung/{Shared.Services.Utilities.CrypTo.md5($"{replaceHost}|v5|{legacy}")}";
-            string wgt = $"{cache}.wgt";
-
-            lock (WidgeLock)
-            {
-                if (!IO.File.Exists(wgt))
-                    BuildSamsWgt(cache, wgt, replaceHost, legacy);
-            }
-
-            Response.Headers["Content-Disposition"] = "attachment; filename=\"samsung.wgt\"";
+        if (IO.File.Exists(wgt))
             return File(IO.File.OpenRead(wgt), "application/octet-stream");
-        }
-        catch (Exception ex)
-        {
-            Serilog.Log.Error(ex, "{Class} {CatchId}", nameof(ApiController), "id_samsung_wgt");
-            return Content($"samsung.wgt build failed: {ex.Message}", "text/plain; charset=utf-8");
-        }
-    }
 
-    void BuildSamsWgt(string cache, string wgt, string replaceHost, bool legacy)
-    {
         var widgetDirectory = $"{ModInit.modpath}/widgets/samsung";
         var publishDirectory = $"{cache}/publish";
 
-        try
+        IO.Directory.CreateDirectory(publishDirectory);
+
+        foreach (string inFilePath in IO.Directory.GetFiles(widgetDirectory, "*", IO.SearchOption.AllDirectories))
         {
-            IO.Directory.CreateDirectory(publishDirectory);
-
-            foreach (string inFilePath in IO.Directory.GetFiles(widgetDirectory, "*", IO.SearchOption.AllDirectories))
-            {
-                string outFile = inFilePath.Replace(widgetDirectory, publishDirectory);
-                IO.Directory.CreateDirectory(IO.Path.GetDirectoryName(outFile));
-                IO.File.Copy(inFilePath, outFile, true);
-            }
-
-            string index = IO.File.ReadAllText($"{publishDirectory}/index.html");
-            IO.File.WriteAllText($"{publishDirectory}/index.html", index.Replace("{localhost}", replaceHost));
-
-            string loader = IO.File.ReadAllText($"{publishDirectory}/loader.js");
-            IO.File.WriteAllText($"{publishDirectory}/loader.js", loader.Replace("{localhost}", replaceHost));
-
-            string app = IO.File.ReadAllText($"{publishDirectory}/app.js");
-            IO.File.WriteAllText($"{publishDirectory}/app.js", app.Replace("{localhost}", replaceHost));
-
-            if (legacy)
-            {
-                string config = IO.File.ReadAllText($"{publishDirectory}/config.xml");
-
-
-                config = Regex.Replace(config, @"[ \t]*<tizen:service\b[\s\S]*?</tizen:service>\r?\n", string.Empty);
-                config = Regex.Replace(config, @"[ \t]*<tizen:metadata key=""http://samsung\.com/tv/metadata/use\.preview""[^>]*>\r?\n", string.Empty);
-
-                if (config.Contains("tizen:service") || config.Contains("use.preview"))
-                    throw new InvalidOperationException("legacy tizen: не удалось вырезать tizen:service из config.xml");
-
-                IO.File.WriteAllText($"{publishDirectory}/config.xml", config);
-            }
-
-            string gethash(string file)
-            {
-                using (var sha = System.Security.Cryptography.SHA512.Create())
-                {
-                    return Convert.ToBase64String(sha.ComputeHash(IO.File.ReadAllBytes(file)));
-                }
-            }
-
-            string indexhashsha512 = gethash($"{publishDirectory}/index.html");
-            string loaderhashsha512 = gethash($"{publishDirectory}/loader.js");
-            string apphashsha512 = gethash($"{publishDirectory}/app.js");
-            string confighashsha512 = gethash($"{publishDirectory}/config.xml");
-            string iconhashsha512 = gethash($"{publishDirectory}/icon.png");
-            string logohashsha512 = gethash($"{publishDirectory}/logo_appname_fg.png");
-
-            string author_sigxml = IO.File.ReadAllText($"{widgetDirectory}/author-signature.xml");
-            author_sigxml = author_sigxml
-                .Replace("loaderhashsha512", loaderhashsha512)
-                .Replace("apphashsha512", apphashsha512)
-                .Replace("iconhashsha512", iconhashsha512)
-                .Replace("logohashsha512", logohashsha512)
-                .Replace("confighashsha512", confighashsha512)
-                .Replace("indexhashsha512", indexhashsha512);
-
-            IO.File.WriteAllText($"{publishDirectory}/author-signature.xml", author_sigxml);
-
-            string authorsignaturehashsha512 = gethash($"{publishDirectory}/author-signature.xml");
-            string sigxml1 = IO.File.ReadAllText($"{publishDirectory}/signature1.xml");
-            sigxml1 = sigxml1
-                .Replace("loaderhashsha512", loaderhashsha512)
-                .Replace("apphashsha512", apphashsha512)
-                .Replace("confighashsha512", confighashsha512)
-                .Replace("authorsignaturehashsha512", authorsignaturehashsha512)
-                .Replace("iconhashsha512", iconhashsha512)
-                .Replace("logohashsha512", logohashsha512)
-                .Replace("indexhashsha512", indexhashsha512);
-
-            IO.File.WriteAllText($"{publishDirectory}/signature1.xml", sigxml1);
-
-            IO.Compression.ZipFile.CreateFromDirectory(publishDirectory, $"{wgt}.tmp");
-            IO.File.Move($"{wgt}.tmp", wgt, true);
+            string outFile = inFilePath.Replace(widgetDirectory, publishDirectory);
+            IO.Directory.CreateDirectory(IO.Path.GetDirectoryName(outFile));
+            IO.File.Copy(inFilePath, outFile, true);
         }
-        finally
+
+        string index = IO.File.ReadAllText($"{publishDirectory}/index.html");
+        IO.File.WriteAllText($"{publishDirectory}/index.html", index.Replace("{localhost}", overwritehost ?? host));
+
+        string loader = IO.File.ReadAllText($"{publishDirectory}/loader.js");
+        IO.File.WriteAllText($"{publishDirectory}/loader.js", loader.Replace("{localhost}", overwritehost ?? host));
+
+        string app = IO.File.ReadAllText($"{publishDirectory}/app.js");
+        IO.File.WriteAllText($"{publishDirectory}/app.js", app.Replace("{localhost}", overwritehost ?? host));
+
+        string gethash(string file)
         {
-            if (IO.Directory.Exists(cache))
-                IO.Directory.Delete(cache, true);
-
-            if (IO.File.Exists($"{wgt}.tmp"))
-                IO.File.Delete($"{wgt}.tmp");
+            using (var sha = System.Security.Cryptography.SHA512.Create())
+            {
+                return Convert.ToBase64String(sha.ComputeHash(IO.File.ReadAllBytes(file)));
+            }
         }
+
+        string indexhashsha512 = gethash($"{publishDirectory}/index.html");
+        string loaderhashsha512 = gethash($"{publishDirectory}/loader.js");
+        string apphashsha512 = gethash($"{publishDirectory}/app.js");
+        string confighashsha512 = gethash($"{publishDirectory}/config.xml");
+        string iconhashsha512 = gethash($"{publishDirectory}/icon.png");
+        string logohashsha512 = gethash($"{publishDirectory}/logo_appname_fg.png");
+
+        string author_sigxml = IO.File.ReadAllText($"{widgetDirectory}/author-signature.xml");
+        author_sigxml = author_sigxml
+            .Replace("loaderhashsha512", loaderhashsha512)
+            .Replace("apphashsha512", apphashsha512)
+            .Replace("iconhashsha512", iconhashsha512)
+            .Replace("logohashsha512", logohashsha512)
+            .Replace("confighashsha512", confighashsha512)
+            .Replace("indexhashsha512", indexhashsha512);
+
+        IO.File.WriteAllText($"{publishDirectory}/author-signature.xml", author_sigxml);
+
+        string authorsignaturehashsha512 = gethash($"{publishDirectory}/author-signature.xml");
+        string sigxml1 = IO.File.ReadAllText($"{publishDirectory}/signature1.xml");
+        sigxml1 = sigxml1
+            .Replace("loaderhashsha512", loaderhashsha512)
+            .Replace("apphashsha512", apphashsha512)
+            .Replace("confighashsha512", confighashsha512)
+            .Replace("authorsignaturehashsha512", authorsignaturehashsha512)
+            .Replace("iconhashsha512", iconhashsha512)
+            .Replace("logohashsha512", logohashsha512)
+            .Replace("indexhashsha512", indexhashsha512);
+
+        IO.File.WriteAllText($"{publishDirectory}/signature1.xml", sigxml1);
+        IO.Compression.ZipFile.CreateFromDirectory(publishDirectory, wgt);
+
+        IO.Directory.Delete(cache, true);
+
+        return File(IO.File.OpenRead(wgt), "application/octet-stream");
     }
 
     [HttpGet]
@@ -452,45 +388,20 @@ public class ApiController : BaseController
         if (!ModInit.conf.widgets.lg)
             return NotFound();
 
-        SetHeadersNoCache();
+        string cache = $"cache/widgets/lg/{Shared.Services.Utilities.CrypTo.md5(overwritehost ?? host + "v01")}";
+        string ipk = $"{cache}.ipk";
 
-        try
-        {
-            string replaceHost = WidgetHost(overwritehost);
-
-            string cache = $"cache/widgets/lg/{Shared.Services.Utilities.CrypTo.md5($"{replaceHost}|v02")}";
-            string ipk = $"{cache}.ipk";
-
-            if (!IO.File.Exists(ipk))
-            {
-                var widgetDirectory = $"{ModInit.modpath}/widgets/lg";
-
-                if (!IO.Directory.Exists(widgetDirectory) ||
-                    !IO.Directory.Exists($"{widgetDirectory}/app") ||
-                    !IO.File.Exists($"{widgetDirectory}/service.tar.gz") ||
-                    !IO.File.Exists($"{widgetDirectory}/control/control"))
-                    return NotFound();
-
-                lock (IpkLock)
-                {
-                    if (!IO.File.Exists(ipk))
-                        BuildLgIpk(ipk, replaceHost);
-                }
-            }
-
-            Response.Headers["Content-Disposition"] = "attachment; filename=\"lg.ipk\"";
+        if (IO.File.Exists(ipk))
             return File(IO.File.OpenRead(ipk), "application/octet-stream");
-        }
-        catch (Exception ex)
-        {
-            Serilog.Log.Error(ex, "{Class} {CatchId}", nameof(ApiController), "id_lg_ipk");
-            return Content($"lg.ipk build failed: {ex.Message}", "text/plain; charset=utf-8");
-        }
-    }
 
-    void BuildLgIpk(string ipk, string replaceHost)
-    {
         var widgetDirectory = $"{ModInit.modpath}/widgets/lg";
+        if (!IO.Directory.Exists(widgetDirectory))
+            return NotFound();
+
+        if (!IO.Directory.Exists($"{widgetDirectory}/app") ||
+            !IO.File.Exists($"{widgetDirectory}/service.tar.gz") ||
+            !IO.File.Exists($"{widgetDirectory}/control/control"))
+            return NotFound();
 
         const string appId = "com.lampac.tv";
         const string serviceId = appId + ".worker";
@@ -498,6 +409,7 @@ public class ApiController : BaseController
         string appSource = $"{widgetDirectory}/app";
         string serviceArchive = $"{widgetDirectory}/service.tar.gz";
         string controlSource = $"{widgetDirectory}/control";
+        string replaceHost = overwritehost ?? host;
 
         #region packageinfo.json (mandatory for webOS)
         string appVersion = "1.0.0";
@@ -601,26 +513,16 @@ public class ApiController : BaseController
 
         IO.Directory.CreateDirectory(IO.Path.GetDirectoryName(ipk));
 
-        try
+        using (var stream = IO.File.Create(ipk))
+        using (var writer = new IO.BinaryWriter(stream, Encoding.ASCII, leaveOpen: false))
         {
-            using (var stream = IO.File.Create($"{ipk}.tmp"))
-            using (var writer = new IO.BinaryWriter(stream, Encoding.ASCII, leaveOpen: false))
-            {
-                writer.Write(Encoding.ASCII.GetBytes("!<arch>\n"));
-                WriteArFile(writer, "debian-binary", debianBinary);
-                WriteArFile(writer, "control.tar.gz", controlTarGz);
-                WriteArFile(writer, "data.tar.gz", dataTarGz);
-            }
-
-            IO.File.Move($"{ipk}.tmp", ipk, true);
-        }
-        finally
-        {
-            if (IO.File.Exists($"{ipk}.tmp"))
-                IO.File.Delete($"{ipk}.tmp");
+            writer.Write(Encoding.ASCII.GetBytes("!<arch>\n"));
+            WriteArFile(writer, "debian-binary", debianBinary);
+            WriteArFile(writer, "control.tar.gz", controlTarGz);
+            WriteArFile(writer, "data.tar.gz", dataTarGz);
         }
 
-        return;
+        return File(IO.File.OpenRead(ipk), "application/octet-stream");
 
         static byte[] BuildTarGz(Action<TarWriter> write)
         {
@@ -680,6 +582,17 @@ public class ApiController : BaseController
 
     #endregion
 
+    #region SubSense Auto plugin
+    [HttpGet, AllowAnonymous]
+    [Staticache(20, always: true, setHeadersNoCache: true)]
+    [Route("subsense-auto.js")]
+    public ActionResult SubSenseAuto()
+    {
+        string script = FileCache.ReadAllText($"{ModInit.modpath}/plugins/subsense-auto.js", "subsense-auto.js", saveCache: false);
+        return ContentTo(script, "application/javascript; charset=utf-8");
+    }
+    #endregion
+
     #region lampainit.js
     [HttpGet, AllowAnonymous]
     [Staticache(20, always: true, setHeadersNoCache: true)]
@@ -690,6 +603,11 @@ public class ApiController : BaseController
 
         try
         {
+            // The generated script embeds the request host in every built-in
+            // plugin URL. Never serve a cached localhost/127.0.0.1 response to
+            // a TV or another LAN device.
+            StatiCacheDisabled = true;
+
             string lampainitjs = FileCache.ReadAllText($"{ModInit.modpath}/plugins/lampainit.js", "lampainit.js");
             if (lampainitjs.Contains("{country}"))
                 StatiCacheDisabled = true;
@@ -697,9 +615,102 @@ public class ApiController : BaseController
             sb = sb.Append(lampainitjs);
 
             #region plugins
-            var plugins = LampaPluginBuilder.BuildInitPlugins(
-                ModInit.conf.initPlugins,
-                ModInit.conf.customPlugins);
+            List<LampaPlugin> plugins = new(20);
+
+            if (ModInit.conf.initPlugins.dlna)
+                plugins.Add(new("{localhost}/dlna.js", 1, "DLNA", "lampac"));
+
+            if (ModInit.conf.initPlugins.tracks)
+                plugins.Add(new("{localhost}/tracks.js", 1, "Tracks.js", "lampac"));
+
+            if (ModInit.conf.initPlugins.transcoding)
+                plugins.Add(new("{localhost}/transcoding.js", 1, "Transcoding video", "lampac"));
+
+            if (ModInit.conf.initPlugins.tmdbProxy)
+                plugins.Add(new("{localhost}/tmdbproxy.js", 1, "TMDB Proxy", "lampac"));
+
+            if (ModInit.conf.initPlugins.cubProxy)
+                plugins.Add(new("{localhost}/cubproxy.js", 1, "CUB Proxy", "lampac"));
+
+            if (ModInit.conf.initPlugins.online)
+                plugins.Add(new("{localhost}/online.js", 1, "Online", "lampac"));
+
+            if (ModInit.conf.initPlugins.onlineCompact)
+                plugins.Add(new("{localhost}/online-compact.js", 1, "Online Compact", "lampac"));
+
+            if (ModInit.conf.initPlugins.watch_together)
+                plugins.Add(new("{localhost}/watchtogether.js", 1, "Watch Together", "lampac"));
+
+            if (ModInit.conf.initPlugins.catalog)
+                plugins.Add(new("{localhost}/catalog.js", 1, "Альтернативные источники каталога", "lampac"));
+
+            if (ModInit.conf.initPlugins.dorama)
+                plugins.Add(new("{localhost}/dorama.js", 1, "Дорамы", "lampac"));
+
+            // Subtitle providers all wrap Lampa.Player.play. Load exactly one
+            // provider so one playback cannot trigger several subtitle requests
+            // or several calls to Lampa.Player.subtitles(). The explicit
+            // subsenseAuto option wins when the root auto plugin is requested.
+            if (ModInit.conf.initPlugins.subsenseAuto)
+                plugins.Add(new("{localhost}/subsense-auto.js", 1, "SubSense Auto — phụ đề tự động", "lampac"));
+            else if (ModInit.conf.initPlugins.subsense)
+                plugins.Add(new("{localhost}/subsense.js", 1, "SubSense — phụ đề tự động", "lampac"));
+            else if (ModInit.conf.initPlugins.subfinder)
+                plugins.Add(new("{localhost}/subfinder.js", 1, "SubFinder — SubDL + SubSource", "lampac"));
+            else if (ModInit.conf.initPlugins.stremiosub)
+                plugins.Add(new("{localhost}/stremiosub.js", 1, "StremioSub — SubDL + SubSource", "lampac"));
+
+            if (ModInit.conf.initPlugins.autotracks)
+                plugins.Add(new("{localhost}/autotracks.js", 1, "Auto Tracks — audio/sub tự chọn", "lampac"));
+
+            if (ModInit.conf.initPlugins.adminpanel)
+                plugins.Add(new("{localhost}/adminpanel.js", 1, "Admin Panel", "lampac"));
+
+            if (ModInit.conf.initPlugins.jackett)
+                plugins.Add(new("{localhost}/jackett.js", 1, "Jackett local", "lampac"));
+
+            if (ModInit.conf.initPlugins.gst)
+                plugins.Add(new("{localhost}/gst.js", 1, "GStreamer", "lampac"));
+
+            if (ModInit.conf.initPlugins.sisi)
+            {
+                plugins.Add(new("{localhost}/sisi.js", 1, "Клубничка", "lampac"));
+                plugins.Add(new("{localhost}/startpage.js", 1, "Стартовая страница", "lampac"));
+            }
+
+            // Independent of initPlugins.sisi: the restyle plugin is inert
+            // outside sisi_* activities, and SISI itself is often loaded from
+            // a manual/external URL rather than the sisi flag above.
+            if (ModInit.conf.initPlugins.sisiRestyle)
+                plugins.Add(new("{localhost}/sisi-restyle.js", 1, "SISI Restyle", "lampac"));
+
+            if (ModInit.conf.initPlugins.sync)
+                plugins.Add(new("{localhost}/sync.js", 1, "Синхронизация", "lampac"));
+
+            if (ModInit.conf.initPlugins.timecode)
+                plugins.Add(new("{localhost}/timecode.js", 1, "Синхронизация тайм-кодов", "lampac"));
+
+            if (ModInit.conf.initPlugins.bookmark)
+                plugins.Add(new("{localhost}/bookmark.js", 1, "Синхронизация закладок", "lampac"));
+
+            if (ModInit.conf.initPlugins.torrserver)
+                plugins.Add(new("{localhost}/ts.js", 1, "TorrServer", "lampac"));
+
+            if (ModInit.conf.initPlugins.backup)
+                plugins.Add(new("{localhost}/backup.js", 1, "Backup", "lampac"));
+
+            if (ModInit.conf.customPlugins != null)
+            {
+                foreach (var p in ModInit.conf.customPlugins)
+                {
+                    if (p.status == 1)
+                        plugins.Add(p);
+                }
+            }
+
+            // Load localization last so it can overlay built-in and third-party addons.
+            if (ModInit.conf.initPlugins.vietnamese)
+                plugins.Add(new("{localhost}/vietnamese.js", 1, "Tiếng Việt cho Lampac", "lampac"));
 
             sb = sb.Replace("{initiale}", JsonConvert.SerializeObject(plugins));
             #endregion
@@ -715,26 +726,14 @@ public class ApiController : BaseController
 
             if (CoreInit.conf.accsdb.enable)
             {
-                string script;
-                var gate = ModInit.conf.telegramAuthGate;
-                if (gate != null && gate.enabled && !string.IsNullOrWhiteSpace(gate.botUsername))
-                {
-                    script = TelegramGateJs();
-                }
-                else
-                {
-                    if (gate != null && gate.enabled && string.IsNullOrWhiteSpace(gate.botUsername))
-                        Console.WriteLine("LampaWeb.telegramAuthGate: enabled=true, но botUsername пустой — откат на deny.js (гейт без имени бота неавторизуем).");
+                string denyjs = FileCache.ReadAllText($"{ModInit.modpath}/plugins/deny.js", "deny.js");
+                if (denyjs.Contains("{country}"))
+                    StatiCacheDisabled = true;
 
-                    script = FileCache.ReadAllText($"{ModInit.modpath}/plugins/deny.js", "deny.js");
-                    if (script.Contains("{country}"))
-                        StatiCacheDisabled = true;
+                if (denyjs.Contains("{cubMesage}"))
+                    denyjs = denyjs.Replace("{cubMesage}", CoreInit.conf.accsdb.authMesage);
 
-                    if (script.Contains("{cubMesage}"))
-                        script = script.Replace("{cubMesage}", CoreInit.conf.accsdb.authMesage);
-                }
-
-                sb = sb.Replace("{deny}", script);
+                sb = sb.Replace("{deny}", denyjs);
             }
 
             string initinvcjs = FileCache.ReadAllText($"{ModInit.modpath}/plugins/lampainit-invc.js", "lampainit-invc.js");
@@ -826,15 +825,112 @@ public class ApiController : BaseController
 
         try
         {
+            // /on.js also embeds {localhost}; cache must not cross LAN hosts.
+            StatiCacheDisabled = true;
+
             #region plugins
             if (adult && HttpContext.Request.Path.Value.StartsWith("/on/h/"))
                 adult = false;
 
-            var plugins = LampaPluginBuilder.BuildOnPluginUrls(
-                ModInit.conf.initPlugins,
-                ModInit.conf.customPlugins,
-                token,
-                adult);
+            var plugins = new List<string>(15);
+
+            void send(string name, bool worktoken)
+            {
+                if (worktoken && !string.IsNullOrEmpty(token))
+                {
+                    plugins.Add($"\"{{localhost}}/{name}/js/{HttpUtility.UrlEncode(token)}\"");
+                }
+                else
+                {
+                    plugins.Add($"\"{{localhost}}/{name}.js\"");
+                }
+            }
+
+            if (ModInit.conf.initPlugins.dlna)
+                send("dlna", true);
+
+            if (ModInit.conf.initPlugins.tracks)
+                send("tracks", true);
+
+            if (ModInit.conf.initPlugins.transcoding)
+                send("transcoding", true);
+
+            if (ModInit.conf.initPlugins.tmdbProxy)
+                send("tmdbproxy", true);
+
+            if (ModInit.conf.initPlugins.cubProxy)
+                send("cubproxy", true);
+
+            if (ModInit.conf.initPlugins.dorama)
+                send("dorama", true);
+
+            // Keep subtitle providers mutually exclusive; each one hooks the
+            // same Lampa.Player.play method.
+            if (ModInit.conf.initPlugins.subsenseAuto)
+                send("subsense-auto", false);
+            else if (ModInit.conf.initPlugins.subsense)
+                send("subsense", false);
+            else if (ModInit.conf.initPlugins.subfinder)
+                send("subfinder", false);
+            else if (ModInit.conf.initPlugins.stremiosub)
+                send("stremiosub", false);
+
+            if (ModInit.conf.initPlugins.adminpanel)
+                send("adminpanel", false);
+
+            if (ModInit.conf.initPlugins.autotracks)
+                send("autotracks", false);
+
+            if (ModInit.conf.initPlugins.jackett)
+                send("jackett", false);
+
+            if (ModInit.conf.initPlugins.gst)
+                send("gst", true);
+
+            if (ModInit.conf.initPlugins.online)
+                send("online", true);
+
+            if (ModInit.conf.initPlugins.onlineCompact)
+                send("online-compact", false);
+
+            if (ModInit.conf.initPlugins.watch_together)
+                send("watchtogether", false);
+
+            if (adult && ModInit.conf.initPlugins.sisi)
+            {
+                send("sisi", true);
+                send("startpage", false);
+            }
+
+            if (adult && ModInit.conf.initPlugins.sisiRestyle)
+                send("sisi-restyle", false);
+
+            if (ModInit.conf.initPlugins.sync)
+                send("sync", true);
+
+            if (ModInit.conf.initPlugins.timecode)
+                send("timecode", true);
+
+            if (ModInit.conf.initPlugins.bookmark)
+                send("bookmark", true);
+
+            if (ModInit.conf.initPlugins.torrserver)
+                send("ts", true);
+
+            if (ModInit.conf.initPlugins.backup)
+                send("backup", true);
+
+            if (ModInit.conf.customPlugins != null)
+            {
+                foreach (var p in ModInit.conf.customPlugins)
+                {
+                    if (p.status == 1)
+                        plugins.Add($"\"{p.url}\"");
+                }
+            }
+
+            if (ModInit.conf.initPlugins.vietnamese)
+                send("vietnamese", false);
             #endregion
 
             string onjs = FileCache.ReadAllText($"{ModInit.modpath}/plugins/on.js", "on.js");
@@ -889,22 +985,6 @@ public class ApiController : BaseController
     }
     #endregion
 
-    private string TelegramGateJs()
-    {
-        var g = ModInit.conf.telegramAuthGate;
-        string raw = FileCache.ReadAllText($"{ModInit.modpath}/plugins/telegram_auth_gate.js", "telegram_auth_gate.js");
-        if (raw.Contains("{country}"))
-            StatiCacheDisabled = true; // defensive parity с deny.js; в файле гейта {country} нет
-
-        string bot = HttpUtility.JavaScriptStringEncode(g?.botUsername ?? string.Empty);
-        string svc = HttpUtility.JavaScriptStringEncode(g?.serviceName ?? string.Empty);
-
-        // {localhost}, {country}, {token} подставляются глобально (688-689, 738-748) или в маршруте
-        return raw
-            .Replace("{botUsername}", bot)
-            .Replace("{serviceName}", svc);
-    }
-
     #region telegram_auth_gate.js
     [HttpGet, AllowAnonymous, Staticache(manually: true)]
     [Route("telegram_auth_gate.js")]
@@ -912,16 +992,561 @@ public class ApiController : BaseController
     {
         SetHeadersNoCache();
 
-        string token = string.IsNullOrEmpty(CoreInit.conf.accsdb.domainId_pattern)
-            ? string.Empty
-            : Regex.Match(HttpContext.Request.Host.Host, CoreInit.conf.accsdb.domainId_pattern).Groups[1].Value;
-
-        string gate = TelegramGateJs()
-            .Replace("{country}", requestInfo.Country ?? string.Empty)
-            .Replace("{localhost}", host)
-            .Replace("{token}", HttpUtility.UrlEncode(token));
+        string gate = FileCache.ReadAllText($"{ModInit.modpath}/plugins/telegram_auth_gate.js", "telegram_auth_gate.js")
+            .Replace("{country}", requestInfo.Country)
+            .Replace("{localhost}", host);
 
         return ContentTo(gate, "application/javascript; charset=utf-8");
+    }
+    #endregion
+
+    #region subfinder.js
+    [HttpGet, AllowAnonymous, Staticache(manually: true)]
+    [Route("subfinder.js")]
+    public ActionResult SubFinderJs()
+    {
+        SetHeadersNoCache();
+        string plugin = FileCache.ReadAllText($"{ModInit.modpath}/plugins/subfinder.js", "subfinder.js");
+        return ContentTo(plugin, "application/javascript; charset=utf-8");
+    }
+    #endregion
+
+    #region subsense.js
+    [HttpGet, AllowAnonymous, Staticache(manually: true)]
+    [Route("subsense.js")]
+    public ActionResult SubSense()
+    {
+        SetHeadersNoCache();
+
+        string plugin = FileCache.ReadAllText($"{ModInit.modpath}/plugins/subsense.js", "subsense.js")
+            .Replace("{localhost}", host);
+
+        return ContentTo(plugin, "application/javascript; charset=utf-8");
+    }
+
+    [HttpGet, AllowAnonymous]
+    [Route("subtest.js")]
+    public ActionResult SubTest()
+    {
+        SetHeadersNoCache();
+        string plugin = FileCache.ReadAllText($"{ModInit.modpath}/plugins/subtest.js", "subtest.js");
+        return ContentTo(plugin, "application/javascript; charset=utf-8");
+    }
+
+    [HttpGet, AllowAnonymous]
+    [Route("adminpanel.js")]
+    public ActionResult AdminPanelJs()
+    {
+        SetHeadersNoCache();
+        string plugin = FileCache.ReadAllText($"{ModInit.modpath}/plugins/adminpanel.js", "adminpanel.js");
+        return ContentTo(plugin, "application/javascript; charset=utf-8");
+    }
+
+    [HttpGet, AllowAnonymous]
+    [Route("online-compact.js")]
+    public ActionResult OnlineCompactJs()
+    {
+        SetHeadersNoCache();
+        string plugin = FileCache.ReadAllText($"{ModInit.modpath}/plugins/online-compact.js", "online-compact.js");
+        return ContentTo(plugin, "application/javascript; charset=utf-8");
+    }
+
+    [HttpGet, AllowAnonymous]
+    [Route("autotracks.js")]
+    public ActionResult AutoTracksJs()
+    {
+        SetHeadersNoCache();
+        string plugin = FileCache.ReadAllText($"{ModInit.modpath}/plugins/autotracks.js", "autotracks.js");
+        return ContentTo(plugin, "application/javascript; charset=utf-8");
+    }
+
+    [HttpGet, AllowAnonymous]
+    [Route("vietnamese.js")]
+    public ActionResult VietnameseJs()
+    {
+        SetHeadersNoCache();
+        string plugin = FileCache.ReadAllText($"{ModInit.modpath}/plugins/vietnamese.js", "vietnamese.js")
+            .Replace("{localhost}", host);
+        return ContentTo(plugin, "application/javascript; charset=utf-8");
+    }
+
+    [HttpGet, AllowAnonymous]
+    [Route("lang/vi.js")]
+    [Route("lampa-main/lang/vi.js")]
+    public ActionResult VietnameseLang()
+    {
+        SetHeadersNoCache();
+        string lang = FileCache.ReadAllText($"{ModInit.modpath}/lang/vi.js", "lang-vi.js");
+        bool iife = string.Equals(HttpContext.Request.Query["iife"].ToString(), "1", StringComparison.OrdinalIgnoreCase);
+        if (iife)
+        {
+            lang = Regex.Replace(lang, @"^\s*export\s+default\s*", "", RegexOptions.Multiline);
+            lang = "window.LampaLangVi = " + lang.Trim().TrimEnd(';') + ";\n";
+        }
+        return ContentTo(lang, "application/javascript; charset=utf-8");
+    }
+
+    private static readonly System.Net.Http.HttpClient LocalJackettHttpClient = new(
+        new System.Net.Http.SocketsHttpHandler
+        {
+            // Jackett intentionally redirects some /dl/ results to magnet:.
+            // HttpClient cannot follow non-HTTP schemes, so inspect Location ourselves.
+            AllowAutoRedirect = false
+        })
+    {
+        Timeout = TimeSpan.FromSeconds(45)
+    };
+
+    private (bool enabled, string apiKey, int port, bool proxyDownloads, string publicUrl) GetJackettConfig()
+    {
+        var root = JObject.Parse(ReadInitConfRaw());
+        var section = root["Jackett"] as JObject;
+        int port = section?.Value<int?>("port") ?? 9117;
+        if (port < 1 || port > 65535)
+            port = 9117;
+
+        return (
+            section?.Value<bool?>("enable") ?? false,
+            section?.Value<string>("api_key")?.Trim() ?? string.Empty,
+            port,
+            section?.Value<bool?>("proxy_downloads") ?? true,
+            section?.Value<string>("url")?.Trim() ?? string.Empty
+        );
+    }
+
+    private static string EncodeJackettPath(string value)
+        => Convert.ToBase64String(Encoding.UTF8.GetBytes(value))
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
+
+    private static string DecodeJackettPath(string value)
+    {
+        string base64 = (value ?? string.Empty).Replace('-', '+').Replace('_', '/');
+        base64 = base64.PadRight(base64.Length + ((4 - base64.Length % 4) % 4), '=');
+        return Encoding.UTF8.GetString(Convert.FromBase64String(base64));
+    }
+
+    private static readonly System.Threading.SemaphoreSlim JackettResolveSlots = new(6, 6);
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> JackettMagnetCache = new();
+
+    private async Task<string> ResolveJackettMagnet(Uri link, string apiKey, int port)
+    {
+        string cacheKey = link.PathAndQuery;
+        if (JackettMagnetCache.TryGetValue(cacheKey, out string cached))
+            return cached;
+
+        await JackettResolveSlots.WaitAsync(HttpContext.RequestAborted);
+        try
+        {
+            var query = HttpUtility.ParseQueryString(link.Query);
+            query.Remove("apikey");
+            query["jackett_apikey"] = apiKey;
+            string target = $"http://127.0.0.1:{port}{link.AbsolutePath}?{query}";
+
+            using var response = await LocalJackettHttpClient.GetAsync(target, HttpContext.RequestAborted);
+
+            if ((int)response.StatusCode is >= 300 and < 400 &&
+                response.Headers.Location is Uri location &&
+                location.Scheme.Equals("magnet", StringComparison.OrdinalIgnoreCase))
+            {
+                string redirectedMagnet = location.OriginalString;
+                JackettMagnetCache.TryAdd(cacheKey, redirectedMagnet);
+                return redirectedMagnet;
+            }
+
+            if (!response.IsSuccessStatusCode)
+                return null;
+
+            byte[] torrent = await response.Content.ReadAsByteArrayAsync(HttpContext.RequestAborted);
+
+            // Older/custom Jackett builds can return the magnet as a plain body
+            // instead of a redirect.
+            if (torrent.AsSpan().StartsWith("magnet:"u8))
+            {
+                string bodyMagnet = Encoding.UTF8.GetString(torrent).Trim();
+                JackettMagnetCache.TryAdd(cacheKey, bodyMagnet);
+                return bodyMagnet;
+            }
+
+            string magnet = TorrentToMagnet(torrent);
+            if (!string.IsNullOrEmpty(magnet))
+                JackettMagnetCache.TryAdd(cacheKey, magnet);
+
+            return magnet;
+        }
+        catch
+        {
+            return null;
+        }
+        finally
+        {
+            JackettResolveSlots.Release();
+        }
+    }
+
+    private static string TorrentToMagnet(byte[] torrent)
+    {
+        if (torrent == null || torrent.Length < 16 || torrent[0] != (byte)'d')
+            return null;
+
+        int position = 1;
+        int infoStart = -1;
+        int infoEnd = -1;
+        var trackers = new HashSet<string>(StringComparer.Ordinal);
+
+        while (position < torrent.Length && torrent[position] != (byte)'e')
+        {
+            if (!TryReadBencodeString(torrent, ref position, out int keyStart, out int keyLength))
+                return null;
+
+            string key = Encoding.UTF8.GetString(torrent, keyStart, keyLength);
+            int valueStart = position;
+
+            if (key == "announce")
+            {
+                if (!TryReadBencodeString(torrent, ref position, out int trackerStart, out int trackerLength))
+                    return null;
+
+                string tracker = Encoding.UTF8.GetString(torrent, trackerStart, trackerLength);
+                if (Uri.TryCreate(tracker, UriKind.Absolute, out _))
+                    trackers.Add(tracker);
+            }
+            else if (key == "announce-list")
+            {
+                if (!CollectBencodeStrings(torrent, ref position, trackers, 0))
+                    return null;
+            }
+            else
+            {
+                if (!SkipBencodeValue(torrent, ref position, 0))
+                    return null;
+
+                if (key == "info")
+                {
+                    infoStart = valueStart;
+                    infoEnd = position;
+                }
+            }
+        }
+
+        if (infoStart < 0 || infoEnd <= infoStart)
+            return null;
+
+        byte[] hash = System.Security.Cryptography.SHA1.HashData(torrent.AsSpan(infoStart, infoEnd - infoStart));
+        var magnet = new StringBuilder("magnet:?xt=urn:btih:").Append(Convert.ToHexString(hash).ToLowerInvariant());
+        foreach (string tracker in trackers)
+            magnet.Append("&tr=").Append(HttpUtility.UrlEncode(tracker));
+
+        return magnet.ToString();
+    }
+
+    private static bool TryReadBencodeString(byte[] data, ref int position, out int start, out int length)
+    {
+        start = 0;
+        length = 0;
+        if (position >= data.Length || data[position] < (byte)'0' || data[position] > (byte)'9')
+            return false;
+
+        long value = 0;
+        while (position < data.Length && data[position] >= (byte)'0' && data[position] <= (byte)'9')
+        {
+            value = value * 10 + data[position++] - (byte)'0';
+            if (value > int.MaxValue)
+                return false;
+        }
+
+        if (position >= data.Length || data[position++] != (byte)':')
+            return false;
+
+        if (value < 0 || position + value > data.Length)
+            return false;
+
+        start = position;
+        length = (int)value;
+        position += length;
+        return true;
+    }
+
+    private static bool SkipBencodeValue(byte[] data, ref int position, int depth)
+    {
+        if (depth > 128 || position >= data.Length)
+            return false;
+
+        byte token = data[position];
+        if (token >= (byte)'0' && token <= (byte)'9')
+            return TryReadBencodeString(data, ref position, out _, out _);
+
+        if (token == (byte)'i')
+        {
+            position++;
+            while (position < data.Length && data[position] != (byte)'e')
+                position++;
+            return position < data.Length && data[position++] == (byte)'e';
+        }
+
+        if (token != (byte)'l' && token != (byte)'d')
+            return false;
+
+        bool dictionary = token == (byte)'d';
+        position++;
+        while (position < data.Length && data[position] != (byte)'e')
+        {
+            if (dictionary && !TryReadBencodeString(data, ref position, out _, out _))
+                return false;
+            if (!SkipBencodeValue(data, ref position, depth + 1))
+                return false;
+        }
+
+        return position < data.Length && data[position++] == (byte)'e';
+    }
+
+    private static bool CollectBencodeStrings(byte[] data, ref int position, HashSet<string> values, int depth)
+    {
+        if (depth > 16 || position >= data.Length)
+            return false;
+
+        if (data[position] >= (byte)'0' && data[position] <= (byte)'9')
+        {
+            if (!TryReadBencodeString(data, ref position, out int start, out int length))
+                return false;
+            string value = Encoding.UTF8.GetString(data, start, length);
+            if (Uri.TryCreate(value, UriKind.Absolute, out _))
+                values.Add(value);
+            return true;
+        }
+
+        if (data[position] != (byte)'l')
+            return SkipBencodeValue(data, ref position, depth);
+
+        position++;
+        while (position < data.Length && data[position] != (byte)'e')
+        {
+            if (!CollectBencodeStrings(data, ref position, values, depth + 1))
+                return false;
+        }
+        return position < data.Length && data[position++] == (byte)'e';
+    }
+
+    [HttpGet, AllowAnonymous]
+    [Route("jackett/resolve")]
+    public async Task<IActionResult> JackettResolve(string token)
+    {
+        SetHeadersNoCache();
+
+        try
+        {
+            var config = GetJackettConfig();
+            if (!config.enabled || string.IsNullOrEmpty(config.apiKey))
+                return StatusCode(503, new { error = "Jackett is disabled or api_key is empty" });
+
+            string path = DecodeJackettPath(token);
+            if (string.IsNullOrWhiteSpace(path) || !path.StartsWith("/dl/", StringComparison.OrdinalIgnoreCase) ||
+                !Uri.TryCreate($"http://127.0.0.1:{config.port}{path}", UriKind.Absolute, out var source))
+            {
+                return BadRequest(new { error = "Invalid Jackett download token" });
+            }
+
+            string magnet = await ResolveJackettMagnet(source, config.apiKey, config.port);
+            if (string.IsNullOrWhiteSpace(magnet))
+                return StatusCode(502, new { error = "Jackett could not resolve this torrent to a magnet" });
+
+            return Ok(new { magnet });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(502, new { error = ex.Message });
+        }
+    }
+
+    [HttpGet, AllowAnonymous]
+    [Route("jackett/api/v2.0/indexers/all/results")]
+    public async Task<IActionResult> JackettResults()
+    {
+        SetHeadersNoCache();
+
+        try
+        {
+            var config = GetJackettConfig();
+            if (!config.enabled || string.IsNullOrEmpty(config.apiKey))
+                return StatusCode(503, new { error = "Jackett is disabled or api_key is empty" });
+
+            var query = HttpUtility.ParseQueryString(HttpContext.Request.QueryString.Value ?? string.Empty);
+            query["apikey"] = config.apiKey;
+            string target = $"http://127.0.0.1:{config.port}/api/v2.0/indexers/all/results?{query}";
+
+            using var upstream = await LocalJackettHttpClient.GetAsync(target, HttpContext.RequestAborted);
+            string body = await upstream.Content.ReadAsStringAsync(HttpContext.RequestAborted);
+            if (!upstream.IsSuccessStatusCode)
+                return StatusCode((int)upstream.StatusCode, body);
+
+            var payload = JObject.Parse(body);
+            if (config.proxyDownloads && payload["Results"] is JArray results)
+            {
+                foreach (JObject result in results.OfType<JObject>())
+                {
+                    string link = result.Value<string>("Link");
+                    if (string.IsNullOrWhiteSpace(link))
+                        continue;
+
+                    link = link.Replace("&amp;", "&", StringComparison.OrdinalIgnoreCase);
+                    if (!Uri.TryCreate(link, UriKind.Absolute, out var linkUri) &&
+                        !Uri.TryCreate($"http://127.0.0.1:{config.port}/{link.TrimStart('/')}", UriKind.Absolute, out linkUri))
+                    {
+                        continue;
+                    }
+
+                    if (linkUri.AbsolutePath.StartsWith("/dl/", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var linkQuery = HttpUtility.ParseQueryString(linkUri.Query);
+                        linkQuery.Remove("apikey");
+                        linkQuery.Remove("jackett_apikey");
+                        string path = linkUri.AbsolutePath + (linkQuery.Count > 0 ? $"?{linkQuery}" : string.Empty);
+                        result["Link"] = $"{host}/jackett/download?token={EncodeJackettPath(path)}";
+                    }
+                }
+            }
+
+            return Content(payload.ToString(Formatting.None), "application/json; charset=utf-8");
+        }
+        catch (TaskCanceledException) when (HttpContext.RequestAborted.IsCancellationRequested == false)
+        {
+            return StatusCode(504, new { error = "Jackett search timeout" });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(502, new { error = ex.Message });
+        }
+    }
+
+    [HttpGet, AllowAnonymous]
+    [Route("jackett/download")]
+    public async Task<IActionResult> JackettDownload(string token)
+    {
+        SetHeadersNoCache();
+
+        try
+        {
+            var config = GetJackettConfig();
+            if (!config.enabled || string.IsNullOrEmpty(config.apiKey))
+                return StatusCode(503, "Jackett is disabled or api_key is empty");
+
+            string path = DecodeJackettPath(token);
+            if (string.IsNullOrWhiteSpace(path) || !path.StartsWith("/dl/", StringComparison.OrdinalIgnoreCase) ||
+                !Uri.TryCreate($"http://localhost{path}", UriKind.Absolute, out var source))
+            {
+                return BadRequest("Only Jackett /dl/ paths are accepted");
+            }
+
+            // Never fetch a client-supplied authority. Rebuild the URL on local
+            // Jackett and inject the private API key server-side.
+            var downloadQuery = HttpUtility.ParseQueryString(source.Query);
+            downloadQuery["jackett_apikey"] = config.apiKey;
+            string target = $"http://127.0.0.1:{config.port}{source.AbsolutePath}?{downloadQuery}";
+            using var upstream = await LocalJackettHttpClient.GetAsync(target, HttpContext.RequestAborted);
+            byte[] torrent = await upstream.Content.ReadAsByteArrayAsync(HttpContext.RequestAborted);
+
+            if (!upstream.IsSuccessStatusCode)
+                return StatusCode((int)upstream.StatusCode, "Jackett could not download this torrent");
+
+            if (torrent.Length < 16 || torrent[0] != (byte)'d' || torrent.AsSpan().IndexOf("4:info"u8) < 0)
+                return StatusCode(502, "Jackett returned a non-torrent response");
+
+            return File(torrent, "application/x-bittorrent", "jackett.torrent");
+        }
+        catch (TaskCanceledException) when (HttpContext.RequestAborted.IsCancellationRequested == false)
+        {
+            return StatusCode(504, "Jackett torrent download timeout");
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(502, ex.Message);
+        }
+    }
+
+    [HttpGet, AllowAnonymous]
+    [Route("jackett.js")]
+    public ActionResult JackettJs()
+    {
+        SetHeadersNoCache();
+
+        try
+        {
+            var config = GetJackettConfig();
+            if (!config.enabled || string.IsNullOrEmpty(config.apiKey))
+                return Content("// Jackett integration is disabled or api_key is empty.\n", "application/javascript; charset=utf-8");
+
+            string url = config.proxyDownloads ? $"{host}/jackett" : config.publicUrl;
+            if (string.IsNullOrEmpty(url))
+                url = new UriBuilder("http", HttpContext.Request.Host.Host, config.port).Uri.GetLeftPart(UriPartial.Authority);
+
+            string plugin = FileCache.ReadAllText($"{ModInit.modpath}/plugins/jackett.js", "jackett.js")
+                .Replace("__JACKETT_URL__", JsonConvert.SerializeObject(url))
+                .Replace("__JACKETT_API_KEY__", JsonConvert.SerializeObject(config.proxyDownloads ? "lampac-proxy" : config.apiKey));
+
+            return ContentTo(plugin, "application/javascript; charset=utf-8");
+        }
+        catch (Exception ex)
+        {
+            return Content($"// Invalid Jackett configuration: {ex.Message.Replace("\n", " ").Replace("\r", " ")}\n", "application/javascript; charset=utf-8");
+        }
+    }
+
+    [HttpGet, AllowAnonymous]
+    [Route("stremiosub.js")]
+    public ActionResult StremioSub()
+    {
+        SetHeadersNoCache();
+        string plugin = FileCache.ReadAllText($"{ModInit.modpath}/plugins/stremiosub.js", "stremiosub.js");
+        return ContentTo(plugin, "application/javascript; charset=utf-8");
+    }
+
+    // Server-side fetcher cho SubSense: trình duyệt bị chặn CORS khi tải file
+    // phụ đề trực tiếp từ các nguồn như OpenSubtitles, nên tải qua server.
+    private static readonly System.Net.Http.HttpClient SubSenseHttpClient = CreateSubSenseHttpClient();
+
+    private static System.Net.Http.HttpClient CreateSubSenseHttpClient()
+    {
+        var client = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+        client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) SubSense/1.0");
+        client.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "*/*");
+        return client;
+    }
+
+    [HttpGet, AllowAnonymous]
+    [Route("subsense/file")]
+    public async Task<IActionResult> SubSenseFile(string url)
+    {
+        SetHeadersNoCache();
+
+        if (string.IsNullOrWhiteSpace(url) || !Regex.IsMatch(url, "^https?://", RegexOptions.IgnoreCase))
+            return BadRequest();
+
+        try
+        {
+            var req = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Get, url);
+            req.Headers.TryAddWithoutValidation("Referer", "https://dl.opensubtitles.org/");
+            req.Headers.TryAddWithoutValidation("Accept", "*/*");
+
+            using var resp = await SubSenseHttpClient.SendAsync(req, System.Net.Http.HttpCompletionOption.ResponseHeadersRead);
+
+            if (!resp.IsSuccessStatusCode)
+                return StatusCode((int)resp.StatusCode);
+
+            var data = new IO.MemoryStream();
+            await resp.Content.CopyToAsync(data);
+
+            if (data.Length > 50 * 1024 * 1024)
+                return BadRequest("file too large");
+
+            data.Position = 0;
+            string contentType = resp.Content.Headers.ContentType?.MediaType ?? "application/octet-stream";
+            return File(data, contentType);
+        }
+        catch
+        {
+            return StatusCode(502);
+        }
     }
     #endregion
 
@@ -938,6 +1563,237 @@ public class ApiController : BaseController
             .Replace("{token}", HttpUtility.UrlEncode(token ?? string.Empty));
 
         return ContentTo(plugin, "application/javascript; charset=utf-8");
+    }
+    #endregion
+
+    #region subfinder.js
+    private static readonly System.Net.Http.HttpClient SubFinderHttpClient = new System.Net.Http.HttpClient
+    {
+        Timeout = TimeSpan.FromSeconds(30)
+    };
+
+    static ApiController()
+    {
+        SubFinderHttpClient.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) SubFinder/1.0");
+        SubFinderHttpClient.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "application/json");
+    }
+
+    private static string ReadInitConfRaw()
+    {
+        try { return System.IO.File.ReadAllText("init.conf", System.Text.Encoding.UTF8); }
+        catch { return "{}"; }
+    }
+
+    private string GetSubdlApiKey()
+    {
+        try
+        {
+            var root = Newtonsoft.Json.Linq.JObject.Parse(ReadInitConfRaw());
+            var sf = root["SubFinder"] as Newtonsoft.Json.Linq.JObject;
+            return sf?["subdl_api_key"]?.ToString() ?? string.Empty;
+        }
+        catch { }
+        return string.Empty;
+    }
+
+    private string GetSubsourceApiKey()
+    {
+        try
+        {
+            var root = Newtonsoft.Json.Linq.JObject.Parse(ReadInitConfRaw());
+            var sf = root["SubFinder"] as Newtonsoft.Json.Linq.JObject;
+            return sf?["subsource_api_key"]?.ToString() ?? string.Empty;
+        }
+        catch { }
+        return string.Empty;
+    }
+
+    [HttpGet, AllowAnonymous]
+    [Route("subfinder/search")]
+    public async Task<IActionResult> SubFinderSearch(string q, string query, string type, int? season, int? episode, string languages)
+    {
+        SetHeadersNoCache();
+
+        var apiKey = GetSubdlApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+            return Ok(new { subtitles = Array.Empty<object>(), error = "subdl_api_key not configured" });
+
+        // Accept both 'q' (SubDL native) and 'query' (from plugin fallback)
+        var searchQuery = !string.IsNullOrWhiteSpace(q) ? q : query;
+        if (string.IsNullOrWhiteSpace(searchQuery))
+            return Ok(new { subtitles = Array.Empty<object>(), error = "no search query" });
+
+        try
+        {
+            // Step 1: search movie to get sd_id
+            var searchUrl = $"https://api.subdl.com/api/v2/movies/search?q={Uri.EscapeDataString(searchQuery)}&type={type ?? "movie"}&limit=1";
+            var searchReq = new System.Net.Http.HttpRequestMessage(new System.Net.Http.HttpMethod("GET"), searchUrl);
+            searchReq.Headers.TryAddWithoutValidation("Authorization", $"Bearer {apiKey}");
+            using var searchResp = await SubFinderHttpClient.SendAsync(searchReq);
+            var searchBody = await searchResp.Content.ReadAsStringAsync();
+            var searchRoot = Newtonsoft.Json.Linq.JObject.Parse(searchBody);
+            var searchResults = searchRoot["results"] as Newtonsoft.Json.Linq.JArray;
+            if (searchResults == null || searchResults.Count == 0)
+                return Ok(new { subtitles = Array.Empty<object>(), error = "movie not found" });
+            var sdId = searchResults[0]["sd_id"]?.ToString();
+            if (string.IsNullOrWhiteSpace(sdId))
+                return Ok(new { subtitles = Array.Empty<object>(), error = "no sd_id" });
+
+            // Step 2: search subtitles using sd_id
+            var url = $"https://api.subdl.com/api/v2/subtitles/search?sd_id={sdId}&unpack=1";
+            if (season.HasValue) url += $"&season={season}";
+            if (episode.HasValue) url += $"&episode={episode}";
+            if (!string.IsNullOrWhiteSpace(languages)) url += $"&languages={languages}";
+            else url += "&languages=vi";
+
+            var req = new System.Net.Http.HttpRequestMessage(new System.Net.Http.HttpMethod("GET"), url);
+            req.Headers.TryAddWithoutValidation("Authorization", $"Bearer {apiKey}");
+
+            using var resp = await SubFinderHttpClient.SendAsync(req);
+            var body = await resp.Content.ReadAsStringAsync();
+
+            if (!resp.IsSuccessStatusCode)
+                return Content(body, "application/json");
+
+            var root = Newtonsoft.Json.Linq.JObject.Parse(body);
+            var result = new List<object>();
+
+            if (root["subtitles"] is Newtonsoft.Json.Linq.JArray subsArr)
+            {
+                foreach (Newtonsoft.Json.Linq.JObject sub in subsArr)
+                {
+                    var releaseName = sub["release_name"]?.ToString() ?? sub["filename"]?.ToString() ?? string.Empty;
+                    var lang = sub["lang"]?.ToString() ?? sub["language"]?.ToString() ?? string.Empty;
+                    var format = "unknown";
+
+                    // Prefer unpack_files (individual .srt) over zip URL
+                    var unpackFiles = sub["unpack_files"] as JArray;
+                    if (unpackFiles != null && unpackFiles.Count > 0)
+                    {
+                        foreach (JObject uf in unpackFiles)
+                        {
+                            var ufUrl = uf["url"]?.ToString() ?? string.Empty;
+                            if (!string.IsNullOrWhiteSpace(ufUrl) && ufUrl.StartsWith("/"))
+                                ufUrl = "https://dl.subdl.com" + ufUrl;
+                            var ufFormat = uf["format"]?.ToString() ?? "srt";
+                            if (!string.IsNullOrWhiteSpace(ufUrl))
+                                result.Add(new { url = ufUrl, label = releaseName, lang = lang, format = ufFormat });
+                        }
+                    }
+                    else
+                    {
+                        // Fallback to zip URL
+                        var subUrl = sub["url"]?.ToString() ?? sub["download_link"]?.ToString() ?? string.Empty;
+                        if (!string.IsNullOrWhiteSpace(subUrl) && subUrl.StartsWith("/"))
+                            subUrl = "https://dl.subdl.com" + subUrl;
+                        if (!string.IsNullOrWhiteSpace(subUrl))
+                            result.Add(new { url = subUrl, label = releaseName, lang = lang, format = "zip" });
+                    }
+                }
+            }
+
+            return Ok(new { subtitles = result });
+        }
+        catch (Exception ex)
+        {
+            return Ok(new { subtitles = Array.Empty<object>(), error = ex.Message });
+        }
+    }
+
+    [HttpGet, AllowAnonymous]
+    [Route("subfinder/search-source")]
+    public async Task<IActionResult> SubFinderSearchSource(string imdb, string query, string type, int? season, int? episode, string languages)
+    {
+        SetHeadersNoCache();
+
+        var apiKey = GetSubsourceApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+            return Ok(new { subtitles = Array.Empty<object>(), error = "subsource_api_key not configured" });
+
+        try
+        {
+            var searchVal = !string.IsNullOrWhiteSpace(imdb) ? imdb : query;
+            if (string.IsNullOrWhiteSpace(searchVal))
+                return Ok(new { subtitles = Array.Empty<object>(), error = "no search value" });
+
+            var url = $"https://api.subsource.net/api/getMovie?type={(type == "tv" ? "tv" : "movie")}&imdb={Uri.EscapeDataString(searchVal)}";
+            if (season.HasValue) url += $"&season={season}";
+            if (episode.HasValue) url += $"&episode={episode}";
+
+            var req = new System.Net.Http.HttpRequestMessage(new System.Net.Http.HttpMethod("GET"), url);
+            req.Headers.TryAddWithoutValidation("X-API-Key", apiKey);
+
+            using var resp = await SubFinderHttpClient.SendAsync(req);
+            var body = await resp.Content.ReadAsStringAsync();
+
+            if (!resp.IsSuccessStatusCode)
+                return Ok(new { subtitles = Array.Empty<object>(), error = $"SubSource HTTP {resp.StatusCode}" });
+
+            var root = Newtonsoft.Json.Linq.JObject.Parse(body);
+            var result = new List<object>();
+
+            if (root["subs"] is Newtonsoft.Json.Linq.JArray subsArr)
+            {
+                foreach (Newtonsoft.Json.Linq.JObject sub in subsArr)
+                {
+                    var subUrl = sub["url"]?.ToString() ?? string.Empty;
+                    var releaseName = sub["release"]?.ToString() ?? string.Empty;
+                    var lang = sub["lang"]?.ToString() ?? string.Empty;
+
+                    if (!string.IsNullOrWhiteSpace(languages) && !string.IsNullOrWhiteSpace(lang))
+                    {
+                        var langLower = lang.ToLower();
+                        var langs = languages.ToLower().Split(',');
+                        bool langMatch = false;
+                        foreach (var langItem in langs) { if (langLower.Contains(langItem.Trim())) { langMatch = true; break; } }
+                        if (!langMatch) continue;
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(subUrl))
+                        result.Add(new { url = subUrl, label = releaseName, lang = lang });
+                }
+            }
+
+            return Ok(new { subtitles = result });
+        }
+        catch (Exception ex)
+        {
+            return Ok(new { subtitles = Array.Empty<object>(), error = ex.Message });
+        }
+    }
+
+    [HttpGet, AllowAnonymous]
+    [Route("subfinder/file")]
+    public async Task<IActionResult> SubFinderFile(string url)
+    {
+        SetHeadersNoCache();
+
+        if (string.IsNullOrWhiteSpace(url) || !Regex.IsMatch(url, "^https?://", RegexOptions.IgnoreCase))
+            return BadRequest();
+
+        try
+        {
+            var req = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Get, url);
+            req.Headers.TryAddWithoutValidation("Referer", "https://subdl.com/");
+            req.Headers.TryAddWithoutValidation("Accept", "*/*");
+            using var resp = await SubFinderHttpClient.SendAsync(req, System.Net.Http.HttpCompletionOption.ResponseHeadersRead);
+            if (!resp.IsSuccessStatusCode)
+                return StatusCode((int)resp.StatusCode);
+
+            var data = new IO.MemoryStream();
+            await resp.Content.CopyToAsync(data);
+
+            if (data.Length > 50 * 1024 * 1024)
+                return BadRequest("file too large");
+
+            data.Position = 0;
+            string contentType = resp.Content.Headers.ContentType?.MediaType ?? "application/octet-stream";
+            return File(data, contentType);
+        }
+        catch
+        {
+            return StatusCode(502);
+        }
     }
     #endregion
 }

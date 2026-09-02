@@ -1,4 +1,4 @@
-﻿using GStreamer.Models;
+using GStreamer.Models;
 using System;
 using System.Diagnostics;
 using System.Globalization;
@@ -88,25 +88,30 @@ namespace GStreamer.Services;
 
 public static class GSProbe
 {
-    public static async Task<ProbeInfo> Get(string sourceUrl, int timeoutSeconds = 30)
+    public readonly record struct ProbeResult(ProbeInfo probe, string error);
+
+    public static async Task<ProbeResult> Get(string sourceUrl, int timeoutSeconds = 30)
     {
         try
         {
-            string output = await DiscovererAsync(sourceUrl, timeoutSeconds);
-            if (string.IsNullOrWhiteSpace(output))
-                return null;
+            var discovery = await DiscovererAsync(sourceUrl, timeoutSeconds);
 
-            //Console.WriteLine(output);
+            if (!string.IsNullOrWhiteSpace(discovery.stdout))
+            {
+                var probe = Parse(discovery.stdout);
+                if (probe != null)
+                    return new(probe, null);
+            }
 
-            return Parse(output);
+            return new(null, ProbeFailure(discovery.stderr, discovery.exitCode));
         }
-        catch
+        catch (Exception error)
         {
-            return null;
+            return new(null, $"probe process: {error.GetType().Name}");
         }
     }
 
-    static async Task<string> DiscovererAsync(string sourceUrl, int timeoutSeconds)
+    static async Task<(string stdout, string stderr, int exitCode)> DiscovererAsync(string sourceUrl, int timeoutSeconds)
     {
         using (var process = new Process())
         {
@@ -157,7 +162,7 @@ public static class GSProbe
             };
 
             if (!process.Start())
-                return null;
+                return (null, null, -1);
 
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
@@ -182,18 +187,33 @@ public static class GSProbe
                     {
                     }
 
-                    return null;
+                    return (null, stderr.ToString(), -1);
                 }
 
-                if (stdout.Length > 0)
-                    return stdout.ToString();
-
-                if (stderr.Length > 0) // логи на перспективу 
-                    return stderr.ToString();
-
-                return null;
+                return (stdout.ToString(), stderr.ToString(), process.ExitCode);
             }
         }
+    }
+
+    static string ProbeFailure(string stderr, int exitCode)
+    {
+        string details = Regex.Replace(
+            stderr ?? string.Empty,
+            @"https?://\S+",
+            "<url>",
+            RegexOptions.IgnoreCase
+        )
+        .Replace('\r', ' ')
+        .Replace('\n', ' ')
+        .Trim();
+
+        if (details.Length > 240)
+            details = details[..240];
+
+        if (!string.IsNullOrWhiteSpace(details))
+            return $"probe: {details}";
+
+        return $"probe process exited with code {exitCode}";
     }
 
     static ProbeInfo Parse(string text)

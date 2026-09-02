@@ -10,9 +10,9 @@ streamproxy_preview: true
 
 menu:
   sort:
-    Новинки: latest-updates/{page}/
-    Лучшее: top-rated/{page}/
-    Популярное: most-popular/{page}/
+    Mới nhất: latest-updates/{page}/
+    Hay nhất: top-rated/{page}/
+    Phổ biến: most-popular/{page}/
   categories:
     format: tags/{cat}/{page}/
     blonde: blonde

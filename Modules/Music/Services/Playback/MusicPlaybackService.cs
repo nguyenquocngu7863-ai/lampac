@@ -4,26 +4,21 @@ namespace Music;
 
 public static class MusicPlaybackService
 {
-    public static async Task<MusicTrack> ResolveRequestTrackAsync(string id, string provider, string title, string artistName, string albumTitle, int? durationMs, string date, string isrc)
+    public static async Task<MusicTrack> ResolveRequestTrackAsync(string id, string provider, string title, string artistName, string albumTitle, int? durationMs, string date)
     {
-        string normalizedIsrc = MusicIsrc.Normalize(isrc);
         var track = await MusicCatalogService.GetTrackAsync(id, provider);
         if (track != null)
-        {
-            track.isrc = MusicIsrc.Normalize(track.isrc) ?? normalizedIsrc;
             return track;
-        }
 
         if (string.IsNullOrWhiteSpace(title))
             return null;
 
         return new MusicTrack
         {
-            id = string.IsNullOrWhiteSpace(id) ? BuildInlineTrackId(title, artistName, albumTitle, durationMs, normalizedIsrc) : id,
+            id = string.IsNullOrWhiteSpace(id) ? BuildInlineTrackId(title, artistName, albumTitle, durationMs) : id,
             title = title,
             artist_name = artistName,
             album_title = albumTitle,
-            isrc = normalizedIsrc,
             duration_ms = durationMs,
             date = date
         };
@@ -136,10 +131,6 @@ public static class MusicPlaybackService
         if (!string.IsNullOrWhiteSpace(track?.album_title))
             url.Add($"album_title={Uri.EscapeDataString(track.album_title)}");
 
-        string isrc = MusicIsrc.Normalize(track?.isrc);
-        if (isrc != null)
-            url.Add($"isrc={Uri.EscapeDataString(isrc)}");
-
         if (track?.duration_ms.HasValue == true)
             url.Add($"duration_ms={track.duration_ms.Value}");
 
@@ -155,9 +146,9 @@ public static class MusicPlaybackService
         return url;
     }
 
-    static string BuildInlineTrackId(string title, string artistName, string albumTitle, int? durationMs, string isrc)
+    static string BuildInlineTrackId(string title, string artistName, string albumTitle, int? durationMs)
     {
-        string key = $"{artistName}::{title}::{albumTitle}::{durationMs}::{isrc}";
+        string key = $"{artistName}::{title}::{albumTitle}::{durationMs}";
         using var md5 = System.Security.Cryptography.MD5.Create();
         var bytes = md5.ComputeHash(Encoding.UTF8.GetBytes(key));
         return "inline:" + Convert.ToHexString(bytes).ToLowerInvariant();

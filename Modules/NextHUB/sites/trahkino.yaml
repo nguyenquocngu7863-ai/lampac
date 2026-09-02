@@ -6,6 +6,8 @@ stream_access: apk,cors
 rchstreamproxy: web
 host: https://trahkino.me
 priorityBrowser: http
+kit: false
+rhub: false
 streamproxy_preview: true
 
 menu:
@@ -14,50 +16,50 @@ menu:
     cat: "{host}/categories/{cat}/{page}/"
     catsort: '{host}/categories/{cat}/?mode=async&function=get_block&block_id=list_videos_common_videos_list&sort_by={sort.Replace("top-rated", "rating").Replace("most-popular", "video_viewed")}&from={page}'
   sort:
-    Новинки: ""
-    Лучшее: top-rated
-    Популярнаe: most-popular
+    Mới nhất: ""
+    Tốt nhất: top-rated
+    Phổ biến: most-popular
   categories:
-    Большие попки: bolshie-popki
-    Любительское: lyubitelskiy-seks
-    Брюнетки: bryunetki
-    Красотки: krasotki
-    Большие члены: bolshie-hui
-    Большие сиськи: bolshie-siski
-    От первого лица: ot-pervogo-lica
-    Минет: minet
-    Хардкор: hardkor
-    Натуральные сиськи: naturalnye-siski
-    Раком: rakom
-    Фетиш: fetish
-    Молодые: molodye
-    Кончают внутрь: konchayut-vnutr
-    Сперма: sperma
-    Бритые киски: britye-kiski
-    Милфы: milfy
-    Латинки: latinki
-    МЖМ: mjm
-    Лесби: lesbian
-    Дрочка члена: drochka-chlena
-    Красивое: krasivyy-seks
-    Азиатки: aziatki
-    Подборки: podborki
-    Блондинки: blondinki
-    Доктор: doktor
+    Mông lớn: bolshie-popki
+    Nghiệp dư: lyubitelskiy-seks
+    Tóc nâu: bryunetki
+    Người đẹp: krasotki
+    Dương vật lớn: bolshie-hui
+    Ngực lớn: bolshie-siski
+    Góc nhìn thứ nhất: ot-pervogo-lica
+    Khẩu giao: minet
+    Mạnh bạo: hardkor
+    Ngực tự nhiên: naturalnye-siski
+    Tư thế từ phía sau: rakom
+    Fetish: fetish
+    Trẻ: molodye
+    Xuất tinh bên trong: konchayut-vnutr
+    Tinh dịch: sperma
+    Vùng kín cạo sạch: britye-kiski
+    MILF: milfy
+    Mỹ Latinh: latinki
+    Hai nam một nữ: mjm
+    Đồng tính nữ: lesbian
+    Kích thích bằng tay: drochka-chlena
+    Cảnh đẹp: krasivyy-seks
+    Châu Á: aziatki
+    Tuyển tập: podborki
+    Tóc vàng: blondinki
+    Bác sĩ: doktor
     4k: 4k
-    Японки: yaponki
-    Красивые сиськи: krasivye-siski
-    Домашнее: domashka
-    На публике: na-publike
-    В очках: v-ochkah
-    Толстушки: tolstye
-    В ванной: v-vannoy
-    Пирсинг: pirsing
-    На каблуках: na-kablukah
-    Ролевые игры: rolevye-igry
-    Развратное: razvrat
-    Француженки: francujenki
-    Хентай: hentay
+    Nhật Bản: yaponki
+    Ngực đẹp: krasivye-siski
+    Tại nhà: domashka
+    Nơi công cộng: na-publike
+    Đeo kính: v-ochkah
+    Ngoại cỡ: tolstye
+    Trong phòng tắm: v-vannoy
+    Xỏ khuyên: pirsing
+    Giày cao gót: na-kablukah
+    Nhập vai: rolevye-igry
+    Táo bạo: razvrat
+    Pháp: francujenki
+    Hentai: hentay
 
 list:
   uri: latest-updates/{page}/

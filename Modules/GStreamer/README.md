@@ -31,6 +31,49 @@ http://192.168.1.10:9118/gst.js
 
 В Windows необходимые portable-библиотеки уже включены в модуль. Для Linux и macOS сначала выполните инструкции из раздела [Установка](#установка).
 
+Проверить состояние модуля и HDR backend можно без запуска видео:
+
+```bash
+curl -s http://127.0.0.1:9118/gst/status
+```
+
+Для ARM64 нужен отдельный native plugin `libgsthdrtonemap.so`; если `hdr_backend_available` равен `false`, выполните `bash setup-gstreamer-hdr.sh` из корня репозитория и перезапустите Lampac.
+
+### Termux: ошибка `Reason=probe`
+
+Если в логе появляются одновременно:
+
+```text
+External plugin loader failed
+GStreamer: add rejected source. Reason=probe
+```
+
+это означает, что `gst-discoverer-1.0` не смог запустить внешний `gst-plugin-scanner`. Это ошибка проверки источника до определения контейнера и видеокодека; она не означает, что режим copy выключен.
+
+В Ubuntu proot должны быть установлены инструменты GStreamer:
+
+```bash
+apt-get update
+apt-get install -y gstreamer1.0-tools gstreamer1.0-plugins-base-apps
+```
+
+Проверить scanner можно так:
+
+```bash
+S=$(find /usr/lib /usr/libexec /usr/local/lib /usr/local/libexec \
+  -type f -name gst-plugin-scanner -perm -111 2>/dev/null | head -n 1)
+printf 'scanner=%s\n' "$S"
+```
+
+Для необычных установок задайте путь до найденного файла до запуска Core:
+
+```bash
+export GST_PLUGIN_SCANNER="$S"
+export GST_PLUGIN_SCANNER_1_0="$S"
+```
+
+Версии модуля с автоматической настройкой scanner сами ищут его в стандартных Ubuntu/Debian-путях. После изменения окружения или обновления модуля перезапустите Lampac.
+
 ## Copy или transcode
 
 Для большинства файлов достаточно режима copy. Оставьте все параметры `transcode*` выключенными, если устройство умеет воспроизводить исходный видеокодек.
@@ -73,6 +116,8 @@ AAC передаётся без перекодирования. AC3, E-AC3, DTS,
 | `conf_uids` | не задано | Отдельные настройки pipeline для конкретных UID. Пример приведён ниже. |
 | `inactiveMinutes` | `10` | Через сколько минут без запросов приостановить pipeline. При следующем запросе задача возобновится. |
 | `maxTasks` | `0` | Максимальное количество задач GStreamer. `0` отключает лимит. При создании задачи сверх лимита удаляется задача с самым старым `lastActive`. |
+
+Каждый новый запуск MKV из клиентского плагина получает отдельный короткий `session` id. Поэтому повторное открытие той же карточки после Back не переиспользует завершившийся EOS pipeline; параллельные запросы одной сессии по-прежнему используют одну задачу.
 | `subtitles` | `true` | Добавляет поддерживаемые текстовые субтитры в HLS как WebVTT. Графические субтитры не преобразуются. |
 | `gst_version` | авто | Версия определяется через `gst-inspect-1.0`. Резервное значение: `1.28` в Windows и `1.22` в остальных ОС. Обычно задавать вручную не нужно. |
 | `PATH` | `C:\Program Files\gstreamer\1.0\mingw_x86_64` | Корень установленного MinGW GStreamer в Windows. Если `gst-discoverer` там не найден, используется portable-версия модуля. |
@@ -222,6 +267,24 @@ https://gstreamer.freedesktop.org/download/#macos
 `hdr_to_sdr` работает только для распознанного PQ или HLG. SDR-видео не проходит через tone mapping.
 
 При `useGpu: true` модуль сначала пробует OpenCL GPU. Если GPU отсутствует или обработка завершается ошибкой, используется CPU fallback. CPU tone mapping 4K-видео может не успевать в реальном времени.
+
+Для Android в Ubuntu proot `/dev/dri` и `/dev/video*` часто недоступны. В таком окружении аппаратный H.264 encoder не может быть выбран, поэтому сообщение `software fallback` ожидаемо и не означает, что `hdrtonemap` сломан. OpenCL проверяется отдельно; отсутствие аппаратного encoder само по себе не делает HDR backend недоступным.
+
+Если 4K HDR фрагмент не успевает подготовиться, сначала используйте профиль ускоренной CPU-проверки, не отключая HDR-to-SDR:
+
+```json
+"gst": {
+  "enable": true,
+  "hdr_to_sdr": true,
+  "useGpu": true,
+  "hardwareAcceleration": false,
+  "x264Ultrafast": true,
+  "segment_seconds": 2,
+  "segment_buffer": 4
+}
+```
+
+`useGpu: true` здесь только даёт OpenCL шанс; при отсутствии Android OpenCL driver модуль автоматически вернётся на CPU. Сегменты по 2 секунды уменьшают время ожидания одного холодного фрагмента, а `x264Ultrafast` снижает нагрузку encoder ценой эффективности сжатия. После проверки можно вернуть `segment_seconds: 4` или `6` и отключить `x264Ultrafast`, если телефон успевает.
 
 HDR-to-SDR всегда заканчивается перекодированием в H.264, поэтому на него также влияют `video_bitrate`, `hardwareAcceleration` и `x264Ultrafast`. Dolby Vision обрабатывается только при наличии распознаваемого PQ/HLG base layer; динамические RPU metadata не применяются.
 

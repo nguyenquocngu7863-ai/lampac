@@ -10,7 +10,6 @@ public static class MusicProviderRegistry
     static readonly List<IMusicDiscoveryProvider> discoveryProviders = new()
     {
         new AppleMusicDiscoveryProvider(),
-        new SpotifyDiscoveryProvider(),
         new VkTopChartDiscoveryProvider(),
         new SoundCloudDiscoveryProvider()
     };

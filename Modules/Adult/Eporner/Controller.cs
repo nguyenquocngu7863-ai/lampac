@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Shared;
 using Shared.Attributes;
+using Shared.Models.Base;
 using Shared.Models.SISI.Base;
 using Shared.Services;
 using Shared.Services.Hybrid;
@@ -21,6 +22,23 @@ public class EpornerController : BaseSisiController
         {
             if (init.httpversion == 2)
                 httpHydra.RegisterHttp(http2Client);
+
+            // IsRequestBlocked can merge account/device Kit settings before
+            // this callback. Keep Eporner on the local proxy policy regardless
+            // of stale remote profiles that switch playback back to the CDN.
+            const string browserUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+            init.kit = false;
+            init.rhub = false;
+            init.streamproxy = true;
+            init.qualitys_proxy = false;
+            init.url_reserve = false;
+            init.headers_stream = HeadersModel.Init(
+                ("User-Agent", browserUserAgent),
+                ("Referer", "https://www.eporner.com/"),
+                ("Origin", "https://www.eporner.com"),
+                ("Accept", "video/webm,video/mp4,video/*;q=0.9,*/*;q=0.5"),
+                ("Accept-Language", "en-US,en;q=0.9")
+            ).ToDictionary();
         };
     }
 

@@ -1,5 +1,4 @@
 using System.Collections;
-using System.Net.Http;
 using System.Text.RegularExpressions;
 using YoutubeExplode;
 using YoutubeExplode.Channels;
@@ -21,7 +20,6 @@ internal static class YouTubeMusicSearchSupport
     const string channelUploadsPrefix = "youtube:channeluploads:";
     const int maxSearchQueries = 2;
     static readonly string[] titleSeparators = { " - ", " – ", " — " };
-    static readonly HttpClient youtubeHttp = MusicHttp.CreateClient(ProviderId);
 
     public static bool IsSearchEnabled => ModInit.conf?.youtube_audio_enabled == true;
 
@@ -32,7 +30,7 @@ internal static class YouTubeMusicSearchSupport
 
         try
         {
-            using var youtube = new YoutubeClient(youtubeHttp);
+            using var youtube = new YoutubeClient();
             var videos = new List<VideoSearchResult>();
             var seen = new HashSet<string>(StringComparer.Ordinal);
 
@@ -74,7 +72,7 @@ internal static class YouTubeMusicSearchSupport
 
         try
         {
-            using var youtube = new YoutubeClient(youtubeHttp);
+            using var youtube = new YoutubeClient();
             var playlists = new List<MusicAlbum>();
             var seen = new HashSet<string>(StringComparer.Ordinal);
 
@@ -103,7 +101,7 @@ internal static class YouTubeMusicSearchSupport
 
         try
         {
-            using var youtube = new YoutubeClient(youtubeHttp);
+            using var youtube = new YoutubeClient();
             var artists = new List<MusicArtist>();
             var seen = new HashSet<string>(StringComparer.Ordinal);
 
@@ -145,7 +143,7 @@ internal static class YouTubeMusicSearchSupport
 
         try
         {
-            using var youtube = new YoutubeClient(youtubeHttp);
+            using var youtube = new YoutubeClient();
             Playlist playlist = null;
 
             try
@@ -204,7 +202,7 @@ internal static class YouTubeMusicSearchSupport
 
         try
         {
-            using var youtube = new YoutubeClient(youtubeHttp);
+            using var youtube = new YoutubeClient();
             Channel channel = null;
 
             try
@@ -358,7 +356,7 @@ internal static class YouTubeMusicSearchSupport
 
         try
         {
-            using var youtube = new YoutubeClient(youtubeHttp);
+            using var youtube = new YoutubeClient();
             Channel channel = null;
 
             try
