@@ -28,23 +28,41 @@
     var css = document.createElement('style');
     css.id = 'lampac-admin-css';
     css.textContent =
-      '.lampac-admin{min-height:100%;--acc:#6c8cff;--acc2:#9a6bff}' +
-      '.lampac-admin-view{overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:.4em .7em 16vh;box-sizing:border-box}' +
-      '.lampac-admin__hero{margin:.3em .5em .9em;padding:1.1em 1.3em;border-radius:1em;background:linear-gradient(135deg,rgba(108,140,255,.28),rgba(154,107,255,.22));border:1px solid rgba(140,160,255,.35);box-shadow:0 .4em 1.4em rgba(60,70,160,.25)}' +
-      '.lampac-admin__head{font-size:2em;font-weight:800;line-height:1.2;letter-spacing:.01em;display:flex;align-items:center;gap:.45em}' +
-      '.lampac-admin__head:before{content:"";width:.32em;height:1.05em;border-radius:.2em;background:linear-gradient(180deg,var(--acc),var(--acc2));flex:0 0 auto;box-shadow:0 0 .6em rgba(120,140,255,.7)}' +
-      '.lampac-admin__sub{margin-top:.4em;opacity:.72;font-size:1.15em;line-height:1.45}' +
-      '.lampac-admin .settings-param{display:flex;flex-wrap:wrap;align-items:center;gap:.2em .9em;margin:.55em .3em;padding:1.05em 1.25em;border-radius:.9em;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.07);transition:transform .12s ease,background .12s ease,border-color .12s ease,box-shadow .12s ease}' +
-      '.lampac-admin .settings-param__name{font-size:1.4em;line-height:1.3;font-weight:600;flex:1 1 auto;min-width:55%}' +
-      '.lampac-admin .settings-param__value{flex:0 0 auto;margin-left:auto;max-width:48%;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:1.05em;font-weight:700;color:var(--acc);background:rgba(108,140,255,.14);border:1px solid rgba(108,140,255,.3);padding:.25em .7em;border-radius:2em}' +
-      '.lampac-admin .settings-param__descr{flex:1 1 100%;margin-top:.3em;font-size:1.05em;opacity:.55;line-height:1.4}' +
-      '.lampac-admin .settings-param.focus,.lampac-admin .settings-param:hover{background:linear-gradient(135deg,rgba(108,140,255,.22),rgba(154,107,255,.16));border-color:rgba(150,170,255,.65);box-shadow:0 0 0 1px rgba(150,170,255,.35),0 .35em 1.2em rgba(90,110,240,.35);transform:translateX(.15em)}' +
-      '.lampac-admin .settings-param.focus .settings-param__value,.lampac-admin .settings-param:hover .settings-param__value{color:#fff;background:rgba(108,140,255,.3)}' +
-      '.lampac-admin-empty{margin:1em .6em;padding:2.2em 1.5em;text-align:center;opacity:.6;font-size:1.25em;border-radius:.9em;border:1px dashed rgba(255,255,255,.18);background:rgba(255,255,255,.03)}' +
-      '.lampac-admin-edit__ta{width:100%;min-height:42vh;background:rgba(0,0,0,.35);color:inherit;border:1px solid rgba(255,255,255,.15);border-radius:.7em;padding:1em;font-family:ui-monospace,Consolas,monospace;font-size:1.3em;line-height:1.5;box-sizing:border-box}' +
-      '.lampac-admin-edit__ta:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 2px rgba(108,140,255,.35)}' +
+      '.lampac-admin{min-height:100%;--acc:#3ec9d1;--acc2:#7dd3fc;--glass:rgba(255,255,255,.07);--glass-strong:rgba(255,255,255,.11);--line:rgba(255,255,255,.14)}' +
+      '.lampac-admin-view{overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:.5em .7em 16vh;box-sizing:border-box}' +
+      '.lampac-admin__hero{position:relative;margin:.3em .5em .95em;padding:1.2em 1.4em;border-radius:18px;overflow:hidden;' +
+        'background:linear-gradient(135deg,rgba(62,201,209,.20),rgba(125,211,252,.12));' +
+        'border:1px solid var(--line);box-shadow:0 8px 30px rgba(20,60,80,.28);backdrop-filter:blur(18px) saturate(1.4);-webkit-backdrop-filter:blur(18px) saturate(1.4)}' +
+      '.lampac-admin__hero:after{content:"";position:absolute;inset:0;border-radius:inherit;background:radial-gradient(120% 140% at 0% 0%,rgba(255,255,255,.16),transparent 55%);pointer-events:none}' +
+      '.lampac-admin__head{position:relative;font-size:2em;font-weight:800;line-height:1.2;letter-spacing:.01em;display:flex;align-items:center;gap:.45em;color:#f3fbff}' +
+      '.lampac-admin__head:before{content:"";width:.34em;height:1.05em;border-radius:.2em;background:linear-gradient(180deg,var(--acc),var(--acc2));flex:0 0 auto;box-shadow:0 0 .7em rgba(62,201,209,.85)}' +
+      '.lampac-admin__sub{position:relative;margin-top:.45em;opacity:.82;font-size:1.15em;line-height:1.45;color:#d7ecf3}' +
+      '.lampac-admin .settings-param{display:flex;flex-wrap:wrap;align-items:center;gap:.2em .9em;margin:.6em .3em;padding:1.1em 1.3em;border-radius:16px;' +
+        'background:var(--glass);border:1px solid var(--line);' +
+        'backdrop-filter:blur(16px) saturate(1.35);-webkit-backdrop-filter:blur(16px) saturate(1.35);' +
+        'box-shadow:0 4px 18px rgba(10,30,40,.18),inset 0 1px 0 rgba(255,255,255,.10);' +
+        'transition:transform .14s cubic-bezier(.33,1,.68,1),background .14s,border-color .14s,box-shadow .14s}' +
+      '.lampac-admin .settings-param__name{font-size:1.4em;line-height:1.3;font-weight:600;flex:1 1 auto;min-width:55%;color:#eef7fa}' +
+      '.lampac-admin .settings-param__value{flex:0 0 auto;margin-left:auto;max-width:48%;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' +
+        'font-size:1.05em;font-weight:700;color:var(--acc);background:rgba(62,201,209,.14);' +
+        'border:1px solid rgba(62,201,209,.32);padding:.28em .8em;border-radius:999px;box-shadow:inset 0 0 12px rgba(62,201,209,.08)}' +
+      '.lampac-admin .settings-param__descr{flex:1 1 100%;margin-top:.32em;font-size:1.05em;opacity:.62;line-height:1.4;color:#cfe3ea}' +
+      '.lampac-admin .settings-param.focus,.lampac-admin .settings-param:hover{' +
+        'background:linear-gradient(135deg,rgba(62,201,209,.24),rgba(125,211,252,.16));' +
+        'border-color:rgba(150,235,245,.7);' +
+        'box-shadow:0 0 0 1px rgba(120,225,235,.4),0 10px 30px rgba(40,160,180,.35),inset 0 1px 0 rgba(255,255,255,.18);' +
+        'transform:translateY(-1px) scale(1.005)}' +
+      '.lampac-admin .settings-param.focus .settings-param__value,.lampac-admin .settings-param:hover .settings-param__value{color:#062227;background:var(--acc);border-color:var(--acc)}' +
+      '.lampac-admin-empty{margin:1em .6em;padding:2.2em 1.5em;text-align:center;opacity:.78;font-size:1.25em;border-radius:16px;' +
+        'border:1px dashed rgba(255,255,255,.22);background:var(--glass);color:#dcecf1;' +
+        'backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}' +
+      '.lampac-admin-edit__ta{width:100%;min-height:42vh;background:rgba(10,24,30,.45);color:#eaf6fa;border:1px solid var(--line);border-radius:14px;padding:1em;' +
+        'font-family:ui-monospace,Consolas,monospace;font-size:1.3em;line-height:1.5;box-sizing:border-box;' +
+        'backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}' +
+      '.lampac-admin-edit__ta:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 2px rgba(62,201,209,.35)}' +
       '.lampac-admin-edit__actions{display:flex;gap:.8em;margin-top:1em}' +
-      '.lampac-admin-edit__actions .simple-button{font-size:1.3em;padding:.85em 1.7em;border-radius:2em;font-weight:700}';
+      '.lampac-admin-edit__actions .simple-button{font-size:1.3em;padding:.85em 1.7em;border-radius:999px;font-weight:700;' +
+        'background:rgba(62,201,209,.16);border:1px solid rgba(62,201,209,.4);color:var(--acc)}';
     document.head.appendChild(css);
   }
 
@@ -255,7 +273,7 @@
 
   function component() {
     var self = this;
-    try { console.log('[adminpanel] build search+v5'); } catch (e) { }
+    try { console.log('[adminpanel] build glass-v6'); } catch (e) { }
     // Native scrolling container instead of Lampa.Scroll (which moves a mask via
     // CSS transform, so browser scrollIntoView/scrollTop can never scroll it).
     // A real overflow:auto element scrolls reliably with remote, wheel & touch.
