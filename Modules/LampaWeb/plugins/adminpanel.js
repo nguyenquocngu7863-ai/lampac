@@ -58,13 +58,18 @@
       '.lampac-admin .simple-button,.lampac-admin .settings-param.focus .settings-param__value{color:#fff!important}' +
       '.lampac-admin-empty{margin:1em .6em;padding:2.2em 1.5em;text-align:center;font-size:1.25em;border-radius:16px;' +
         'border:1px dashed #c4ccd8;background:#fff;color:var(--muted)}' +
-      '.lampac-admin-edit__ta{width:100%;min-height:42vh;background:#fff;color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:1em;' +
+      // Màn sửa nằm ngoài .lampac-admin nên KHÔNG dùng biến --ink (nếu không
+      // textarea sẽ chữ trắng nền trắng). Gán màu cố định, kể cả cho placeholder/caret.
+      '.lampac-admin-edit{--ink:#16202b;color:#16202b!important}' +
+      '.lampac-admin-edit__ta{width:100%;min-height:42vh;background:#fff!important;color:#16202b!important;' +
+        'caret-color:#0d9499;-webkit-text-fill-color:#16202b;border:1px solid #d9dee7;border-radius:14px;padding:1em;' +
         'font-family:ui-monospace,Consolas,monospace;font-size:1.3em;line-height:1.5;box-sizing:border-box}' +
-      '.lampac-admin-edit__ta:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 2px rgba(13,148,153,.25)}' +
+      '.lampac-admin-edit__ta::placeholder{color:#9aa3b2!important;-webkit-text-fill-color:#9aa3b2}' +
+      '.lampac-admin-edit__ta:focus{outline:none;border-color:#0d9499;box-shadow:0 0 0 2px rgba(13,148,153,.25)}' +
       '.lampac-admin-edit__actions{display:flex;gap:.8em;margin-top:1em}' +
       '.lampac-admin-edit__actions .simple-button{font-size:1.3em;padding:.85em 1.7em;border-radius:999px;font-weight:700;' +
-        'background:var(--acc);border:1px solid var(--acc);color:#fff}' +
-      '.lampac-admin-edit__actions .simple-button:hover{background:var(--acc-dk)}';
+        'background:#0d9499;border:1px solid #0d9499;color:#fff!important;-webkit-text-fill-color:#fff}' +
+      '.lampac-admin-edit__actions .simple-button:hover{background:#0b7d82}';
     document.head.appendChild(css);
   }
 
@@ -275,7 +280,7 @@
 
   function component() {
     var self = this;
-    try { console.log('[adminpanel] build light-v8'); } catch (e) { }
+    try { console.log('[adminpanel] build light-v9'); } catch (e) { }
     // Native scrolling container instead of Lampa.Scroll (which moves a mask via
     // CSS transform, so browser scrollIntoView/scrollTop can never scroll it).
     // A real overflow:auto element scrolls reliably with remote, wheel & touch.

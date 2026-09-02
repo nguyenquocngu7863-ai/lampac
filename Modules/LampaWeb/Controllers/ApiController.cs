@@ -1144,21 +1144,66 @@ public class ApiController : BaseController
             query["jackett_apikey"] = apiKey;
             string target = $"http://127.0.0.1:{port}{link.AbsolutePath}?{query}";
 
-            using var response = await LocalJackettHttpClient.GetAsync(target, HttpContext.RequestAborted);
+            // Many trackers (nnmclub, toloka, torrentgalaxy clone, …) make Jackett's
+            // /dl/ answer with a 302 to the tracker's own http download URL (not a
+            // magnet). Follow the redirect chain ourselves: a magnet: location wins,
+            // an http(s) location is fetched (re-attaching the apikey while it still
+            // points at local Jackett) until we land on the .torrent bytes.
+            byte[] torrent = null;
+            string current = target;
 
-            if ((int)response.StatusCode is >= 300 and < 400 &&
-                response.Headers.Location is Uri location &&
-                location.Scheme.Equals("magnet", StringComparison.OrdinalIgnoreCase))
+            for (int hop = 0; hop < 6; hop++)
             {
-                string redirectedMagnet = location.OriginalString;
-                JackettMagnetCache.TryAdd(cacheKey, redirectedMagnet);
-                return redirectedMagnet;
+                using var response = await LocalJackettHttpClient.GetAsync(current, HttpContext.RequestAborted);
+
+                if (response.Headers.Location is Uri location)
+                {
+                    if (location.IsAbsoluteUri &&
+                        location.Scheme.Equals("magnet", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string redirectedMagnet = location.OriginalString;
+                        JackettMagnetCache.TryAdd(cacheKey, redirectedMagnet);
+                        return redirectedMagnet;
+                    }
+
+                    // Resolve relative redirects against the request that produced them.
+                    if (!location.IsAbsoluteUri)
+                        location = new Uri(new Uri(current), location);
+
+                    if (location.Scheme.Equals("http", StringComparison.OrdinalIgnoreCase) ||
+                        location.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string next = location.OriginalString;
+
+                        // Keep the private apikey while bouncing inside local Jackett.
+                        var redirHost = location.Host;
+                        if (redirHost is "127.0.0.1" or "localhost")
+                        {
+                            var rq = HttpUtility.ParseQueryString(location.Query);
+                            if (string.IsNullOrEmpty(rq["jackett_apikey"]) && string.IsNullOrEmpty(rq["apikey"]))
+                            {
+                                rq.Remove("apikey");
+                                rq["jackett_apikey"] = apiKey;
+                                next = $"{location.Scheme}://{location.Authority}{location.AbsolutePath}?{rq}";
+                            }
+                        }
+
+                        current = next;
+                        continue;
+                    }
+
+                    return null;
+                }
+
+                if (!response.IsSuccessStatusCode)
+                    return null;
+
+                torrent = await response.Content.ReadAsByteArrayAsync(HttpContext.RequestAborted);
+                break;
             }
 
-            if (!response.IsSuccessStatusCode)
+            if (torrent == null)
                 return null;
-
-            byte[] torrent = await response.Content.ReadAsByteArrayAsync(HttpContext.RequestAborted);
 
             // Older/custom Jackett builds can return the magnet as a plain body
             // instead of a redirect.
