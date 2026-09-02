@@ -27,13 +27,13 @@
     function resolve(token, done) {
       var resolver = new XMLHttpRequest();
       resolver.open('GET', config.url.replace(/\/+$/, '') + '/resolve?token=' + encodeURIComponent(token), true);
-      resolver.timeout = 15000;
+      resolver.timeout = 20000;
       var completed = false;
 
       function finish(magnet) {
         if (completed) return;
         completed = true;
-        done(magnet || '');
+        try { done(magnet || ''); } catch (e) {}
       }
 
       resolver.onload = function () {
@@ -48,9 +48,18 @@
       resolver.send();
     }
 
-    // Lampa's TorrServer client sends requests through jQuery $.ajax. Patch
-    // that layer first because some Android WebViews replace XMLHttpRequest
-    // with a native bridge and never reach the prototype hook below.
+    function rewrite(pending, magnet) {
+      if (magnet) {
+        pending.payload.link = magnet;
+        if (window.console) console.log('Jackett', 'torrent link resolved to magnet');
+      } else if (window.console) {
+        console.error('Jackett', 'failed to resolve torrent link to magnet');
+      }
+      return JSON.stringify(pending.payload);
+    }
+
+    // 1) jQuery layer — Lampa's main HTTP layer. Return a real Deferred so the
+    //    caller can chain .done/.fail/.then/.always like a normal jqXHR.
     if (window.$ && $.ajax && !window.lampac_jackett_ajax_resolver) {
       window.lampac_jackett_ajax_resolver = true;
       var originalAjax = $.ajax;
@@ -65,43 +74,90 @@
         var pending = torrentToken(options.data);
         if (!pending) return originalAjax.apply(context, arguments);
 
+        var deferred = $.Deferred ? $.Deferred() : null;
+        var abortable = { abort: function () {} };
+
         resolve(pending.token, function (magnet) {
-          if (magnet) {
-            pending.payload.link = magnet;
-            options.data = JSON.stringify(pending.payload);
-            if (window.console) console.log('Jackett', 'torrent link resolved to magnet');
-          } else if (window.console) {
-            console.error('Jackett', 'failed to resolve torrent link to magnet');
+          options.data = rewrite(pending, magnet);
+          try {
+            var xhr = originalAjax.call(context, options);
+            if (deferred) {
+              if (xhr && xhr.done && xhr.fail) {
+                xhr.done(deferred.resolve);
+                xhr.fail(deferred.reject);
+                abortable.abort = function () { if (xhr.abort) xhr.abort(); };
+              } else {
+                deferred.resolve();
+              }
+            }
+          } catch (e) {
+            if (deferred) deferred.reject();
           }
-          originalAjax.call(context, options);
         });
-        return { abort: function () {} };
+
+        if (deferred) {
+          var promise = deferred.promise();
+          promise.abort = function () { abortable.abort(); };
+          return promise;
+        }
+        return abortable;
       };
     }
 
-    // Fallback for Lampa builds that use XMLHttpRequest directly.
-    var originalOpen = XMLHttpRequest.prototype.open;
-    var originalSend = XMLHttpRequest.prototype.send;
+    // 2) fetch layer — some Lampa builds / Android TV bridges use fetch().
+    if (window.fetch && !window.lampac_jackett_fetch_resolver) {
+      window.lampac_jackett_fetch_resolver = true;
+      var originalFetch = window.fetch.bind(window);
 
-    XMLHttpRequest.prototype.open = function (method, url) {
-      this.__lampac_method = String(method || '').toUpperCase();
-      this.__lampac_url = String(url || '');
-      return originalOpen.apply(this, arguments);
-    };
+      window.fetch = function (input, init) {
+        init = init || {};
+        var url = typeof input === 'string' ? input : ((input && input.url) || '');
+        if (String(init.method || 'GET').toUpperCase() !== 'POST' ||
+            !/\/torrents(?:\?|$)/i.test(String(url)) ||
+            typeof init.body !== 'string') {
+          return originalFetch(input, init);
+        }
 
-    XMLHttpRequest.prototype.send = function (body) {
-      var target = this;
-      if (target.__lampac_method !== 'POST' || !/\/torrents(?:\?|$)/i.test(target.__lampac_url))
-        return originalSend.call(target, body);
+        var pendingFetch = torrentToken(init.body);
+        if (!pendingFetch) return originalFetch(input, init);
 
-      var pending = torrentToken(body);
-      if (!pending) return originalSend.call(target, body);
+        return new Promise(function (resolvePromise, rejectPromise) {
+          resolve(pendingFetch.token, function (magnet) {
+            init.body = rewrite(pendingFetch, magnet);
+            originalFetch(input, init).then(resolvePromise, rejectPromise);
+          });
+        });
+      };
+    }
 
-      resolve(pending.token, function (magnet) {
-        if (magnet) pending.payload.link = magnet;
-        originalSend.call(target, JSON.stringify(pending.payload));
-      });
-    };
+    // 3) XMLHttpRequest fallback for builds that POST directly.
+    if (XMLHttpRequest.prototype.send && !window.lampac_jackett_xhr_resolver) {
+      window.lampac_jackett_xhr_resolver = true;
+      var originalOpen = XMLHttpRequest.prototype.open;
+      var originalSend = XMLHttpRequest.prototype.send;
+
+      XMLHttpRequest.prototype.open = function (method, url) {
+        this.__lampac_method = String(method || '').toUpperCase();
+        this.__lampac_url = String(url || '');
+        return originalOpen.apply(this, arguments);
+      };
+
+      XMLHttpRequest.prototype.send = function (body) {
+        var target = this;
+        if (target.__lampac_method !== 'POST' ||
+            !/\/torrents(?:\?|$)/i.test(target.__lampac_url) ||
+            typeof body !== 'string') {
+          return originalSend.call(target, body);
+        }
+
+        var pendingXhr = torrentToken(body);
+        if (!pendingXhr) return originalSend.call(target, body);
+
+        resolve(pendingXhr.token, function (magnet) {
+          originalSend.call(target, rewrite(pendingXhr, magnet));
+        });
+      };
+    }
   }
 
   function apply() {
