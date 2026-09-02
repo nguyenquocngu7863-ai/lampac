@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Http;
+using Shared;
 using Shared.Models.Base;
 using Shared.Models.Events;
 using Shared.Models.Module;
