@@ -91,16 +91,22 @@ public class OneJavController : BaseSisiController
             }
         }
 
-        // fallback: sukebei / ijav theo mã
-        if (qualitys.Count == 0)
+        // Luôn dò thêm Sukebei + ijav theo mã (và các biến thể mã); dừng ở biến thể
+        // đầu tiên cho kết quả (biến thể đầu là mã gốc — chính xác nhất).
+        var found = new List<JObject>();
+        foreach (string q in OneJavTo.SearchQueries(code))
         {
-            foreach (var s in await SearchSukebei(code))
-                addSource((string)s["source"], (string)s["hash"], (string)s["magnet"]);
-
-            if (qualitys.Count == 0)
-                foreach (var s in await SearchIjav(code))
-                    addSource((string)s["source"], (string)s["hash"], (string)s["magnet"]);
+            var sk = await SearchSukebei(q);
+            var ij = sk.Count == 0 ? await SearchIjav(q) : new List<JObject>();
+            found.AddRange(sk);
+            found.AddRange(ij);
+            if (found.Count > 0) break;
         }
+
+        // Sắp xếp theo seed giảm dần (Sukebei có seed; OneJAV/ijav seed=0) rồi gán link.
+        found = found.OrderByDescending(s => s.Value<int?>("seeders") ?? 0).ToList();
+        foreach (var s in found)
+            addSource((string)s["source"], (string)s["hash"], (string)s["magnet"]);
 
         if (qualitys.Count == 0)
             return OnError("stream_links.qualitys", refresh_proxy: true);
@@ -113,13 +119,13 @@ public class OneJavController : BaseSisiController
     [Route("oj/play")]
     public async Task<ActionResult> Play(string hash, string magnet = null)
     {
-        string ts = ModInit.TsHost();
+        var (ts, tsHeaders) = ModInit.TsConn();
         string addLink = !string.IsNullOrWhiteSpace(magnet) ? magnet : $"magnet:?xt=urn:btih:{hash}";
 
         string payload = "{\"action\":\"add\",\"link\":\"" + addLink.Replace("\\", "\\\\").Replace("\"", "\\\"") +
                          "\",\"title\":\"\",\"poster\":\"\",\"save_to_db\":false}";
 
-        string resp = await Http.Post($"{ts}/torrents", payload, timeoutSeconds: 25, useDefaultHeaders: false);
+        string resp = await Http.Post($"{ts}/torrents", payload, timeoutSeconds: 30, headers: tsHeaders, useDefaultHeaders: false);
         if (string.IsNullOrWhiteSpace(resp))
             return StatusCode(503, "TorrServer không phản hồi (" + ts + "). Bật module TorrServer.");
 
@@ -127,15 +133,15 @@ public class OneJavController : BaseSisiController
         if (string.IsNullOrEmpty(realHash)) realHash = hash;
 
         int bestIndex = 0;
-        for (int attempt = 0; attempt < 3; attempt++)
+        for (int attempt = 0; attempt < 4; attempt++)
         {
-            string stat = await Http.Get($"{ts}/stream?link={realHash}&index=0&stat", timeoutSeconds: 20, useDefaultHeaders: false);
+            string stat = await Http.Get($"{ts}/stream?link={realHash}&index=0&stat", timeoutSeconds: 20, headers: tsHeaders, useDefaultHeaders: false);
             int picked = OneJavTo.PickVideoIndex(stat);
             if (picked >= 0) { bestIndex = picked; break; }
-            await Task.Delay(2000);
+            await Task.Delay(2500);
         }
 
-        // stream qua proxy /ts của lampac (TV không cần truy cập localhost)
+        // stream qua proxy /ts của lampac (proxy tự gắn auth; TV không cần truy cập localhost)
         return Redirect($"{host}/ts/stream?link={HttpUtility.UrlEncode(realHash)}&index={bestIndex}&play");
     }
 
@@ -147,28 +153,50 @@ public class OneJavController : BaseSisiController
         var list = new List<PlaylistItem>();
         var seen = new HashSet<string>();
 
-        foreach (Match block in Regex.Matches(html, "<a[^>]+href=[\"'](/torrent/[^\"']+)[\"'][^>]*>(.*?)</a>", RX))
+        void Add(string code, string img, string name)
         {
-            string href = block.Groups[1].Value;
-            string inner = block.Groups[2].Value;
-            string code = href.Split('/')[^1].Split('?')[0];
-            if (string.IsNullOrEmpty(code) || !seen.Add(code)) continue;
-
-            string img = Rx.Match(inner, "<img[^>]+src=[\"']([^\"']+)[\"']")
-                ?? Rx.Match(inner, "<img[^>]+data-src=[\"']([^\"']+)[\"']");
-            if (string.IsNullOrEmpty(img)) continue;
-
-            string title = Regex.Replace(inner, "<[^>]+>", " ");
-            title = WebUtility.HtmlDecode(Regex.Replace(title, "\\s+", " ").Trim());
-            if (string.IsNullOrEmpty(title)) title = code;
-
+            if (string.IsNullOrEmpty(code) || !seen.Add(code)) return;
+            if (string.IsNullOrEmpty(img)) return;
+            if (string.IsNullOrWhiteSpace(name)) name = code;
             list.Add(new PlaylistItem
             {
-                name = title,
+                name = WebUtility.HtmlDecode(name).Trim(),
                 picture = OneJavTo.Abs(img, init.host),
-                video = $"{route}?uri={code}",
+                video = $"{route}?uri={HttpUtility.UrlEncode(code)}",
                 json = true
             });
+        }
+
+        // Cấu trúc onejav: mỗi bài là một <div class="container"> chứa link /torrent/ + ảnh.
+        foreach (Match c in Regex.Matches(html, "<div[^>]+class=[\"'][^\"']*\\bcontainer\\b[^\"']*[\"'][^>]*>(.*?)</div>\\s*(?=<div[^>]+class=[\"'][^\"']*\\bcontainer\\b|<footer|$)", RX))
+        {
+            string seg = c.Groups[1].Value;
+            if (seg.Contains("Popular tags")) continue;
+
+            string link = Rx.Match(seg, "href=[\"'](/torrent/[^\"']+)[\"']");
+            if (string.IsNullOrEmpty(link)) continue;
+            string code = link.Split('/')[^1].Split('?')[0];
+
+            string img = Rx.Match(seg, "<img[^>]+class=[\"'][^\"']*\\bimage\\b[^\"']*[\"'][^>]+(?:src|data-src)=[\"']([^\"']+)[\"']")
+                ?? Rx.Match(seg, "<img[^>]+(?:src|data-src)=[\"']([^\"']+)[\"']");
+
+            string name = Rx.Match(seg, "class=[\"'][^\"']*\\btitle\\b[^\"']*[\"'][^>]*>\\s*<a[^>]*>([^<]+)")
+                ?? code;
+
+            Add(code, img, name);
+        }
+
+        // Fallback: bắt trực tiếp <a href="/torrent/..."> có ảnh.
+        if (list.Count == 0)
+        {
+            foreach (Match block in Regex.Matches(html, "<a[^>]+href=[\"'](/torrent/[^\"']+)[\"'][^>]*>(.*?)</a>", RX))
+            {
+                string inner = block.Groups[2].Value;
+                string code = block.Groups[1].Value.Split('/')[^1].Split('?')[0];
+                string img = Rx.Match(inner, "<img[^>]+(?:src|data-src)=[\"']([^\"']+)[\"']");
+                string name = WebUtility.HtmlDecode(Regex.Replace(inner, "<[^>]+>", " "));
+                Add(code, img, name);
+            }
         }
 
         return list;

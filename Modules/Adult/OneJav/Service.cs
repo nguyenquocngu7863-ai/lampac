@@ -22,15 +22,79 @@ public static class OneJavTo
                 playlist_url = url
             },
             new MenuItem("Новинки", url),
-            new MenuItem("Uncensored", $"{url}?c=uncensored"),
-            new MenuItem("Big Tits", $"{url}?c=big-tits"),
-            new MenuItem("Creampie", $"{url}?c=creampie"),
-            new MenuItem("Amateur", $"{url}?c=amateur"),
-            new MenuItem("Cosplay", $"{url}?c=cosplay"),
-            new MenuItem("4K", $"{url}?c=4k")
         };
 
+        void Tag(string title, string slug) =>
+            menu.Add(new MenuItem(title, $"{url}?c={slug}"));
+
+        // Tag phổ biến trên onejav (slug lấy từ /tag/<slug>)
+        Tag("Uncensored", "uncensored");
+        Tag("Big Tits", "big-tits");
+        Tag("Creampie", "creampie");
+        Tag("Anal", "anal");
+        Tag("Amateur", "amateur");
+        Tag("Blowjob", "blowjob");
+        Tag("Cosplay", "cosplay");
+        Tag("Solowork", "solowork");
+        Tag("Lesbian", "lesbian");
+        Tag("Gangbang", "gangbang");
+        Tag("Cowgirl", "cowgirl");
+        Tag("4K", "4k");
+        Tag("Mature", "mature-woman");
+        Tag("School Girl", "school-girls");
+        Tag("Small Tits", "small-tits");
+        Tag("Huge Butt", "huge-butt");
+        Tag("Deep Throat", "deep-throating");
+        Tag("Married Woman", "married-woman");
+        Tag("Bukkake", "bukkake");
+        Tag("Pregnant", "pregnant-woman");
+
         return menu;
+    }
+
+    /// <summary>Sinh các biến thể truy vấn từ mã JAV (SSIS-123 → SSIS123, SSIS 123, FC2...).</summary>
+    public static List<string> SearchQueries(string code)
+    {
+        var q = new List<string>();
+        void Add(string s)
+        {
+            if (string.IsNullOrWhiteSpace(s)) return;
+            s = s.Trim();
+            if (!q.Contains(s)) q.Add(s);
+        }
+
+        Add(code);
+        string upper = code.ToUpperInvariant();
+        string lower = code.ToLowerInvariant();
+
+        if (code.Contains('-'))
+        {
+            var parts = code.Split('-');
+            Add(string.Join("", parts));
+            Add(string.Join(" ", parts));
+            Add(string.Join(" - ", parts));
+        }
+        else
+        {
+            var m = System.Text.RegularExpressions.Regex.Match(code, "^([A-Za-z]+)(\\d+)$");
+            if (m.Success)
+            {
+                Add($"{m.Groups[1].Value}-{m.Groups[2].Value}");
+                Add($"{m.Groups[1].Value} {m.Groups[2].Value}");
+            }
+        }
+
+        if (upper.StartsWith("FC2") || upper.Contains("FC2PPV"))
+        {
+            string num = System.Text.RegularExpressions.Regex.Replace(code, "fc2ppv", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase).Replace("-", "");
+            Add($"FC2-PPV-{num}");
+            Add($"FC2 PPV {num}");
+            Add($"fc2ppv{num}");
+        }
+
+        Add(upper);
+        Add(lower);
+        return q;
     }
 
     public static string Abs(string u, string host)
