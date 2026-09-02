@@ -59,8 +59,8 @@ public static class ConfigSectionGroups
             new[]
             {
                 "AIOStreams", "Autoembed", "Hydraflix", "MovPI", "Playembed", "Rgshows",
-                "Smashystream", "Sootio", "Twoembed", "VidLink", "Videasy", "Vidsrc",
-                "WebStreamr", "UhdMovies"
+                "Smashystream", "Sootio", "Twoembed", "VidCore", "VidLink", "Videasy",
+                "Vidsrc", "WebStreamr"
             }),
 
         new("src-rus", "Nguồn · Nga và CIS (Modules/OnlineRUS)", "Nguồn VOD/CDN Nga.",
@@ -104,13 +104,19 @@ public static class ConfigSectionGroups
             }),
     };
 
+    // Root sections that are dead/internal and must never show in the panel.
+    public static readonly HashSet<string> IgnoredRootKeys = new(StringComparer.Ordinal)
+    {
+        "UhdMovies" // nguồn đóng 2026-09-01; chỉ còn section rác trong current.conf
+    };
+
     public static List<GroupDto> Build(JObject currentRoot, IEnumerable<string> nextHubSiteKeys = null)
     {
         if (currentRoot == null)
             currentRoot = new JObject();
 
         var inFile = new HashSet<string>(
-            currentRoot.Properties().Select(p => p.Name),
+            currentRoot.Properties().Select(p => p.Name).Where(k => !IgnoredRootKeys.Contains(k)),
             StringComparer.Ordinal);
 
         var assigned = new HashSet<string>(StringComparer.Ordinal);

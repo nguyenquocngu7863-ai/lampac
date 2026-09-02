@@ -183,7 +183,7 @@ public class AdminPanelController : BaseController
         inCatalog.UnionWith(sites.Keys);
         var orphans = current.Properties()
             .Select(p => p.Name)
-            .Where(k => !inCatalog.Contains(k))
+            .Where(k => !inCatalog.Contains(k) && !ConfigSectionGroups.IgnoredRootKeys.Contains(k))
             .OrderBy(k => k, StringComparer.Ordinal)
             .ToArray();
         if (orphans.Length > 0)
