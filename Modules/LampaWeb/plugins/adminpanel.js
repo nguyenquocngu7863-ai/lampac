@@ -30,6 +30,11 @@
     css.textContent =
       '.lampac-admin{min-height:100%;--acc:#0d9499;--acc-dk:#0b7d82;--ink:#16202b;--muted:#5c6672;--card:#ffffff;--line:#d9dee7;--bg:#eef2f7' +
         ';background:var(--bg);color:var(--ink)}' +
+      // Ép TẤT CẢ chữ trong khung admin sang màu tối — theme tối của Lampa có thể
+      // đặt color trắng lên các phần tử con, gây chữ trắng trên nền trắng.
+      '.lampac-admin,.lampac-admin *{color:var(--ink)!important;-webkit-tap-highlight-color:rgba(13,148,153,.2)}' +
+      '.lampac-admin input,.lampac-admin textarea,.lampac-admin select{background:#fff!important;color:var(--ink)!important}' +
+      '.lampac-admin .selector.focus,.lampac-admin .selector:hover{background:#f3fbfc!important}' +
       '.lampac-admin-view{overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:.5em .7em 16vh;box-sizing:border-box}' +
       '.lampac-admin__hero{position:relative;margin:.3em .5em .95em;padding:1.2em 1.4em;border-radius:18px;overflow:hidden;' +
         'background:linear-gradient(135deg,#e3f6f7,#d6ecfb);border:1px solid #bfe3e6;' +
@@ -49,7 +54,8 @@
       '.lampac-admin .settings-param.focus,.lampac-admin .settings-param:hover{' +
         'background:#f3fbfc;border-color:var(--acc);' +
         'box-shadow:0 0 0 2px rgba(13,148,153,.25),0 4px 12px rgba(13,120,130,.12)}' +
-      '.lampac-admin .settings-param.focus .settings-param__value,.lampac-admin .settings-param:hover .settings-param__value{color:#fff;background:var(--acc);border-color:var(--acc)}' +
+      '.lampac-admin .settings-param.focus .settings-param__value,.lampac-admin .settings-param:hover .settings-param__value{color:#fff!important;background:var(--acc);border-color:var(--acc)}' +
+      '.lampac-admin .simple-button,.lampac-admin .settings-param.focus .settings-param__value{color:#fff!important}' +
       '.lampac-admin-empty{margin:1em .6em;padding:2.2em 1.5em;text-align:center;font-size:1.25em;border-radius:16px;' +
         'border:1px dashed #c4ccd8;background:#fff;color:var(--muted)}' +
       '.lampac-admin-edit__ta{width:100%;min-height:42vh;background:#fff;color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:1em;' +
@@ -269,7 +275,7 @@
 
   function component() {
     var self = this;
-    try { console.log('[adminpanel] build light-v7'); } catch (e) { }
+    try { console.log('[adminpanel] build light-v8'); } catch (e) { }
     // Native scrolling container instead of Lampa.Scroll (which moves a mask via
     // CSS transform, so browser scrollIntoView/scrollTop can never scroll it).
     // A real overflow:auto element scrolls reliably with remote, wheel & touch.

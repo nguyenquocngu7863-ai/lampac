@@ -1433,7 +1433,7 @@ public class ApiController : BaseController
 
             string path = DecodeJackettPath(token);
             if (string.IsNullOrWhiteSpace(path) || !path.StartsWith("/dl/", StringComparison.OrdinalIgnoreCase) ||
-                !Uri.TryCreate($"http://localhost{path}", UriKind.Absolute, out var source))
+                !Uri.TryCreate($"http://127.0.0.1:{config.port}{path}", UriKind.Absolute, out var source))
             {
                 return BadRequest("Only Jackett /dl/ paths are accepted");
             }
