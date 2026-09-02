@@ -1101,7 +1101,7 @@ public class ApiController : BaseController
             AllowAutoRedirect = false,
             CookieContainer = JackettCookies,
             UseCookies = true,
-            AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate,
+            AutomaticDecompression = System.Net.DecompressionMethods.GZip | System.Net.DecompressionMethods.Deflate,
             SslOptions = { RemoteCertificateValidationCallback = (sender, cert, chain, sslPolicyErrors) => true },
             MaxConnectionsPerServer = 32
         })
