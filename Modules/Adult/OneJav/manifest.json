@@ -4,6 +4,7 @@
   "tree": [
     "Controller.cs",
     "Service.cs",
-    "ModInit.cs"
+    "ModInit.cs",
+    "OneJavConf.cs"
   ]
 }

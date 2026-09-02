@@ -1,56 +1,36 @@
 using Newtonsoft.Json.Linq;
-using Shared.Models.SISI.Base;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net;
 
 namespace OneJav;
 
 public static class OneJavTo
 {
-    public static List<MenuItem> Menu(string host, string search)
+    /// <summary>Các tag phổ biến để hiện trong plugin (slug dùng cho /tag/&lt;slug&gt;).</summary>
+    public static readonly (string title, string slug)[] Tags =
     {
-        string url = $"{host}/oj";
-
-        var menu = new List<MenuItem>
-        {
-            new MenuItem
-            {
-                title = "Поиск",
-                search_on = "search_on",
-                playlist_url = url
-            },
-            new MenuItem("Новинки", url),
-        };
-
-        void Tag(string title, string slug) =>
-            menu.Add(new MenuItem(title, $"{url}?c={slug}"));
-
-        // Tag phổ biến trên onejav (slug lấy từ /tag/<slug>)
-        Tag("Uncensored", "uncensored");
-        Tag("Big Tits", "big-tits");
-        Tag("Creampie", "creampie");
-        Tag("Anal", "anal");
-        Tag("Amateur", "amateur");
-        Tag("Blowjob", "blowjob");
-        Tag("Cosplay", "cosplay");
-        Tag("Solowork", "solowork");
-        Tag("Lesbian", "lesbian");
-        Tag("Gangbang", "gangbang");
-        Tag("Cowgirl", "cowgirl");
-        Tag("4K", "4k");
-        Tag("Mature", "mature-woman");
-        Tag("School Girl", "school-girls");
-        Tag("Small Tits", "small-tits");
-        Tag("Huge Butt", "huge-butt");
-        Tag("Deep Throat", "deep-throating");
-        Tag("Married Woman", "married-woman");
-        Tag("Bukkake", "bukkake");
-        Tag("Pregnant", "pregnant-woman");
-
-        return menu;
-    }
+        ("Uncensored", "uncensored"),
+        ("Big Tits", "big-tits"),
+        ("Creampie", "creampie"),
+        ("Anal", "anal"),
+        ("Amateur", "amateur"),
+        ("Blowjob", "blowjob"),
+        ("Cosplay", "cosplay"),
+        ("Solowork", "solowork"),
+        ("Lesbian", "lesbian"),
+        ("Gangbang", "gangbang"),
+        ("Cowgirl", "cowgirl"),
+        ("4K", "4k"),
+        ("Mature", "mature-woman"),
+        ("School Girl", "school-girls"),
+        ("Small Tits", "small-tits"),
+        ("Huge Butt", "huge-butt"),
+        ("Deep Throat", "deep-throating"),
+        ("Married Woman", "married-woman"),
+        ("Bukkake", "bukkake"),
+        ("Pregnant", "pregnant-woman")
+    };
 
     /// <summary>Sinh các biến thể truy vấn từ mã JAV (SSIS-123 → SSIS123, SSIS 123, FC2...).</summary>
     public static List<string> SearchQueries(string code)
@@ -76,7 +56,7 @@ public static class OneJavTo
         }
         else
         {
-            var m = System.Text.RegularExpressions.Regex.Match(code, "^([A-Za-z]+)(\\d+)$");
+            var m = Regex.Match(code, "^([A-Za-z]+)(\\d+)$");
             if (m.Success)
             {
                 Add($"{m.Groups[1].Value}-{m.Groups[2].Value}");
@@ -86,7 +66,7 @@ public static class OneJavTo
 
         if (upper.StartsWith("FC2") || upper.Contains("FC2PPV"))
         {
-            string num = System.Text.RegularExpressions.Regex.Replace(code, "fc2ppv", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase).Replace("-", "");
+            string num = Regex.Replace(code, "fc2ppv", "", RegexOptions.IgnoreCase).Replace("-", "");
             Add($"FC2-PPV-{num}");
             Add($"FC2 PPV {num}");
             Add($"fc2ppv{num}");
@@ -95,17 +75,6 @@ public static class OneJavTo
         Add(upper);
         Add(lower);
         return q;
-    }
-
-    public static string Abs(string u, string host)
-    {
-        if (string.IsNullOrEmpty(u)) return "";
-        u = WebUtility.HtmlDecode(u);
-        if (u.StartsWith("//")) return "https:" + u;
-        if (u.StartsWith("http")) return u;
-        host = (host ?? "").TrimEnd('/');
-        if (u.StartsWith('/')) return host + u;
-        return host + "/" + u;
     }
 
     static readonly string[] VideoExt = { ".mkv", ".mp4", ".avi", ".mov", ".wmv", ".m4v", ".ts", ".flv" };

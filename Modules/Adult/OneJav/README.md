@@ -1,23 +1,18 @@
-# OneJAV (SISI)
+# OneJAV
 
-Nguồn **JAV (18+)** lấy danh sách/metadata từ [onejav.com](https://onejav.com) và **phát qua TorrServer**, tích hợp thẳng vào trình duyệt online của lampac (SISI) — không cần cài plugin Lampa riêng. Tham khảo logic: [nguyenquocngu93/javfast](https://github.com/nguyenquocngu93/javfast).
+Nguồn **JAV (18+)**: duyệt/tìm theo [onejav.com](https://onejav.com), **chọn torrent** rồi phát qua **TorrServer ngoài** (mặc định `http://gren439e.tsarea.tv:8880`) — không qua gst/proxy nội bộ. Tham khảo logic: [nguyenquocngu93/javfast](https://github.com/nguyenquocngu93/javfast).
 
-## Hiển thị trong Lampa
+## Cài
 
-Module đăng ký `IModuleSisi` → tự xuất hiện cùng các nguồn 18+ khác (Eporner, PornHub…). Người dùng chọn nguồn **OneJAV 🎌**, có tìm kiếm theo mã, vài tag phổ biến (Uncensored, Big Tits, Creampie…).
+1. Đặt thư mục module vào `module/Adult/OneJav` (gồm `Controller.cs, Service.cs, ModInit.cs, OneJavConf.cs, manifest.json, plugin.js`).
+2. Cài plugin Lampa **một lần**: Tiện ích → thêm URL `http://<host-lampac>/onejav.js`.
+3. Menu chính của Lampa có **🎌 OneJAV**.
 
-## Luồng hoạt động
+## Sử dụng
 
-| Route | Vai trò |
-|------|---------|
-| `GET /oj` | Danh sách (`search` = tìm, `c` = tag, `pg` = trang). Parse card onejav.com. |
-| `GET /oj/view?uri=CODE` | Trang mã: lấy magnet từ trang onejav; nếu trống thì tìm thêm **Sukebei** (nyaa) và **ijavtorrent.com**. Trả về `qualitys` — mỗi nguồn là một "chất lượng". |
-| `GET /oj/play?hash=…&magnet=…` | `add` torrent vào TorrServer, hỏi `stat` để chọn **file video lớn nhất** (bỏ sample/trailer), rồi redirect sang proxy `/ts/stream` của lampac. |
-
-## TorrServer
-
-- Mặc định dùng **TorrServer tích hợp** (module TorrServer, cổng 9085) — không cần cấu hình.
-- Lưu ý: cần bật module **TorrServer** để có endpoint `/ts/...`; nếu chưa có TorrServer, route `/oj/play` trả 503.
+- Vào OneJAV → **Mới nhất**, hoặc 🔍 tìm theo mã (vd `SSIS-123`).
+- Mở một mã → màn hình **danh sách torrent** (xếp theo seed): OneJAV `.torrent`, **Sukebei** (kèm seed), **ijavtorrent**.
+- Chọn torrent → module `add` vào TorrServer ngoài, chọn **file video lớn nhất** rồi trả thẳng URL `…/stream?link=…&index=…&play` cho trình phát.
 
 ## Cấu hình (init.conf)
 
@@ -25,6 +20,19 @@ Module đăng ký `IModuleSisi` → tự xuất hiện cùng các nguồn 18+ kh
 "OneJav": {
   "enable": true,
   "host": "https://onejav.com",
-  "useproxy": false        // bật nếu onejav bị chặn theo mạng của server
+  "tsserver": "http://gren439e.tsarea.tv:8880",  // TorrServer ngoài
+  "ts_login": "",      // để trống nếu server không bật auth
+  "ts_passwd": "",
+  "use_sukebei": true,
+  "use_ijav": true
 }
 ```
+
+## API
+
+| Route | Vai trò |
+|------|---------|
+| `GET /onejav.js` | Plugin Lampa (UI riêng: grid + màn chọn torrent). |
+| `GET /onejav/list?page=&q=&path=` | Danh sách card (mới nhất/tìm/tag). |
+| `GET /onejav/torrents?id=CODE` | Danh sách torrent cho mã (OneJAV .torrent + Sukebei + ijav, kèm seed). |
+| `GET /onejav/play?magnet=` hoặc `?link=` | Add vào TorrServer ngoài → trả `{ ok, url }` stream trực tiếp. |

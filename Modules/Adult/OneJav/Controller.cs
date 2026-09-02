@@ -1,9 +1,8 @@
+using HtmlAgilityPack;
 using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json.Linq;
 using Shared;
-using Shared.Attributes;
-using Shared.Models.Base;
-using Shared.Models.SISI.Base;
+using Shared.Models.Module;
 using Shared.Services;
 using Shared.Services.RxEnumerate;
 using System;
@@ -16,7 +15,8 @@ using System.Web;
 
 namespace OneJav;
 
-public class OneJavController : BaseSisiController
+[Route("onejav")]
+public class OneJavController : BaseController
 {
     const RegexOptions RX = RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Singleline;
 
@@ -27,182 +27,196 @@ public class OneJavController : BaseSisiController
         ("Referer", "https://onejav.com/")
     );
 
-    public OneJavController() : base(ModInit.conf) { }
+    // ============================ Plugin ============================
+    [HttpGet]
+    [Route("onejav.js")]
+    [Route("onejav/js/{token}")]
+    public ActionResult Plugin(string token = null)
+    {
+        string js = FileCache.ReadAllText($"{ModInit.modpath}/plugin.js", "onejav.js")
+            .Replace("{localhost}", host)
+            .Replace("{token}", token ?? "");
+        return ContentTo(js, "application/javascript; charset=utf-8");
+    }
 
     // ============================ List / search / tag ============================
     [HttpGet]
-    [Route("oj")]
-    public async Task<ActionResult> Index(string search, string c, int pg = 1)
+    [Route("onejav/list")]
+    public async Task<ActionResult> List(string path = "", string q = "", int page = 1)
     {
-        if (await IsRequestBlocked(rch: true))
-            return badInitMsg;
-
-        int page = pg < 1 ? 1 : pg;
+        if (!ModInit.conf.enable) return StatusCode(403);
+        if (page < 1) page = 1;
 
         string url;
-        if (!string.IsNullOrWhiteSpace(search))
-            url = $"{init.host}/search/{HttpUtility.UrlPathEncode(search.Trim())}" + (page > 1 ? $"?page={page}" : "");
-        else if (!string.IsNullOrWhiteSpace(c))
-            url = $"{init.host}/tag/{HttpUtility.UrlPathEncode(c.Trim())}" + (page > 1 ? $"?page={page}" : "");
+        if (!string.IsNullOrWhiteSpace(q))
+            url = $"{ModInit.conf.host}/search/{HttpUtility.UrlPathEncode(q.Trim())}" + (page > 1 ? $"?page={page}" : "");
+        else if (!string.IsNullOrWhiteSpace(path))
+            url = $"{ModInit.conf.host}/tag/{HttpUtility.UrlPathEncode(path.Trim())}" + (page > 1 ? $"?page={page}" : "");
         else
-            url = $"{init.host}/" + (page > 1 ? $"?page={page}" : "");
+            url = $"{ModInit.conf.host}/" + (page > 1 ? $"?page={page}" : "");
 
-        string html = await httpHydra.Get(url, BrowserHeaders, useDefaultHeaders: false);
-        var playlists = ParsePlaylist(html, "oj/view");
-
-        if (playlists == null || playlists.Count == 0)
-            return OnError("playlists", refresh_proxy: string.IsNullOrWhiteSpace(search));
-
-        return PlaylistResult(playlists, false, OneJavTo.Menu(host, search), total_pages: page + 1);
+        string html = await Http.Get(url, timeoutSeconds: 25, headers: BrowserHeaders, useDefaultHeaders: false);
+        var items = ParseCards(html);
+        return Json(new { results = items, hasMore = items.Count >= 20, page });
     }
 
-    // ============================ Detail: danh sách magnet (chọn nguồn) ============================
+    // ============================ Danh sách torrent của một mã ============================
     [HttpGet]
-    [Route("oj/view")]
-    public async Task<ActionResult> View(string uri)
+    [Route("onejav/torrents")]
+    public async Task<ActionResult> Torrents(string id)
     {
-        if (await IsRequestBlocked(rch: true))
-            return badInitMsg;
+        if (!ModInit.conf.enable) return StatusCode(403);
+        if (string.IsNullOrWhiteSpace(id)) return Json(new { torrents = new List<object>() });
 
-        string code = (uri ?? "").Trim();
-        var qualitys = new Dictionary<string, string>();
+        string code = id.Trim();
+        var torrents = new List<JObject>();
+        var seenHash = new HashSet<string>();
 
-        string pageUrl = $"{init.host}/torrent/{code}";
-        string html = await httpHydra.Get(pageUrl, BrowserHeaders, useDefaultHeaders: false);
-
-        var seen = new HashSet<string>();
-
-        void addSource(string label, string hash, string magnet)
+        void Add(string source, string title, string link, string magnet, int seed, double gb)
         {
-            if (string.IsNullOrEmpty(hash) || !seen.Add(hash)) return;
-            string play = $"{host}/oj/play?hash={hash}&magnet={HttpUtility.UrlEncode(magnet)}";
-            string key = label;
-            int n = 2;
-            while (qualitys.ContainsKey(key)) key = $"{label} #{n++}";
-            qualitys[key] = play;
+            string key = magnet ?? link;
+            if (string.IsNullOrEmpty(key) || !seenHash.Add((magnet ?? link))) return;
+            torrents.Add(new JObject
+            {
+                ["source"] = source,
+                ["title"] = title,
+                ["link"] = link,       // http(s) .torrent
+                ["magnet"] = magnet,   // magnet
+                ["seed"] = seed,
+                ["gb"] = gb
+            });
         }
+
+        // 1) Trang onejav: link .torrent chính chủ
+        string pageUrl = $"{ModInit.conf.host}/torrent/{code}";
+        string html = await Http.Get(pageUrl, timeoutSeconds: 25, headers: BrowserHeaders, useDefaultHeaders: false);
+        string poster = "", jtitle = code.ToUpperInvariant();
 
         if (!string.IsNullOrEmpty(html))
         {
-            foreach (Match m in Regex.Matches(html, "magnet:\\?xt=urn:btih:([a-zA-Z0-9]+)[^\"'\\s<>]*", RX))
+            try
             {
-                string hash = m.Groups[1].Value.ToLowerInvariant();
-                if (hash.Length < 32) continue;
-                addSource("OneJAV", hash, m.Value);
+                var doc = new HtmlDocument(); doc.LoadHtml(html);
+
+                string og = doc.DocumentNode.SelectSingleNode("//meta[@property='og:image']")?.GetAttributeValue("content", "");
+                if (!string.IsNullOrEmpty(og)) poster = Abs(og);
+
+                string ogt = doc.DocumentNode.SelectSingleNode("//meta[@property='og:title']")?.GetAttributeValue("content", "");
+                if (!string.IsNullOrEmpty(ogt)) jtitle = WebUtility.HtmlDecode(ogt);
+
+                foreach (var a in doc.DocumentNode.SelectNodes("//a[contains(@href,'/download/')]") ?? new HtmlNodeCollection(null))
+                {
+                    string href = a.GetAttributeValue("href", "");
+                    if (string.IsNullOrEmpty(href) || !href.Contains(".torrent")) continue;
+                    Add("OneJAV", WebUtility.HtmlDecode(a.InnerText?.Trim()).NullIfEmpty() ?? "Download .torrent", Abs(href), null, 0, 0);
+                }
             }
+            catch { }
         }
 
-        // Luôn dò thêm Sukebei + ijav theo mã (và các biến thể mã); dừng ở biến thể
-        // đầu tiên cho kết quả (biến thể đầu là mã gốc — chính xác nhất).
-        var found = new List<JObject>();
-        foreach (string q in OneJavTo.SearchQueries(code))
+        // 2) Sukebei (có seed) + 3) ijav — dò theo các biến thể mã
+        var extra = new List<JObject>();
+        foreach (string sq in OneJavTo.SearchQueries(code))
         {
-            var sk = await SearchSukebei(q);
-            var ij = sk.Count == 0 ? await SearchIjav(q) : new List<JObject>();
-            found.AddRange(sk);
-            found.AddRange(ij);
-            if (found.Count > 0) break;
+            if (ModInit.conf.use_sukebei) extra.AddRange(await SearchSukebei(sq));
+            if (ModInit.conf.use_ijav) extra.AddRange(await SearchIjav(sq));
+            if (extra.Any(e => e.Value<int?>("seed") > 0)) break;
         }
 
-        // Sắp xếp theo seed giảm dần (Sukebei có seed; OneJAV/ijav seed=0) rồi gán link.
-        found = found.OrderByDescending(s => s.Value<int?>("seeders") ?? 0).ToList();
-        foreach (var s in found)
-            addSource((string)s["source"], (string)s["hash"], (string)s["magnet"]);
+        foreach (var t in extra)
+            Add((string)t["source"], (string)t["title"], (string)t["link"], (string)t["magnet"],
+                t.Value<int?>("seed") ?? 0, t.Value<double?>("gb") ?? 0);
 
-        if (qualitys.Count == 0)
-            return OnError("stream_links.qualitys", refresh_proxy: true);
+        // Xếp: seed cao trước, rồi tới OneJAV .torrent, còn lại sau.
+        var sorted = torrents
+            .OrderByDescending(t => t.Value<int?>("seed") ?? 0)
+            .ThenBy(t => ((string)t["source"]).StartsWith("OneJAV") ? 0 : 1)
+            .ToList();
 
-        return OnResult(qualitys);
+        return Json(new { id = code, title = jtitle, poster, torrents = sorted });
     }
 
-    // ============================ Play: thêm vào TorrServer rồi redirect stream ============================
+    // ============================ Phát: add vào TorrServer ngoài rồi trả stream URL ============================
     [HttpGet]
-    [Route("oj/play")]
-    public async Task<ActionResult> Play(string hash, string magnet = null)
+    [Route("onejav/play")]
+    public async Task<ActionResult> Play(string link = null, string magnet = null)
     {
-        var (ts, tsHeaders) = ModInit.TsConn();
-        string addLink = !string.IsNullOrWhiteSpace(magnet) ? magnet : $"magnet:?xt=urn:btih:{hash}";
+        if (!ModInit.conf.enable) return StatusCode(403);
+
+        string ts = ModInit.TsHost();
+        var tsHeaders = TsHeaders();
+
+        string addLink = !string.IsNullOrWhiteSpace(magnet) ? magnet : link;
+        if (string.IsNullOrWhiteSpace(addLink))
+            return Json(new { ok = false, error = "Thiếu link torrent/magnet" });
 
         string payload = "{\"action\":\"add\",\"link\":\"" + addLink.Replace("\\", "\\\\").Replace("\"", "\\\"") +
                          "\",\"title\":\"\",\"poster\":\"\",\"save_to_db\":false}";
 
-        string resp = await Http.Post($"{ts}/torrents", payload, timeoutSeconds: 30, headers: tsHeaders, useDefaultHeaders: false);
-        if (string.IsNullOrWhiteSpace(resp))
-            return StatusCode(503, "TorrServer không phản hồi (" + ts + "). Bật module TorrServer.");
+        string resp = await Http.Post($"{ts}/torrents", payload, timeoutSeconds: 40, headers: tsHeaders, useDefaultHeaders: false);
+        string hash = Rx.Match(resp ?? "", "\"hash\"\\s*:\\s*\"([^\"]+)\"");
+        if (string.IsNullOrEmpty(hash))
+            return Json(new { ok = false, error = "TorrServer không nhận torrent (kiểm tra server/link)." });
 
-        string realHash = Rx.Match(resp, "\"hash\"\\s*:\\s*\"([^\"]+)\"");
-        if (string.IsNullOrEmpty(realHash)) realHash = hash;
-
-        int bestIndex = 0;
-        for (int attempt = 0; attempt < 4; attempt++)
+        int index = 0;
+        for (int attempt = 0; attempt < 6; attempt++)
         {
-            string stat = await Http.Get($"{ts}/stream?link={realHash}&index=0&stat", timeoutSeconds: 20, headers: tsHeaders, useDefaultHeaders: false);
+            string stat = await Http.Get($"{ts}/stream?link={hash}&index=0&stat", timeoutSeconds: 20, headers: tsHeaders, useDefaultHeaders: false);
             int picked = OneJavTo.PickVideoIndex(stat);
-            if (picked >= 0) { bestIndex = picked; break; }
+            if (picked >= 0) { index = picked; break; }
             await Task.Delay(2500);
         }
 
-        // stream qua proxy /ts của lampac (proxy tự gắn auth; TV không cần truy cập localhost)
-        return Redirect($"{host}/ts/stream?link={HttpUtility.UrlEncode(realHash)}&index={bestIndex}&play");
+        return Json(new { ok = true, url = $"{ts}/stream?link={HttpUtility.UrlEncode(hash)}&index={index}&play" });
     }
 
-    // ============================ Parsing ============================
-    List<PlaylistItem> ParsePlaylist(string html, string route)
+    // ============================ Parsing danh sách (HtmlAgilityPack) ============================
+    List<JObject> ParseCards(string html)
     {
-        if (string.IsNullOrEmpty(html)) return null;
-
-        var list = new List<PlaylistItem>();
+        var result = new List<JObject>();
         var seen = new HashSet<string>();
+        if (string.IsNullOrEmpty(html)) return result;
 
-        void Add(string code, string img, string name)
+        try
         {
-            if (string.IsNullOrEmpty(code) || !seen.Add(code)) return;
-            if (string.IsNullOrEmpty(img)) return;
-            if (string.IsNullOrWhiteSpace(name)) name = code;
-            list.Add(new PlaylistItem
+            var doc = new HtmlDocument(); doc.LoadHtml(html);
+
+            // Mọi link tới /torrent/<code> trên trang (bỏ link download).
+            foreach (var a in doc.DocumentNode.SelectNodes("//a[contains(@href,'/torrent/')]") ?? new HtmlNodeCollection(null))
             {
-                name = WebUtility.HtmlDecode(name).Trim(),
-                picture = OneJavTo.Abs(img, init.host),
-                video = $"{route}?uri={HttpUtility.UrlEncode(code)}",
-                json = true
-            });
-        }
+                string href = a.GetAttributeValue("href", "");
+                if (href.Contains("/download/")) continue;
 
-        // Cấu trúc onejav: mỗi bài là một <div class="container"> chứa link /torrent/ + ảnh.
-        foreach (Match c in Regex.Matches(html, "<div[^>]+class=[\"'][^\"']*\\bcontainer\\b[^\"']*[\"'][^>]*>(.*?)</div>\\s*(?=<div[^>]+class=[\"'][^\"']*\\bcontainer\\b|<footer|$)", RX))
-        {
-            string seg = c.Groups[1].Value;
-            if (seg.Contains("Popular tags")) continue;
+                var m = Regex.Match(href, "/torrent/([^?#/]+)");
+                if (!m.Success) continue;
+                string code = m.Groups[1].Value;
+                if (!seen.Add(code)) continue;
 
-            string link = Rx.Match(seg, "href=[\"'](/torrent/[^\"']+)[\"']");
-            if (string.IsNullOrEmpty(link)) continue;
-            string code = link.Split('/')[^1].Split('?')[0];
+                var img = a.SelectSingleNode(".//img")
+                          ?? a.ParentNode?.SelectSingleNode(".//img");
+                string pic = img?.GetAttributeValue("src", "");
+                if (string.IsNullOrWhiteSpace(pic)) pic = img?.GetAttributeValue("data-src", "");
+                if (string.IsNullOrWhiteSpace(pic)) continue;
 
-            string img = Rx.Match(seg, "<img[^>]+class=[\"'][^\"']*\\bimage\\b[^\"']*[\"'][^>]+(?:src|data-src)=[\"']([^\"']+)[\"']")
-                ?? Rx.Match(seg, "<img[^>]+(?:src|data-src)=[\"']([^\"']+)[\"']");
+                string text = WebUtility.HtmlDecode(Regex.Replace(a.InnerText ?? "", "<[^>]+>", " "));
+                text = Regex.Replace(text, "\\s+", " ").Trim();
 
-            string name = Rx.Match(seg, "class=[\"'][^\"']*\\btitle\\b[^\"']*[\"'][^>]*>\\s*<a[^>]*>([^<]+)")
-                ?? code;
-
-            Add(code, img, name);
-        }
-
-        // Fallback: bắt trực tiếp <a href="/torrent/..."> có ảnh.
-        if (list.Count == 0)
-        {
-            foreach (Match block in Regex.Matches(html, "<a[^>]+href=[\"'](/torrent/[^\"']+)[\"'][^>]*>(.*?)</a>", RX))
-            {
-                string inner = block.Groups[2].Value;
-                string code = block.Groups[1].Value.Split('/')[^1].Split('?')[0];
-                string img = Rx.Match(inner, "<img[^>]+(?:src|data-src)=[\"']([^\"']+)[\"']");
-                string name = WebUtility.HtmlDecode(Regex.Replace(inner, "<[^>]+>", " "));
-                Add(code, img, name);
+                result.Add(new JObject
+                {
+                    ["id"] = code,
+                    ["code"] = code.ToUpperInvariant(),
+                    ["title"] = string.IsNullOrWhiteSpace(text) ? code.ToUpperInvariant() : text,
+                    ["poster"] = Abs(pic),
+                    ["img"] = Abs(pic)
+                });
             }
         }
+        catch { }
 
-        return list;
+        return result;
     }
 
+    // ============================ Sukebei ============================
     async Task<List<JObject>> SearchSukebei(string code)
     {
         var list = new List<JObject>();
@@ -212,35 +226,48 @@ public class OneJavController : BaseSisiController
             string html = await Http.Get(url, timeoutSeconds: 20, useDefaultHeaders: false);
             if (string.IsNullOrEmpty(html) || html.Contains("No results found")) return list;
 
-            foreach (Match row in Regex.Matches(html, "<tr[^>]*>(.*?)</tr>", RX))
+            var doc = new HtmlDocument(); doc.LoadHtml(html);
+            foreach (var row in doc.DocumentNode.SelectNodes("//table//tr") ?? new HtmlNodeCollection(null))
             {
-                string seg = row.Groups[1].Value;
-                string magnet = Rx.Match(seg, "href=[\"'](magnet:\\?xt=urn:btih:[^\"']+)[\"']");
-                if (string.IsNullOrEmpty(magnet)) continue;
-
+                var magA = row.SelectSingleNode(".//a[starts-with(@href,'magnet:')]");
+                if (magA == null) continue;
+                string magnet = magA.GetAttributeValue("href", "");
                 string hm = Regex.Match(magnet, "btih:([a-zA-Z0-9]+)", RegexOptions.IgnoreCase) is Match h && h.Success
                     ? h.Groups[1].Value.ToLowerInvariant() : null;
                 if (string.IsNullOrEmpty(hm)) continue;
 
-                string title = WebUtility.HtmlDecode(Rx.Match(seg, "<a[^>]+title=[\"']([^\"']+)[\"']") ?? code);
+                var titleA = row.SelectSingleNode(".//td[@colspan]//a") ?? row.SelectSingleNode(".//a[not(starts-with(@href,'magnet:'))]");
+                string title = WebUtility.HtmlDecode(titleA?.GetAttributeValue("title", "").NullIfEmpty() ?? titleA?.InnerText?.Trim() ?? code);
+
                 int seed = 0;
-                var seedM = Regex.Matches(seg, "<td[^>]*class=[\"'][^\"']*(?:text-center|text-success)[^\"']*[\"'][^>]*>\\s*([0-9,]+)\\s*</td>", RX);
-                if (seedM.Count > 0) int.TryParse(seedM[0].Groups[1].Value.Replace(",", ""), out seed);
+                var tds = row.SelectNodes(".//td") ?? new HtmlNodeCollection(null);
+                foreach (var td in tds)
+                {
+                    var cls = td.GetAttributeValue("class", "");
+                    if (cls.Contains("success") || cls.Contains("text-center"))
+                    {
+                        var mm = Regex.Match(td.InnerText ?? "", "([0-9,]+)");
+                        if (mm.Success && int.TryParse(mm.Groups[1].Value.Replace(",", ""), out int v)) { seed = v; break; }
+                    }
+                }
 
                 list.Add(new JObject
                 {
                     ["source"] = seed > 0 ? $"Sukebei · seed {seed}" : "Sukebei",
-                    ["title"] = title.Trim(),
-                    ["hash"] = hm,
-                    ["magnet"] = magnet
+                    ["title"] = title,
+                    ["magnet"] = magnet,
+                    ["link"] = (string)null,
+                    ["seed"] = seed,
+                    ["gb"] = 0.0
                 });
-                if (list.Count >= 6) break;
+                if (list.Count >= 8) break;
             }
         }
         catch { }
         return list;
     }
 
+    // ============================ ijavtorrent ============================
     async Task<List<JObject>> SearchIjav(string code)
     {
         var list = new List<JObject>();
@@ -257,11 +284,46 @@ public class OneJavController : BaseSisiController
                     ? h.Groups[1].Value.ToLowerInvariant() : null;
                 if (string.IsNullOrEmpty(hm)) continue;
 
-                list.Add(new JObject { ["source"] = "iJavTorrent", ["hash"] = hm, ["magnet"] = magnet });
-                if (list.Count >= 5) break;
+                string dn = Regex.Match(magnet, "dn=([^&\"']+)", RegexOptions.IgnoreCase) is Match d && d.Success
+                    ? WebUtility.UrlDecode(d.Groups[1].Value.Replace('+', ' ')) : code;
+
+                list.Add(new JObject
+                {
+                    ["source"] = "iJavTorrent",
+                    ["title"] = dn.Trim(),
+                    ["magnet"] = magnet,
+                    ["link"] = (string)null,
+                    ["seed"] = 0,
+                    ["gb"] = 0.0
+                });
+                if (list.Count >= 6) break;
             }
         }
         catch { }
         return list;
     }
+
+    // ============================ Helpers ============================
+    IReadOnlyList<HeadersModel> TsHeaders()
+    {
+        if (!string.IsNullOrWhiteSpace(ModInit.conf.ts_login) && !string.IsNullOrWhiteSpace(ModInit.conf.ts_passwd))
+            return HeadersModel.Init("Authorization", "Basic " + Convert.ToBase64String(
+                System.Text.Encoding.UTF8.GetBytes(ModInit.conf.ts_login + ":" + ModInit.conf.ts_passwd)));
+        return null;
+    }
+
+    string Abs(string u)
+    {
+        if (string.IsNullOrEmpty(u)) return "";
+        u = WebUtility.HtmlDecode(u);
+        if (u.StartsWith("//")) return "https:" + u;
+        if (u.StartsWith("http")) return u;
+        string h = ModInit.conf.host.TrimEnd('/');
+        return u.StartsWith('/') ? h + u : h + "/" + u;
+    }
+}
+
+internal static class OneJavStr
+{
+    public static string NullIfEmpty(this string s) => string.IsNullOrWhiteSpace(s) ? null : s;
 }
