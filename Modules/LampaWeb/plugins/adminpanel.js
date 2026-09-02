@@ -280,7 +280,7 @@
 
   function component() {
     var self = this;
-    try { console.log('[adminpanel] build light-v9'); } catch (e) { }
+    try { console.log('[adminpanel] build light-v10'); } catch (e) { }
     // Native scrolling container instead of Lampa.Scroll (which moves a mask via
     // CSS transform, so browser scrollIntoView/scrollTop can never scroll it).
     // A real overflow:auto element scrolls reliably with remote, wheel & touch.

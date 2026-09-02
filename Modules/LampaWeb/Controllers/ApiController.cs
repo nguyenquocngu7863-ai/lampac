@@ -1086,12 +1086,22 @@ public class ApiController : BaseController
         return ContentTo(lang, "application/javascript; charset=utf-8");
     }
 
+    // Shared cookie jar so that Jackett session cookies (Set-Cookie on a /dl
+    // redirect) survive the manual redirect chain below — trackers like nnmclub,
+    // toloka and torrentgalaxy clones bounce through Jackett URLs that require the
+    // session to be present, otherwise the final response is an HTML error page
+    // instead of the .torrent and no magnet hash can be derived.
+    private static readonly System.Net.CookieContainer JackettCookies = new();
+
     private static readonly System.Net.Http.HttpClient LocalJackettHttpClient = new(
         new System.Net.Http.SocketsHttpHandler
         {
             // Jackett intentionally redirects some /dl/ results to magnet:.
             // HttpClient cannot follow non-HTTP schemes, so inspect Location ourselves.
-            AllowAutoRedirect = false
+            AllowAutoRedirect = false,
+            CookieContainer = JackettCookies,
+            UseCookies = true,
+            MaxConnectionsPerServer = 32
         })
     {
         Timeout = TimeSpan.FromSeconds(45)
