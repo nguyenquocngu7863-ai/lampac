@@ -19,10 +19,10 @@ LAMPAC_DIR="$HOME/lampac"
 LISTEN_PORT="${LAMPAC_PORT:-9118}"
 ROOT_PASSWORD="${LAMPAC_PASSWD:-lampac}"
 # Custom modules maintained in this repository. Override when using a private fork.
-# 2026-08-31: tạm trỏ arena/01a05c4e-lampac — nhánh đang giữ module VidCore (chưa có
-# trong lampac-nextgen.zip) và bản sửa `lampac update`. Đưa về arena/01a05241-lampac
-# sau khi merge, hoặc đặt LAMPAC_CUSTOM_SOURCE_BASE để đổi mà không sửa file này.
-CUSTOM_SOURCE_BASE="${LAMPAC_CUSTOM_SOURCE_BASE:-https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05c4e-lampac}"
+# Mặc định trỏ nhánh làm việc của bản tuỳ biến (AdminPanel phân nhóm + tìm kiếm,
+# module ENG/VN, bản sửa `lampac update`). Đặt LAMPAC_CUSTOM_SOURCE_BASE để đổi
+# sang fork/nhánh khác mà không cần sửa file này.
+CUSTOM_SOURCE_BASE="${LAMPAC_CUSTOM_SOURCE_BASE:-https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05db8-lampac}"
 
 MODE=""
 [[ "${1:-}" == "--install" ]] && MODE="install"
@@ -74,7 +74,7 @@ show_help() {
     printf "  ${CYAN}LAMPAC_PORT${RESET}     Listen port (default: 9118)\n"
     printf "  ${CYAN}LAMPAC_PASSWD${RESET}   Root password (default: lampac)\n"
     printf "  ${CYAN}LAMPAC_CUSTOM_SOURCE_BASE${RESET} Raw-git base URL for --sync/--sync-all\n"
-    printf "                      (default: .../lampac/arena/01a05c4e-lampac;\n"
+    printf "                      (default: .../lampac/arena/01a05db8-lampac;\n"
     printf "                      không dùng main — nhánh đó đang chậm hơn)\n\n"
     printf "${BOLD}How it works:${RESET}\n"
     printf "  This script installs Lampac inside proot-distro Ubuntu.\n"
@@ -615,7 +615,11 @@ sync_latest_modules() {
         for admin in /root/lampac/module/AdminPanel /root/lampac/mods/AdminPanel; do
             if [ -d \"\$admin\" ]; then
                 pull Modules/AdminPanel/AdminPanelController.cs \"\$admin/AdminPanelController.cs\"
+                pull Modules/AdminPanel/ConfigSectionGroups.cs \"\$admin/ConfigSectionGroups.cs\"
+                pull Modules/AdminPanel/ModInit.cs \"\$admin/ModInit.cs\"
+                pull Modules/AdminPanel/manifest.json \"\$admin/manifest.json\"
                 pull Modules/AdminPanel/auth.html \"\$admin/auth.html\"
+                pull Modules/AdminPanel/index.html \"\$admin/index.html\"
             fi
         done
     "
@@ -1099,14 +1103,14 @@ case "${1:-}" in
         ;;
     branch)
         cur="$(cd "$(dirname "$0")" && git branch --show-current 2>/dev/null || echo unknown)"
-        base="${LAMPAC_CUSTOM_SOURCE_BASE:-default (arena/01a05c4e-lampac)}"
+        base="${LAMPAC_CUSTOM_SOURCE_BASE:-default (arena/01a05db8-lampac)}"
         echo ""
         echo "  Git branch  : $cur"
         echo "  Source base : $base"
         echo ""
         echo "  Nhánh mới nhất (không dùng main):"
-        echo "    cd ~/lampac && git fetch origin && git checkout arena/01a05c4e-lampac"
-        echo "    echo 'export LAMPAC_CUSTOM_SOURCE_BASE=https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05c4e-lampac' >> ~/.bashrc"
+        echo "    cd ~/lampac && git fetch origin && git checkout arena/01a05db8-lampac"
+        echo "    echo 'export LAMPAC_CUSTOM_SOURCE_BASE=https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a05db8-lampac' >> ~/.bashrc"
         echo "    source ~/.bashrc && lampac sync && lampac stop && lampac start"
         echo ""
         ;;
