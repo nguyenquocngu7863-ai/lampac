@@ -255,7 +255,7 @@
 
   function component() {
     var self = this;
-    try { console.log('[adminpanel] build styled v4'); } catch (e) { }
+    try { console.log('[adminpanel] build search+v5'); } catch (e) { }
     // Native scrolling container instead of Lampa.Scroll (which moves a mask via
     // CSS transform, so browser scrollIntoView/scrollTop can never scroll it).
     // A real overflow:auto element scrolls reliably with remote, wheel & touch.
@@ -497,6 +497,53 @@
       return (keys || []).filter(function (k) { return String(k).toLowerCase().indexOf(query) !== -1; });
     }
 
+    // Gather every config key together with the group title it belongs to.
+    function allKeyIndex() {
+      var idx = [];
+      var seen = {};
+      function add(key, groupTitle) {
+        if (key && !seen[key]) { seen[key] = 1; idx.push({ key: key, group: groupTitle || '' }); }
+      }
+      (cache.groups || []).forEach(function (g) {
+        (g.keys || []).forEach(function (k) { add(k, g.title || g.id); });
+      });
+      return idx;
+    }
+
+    function viewSearch(data) {
+      var q = (data.query || '').trim().toLowerCase();
+      var nodes = [
+        head('Tìm kiếm cấu hình', 'Gõ tên khóa (vd: PidTor, torrs, proxy, streamproxy). Kết quả mở thẳng trình sửa JSON.'),
+        item('Từ khóa: ' + (q || '(chưa nhập)'), '', 'Chọn để gõ/đổi từ khóa', function () {
+          editText('Tìm khóa cấu hình', data.query || '', function (v) {
+            data.query = v || '';
+            render();
+          });
+        })
+      ];
+
+      if (!q) {
+        nodes.push($('<div class="lampac-admin-empty">Nhập từ khóa để lọc. Có ' + allKeyIndex().length + ' khóa trong danh mục.</div>'));
+        draw(nodes);
+        return;
+      }
+
+      var matches = allKeyIndex().filter(function (e) { return e.key.toLowerCase().indexOf(q) !== -1; });
+      matches.slice(0, 200).forEach(function (e) {
+        nodes.push(item(e.key, e.group, '', function () {
+          // Open the same editor used inside a group so save/load is identical.
+          pushView('key-json', { key: e.key, backView: 'search', backData: data });
+        }));
+      });
+
+      if (!matches.length)
+        nodes.push($('<div class="lampac-admin-empty">Không có khóa nào khớp «' + esc(data.query || '') + '»</div>'));
+      else if (matches.length > 200)
+        nodes.push($('<div class="lampac-admin-empty">…và ' + (matches.length - 200) + ' kết quả khác, gõ cụ thể hơn.</div>'));
+
+      draw(nodes);
+    }
+
     function viewLogin() {
       draw([
         head('Admin Panel', 'Nhập mật khẩu root (file passwd). Máy này sẽ nhớ, không hỏi lại.'),
@@ -507,6 +554,9 @@
     function viewHome() {
       draw([
         head('Admin Panel', 'Sửa init.conf / users.json trong Lampa. current.conf chỉ xem.'),
+        item('🔍 Tìm kiếm cấu hình', '', 'Tra mọi khóa trên tất cả nhóm theo tên', function () {
+          pushView('search', { query: '' });
+        }),
         item('Nhóm (JSON)', String(cache.groups.length), 'Khóa theo nhóm, lưu từng mục', function () {
           pushView('groups', {});
         }),
@@ -939,6 +989,7 @@
       switch (view.name) {
         case 'login': return viewLogin();
         case 'home': return viewHome();
+        case 'search': return viewSearch(view.data);
         case 'groups': return viewGroups();
         case 'group-keys': return viewGroupKeys(view.data);
         case 'key-json': return viewKeyJson(view.data);

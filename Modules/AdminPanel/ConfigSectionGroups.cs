@@ -9,6 +9,9 @@ public static class ConfigSectionGroups
 {
     public sealed record GroupSpec(string Id, string Title, string Hint, string[] Keys);
 
+    // Groups mirror the Modules/ category folders in the repository so the
+    // AdminPanel classification stays in sync with GitHub. Top-level runtime
+    // sections are grouped by function.
     public static readonly GroupSpec[] Catalog =
     {
         new("runtime", "Hệ thống", "Các trường hệ thống; thường lấy từ current, không bắt buộc trong init.",
@@ -17,8 +20,8 @@ public static class ConfigSectionGroups
             new[] { "listen" }),
         new("security", "Bảo mật và quyền truy cập", "WAF, accsdb, danh sách module và middleware lõi.",
             new[] { "WAF", "accsdb", "BaseModule" }),
-        new("network", "Mạng và proxy", "Proxy cho request đi ra, CORS, mạng tin cậy.",
-            new[] { "serverproxy", "proxy", "globalproxy", "corsehost", "KnownProxies" }),
+        new("network", "Mạng, proxy và CORS", "Proxy cho request đi ra, CORS token, mạng tin cậy.",
+            new[] { "serverproxy", "proxy", "globalproxy", "corsehost", "KnownProxies", "CorsMedia", "Corseu" }),
 
         new("pools", "Pool và hệ thống", "Buffer, APN, kit.",
             new[] { "pool", "apn", "kit" }),
@@ -29,51 +32,75 @@ public static class ConfigSectionGroups
 
         new("realtime", "WebSocket và RCH", "Socket native và hub từ xa.",
             new[] { "WebSocket", "rch" }),
-        new("browser", "Nguồn cần trình duyệt", "Mirage/Phantom cần Chromium; HydraFlix/TwoEmbed cần Firefox. Các nguồn ENG còn lại xem nhóm ENG.", new[] { "chromium", "firefox", "Mirage", "Phantom" }),
+        new("browser", "Nguồn cần trình duyệt", "Nguồn phải chạy Chromium/Firefox (Mirage/Phantom...). Các nguồn ENG khác xem nhóm ENG.",
+            new[] { "chromium", "firefox", "Mirage", "Phantom" }),
         new("diagnostics", "Log và chẩn đoán", "Serilog, xử lý exception, openstat.",
             new[] { "serilog", "useDeveloperExceptionPage", "exceptionHandlerLogTarget", "exceptionHandlerLogFile", "watcherInit", "openstat" }),
 
         new("app", "Ứng dụng và giao diện", "online, cub, sisi, quảng cáo, mặc định, omdb.",
             new[] { "online", "cub", "sisi", "vast", "disableEng", "defaultOn", "omdbapi_key", "overrideResponse" }),
-        new("client", "Client Lampa và API", "Giao diện Lampa, cookie, PidTor, TMDB, phụ đề tự động.", new[] { "tmdb", "LampaWeb", "SubFinder", "Cookie", "PidTor", "gst" }),
-        new("local-services", "Dịch vụ cục bộ", "Kết nối Lampac/Lampa với dịch vụ chạy cùng Ubuntu proot.",
-            new[] { "Jackett" }),
-        new("modules", "Module mở rộng", "Các section module ở cấp cao nhất của config.",
-            new[] { "Catalog", "DLNA", "JacRed", "Sync", "TimeCode", "TorrServer", "Tracks", "transcoding", "TmdbProxy", "CubProxy", "WebLog" }),
+        new("client", "Client Lampa và API", "Giao diện Lampa, cookie, TMDB, phụ đề tự động.",
+            new[] { "tmdb", "LampaWeb", "SubFinder", "Cookie" }),
 
-        new("src-vn", "Nguồn · Việt Nam", "Các nguồn phim Việt tùy biến, không cần Playwright.",
-            new[] { "KKPhim", "K20", "VsMov" }),
-
-        new("src-eng", "Nguồn · ENG (10 nguồn gốc)", "Nhóm embed tiếng Anh theo bản gốc: đủ 10 nguồn (Videasy/VidSrc là bản fix riêng). Phần lớn chạy bằng embed/Playwright; cần disableEng: false để hiện trong Lampa.",
-            new[] { "Autoembed", "Hydraflix", "MovPI", "Playembed", "Rgshows", "Smashystream", "Twoembed", "VidLink", "Videasy", "Vidsrc" }),
-
-        new("src-http-bridge", "Nguồn · HTTP / Stremio (tùy biến)", "Các nguồn tự viết, chạy không cần Playwright: Stremio bridge (AIOStreams, Sootio, WebStreamr).",
-            new[] { "AIOStreams", "Sootio", "WebStreamr" }),
-
-        new("src-rus", "Nguồn · Nga và CIS", "Nguồn VOD/CDN Nga; Mirage và Phantom nằm ở nhóm cần trình duyệt.",
+        new("modules", "Module dịch vụ cục bộ", "Các section module ở cấp cao nhất của config (PidTor, TorrServer, đồng bộ, DLNA, bot...).",
             new[]
             {
-                "CDNvideohub", "Collaps", "FanCDN", "FlixCDN", "HDVB", "Kinobase", "Kinogo", "Kinotochka", "LeProduction",
-                "PizdatoeHD", "RutubeMovie", "Spectre", "VeoVeo", "Vibix", "VideoDB", "Videoseed", "VkMovie", "Zetflix", "ZetflixDB"
+                "PidTor", "TorrServer", "gst", "transcoding", "Catalog", "DLNA", "JacRed",
+                "Sync", "Storage", "TimeCode", "Tracks", "WebLog", "Music", "WatchTogether",
+                "ProxyLimiter", "TelegramAuth", "TelegramAuthBot", "TelegramBot",
+                "ForkPlayerXML", "MsxNative", "Telemetry"
             }),
 
-        new("src-paid", "Nguồn · cần tài khoản hoặc token", "Các nguồn thường cần token, cookie hoặc tài khoản riêng.",
-            new[] { "Alloha", "Filmix", "FilmixPartner", "FilmixTV", "GetsTV", "IptvOnline", "iRemux", "KinoPub", "Rezka", "RezkaPrem", "SakhTV", "VoKino" }),
+        // ── Nguồn theo đúng thư mục Modules/ trên GitHub ──
+        new("src-vn", "Nguồn · Việt Nam (Modules/OnlineVN)", "Các nguồn phim Việt tùy biến, không cần Playwright.",
+            new[] { "K20", "KKPhim", "VsMov" }),
 
-        new("src-ukr", "Nguồn · Ukraine", "Nguồn phim Ukraine và mirror liên quan.",
-            new[] { "Ashdi", "BamBoo", "Eneyida", "HdvbUA", "Kinoukr", "Tortuga", "UAFilm", "UaKino" }),
-
-        new("src-geo", "Nguồn · Georgia và châu Á", "Nguồn theo khu vực Georgia/Asia.",
-            new[] { "AsiaGe", "Geosaitebi", "Kinoflix" }),
-
-        new("src-anime", "Nguồn · anime", "Nguồn anime online và liên quan, bao gồm Kodik.",
-            new[] { "AiLiberty", "AniLiberty", "AniLibria", "AniMedia", "Animebesst", "AnimeGo", "AnimeLib", "AnimeON", "Animevost", "Dreamerscast", "Kodik", "Mikai", "MoonAnime" }),
-
-        new("src-adult", "Nguồn · SISI / 18+", "Module Adult viết bằng C# và engine NextHUB YAML.",
+        new("src-eng", "Nguồn · Tiếng Anh (Modules/OnlineENG)", "Embed/Stremio tiếng Anh. Phần lớn chạy bằng embed; cần disableEng: false để hiện trong Lampa.",
             new[]
             {
-                "NextHUB", "BongaCams", "Chaturbate", "Ebalovo", "Eporner", "HQporner", "PornHub", "PornHubPremium", "Porntrex", "Runetki", "Spankbang", "Tizam",
-                "Xhamster", "Xnxx", "Xvideos", "XvideosRED"
+                "AIOStreams", "Autoembed", "Hydraflix", "MovPI", "Playembed", "Rgshows",
+                "Smashystream", "Sootio", "Twoembed", "VidLink", "Videasy", "Vidsrc",
+                "WebStreamr", "UhdMovies"
+            }),
+
+        new("src-rus", "Nguồn · Nga và CIS (Modules/OnlineRUS)", "Nguồn VOD/CDN Nga.",
+            new[]
+            {
+                "CDNvideohub", "Collaps", "FanCDN", "FlixCDN", "HDVB", "Kinobase", "Kinogo",
+                "Kinotochka", "LeProduction", "PizdatoeHD", "RutubeMovie",
+                "Spectre", "VeoVeo", "Vibix", "VideoDB", "Videoseed", "VkMovie", "Zetflix", "ZetflixDB"
+
+                // Mirage/Phantom nằm ở nhóm "Nguồn cần trình duyệt" (cần Chromium).
+            }),
+
+        new("src-ukr", "Nguồn · Ukraine (Modules/OnlineUKR)", "Nguồn phim Ukraine và mirror liên quan.",
+            new[] { "Ashdi", "BamBoo", "Eneyida", "HdvbUA", "Kinoukr", "Tortuga", "UAFilm", "UaKino" }),
+
+        new("src-geo", "Nguồn · Georgia và châu Á (Modules/OnlineGEO)", "Nguồn theo khu vực Georgia/Asia.",
+            new[] { "AsiaGe", "Geosaitebi", "Kinoflix" }),
+
+        new("src-anime", "Nguồn · Anime (Modules/OnlineAnime)", "Nguồn anime online và liên quan, bao gồm Kodik.",
+            new[]
+            {
+                "AiLiberty", "AniLiberty", "AniLibria", "AniMedia", "AnimeGo", "AnimeLib",
+                "AnimeON", "Animebesst", "Animevost", "Dreamerscast", "Kodik", "Mikai", "MoonAnime"
+            }),
+
+        new("src-paid", "Nguồn · cần tài khoản hoặc token (Modules/OnlinePaid)", "Các nguồn thường cần token, cookie hoặc tài khoản riêng.",
+            new[]
+            {
+                "Alloha", "Filmix", "FilmixPartner", "FilmixTV", "GetsTV", "IptvOnline",
+                "iRemux", "KinoPub", "Rezka", "RezkaPrem", "SakhTV", "VoKino"
+            }),
+
+        new("src-adult", "Nguồn · 18+ (Modules/Adult + NextHUB)", "Module Adult viết bằng C# và site YAML NextHUB phổ biến. Các site YAML còn lại tự động vào nhóm NextHUB bên dưới.",
+            new[]
+            {
+                "NextHUB",
+                "BongaCams", "Chaturbate", "Ebalovo", "Eporner", "HQporner", "PornHub",
+                "PornHubPremium", "Porntrex", "Runetki", "Spankbang", "Tizam",
+                "Xhamster", "Xnxx", "Xvideos", "XvideosRED",
+                "xasiat", "porn4days", "pornobolt"
             }),
     };
 
@@ -115,13 +142,13 @@ public static class ConfigSectionGroups
             result.Add(new GroupDto(
                 "src-adult-nexthub",
                 "Nguồn · NextHUB / 18+",
-                "Thông thường chỉ cần đổi enable. streamproxy đi qua Lampac nhưng không đổi IP; useproxy/useproxystream cần proxy ngoài; rhub/rch và các trường còn lại nên giữ nguyên.",
+                "Site YAML NextHUB tự phát hiện. Thường chỉ cần đổi enable. streamproxy đi qua Lampac; useproxy/useproxystream cần proxy ngoài; rhub/rch giữ nguyên.",
                 nextHubKeys));
         }
 
         var orphans = inFile.Where(k => !assigned.Contains(k)).OrderBy(k => k, StringComparer.Ordinal).ToArray();
         if (orphans.Length > 0)
-            result.Add(new GroupDto("other", "Khác", "Các khóa từ current.conf chưa có trong danh mục (module mới).", orphans));
+            result.Add(new GroupDto("other", "Khác", "Các khóa từ current.conf chưa có trong danh mục (module mới/không nhận diện).", orphans));
 
         return result;
     }
@@ -141,7 +168,7 @@ public static class ConfigSectionGroups
             list.Add(new GroupDto(
                 "src-adult-nexthub",
                 "Nguồn · NextHUB / 18+",
-                "Thông thường chỉ cần đổi enable. streamproxy đi qua Lampac nhưng không đổi IP; useproxy/useproxystream cần proxy ngoài; rhub/rch và các trường còn lại nên giữ nguyên.",
+                "Site YAML NextHUB tự phát hiện. Thường chỉ cần đổi enable. streamproxy đi qua Lampac; useproxy/useproxystream cần proxy ngoài.",
                 nextHubKeys));
         }
 
