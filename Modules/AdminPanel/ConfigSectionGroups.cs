@@ -100,7 +100,7 @@ public static class ConfigSectionGroups
                 "BongaCams", "Chaturbate", "Ebalovo", "Eporner", "HQporner", "PornHub",
                 "PornHubPremium", "Porntrex", "Runetki", "Spankbang", "Tizam",
                 "Xhamster", "Xnxx", "Xvideos", "XvideosRED",
-                "xasiat", "porn4days", "pornobolt", "OneJav"
+                "xasiat", "porn4days", "pornobolt"
             }),
     };
 
