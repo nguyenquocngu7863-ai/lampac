@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Authorization;
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Caching.Memory;
 using Newtonsoft.Json.Linq;
@@ -109,18 +109,6 @@ public class SisiApiController : BaseController
             .Replace("{localhost}", host);
 
         return ContentTo(startpage, "application/javascript; charset=utf-8");
-    }
-    #endregion
-
-    #region sisi-restyle.js
-    [HttpGet, AllowAnonymous]
-    [Staticache(10, always: true, setHeadersNoCache: true)]
-    [Route("sisi-restyle.js")]
-    public ActionResult SisiRestyle()
-    {
-        string restyle = FileCache.ReadAllText($"{ModInit.modpath}/plugins/sisi-restyle.js", "sisi-restyle.js", saveCache: false);
-
-        return ContentTo(restyle, "application/javascript; charset=utf-8");
     }
     #endregion
 

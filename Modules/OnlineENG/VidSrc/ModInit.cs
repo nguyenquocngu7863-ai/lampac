@@ -19,10 +19,7 @@ public class ModInit : IModuleLoaded, IModuleOnline
     {
         var online = new List<ModuleOnlineItem>();
 
-        // Isolated opt-in while the rest of the ENG group stays hidden.
-        bool allowWhenEngDisabled = conf?.enabled == true;
-        if ((args.original_language == null || args.original_language == "en") &&
-            (CoreInit.conf.disableEng == false || allowWhenEngDisabled))
+        if ((args.original_language == null || args.original_language == "en") && CoreInit.conf.disableEng == false)
         {
             if (args.source != null && (args.source is "tmdb" or "cub") && long.TryParse(args.id, out long id) && id > 0)
             {
@@ -49,20 +46,11 @@ public class ModInit : IModuleLoaded, IModuleOnline
 
     private void UpdateConf()
     {
-        conf = ModuleInvoke.Init("Vidsrc", new OnlinesSettings("Vidsrc", "https://vsembed.su")
+        conf = ModuleInvoke.Init("Vidsrc", new OnlinesSettings("Vidsrc", "https://vidsrc.cc")
         {
             displayindex = 1005,
-            kit = false,
-            rhub = false,
             streamproxy = true
         });
-
-        // Force the maintained vsembed.su endpoint so stale init/Kit values
-        // cannot route back to vidsrc.to.
-        conf.host = "https://vsembed.su";
-        conf.kit = false;
-        conf.rhub = false;
-        conf.streamproxy = true;
     }
 
     private string OnlineApiQuality(EventOnlineApiQuality e)

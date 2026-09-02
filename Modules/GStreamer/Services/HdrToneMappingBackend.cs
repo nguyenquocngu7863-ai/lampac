@@ -16,8 +16,6 @@ internal static class HdrToneMappingBackend
 
     public static bool IsAvailable => available.Value;
 
-    public static string RuntimeId => GetRuntimeId();
-
     public static void Initialize()
     {
         if (IsAvailable)
@@ -49,40 +47,15 @@ internal static class HdrToneMappingBackend
             string moduleNativeDirectory = string.IsNullOrWhiteSpace(ModInit.modpath)
                 ? null
                 : Path.Combine(ModInit.modpath, "native");
-            string configuredPluginPath = Environment.GetEnvironmentVariable("GST_PLUGIN_PATH_1_0")
-                ?? Environment.GetEnvironmentVariable("GST_PLUGIN_PATH");
-
-            string[] roots =
-            {
-                AppContext.BaseDirectory,
-                assemblyDirectory,
-                moduleNativeDirectory,
-                "/usr/lib/gstreamer-1.0",
-                "/usr/local/lib/gstreamer-1.0",
-                "/usr/lib/aarch64-linux-gnu/gstreamer-1.0",
-                "/usr/lib/arm-linux-gnueabihf/gstreamer-1.0"
-            };
-
+            string[] roots = { AppContext.BaseDirectory, assemblyDirectory, moduleNativeDirectory };
             foreach (string root in roots)
             {
                 if (string.IsNullOrWhiteSpace(root))
                     continue;
 
-                string pluginDirectory = root;
-                if (!root.EndsWith("gstreamer-1.0", StringComparison.Ordinal))
-                    pluginDirectory = Path.Combine(root, "runtimes", runtimeId, "native", "gstreamer-1.0");
-
+                string pluginDirectory = Path.Combine(root, "runtimes", runtimeId, "native", "gstreamer-1.0");
                 if (Directory.Exists(pluginDirectory))
                     Registry.Get().ScanPath(pluginDirectory);
-            }
-
-            if (!string.IsNullOrWhiteSpace(configuredPluginPath))
-            {
-                foreach (string pluginDirectory in configuredPluginPath.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
-                {
-                    if (Directory.Exists(pluginDirectory))
-                        Registry.Get().ScanPath(pluginDirectory);
-                }
             }
 
             return CanCreateElement();

@@ -10,9 +10,9 @@ streamproxy_preview: true
 
 menu:
   sort:
-    Mới nhất: ""
-    Phổ biến: popular/{page}/
-    Thịnh hành: trending/{page}/
+    Новинки: ""
+    Популярное: popular/{page}/
+    В тренде: trending/{page}/
   categories:
     format: tags/{cat}/
     Брюнетки: brunette

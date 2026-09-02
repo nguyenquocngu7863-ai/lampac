@@ -10,24 +10,24 @@ streamproxy_preview: true
 
 menu:
   sort:
-    Mới nhất: ""
-    Hay nhất: top-rated/{page}/
-    Phổ biến: most-popular/{page}/
+    Новинки: ""
+    Лучшее: top-rated/{page}/
+    Популярнаe: most-popular/{page}/
   categories:
     format: tags/{cat}/{page}/
-    Châu Á: asian
-    Nhật Bản: japanese
-    Trung Quốc: chinese
-    Hàn Quốc: korean
-    Thái Lan: thai
-    Việt Nam: vietnamese
-    Ấn Độ: indian
-    18+: teen-18
-    Nghiệp dư: amateur
-    Tại nhà: homemade
-    Khẩu giao: blowjob
-    Hậu môn: anal
-    Hentai: hentai
+    Азиатки: asian
+    Японское: japanese
+    Китайское: chinese
+    Корейское: korean
+    Тайское: thai
+    Вьетнамское: vietnamese
+    Индийское: indian
+    Подростки 18+: teen-18
+    Любительское: amateur
+    Домашнее: homemade
+    Минет: blowjob
+    Анал: anal
+    Хентай: hentai
 
 list:
   uri: latest-updates/{page}/

@@ -231,10 +231,6 @@ public class TmdbProxyController : BaseController
            .Append(host)
            .Append(path);
 
-        bool vietnameseMetadata = query.TryGetValue("language", out var languageValues) &&
-            languageValues.Any(value => value != null && value.StartsWith("vi", StringComparison.OrdinalIgnoreCase));
-        bool vietnameseImages = query.TryGetValue("include_image_language", out var imageLangValues) &&
-            imageLangValues.Any(value => value != null && value.IndexOf("vi", StringComparison.OrdinalIgnoreCase) >= 0);
         var firstArg = true;
 
         foreach (var q in query)
@@ -251,12 +247,6 @@ public class TmdbProxyController : BaseController
                 var value = values[i];
                 if (string.IsNullOrEmpty(value))
                     continue;
-
-                if (vietnameseMetadata && q.Key.Equals("language", StringComparison.OrdinalIgnoreCase))
-                    value = "en";
-
-                if ((vietnameseMetadata || vietnameseImages) && q.Key.Equals("include_image_language", StringComparison.OrdinalIgnoreCase))
-                    value = "en,null";
 
                 uri.Append(firstArg ? '?' : '&');
                 uri.Append(q.Key).Append('=').Append(value);

@@ -39,7 +39,6 @@ public class ModInit : IModuleLoaded, IModuleSisi
             displayindex = 14,
             rch_access = "apk",
             stream_access = "apk,cors",
-            streamproxy = true,
             rchstreamproxy = "web",
             headers = Http.defaultFullHeaders,
             headers_stream = HeadersModel.Init(Http.defaultFullHeaders,
@@ -48,8 +47,5 @@ public class ModInit : IModuleLoaded, IModuleSisi
                 ("sec-fetch-site", "same-origin")
             ).ToDictionary()
         });
-
-        // Same-origin headers are required; APK inner player cannot send them.
-        conf.streamproxy = true;
     }
 }

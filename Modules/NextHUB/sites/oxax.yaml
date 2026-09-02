@@ -4,7 +4,6 @@ displayname: oxax
 stream_access: apk,cors,web
 rch_access: apk,cors,web
 rchstreamproxy: web,apk,cors
-streamproxy: true
 host: http://oxax.tv
 
 headers_stream:

@@ -32,7 +32,7 @@ public class Program
     static IHost _host;
     public static bool _reload { get; private set; } = true;
 
-    public static IReadOnlyList<IPNetwork> cloudflare_ips = Array.Empty<IPNetwork>();
+    public static IReadOnlyList<IPNetwork> cloudflare_ips = default;
 
     static Timer _usersTimer;
     #endregion

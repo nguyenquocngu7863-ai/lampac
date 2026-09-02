@@ -5,7 +5,6 @@ using Shared.Models.SISI.Base;
 using Shared.Services;
 using System.Collections.Generic;
 using System.Net.Http;
-using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace Chaturbate;
@@ -13,7 +12,6 @@ namespace Chaturbate;
 public class ChaturbateController : BaseSisiController
 {
     static readonly HttpClient http2Client = FriendlyHttp.CreateHttp2Client();
-    static readonly Regex SafeTag = new("^[a-z0-9_-]+$", RegexOptions.Compiled);
 
     public ChaturbateController() : base(ModInit.conf)
     {
@@ -26,7 +24,7 @@ public class ChaturbateController : BaseSisiController
 
     [HttpGet, Staticache]
     [Route("chu")]
-    async public Task<ActionResult> Index(string search, string sort, string c, int pg = 1)
+    async public Task<ActionResult> Index(string search, string sort, int pg = 1)
     {
         if (!string.IsNullOrEmpty(search))
             return OnError("no search", false);
@@ -34,15 +32,12 @@ public class ChaturbateController : BaseSisiController
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
 
-        if (!string.IsNullOrEmpty(c) && !SafeTag.IsMatch(c))
-            c = null;
-
     rhubFallback:
-        var cache = await InvokeCacheResult($"Chaturbate:list:{sort}:{c}:{pg}", 5, jsonContext.ListPlaylistItem, async e =>
+        var cache = await InvokeCacheResult($"Chaturbate:list:{sort}:{pg}", 5, jsonContext.ListPlaylistItem, async e =>
         {
             List<PlaylistItem> playlists = null;
 
-            await httpHydra.GetSpan(ChaturbateTo.Uri(init.host, sort, c, pg), span =>
+            await httpHydra.GetSpan(ChaturbateTo.Uri(init.host, sort, pg), span =>
             {
                 playlists = ChaturbateTo.Playlist("chu/potok", span);
             });
@@ -56,7 +51,7 @@ public class ChaturbateController : BaseSisiController
         if (IsRhubFallback(cache))
             goto rhubFallback;
 
-        return PlaylistResult(cache, ChaturbateTo.Menu(host, sort, c));
+        return PlaylistResult(cache, ChaturbateTo.Menu(host, sort));
     }
 
 
@@ -68,9 +63,7 @@ public class ChaturbateController : BaseSisiController
             return badInitMsg;
 
     rhubFallback:
-        // Live LL-HLS URLs are session-bound and can rotate while a room stays
-        // online. Never reuse the old one-minute URL cache on replay.
-        var cache = await InvokeCacheResult($"chaturbate:stream-live-v2:{baba}", 0, jsonContext.DictionaryStringString, async e =>
+        var cache = await InvokeCacheResult($"chaturbate:stream:{baba}", 1, jsonContext.DictionaryStringString, async e =>
         {
             string url = ChaturbateTo.StreamLinksUri(init.host, baba);
             if (url == null)

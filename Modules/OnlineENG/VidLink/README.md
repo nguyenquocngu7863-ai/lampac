@@ -1,37 +1,36 @@
 # VidLink
 
-Nguồn ENG `https://vidlink.pro`. Resolver mặc định là **HTTP** (token XSalsa20-Poly1305 → `/api/b/movie|tv/...`). Không cần Playwright. Playwright chỉ còn là bước dự phòng.
+Онлайн-источник **VidLink** (`https://vidlink.pro`) для ENG — фильтры **`disableEng`**, **`tmdb`/`cub`**, Playwright (как **MovPI**).
 
-## Hiện nguồn
+## Интерфейс
 
-- `disableEng: false` — hiện như các nguồn ENG khác.
-- `disableEng: true` (mặc định Termux) — vẫn hiện vì `enabled` mặc định `true`. Tắt bằng `"VidLink": { "enabled": false }` hoặc `"enable": false`.
+**`IModuleLoaded`**, **`IModuleOnline`**.
 
-## Cấu hình
+## Условие (`Invoke`)
 
-```json
-"VidLink": {
-  "enable": true,
-  "enabled": true,
-  "streamproxy": true,
-  "httptimeout": 20
-}
-```
+Плагин **`vidlink`**, имя **`VidLink`**, суффикс **` (ENG)`**.
+
+## Глобальный поиск
+
+Нет **`with_search.Add`** в **`ModInit`**.
+
+## Конфигурация
+
+Секция в `init.conf`: **`VidLink`** (`OnlinesSettings`).
+
+По умолчанию: **`displayindex = 1015`**, **`streamproxy = true`**.
+
+## Подпись качества
+
+**`OnlineApiQuality`**: при **`e.balanser == "vidlink"`** → **` ~ 1080p`**.
 
 ## HTTP
 
-CDN (`bcdn.hakunaymatata.com`) 429 nếu probe nhiều lần. Không probe lúc resolve. Play URL luôn `/lite/vidlink/playlist.m3u8?uri=` (HLS). Header CDN `filmboom.top`. Token enc-dec. Segment `media.ts?uri=`, không `/proxy/`.
+| Маршрут | Назначение |
+|---------|------------|
+| **`lite/vidlink`** | Основная выдача. |
+| **`lite/vidlink/video`** | Видео. |
 
-| Route | Việc |
-|-------|------|
-| `lite/vidlink` | Danh sách phim/tập |
-| `lite/vidlink/video` | Stream |
-| `lite/vidlink/video.m3u8` | Cùng resolver |
-| `lite/vidlink/playlist.m3u8` | Tải HLS, viết lại segment |
-| `lite/vidlink/media.mp4` | Stream MP4 (có `uri=`) |
-| `lite/vidlink/file.mp4` | Alias MP4 (có `uri=`) |
-| `lite/vidlink/media.ts` | Segment HLS |
+## Файлы
 
-## Files
-
-`ModInit.cs`, `Controller.cs`.
+**`ModInit.cs`**, **`Controller.cs`**, **`OnlineApi.cs`**, **`Model.cs`**.

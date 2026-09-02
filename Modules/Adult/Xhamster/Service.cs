@@ -157,40 +157,40 @@ public static class XhamsterTo
         {
             new MenuItem()
             {
-                title = "Tìm kiếm",
+                title = "Поиск",
                 search_on = "search_on",
                 playlist_url = $"{host}/{plugin}"
             },
             new MenuItem()
             {
-                title = $"Chất lượng: {(q == "4k" ? "2160p" : "Bất kỳ")}",
+                title = $"Качество: {(q == "4k" ? "2160p" : "Любое")}",
                 playlist_url = "submenu",
                 submenu = new List<MenuItem>(2)
                 {
-                    new("Bất kỳ", $"{host}/{plugin}?c={c}&sort={sort}"),
+                    new("Любое", $"{host}/{plugin}?c={c}&sort={sort}"),
                     new("2160p", $"{host}/{plugin}?c={c}&sort={sort}&q=4k")
                 }
             },
             new MenuItem()
             {
-                title = $"Sắp xếp: {(sort == "newest" ? "Mới nhất" : sort == "best" ? "Tốt nhất" :"Thịnh hành")}",
+                title = $"Сортировка: {(sort == "newest" ? "Новинки" : sort == "best" ? "Лучшие" :"В тренде")}",
                 playlist_url = "submenu",
                 submenu = new List<MenuItem>(3)
                 {
-                    new("Thịnh hành", $"{host}/{plugin}?c={c}&q={q}&sort=trend"),
+                    new("В тренде", $"{host}/{plugin}?c={c}&q={q}&sort=trend"),
                     new("Самые новые", $"{host}/{plugin}?c={c}&q={q}&sort=newest"),
-                    new("Tốt nhất видео", $"{host}/{plugin}?c={c}&q={q}&sort=best")
+                    new("Лучшие видео", $"{host}/{plugin}?c={c}&q={q}&sort=best")
                 }
             },
             new MenuItem()
             {
-                title = $"Xu hướng: {(plugin == "xmrgay" ? "Đồng tính nam" : plugin == "xmrsml" ? "Chuyển giới" :"Dị tính")}",
+                title = $"Ориентация: {(plugin == "xmrgay" ? "Геи" : plugin == "xmrsml" ? "Трансы" :"Гетеро")}",
                 playlist_url = "submenu",
                 submenu = new List<MenuItem>(3)
                 {
-                    new("Dị tính", $"{host}/xmr"),
-                    new("Đồng tính nam", $"{host}/xmrgay"),
-                    new("Chuyển giới", $"{host}/xmrsml")
+                    new("Гетеро", $"{host}/xmr"),
+                    new("Геи", $"{host}/xmrgay"),
+                    new("Трансы", $"{host}/xmrsml")
                 }
             }
         };
@@ -199,7 +199,7 @@ public static class XhamsterTo
         {
             var submenu = new List<MenuItem>(75)
             {
-                new("Tất cả", $"{host}/{plugin}?sort={sort}&q={q}"),
+                new("Все", $"{host}/{plugin}?sort={sort}&q={q}"),
                 new("Русское", $"{host}/{plugin}?sort={sort}&q={q}&c=russian"),
                 new("Секс втроем", $"{host}/{plugin}?sort={sort}&q={q}&c=threesome"),
                 new("Азиатское", $"{host}/{plugin}?sort={sort}&q={q}&c=asian"),
@@ -276,7 +276,7 @@ public static class XhamsterTo
 
             menu.Add(new MenuItem()
             {
-                title = $"Danh mục: {submenu.FirstOrDefault(i => i.playlist_url.EndsWith($"&c={c}"))?.title ?? "tất cả"}",
+                title = $"Категория: {submenu.FirstOrDefault(i => i.playlist_url.EndsWith($"&c={c}"))?.title ?? "все"}",
                 playlist_url = "submenu",
                 submenu = submenu
             });
@@ -285,7 +285,7 @@ public static class XhamsterTo
         {
             var submenu = new List<MenuItem>(50)
             {
-                new("Tất cả", $"{host}/{plugin}?sort={sort}&q={q}"),
+                new("Все", $"{host}/{plugin}?sort={sort}&q={q}"),
                 new("Russian", $"{host}/{plugin}?sort={sort}&q={q}&c=russian"),
                 new("Threesome", $"{host}/{plugin}?sort={sort}&q={q}&c=threesome"),
                 new("Азиатское", $"{host}/{plugin}?sort={sort}&q={q}&c=asian"),
@@ -335,7 +335,7 @@ public static class XhamsterTo
 
             menu.Add(new MenuItem()
             {
-                title = $"Danh mục: {submenu.FirstOrDefault(i => i.playlist_url.EndsWith($"&c={c}"))?.title ?? "tất cả"}",
+                title = $"Категория: {submenu.FirstOrDefault(i => i.playlist_url.EndsWith($"&c={c}"))?.title ?? "все"}",
                 playlist_url = "submenu",
                 submenu = submenu
             });
@@ -344,7 +344,7 @@ public static class XhamsterTo
         {
             var submenu = new List<MenuItem>(50)
             {
-                new("Tất cả", $"{host}/{plugin}?sort={sort}&q={q}"),
+                new("Все", $"{host}/{plugin}?sort={sort}&q={q}"),
                 new("Russian", $"{host}/{plugin}?sort={sort}&q={q}&c=russian"),
                 new("Cuckold", $"{host}/{plugin}?sort={sort}&q={q}&c=cuckold"),
                 new("Азиатское", $"{host}/{plugin}?sort={sort}&q={q}&c=asian"),
@@ -397,7 +397,7 @@ public static class XhamsterTo
 
             menu.Add(new MenuItem()
             {
-                title = $"Danh mục: {submenu.FirstOrDefault(i => i.playlist_url.EndsWith($"&c={c}"))?.title ?? "tất cả"}",
+                title = $"Категория: {submenu.FirstOrDefault(i => i.playlist_url.EndsWith($"&c={c}"))?.title ?? "все"}",
                 playlist_url = "submenu",
                 submenu = submenu
             });

@@ -10,10 +10,10 @@ streamproxy_preview: true
 
 menu:
   sort:
-    Mới nhất: ""
-    Hay nhất: top-rated/{page}/
-    Phổ biến: most-popular/{page}/
-    Video dài: longest/{page}/
+    Новинки: ""
+    Лучшее: top-rated/{page}/
+    Популярнаe: most-popular/{page}/
+    Длинные: longest/{page}/
   categories:
     format: categories/{cat}/{page}/
     Model: model

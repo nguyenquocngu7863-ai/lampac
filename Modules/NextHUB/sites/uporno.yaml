@@ -11,9 +11,9 @@ headers_stream:
 
 menu:
   sort:
-    Mới nhất: latest-updates/{page}/
-    Hay nhất: top-rated/{page}/
-    Phổ biến: most-popular/{page}/
+    Новинки: latest-updates/{page}/
+    Лучшее: top-rated/{page}/
+    Популярное: most-popular/{page}/
   categories:
     format: categories/{cat}/{page}/
     Anal: anal

@@ -371,6 +371,3 @@ healthchecksdb
 !/Modules/GStreamer/
 !/Modules/GStreamer/gst-libs/
 !/Modules/GStreamer/gst-libs/**
-
-# Local scratch test page for online-compact plugin
-/.test-compact/

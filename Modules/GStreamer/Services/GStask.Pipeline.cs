@@ -1,4 +1,4 @@
-using GStreamer.Models;
+﻿using GStreamer.Models;
 using Shared.Services.Pools;
 using System;
 using System.Linq;
@@ -192,19 +192,10 @@ public partial class GStask
             ? string.Empty
             : $"{videoFilter} !";
 
-        // Give the decoder, tone mapper and encoder separate streaming
-        // threads. Without these queues the whole 4K chain runs on one
-        // streaming thread and a slow x264 frame blocks the decoder too.
-        // Keep the queues deliberately small: one 4K 10-bit frame is large.
-        const string decodeQueue = "queue name=video_decode_queue max-size-buffers=3 max-size-bytes=0 max-size-time=0 !";
-        const string encodeQueue = "queue name=video_encode_queue max-size-buffers=2 max-size-bytes=0 max-size-time=0 !";
-
         sb.AppendLine($$"""
         mq.src_0 !
         decodebin !
-        {{decodeQueue}}
         {{filterPipeline}}
-        {{encodeQueue}}
         {{encoderPipeline}}
         h264parse
             config-interval=0 !

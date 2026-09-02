@@ -85,7 +85,7 @@ public class ListController : BaseSisiController<NxtSettings>
         {
             menu.Add(new MenuItem()
             {
-                title = "Tìm kiếm",
+                title = "Поиск",
                 search_on = "search_on",
                 playlist_url = $"{host}/nexthub?plugin={EncryptQuery(plugin)}",
             });
@@ -97,10 +97,7 @@ public class ListController : BaseSisiController<NxtSettings>
         {
             var msort = new MenuItem()
             {
-                title = $"Sắp xếp: {CategoryVi.Translate(
-                    init.menu.sort.FirstOrDefault(i => i.Value.Equals(sort, StringComparison.OrdinalIgnoreCase)).Key ?? init.menu.sort.First().Key,
-                    sort
-                )}",
+                title = $"Сортировка: {init.menu.sort.FirstOrDefault(i => i.Value.Equals(sort, StringComparison.OrdinalIgnoreCase)).Key ?? init.menu.sort.First().Key}",
                 playlist_url = "submenu",
                 submenu = new List<MenuItem>()
             };
@@ -111,7 +108,7 @@ public class ListController : BaseSisiController<NxtSettings>
             {
                 msort.submenu.Add(new MenuItem()
                 {
-                    title = CategoryVi.Translate(s.Key, s.Value),
+                    title = s.Key,
                     playlist_url = $"{host}/nexthub?plugin={EncryptQuery(plugin)}&sort={EncryptQuery(s.Value)}" + arg,
                 });
             }
@@ -128,10 +125,7 @@ public class ListController : BaseSisiController<NxtSettings>
 
             var mcat = new MenuItem()
             {
-                title = $"Danh mục: {CategoryVi.Translate(
-                    categories.FirstOrDefault(i => i.Value.Equals(cat, StringComparison.OrdinalIgnoreCase)).Key ?? "Chọn",
-                    cat
-                )}",
+                title = $"Категории: {categories.FirstOrDefault(i => i.Value.Equals(cat, StringComparison.OrdinalIgnoreCase)).Key ?? "Выбрать"}",
                 playlist_url = "submenu",
                 submenu = new List<MenuItem>()
             };
@@ -142,7 +136,7 @@ public class ListController : BaseSisiController<NxtSettings>
             {
                 mcat.submenu.Add(new MenuItem()
                 {
-                    title = CategoryVi.Translate(s.Key, s.Value),
+                    title = s.Key,
                     playlist_url = $"{host}/nexthub?plugin={EncryptQuery(plugin)}&cat={EncryptQuery(s.Value)}" + arg,
                 });
             }
@@ -161,10 +155,7 @@ public class ListController : BaseSisiController<NxtSettings>
 
                 var mcat = new MenuItem()
                 {
-                    title = $"{CategoryVi.Translate(custom.name, custom.arg)}: {CategoryVi.Translate(
-                        custom.submenu.FirstOrDefault(i => i.Value.Equals(argvalue, StringComparison.OrdinalIgnoreCase)).Key ?? "Chọn",
-                        argvalue
-                    )}",
+                    title = $"{custom.name}: {custom.submenu.FirstOrDefault(i => i.Value.Equals(argvalue, StringComparison.OrdinalIgnoreCase)).Key ?? "Выбрать"}",
                     playlist_url = "submenu",
                     submenu = new List<MenuItem>()
                 };
@@ -173,7 +164,7 @@ public class ListController : BaseSisiController<NxtSettings>
                 {
                     mcat.submenu.Add(new MenuItem()
                     {
-                        title = CategoryVi.Translate(s.Key, s.Value),
+                        title = s.Key,
                         playlist_url = $"{host}/nexthub?plugin={EncryptQuery(plugin)}&{custom.arg}={EncryptQuery(s.Value)}",
                     });
                 }

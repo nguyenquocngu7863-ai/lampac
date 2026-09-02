@@ -14,42 +14,42 @@ menu:
     cat: "{host}/categories/{cat}/videos/?from={page}"
     catsort: "{host}/categories/{cat}/?by={sort}&from={page}"
   sort:
-    Mới nhất: ""
-    Hay nhất: video_viewed_week
-    Nổi bật: rating_week
+    Новинки: ""
+    Лучшие: video_viewed_week
+    Топовые: rating_week
   categories:
-    Cuckold: cuckold-porn
-    Người trẻ mảnh mai 18+: skinny-porn-videos
-    Squirt: sperm-squirt-porn-videos
-    Dương vật lớn: big-dick-porn-videos
-    Khẩu giao: blowjob-porn-videos
-    Quốc tế: interracial-porn-videos
-    Thủ dâm và đơn: solo-porn
-    Sao: celebrities-porn-videos
-    Fisting: fisting-porn-videos
-    Châu Á: asian-porn-videos
-    Hóa trang: xxx-porn-parody
-    Lớn tuổi: granny-porn-videos
-    Quan hệ hậu môn: anal-porn-videos
-    Đồ chơi: sex-toys-porn-videos
-    Khẩu giao miệng: oral-porn-videos
-    Người trẻ 18+: teen-porn-videos
-    Tự quay: homemade-porn-videos
-    Nga: russian-porn
-    Quan hệ tập thể: group-porn-videos
-    Gái gợi cảm: lesbians-porn-videos
-    Đầy đặn: tolstushki-porn-videos
-    Lãng mạn: classic-porn
-    Nga có thuyết minh: porno-s-russkim-perevodom
-    Nơi công cộng: public-porn-videos
-    Camera ẩn: hidden-cameras-porn-videos
-    Phim: full-length-porn-movies
-    Phim Nga: russian-porn-movies
-    BDSM: bdsm-porn-videos
-    Gợi cảm: eroticheskie-filmy
-    Máy hỗ trợ: sex-mashines-porn-videos
-    Kinh dị: horror
-    VR: vr-porn-videos
+    Куколд порно, измена, рогоносцы: cuckold-porn
+    Худые, порно с худыми: skinny-porn-videos
+    Сперма, сквиртинг: sperm-squirt-porn-videos
+    Большие толстые члены: big-dick-porn-videos
+    Минет, ручная работа: blowjob-porn-videos
+    Межрассовое Порно: interracial-porn-videos
+    Соло, стриптиз, мастурбация: solo-porn
+    Порно знаменитостей: celebrities-porn-videos
+    Фистинг, инсершн, страпон: fisting-porn-videos
+    Азиатки: asian-porn-videos
+    Порно пародии: xxx-porn-parody
+    Старушки, порно со зрелыми: granny-porn-videos
+    Анал и Анальный секс: anal-porn-videos
+    Секс игрушки: sex-toys-porn-videos
+    Орал, анилингус, куннилингус: oral-porn-videos
+    Порно молодых: teen-porn-videos
+    Домашнее порно видео: homemade-porn-videos
+    Русское порно: russian-porn
+    Групповое порно, свингеры: group-porn-videos
+    Сексуальные девушки: lesbians-porn-videos
+    Толстушки, порно с толстыми: tolstushki-porn-videos
+    Классика, любовь, поцелуи, эротика: classic-porn
+    Порно с переводом: porno-s-russkim-perevodom
+    Публичное порно: public-porn-videos
+    Скрытая камера: hidden-cameras-porn-videos
+    Полнометражные порно фильмы: full-length-porn-movies
+    Русские порно фильмы: russian-porn-movies
+    БДСМ, доминирование, Садо Мазо: bdsm-porn-videos
+    Эротические фильмы: eroticheskie-filmy
+    Секс машины: sex-mashines-porn-videos
+    Порно Ужасы: horror
+    Виртуальное порно VR 360: vr-porn-videos
 
 list:
   uri: videos/?from={page}

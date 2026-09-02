@@ -135,13 +135,13 @@ public static class PorntrexTo
             {
                 new MenuItem()
                 {
-                    title = "Tìm kiếm",
+                    title = "Поиск",
                     search_on = "search_on",
                     playlist_url = url,
                 },
                 new MenuItem()
                 {
-                    title = $"Sắp xếp: {(string.IsNullOrEmpty(sort) ? "Most Relevant" : sort)}",
+                    title = $"Сортировка: {(string.IsNullOrEmpty(sort) ? "Most Relevant" : sort)}",
                     playlist_url = "submenu",
                     submenu = new List<MenuItem>()
                     {
@@ -152,12 +152,12 @@ public static class PorntrexTo
                         },
                         new MenuItem()
                         {
-                            title = "Mới nhất",
+                            title = "Новинки",
                             playlist_url = $"{url}?c={c}&sort=latest-updates&search={encodesearch}"
                         },
                         new MenuItem()
                         {
-                            title = "Xem nhiều nhất",
+                            title = "Топ просмотров",
                             playlist_url = $"{url}?c={c}&sort=most-popular&search={encodesearch}"
                         }
                     }
@@ -176,25 +176,25 @@ public static class PorntrexTo
         {
             new MenuItem()
             {
-                title = "Tìm kiếm",
+                title = "Поиск",
                 search_on = "search_on",
                 playlist_url = url,
             },
             new MenuItem()
             {
-                title = $"Sắp xếp: {(string.IsNullOrEmpty(sort) ? "mới nhất" : sort)}",
+                title = $"Сортировка: {(string.IsNullOrEmpty(sort) ? "новинки" : sort)}",
                 playlist_url = "submenu",
                 submenu = new List<MenuItem>(2)
                 {
-                    new("Mới nhất", $"{url}?c={c}"),
-                    new("Xem nhiều nhất", $"{url}?c={c}&sort=most-popular")
+                    new("Новинки", $"{url}?c={c}"),
+                    new("Топ просмотров", $"{url}?c={c}&sort=most-popular")
                 }
             }
         };
 
         var catmenu = new List<MenuItem>(90)
         {
-            new("Tất cả", $"{url}?sort={sort}"),
+            new("Все", $"{url}?sort={sort}"),
             new("4K UHD", $"{url}?sort={sort}&c=4k-porn"),
             new("Anal", $"{url}?sort={sort}&c=anal"),
             new("Arab", $"{url}?sort={sort}&c=arab"),
@@ -286,7 +286,7 @@ public static class PorntrexTo
 
         menu.Add(new MenuItem()
         {
-            title = $"Danh mục: {catmenu.FirstOrDefault(i => i.playlist_url.EndsWith($"&c={c}"))?.title ?? "tất cả"}",
+            title = $"Категория: {catmenu.FirstOrDefault(i => i.playlist_url.EndsWith($"&c={c}"))?.title ?? "все"}",
             playlist_url = "submenu",
             submenu = catmenu
         });

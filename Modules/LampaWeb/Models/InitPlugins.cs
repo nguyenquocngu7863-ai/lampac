@@ -1,13 +1,10 @@
-namespace LampaWeb;
+﻿namespace LampaWeb;
 
 public class InitPlugins
 {
     public bool pirate_store { get; set; }
 
     public bool jacred { get; set; }
-
-    /// <summary>Syncs the local Jackett URL and API key into Lampa parser settings.</summary>
-    public bool jackett { get; set; } = true;
 
     public bool dlna { get; set; }
 
@@ -21,25 +18,11 @@ public class InitPlugins
 
     public bool online { get; set; }
 
-    /// <summary>Loads compact responsive styles for Online result cards.</summary>
-    public bool onlineCompact { get; set; } = true;
-
-    /// <summary>Loads the persistent Vietnamese localization overlay after addons.</summary>
-    public bool vietnamese { get; set; } = true;
-
     public bool catalog { get; set; }
 
     public bool dorama { get; set; }
 
-    /// <summary>Installs the built-in Vietnamese SubSense subtitle plugin in Lampa.</summary>
-    /// <remarks>Opt-in: the stable default is StremioSub below.</remarks>
-    public bool subsenseAuto { get; set; }
-
     public bool sisi { get; set; }
-
-    /// <summary>Loads the SISI restyle plugin (16:9 grid, user rows/cols).
-    /// Safe without SISI: it only styles sisi_* activities.</summary>
-    public bool sisiRestyle { get; set; } = true;
 
     public bool torrserver { get; set; }
 
@@ -52,25 +35,4 @@ public class InitPlugins
     public bool timecode { get; set; }
 
     public bool watch_together { get; set; }
-
-    /// <summary>Loads the legacy direct SubSense provider.</summary>
-    /// <remarks>Opt-in; enable only instead of <see cref="stremiosub"/>.</remarks>
-    public bool subsense { get; set; }
-
-    /// <summary>Loads the SubDL/SubSource API provider.</summary>
-    /// <remarks>Opt-in; enable only instead of <see cref="stremiosub"/>.</remarks>
-    public bool subfinder { get; set; }
-
-    /// <summary>Loads the stable Stremio SubDL/SubSource provider.</summary>
-    public bool stremiosub { get; set; } = true;
-
-    /// <summary>Auto-selects the preferred audio (default English) and subtitle
-    /// (default Vietnamese) track when the player loads track lists.</summary>
-    public bool autotracks { get; set; } = true;
-
-    /// <summary>Loads the in-Lampa Admin Panel (password once, no WebView).</summary>
-    public bool adminpanel { get; set; } = true;
-
-    /// <summary>Loads the GStreamer player helper when the GStreamer module is installed.</summary>
-    public bool gst { get; set; } = true;
 }

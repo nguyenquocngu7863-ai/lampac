@@ -8,10 +8,10 @@ priorityBrowser: http
 
 menu:
   sort:
-    Mới nhất: newest-clips/{page}.html
-    Phổ biến: most-popular/{page}.html
-    Đánh giá cao: top-rated-week/{page}.html
-    Thịnh hành: trending/{page}.html
+    Новинки: newest-clips/{page}.html
+    Популярные: most-popular/{page}.html
+    Топ рейтинга: top-rated-week/{page}.html
+    В тренде: trending/{page}.html
 
 list:
   uri: newest-clips/{page}.html

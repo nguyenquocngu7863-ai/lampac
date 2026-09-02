@@ -28,29 +28,14 @@ public class GStreamerController : BaseController
     [HttpGet("/gst/js/{token}")]
     public ActionResult GstJs(string token)
     {
-        // Keep the client helper available even when runtime transcoding is
-        // disabled. It reads /gst/status and falls back to direct playback;
-        // this also lets it apply the landscape player behavior consistently.
+        if (!ModInit.conf.enable)
+            return Content(string.Empty, "application/javascript; charset=utf-8");
+
         var plugin = FileCache.ReadAllText($"{ModInit.modpath}/plugins/gst.js", "gst.js")
             .Replace("{localhost}", CoreInit.Host(HttpContext))
             .Replace("{token}", HttpUtility.UrlEncode(token));
 
         return ContentTo(plugin, "application/javascript; charset=utf-8");
-    }
-    #endregion
-
-    #region status
-    [HttpGet, AllowAnonymous]
-    [Route("gst/status")]
-    public ActionResult Status()
-    {
-        return Json(new
-        {
-            enabled = ModInit.conf.enable,
-            hdr_to_sdr = ModInit.conf.hdr_to_sdr,
-            hdr_backend_available = HdrToneMappingBackend.IsAvailable,
-            runtime = HdrToneMappingBackend.RuntimeId
-        });
     }
     #endregion
 
@@ -72,7 +57,7 @@ public class GStreamerController : BaseController
 
     #region add
     [HttpGet("/gst/add")]
-    public async Task<ActionResult> Add(string link, string linkencode, string uid, string token, string session)
+    public async Task<ActionResult> Add(string link, string linkencode, string uid, string token)
     {
         SetHeadersNoCache();
 
@@ -83,15 +68,9 @@ public class GStreamerController : BaseController
         if (ModInit.conf.allowed_uids != null && !ModInit.conf.allowed_uids.Contains(user_id))
             return StatusCode(401);
 
-        var gstask = await GService.GetOrAdd(
-            link ?? CrypTo.DecodeBase64(linkencode),
-            user_id,
-            session: session
-        );
+        var gstask = await GService.GetOrAdd(link ?? CrypTo.DecodeBase64(linkencode), user_id);
         if (gstask.task == null)
         {
-            Console.WriteLine($"GStreamer: add rejected source. Reason={gstask.error}");
-            Serilog.Log.Warning("GStreamer add rejected source. Reason={Reason}", gstask.error);
             HttpContext.Response.StatusCode = StatusCodes.Status502BadGateway;
             return Content(gstask.error);
         }

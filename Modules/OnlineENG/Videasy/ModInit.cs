@@ -5,6 +5,7 @@ using Shared.Models.Events;
 using Shared.Models.Module;
 using Shared.Models.Module.Interfaces;
 using Shared.Models.Online.Settings;
+using Shared.PlaywrightCore;
 using Shared.Services;
 using System.Collections.Generic;
 
@@ -18,15 +19,13 @@ public class ModInit : IModuleLoaded, IModuleOnline
     {
         var online = new List<ModuleOnlineItem>();
 
-        // Keep the broken ENG group globally hidden, but allow Videasy to be
-        // tested independently with `Videasy.enabled: true` in init.conf.
-        // `enabled` defaults to false, unlike the normal module `enable` flag.
-        bool allowWhenEngDisabled = conf?.enabled == true;
-        if ((args.original_language == null || args.original_language == "en") &&
-            (CoreInit.conf.disableEng == false || allowWhenEngDisabled))
+        if ((args.original_language == null || args.original_language == "en") && CoreInit.conf.disableEng == false)
         {
             if (args.source != null && (args.source is "tmdb" or "cub") && long.TryParse(args.id, out long id) && id > 0)
-                online.Add(new(conf, "videasy", "Videasy", " (ENG)"));
+            {
+                if (PlaywrightBrowser.Status != PlaywrightStatus.disabled)
+                    online.Add(new(conf, "videasy", "Videasy", " (ENG)"));
+            }
         }
 
         return online;
@@ -47,31 +46,15 @@ public class ModInit : IModuleLoaded, IModuleOnline
 
     private void UpdateConf()
     {
-        conf = ModuleInvoke.Init("Videasy", new OnlinesSettings("Videasy", "https://player.videasy.to")
+        conf = ModuleInvoke.Init("Videasy", new OnlinesSettings("Videasy", "https://player.videasy.net")
         {
             displayindex = 1020,
-            kit = false,
-            rhub = false,
-            httptimeout = 20,
             streamproxy = true
         });
-
-        // The maintained resolver is local HTTP + seed decryption. Do not let
-        // an older account/Kit profile route it back through the retired
-        // browser-click implementation or expose CDN URLs directly.
-        conf.kit = false;
-        conf.rhub = false;
-        conf.httptimeout = 20;
-        conf.streamproxy = true;
-        conf.headers_stream ??= HeadersModel.Init(
-            ("User-Agent", Http.UserAgent),
-            ("Referer", "https://player.videasy.to/"),
-            ("Origin", "https://player.videasy.to")
-        ).ToDictionary();
     }
 
     private string OnlineApiQuality(EventOnlineApiQuality e)
     {
-        return e.balanser == "videasy" ? " ~ 2160p" : null;
+        return e.balanser == "videasy" ? " ~ 1080p" : null;
     }
 }

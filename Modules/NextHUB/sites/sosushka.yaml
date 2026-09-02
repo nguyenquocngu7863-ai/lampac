@@ -14,46 +14,46 @@ menu:
     cat: "{host}/{cat}/page{page}/"
     catsort: '{host}/{cat}/{sort.Replace("top", "popular").Replace("bests", "rating")}/page{page}/'
   sort:
-    Mới nhất: ""
-    Phổ biến: top
-    Hay nhất: bests
+    Новинки: ""
+    Популярное: top
+    Лучшие : bests
   categories:
-    Châu Á: asian
-    Quan hệ hậu môn: anal
-    BDSM: bdsm
-    Tóc vàng: blonde
-    Mông lớn: big_ass
-    Ngực lớn: big_tits
-    Dương vật lớn: big_dick
-    Đã cạo: shaved
-    Tóc nâu: brunette
-    Không cạo: hairy
-    Quan hệ nhóm tập thể: group
-    Tự quay: amateur
-    Quan hệ mạnh: hardcore
-    Đồ chơi: toys
-    Tinh dịch: cumshot
-    Người đẹp: beautiful
-    Khẩu giao nữ: pussy_licking
-    Đồng tính nữ: lesbiyki
-    Nhỏ nhắn: petite
-    Ngực nhỏ: small_tits
-    Phụ nữ trưởng thành: milf
-    Thủ dâm nữ: masturbation
-    Quốc tế: interracial
-    Khẩu giao: blowjob
-    Người trẻ 18+: teen
-    Tư thế cưỡi: riding
-    Ngực tự nhiên: natural_tits
-    Tư thế từ phía sau: doggystyle
-    Nga: russian
-    Tóc đỏ: redhead
-    Quan hệ ba người: threesome
-    Đơn: solo_girl
-    Xuất tinh lên mặt: facial
-    Fisting: fisting
-    Mảnh mai: skinny
-    Tóc đen: black-haired
+    Азиатки: asian
+    Анальный секс: anal
+    БДСМ: bdsm
+    Блондинки: blonde
+    Большие жопы: big_ass
+    Большие сиськи: big_tits
+    Большие члены: big_dick
+    Бритые письки: shaved
+    Брюнетки: brunette
+    Волосатые письки: hairy
+    Групповуха: group
+    Домашнее порно: amateur
+    Жесткий секс: hardcore
+    Игрушки: toys
+    Камшот: cumshot
+    Красивые девушки: beautiful
+    Куннилингус: pussy_licking
+    Лесбиянки: lesbiyki
+    Маленькие девушки: petite
+    Маленькие сиськи: small_tits
+    Мамочки: milf
+    Мастурбация: masturbation
+    Межрасовое: interracial
+    Минет: blowjob
+    Молодые: teen
+    Наездницы: riding
+    Натуральные сиськи: natural_tits
+    Раком: doggystyle
+    Русское порно: russian
+    Рыжие: redhead
+    Секс втроем: threesome
+    Соло девушек: solo_girl
+    Сперма на лице: facial
+    Фистинг: fisting
+    Худые девушки: skinny
+    Черноволосые: black-haired
 
 list:
   uri: new/page{page}/

@@ -10,9 +10,9 @@ streamproxy_preview: true
 
 menu:
   sort:
-    Mới nhất: ""
-    Hay nhất: top-rated/{page}/
-    Phổ biến: most-popular/{page}/
+    Новинки: ""
+    Лучшее: top-rated/{page}/
+    Популярнаe: most-popular/{page}/
   categories:
     format: categories/{cat}/{page}/
     Sex: sex

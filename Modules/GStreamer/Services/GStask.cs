@@ -1,4 +1,4 @@
-using Gst;
+﻿using Gst;
 using GStreamer.Models;
 using System;
 using System.Collections.Concurrent;
@@ -440,13 +440,6 @@ public partial class GStask
         IsFrozen = true;
         DisposePipeline();
         ClearSegmentCache();
-
-        // ClearSegmentCache removes the init/segment files, so the old length
-        // marker must be cleared too. Otherwise EnsureInitAsync believes the
-        // deleted init.mp4 is still valid and the frozen task cannot be
-        // recreated when the client opens the same link again.
-        Volatile.Write(ref initMp4Length, 0);
-        TryDeleteFile(initMp4Path);
     }
     #endregion
 

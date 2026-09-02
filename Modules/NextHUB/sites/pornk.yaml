@@ -13,29 +13,29 @@ menu:
     cat: "{host}/categories/{cat}/{page}/"
     catsort: '{host}/categories/{cat}/{sort.Replace("most-popular", "most-viewed")}/{page}/'
   sort:
-    Mới nhất: ""
-    Đánh giá cao: top-rated
-    Phổ biến: most-popular
+    Новинки: ""
+    Топ рейтинга: top-rated
+    Популярное: most-popular
   categories:
-    Người đẹp: krasotki
-    BDSM: bdsm
-    Gangbang: gangbang
-    Squirt: skvirting
-    Đồ lót: nijnee-bele
-    Cuckold: kukold
-    Đầy đặn: tolstye
-    Trưởng thành: zrelye
-    Cổ điển: retro
-    Quan hệ nhóm tập thể: gruppovuha
-    Kích thích bằng tay: drochka
-    Đồ chơi: igrushki
-    Tinh dịch: vystrely-spermy
-    Ngoài trời: na-prirode
-    Thủ dâm nữ: masturbatsiya
-    Thâm nhập kép: dvoiynoe-proniknovenie
-    Đồng tính nữ: lesbi
-    Nghiệp dư: lyubitelskoe
-    Tóc vàng: blondinki
+    Красотки: krasotki
+    БДСМ: bdsm
+    Гангбанг: gangbang
+    Сквиртинг: skvirting
+    Нижнее белье: nijnee-bele
+    Куколд: kukold
+    Толстые: tolstye
+    Зрелые: zrelye
+    Ретро: retro
+    Групповуха: gruppovuha
+    Дрочка: drochka
+    Игрушки: igrushki
+    Выстрелы спермы: vystrely-spermy
+    На природе: na-prirode
+    Мастурбация: masturbatsiya
+    Двойное проникновение: dvoiynoe-proniknovenie
+    Лесби: lesbi
+    Любительское: lyubitelskoe
+    Блондинки: blondinki
 
 list:
   uri: latest-updates/{page}/

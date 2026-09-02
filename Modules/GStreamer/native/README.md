@@ -22,12 +22,6 @@ zscale (BT.2020 to BT.709 limited range)
 format (yuv420p)
 ```
 
-Both graphs explicitly enable libavfilter automatic slice threading. This is
-important on ARM64: the default single graph worker makes 4K tone mapping much
-slower than necessary. The GStreamer pipeline also uses small queues between
-decoding, tone mapping, and H.264 encoding so those stages can overlap without
-keeping a large 4K frame backlog.
-
 ## Linux
 
 The ready x64 plugin is stored at `runtimes/linux-x64/native/gstreamer-1.0/libgsthdrtonemap.so`. It requires glibc 2.35 or newer and GStreamer 1.20 or newer, and was tested on Ubuntu 22.04 and Debian 12. FFmpeg 8.0.3 and zimg 3.0.6 are linked statically, so users do not need FFmpeg/zimg development packages or a local build. The only additional runtime dependency beyond the documented GStreamer packages is the OpenCL loader:
@@ -38,15 +32,7 @@ apt-get install -y --no-install-recommends ocl-icd-libopencl1
 
 The vendor OpenCL implementation comes from the installed GPU driver. If no OpenCL device is available, the same plugin automatically uses its embedded CPU graph.
 
-The repository currently includes the ready plugin for Linux x64. On an ARM64 Termux/proot installation the x64 binary cannot be loaded, so `hdr_to_sdr` stays unavailable until a native ARM64 plugin is built. The repository root contains `setup-gstreamer-hdr.sh`, which installs the build dependencies, downloads the pinned FFmpeg/zimg sources, and runs the ARM64 build inside the Ubuntu proot:
-
-```bash
-bash setup-gstreamer-hdr.sh
-```
-
-After the build, restart Lampac and verify `GET /gst/status` reports `hdr_backend_available: true` before enabling `hdr_to_sdr`.
-
-To rebuild the plugin manually, install Meson, Ninja, a C/C++ compiler, Autotools, NASM/Yasm, GStreamer development packages, and OpenCL headers/loader development files. Provide unpacked zimg and FFmpeg source directories:
+To rebuild the plugin, install Meson, Ninja, a C/C++ compiler, Autotools, NASM/Yasm, GStreamer development packages, and OpenCL headers/loader development files. Provide unpacked zimg and FFmpeg source directories:
 
 ```bash
 export ZIMG_SOURCE=/path/to/zimg-3.0.6

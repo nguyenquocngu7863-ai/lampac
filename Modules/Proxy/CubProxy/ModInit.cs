@@ -1,4 +1,4 @@
-using Shared;
+﻿using Shared;
 using Shared.Models.AppConf;
 using Shared.Models.Events;
 using Shared.Models.Module;
@@ -33,9 +33,7 @@ public class ModInit : IModuleLoaded
     {
         conf = ModuleInvoke.Init("cub", new ModuleConf()
         {
-            // Cub TMDB catalog: viewru=1 forces Russian titles/posters on home/browse.
-            // Card details still come from TMDB (already English). Keep Cub source, English art.
-            viewru = false,
+            viewru = true,
             scheme = CoreInit.conf.cub.scheme,
             domain = CoreInit.conf.cub.domain,
             mirror = CoreInit.conf.cub.mirror,

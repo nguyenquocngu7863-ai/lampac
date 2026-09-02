@@ -12,13 +12,13 @@ menu:
   route:
     sort: "{host}/{sort}/page{page}.html"
   sort:
-    Mới nhất: most-recent
-    Đang xem: random
-    Đánh giá cao: top-rated
-    Yêu thích: top-favorites
-    Xem nhiều nhất: most-viewed
-    Bình luận nhiều: most-discussed
-    Video dài: longest
+    Новые: most-recent
+    Сейчас смотрят: random
+    Топ по рейтингу: top-rated
+    Избранные: top-favorites
+    Просматриваемые: most-viewed
+    Обсуждаемые: most-discussed
+    Длинные: longest
 
 list:
   uri: page{page}.html

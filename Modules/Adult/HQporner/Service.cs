@@ -114,7 +114,7 @@ public static class HQpornerTo
         {
             new MenuItem()
             {
-                title = "Tìm kiếm",
+                title = "Поиск",
                 search_on = "search_on",
                 playlist_url = url,
             }
@@ -124,7 +124,7 @@ public static class HQpornerTo
         {
             menu.Add(new MenuItem()
             {
-                title = $"Sắp xếp: {(string.IsNullOrEmpty(sort) ? "mới nhất" : sort)}",
+                title = $"Сортировка: {(string.IsNullOrEmpty(sort) ? "новинки" : sort)}",
                 playlist_url = "submenu",
                 submenu = new List<MenuItem>(3)
                 {
@@ -137,7 +137,7 @@ public static class HQpornerTo
 
         var catmenu = new List<MenuItem>(65)
         {
-            new("Tất cả", $"{url}?sort={sort}"),
+            new("Все", $"{url}?sort={sort}"),
             new("1080p porn", $"{url}?sort={sort}&c=1080p-porn"),
             new("anal", $"{url}?sort={sort}&c=anal-sex-hd"),
             new("4k porn", $"{url}?sort={sort}&c=4k-porn"),
@@ -206,7 +206,7 @@ public static class HQpornerTo
 
         menu.Add(new MenuItem()
         {
-            title = $"Danh mục: {catmenu.FirstOrDefault(i => i.playlist_url.EndsWith($"&c={c}"))?.title ?? "tất cả"}",
+            title = $"Категория: {catmenu.FirstOrDefault(i => i.playlist_url.EndsWith($"&c={c}"))?.title ?? "все"}",
             playlist_url = "submenu",
             submenu = catmenu
         });

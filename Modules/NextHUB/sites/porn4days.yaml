@@ -9,8 +9,8 @@ priorityBrowser: http
 
 menu:
   sort:
-    Mới nhất: ""
-    Phổ biến: popullar/page{page}/
+    Новинки: ""
+    Популярное: popullar/page{page}/
   categories:
     format: search/page{page}/?s={cat}
     Anal: Anal

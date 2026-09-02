@@ -11,8 +11,8 @@ geostreamproxy: ["ALL"]
 
 menu:
   sort:
-    Mới nhất: ""
-    Phổ biến: popular/week?p={page}
+    Новинки: ""
+    Популярное: popular/week?p={page}
 
 list:
   uri: home?p={page}

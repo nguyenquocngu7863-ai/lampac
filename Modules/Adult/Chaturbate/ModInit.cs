@@ -40,48 +40,13 @@ public class ModInit : IModuleLoaded, IModuleSisi
 
     void updateConf()
     {
-        const string browserUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
-        const string site = "https://ru.chaturbate.com";
-
-        conf = ModuleInvoke.Init("Chaturbate", new SisiSettings("Chaturbate", site)
+        conf = ModuleInvoke.Init("Chaturbate", new SisiSettings("Chaturbate", "https://ru.chaturbate.com")
         {
             spider = false,
             httpversion = 2,
             displayindex = 24,
             rch_access = "apk,cors",
-            stream_access = "apk,cors,web",
-
-            // Do not let account/device Kit profiles replace the local proxy
-            // policy with direct CDN playback. Chaturbate HLS tokens are
-            // bound to the IP that requested the room page; Android cannot
-            // play the mmcdn URL itself (CORS + token IP mismatch).
-            kit = false,
-            rhub = false,
-            qualitys_proxy = false,
-            url_reserve = false,
-
-            streamproxy = true,
-            rchstreamproxy = "web",
-            headers = HeadersModel.Init(
-                ("User-Agent", browserUserAgent),
-                ("Referer", site + "/"),
-                ("Accept-Language", "en-US,en;q=0.9")
-            ).ToDictionary(),
-            headers_stream = HeadersModel.Init(
-                ("User-Agent", browserUserAgent),
-                ("Referer", site + "/"),
-                ("Origin", site),
-                ("Accept", "*/*"),
-                ("Accept-Language", "en-US,en;q=0.9")
-            ).ToDictionary()
+            stream_access = "apk,cors,web"
         });
-
-        // Keep the live HLS proxy on even if an older init.conf/Kit profile
-        // still has streamproxy=false from before this fix.
-        conf.kit = false;
-        conf.rhub = false;
-        conf.qualitys_proxy = false;
-        conf.url_reserve = false;
-        conf.streamproxy = true;
     }
 }

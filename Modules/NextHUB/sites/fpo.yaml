@@ -10,9 +10,9 @@ streamproxy_preview: true
 
 menu:
   sort:
-    Mới nhất: ""
-    Hay nhất: top-2/{page}/
-    Phổ biến: popular-2/{page}/
+    Новинки: ""
+    Лучшее: top-2/{page}/
+    Популярнаe: popular-2/{page}/
 
 list:
   uri: /new-1/{page}/

@@ -83,7 +83,7 @@ public static class XnxxTo
         {
             new MenuItem()
             {
-                title = "Tìm kiếm",
+                title = "Поиск",
                 search_on = "search_on",
                 playlist_url = $"{host}/xnx"
             }

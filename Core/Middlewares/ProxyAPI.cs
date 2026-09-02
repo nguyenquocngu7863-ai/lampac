@@ -277,16 +277,11 @@ public partial class ProxyAPI
                                 if (ctsHttp.IsCancellationRequested)
                                     return;
 
-                                if (response.Headers.Location != null)
+                                if ((int)response.StatusCode is 301 or 302 or 303 or 0 || response.Headers.Location != null)
                                 {
-                                    Uri location = response.Headers.Location;
-                                    string next = location.IsAbsoluteUri
-                                        ? location.AbsoluteUri
-                                        : new Uri(reqUri, location).AbsoluteUri;
-
                                     httpContext.Response.Redirect(
                                         ProxyLink.Encrypt(
-                                            next,
+                                            response.Headers.Location.AbsoluteUri,
                                             decryptLink,
                                             prefix: [CoreInit.Host(httpContext), "/proxy/"]
                                         )

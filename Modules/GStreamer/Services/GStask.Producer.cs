@@ -1,4 +1,4 @@
-using Gst;
+﻿using Gst;
 using GStreamer.Models;
 using System;
 using System.Diagnostics;
@@ -460,10 +460,7 @@ public partial class GStask
             segmentReadStarted = true;
 
             long start = Stopwatch.GetTimestamp();
-            // A 4K HDR segment may legitimately take longer than the old
-            // 45-second guard on a CPU-only ARM64 phone. The client plugin
-            // uses the same 120-second upper bound for fragment requests.
-            var timeout = TimeSpan.FromSeconds(IsVideoTranscoded ? 120 : 45);
+            var timeout = TimeSpan.FromSeconds(45);
 
             while (Stopwatch.GetElapsedTime(start) < timeout)
             {
@@ -595,23 +592,13 @@ public partial class GStask
     #region EnsureInitAsync
     public async System.Threading.Tasks.Task<bool> EnsureInitAsync(int audio, CancellationToken cancellationToken)
     {
+        if (InitMp4Ready)
+            return true;
+
         await semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
 
         try
         {
-            if (IsDead)
-                return false;
-
-            // A task can survive briefly after the client pauses or leaves. Its
-            // Frozen path deliberately deletes the init/segment cache and stops
-            // the pipeline, so revive it before checking InitMp4Ready.
-            if (IsFrozen)
-            {
-                Defrost();
-                if (IsDead || IsFrozen)
-                    return false;
-            }
-
             if (InitMp4Ready)
                 return true;
 
@@ -624,7 +611,7 @@ public partial class GStask
         }
         catch
         {
-            return InitMp4Ready && !IsFrozen && !IsDead;
+            return InitMp4Ready;
         }
         finally
         {

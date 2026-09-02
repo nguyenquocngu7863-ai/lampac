@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Authorization;
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Shared;
@@ -15,7 +15,6 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Web;
@@ -223,42 +222,6 @@ public class CubProxyController : BaseController
 
             var proxy = proxyManager?.Get();
             string requri = $"{init.scheme}://{domain}/{uri}";
-
-            // UI can stay Vietnamese; TMDB titles/posters/logos must be English.
-            // Cub source home/browse hits tmdb.{cub} with no language= (Russian by default).
-            // /images?language=vi is a FILTER: movies without a vi treatment
-            // return logos:[], so logo plugins never draw an English logo.
-            if (subdomain == "tmdb")
-            {
-                if (Regex.IsMatch(requri, @"[?&]language=vi(?:[-_][^&]+)?(?:&|$)", RegexOptions.IgnoreCase))
-                {
-                    requri = Regex.Replace(
-                        requri,
-                        @"([?&]language=)vi(?:[-_][^&]*)?",
-                        "$1en",
-                        RegexOptions.IgnoreCase
-                    );
-                }
-                else if (requri.IndexOf("language=", StringComparison.OrdinalIgnoreCase) < 0)
-                {
-                    requri += (requri.Contains("?") ? "&" : "?") + "language=en";
-                }
-
-                if (Regex.IsMatch(requri, @"[?&]include_image_language=[^&]*vi", RegexOptions.IgnoreCase))
-                {
-                    requri = Regex.Replace(
-                        requri,
-                        @"([?&]include_image_language=)[^&]*",
-                        "$1en,null",
-                        RegexOptions.IgnoreCase
-                    );
-                }
-                else if (Regex.IsMatch(requri, @"/(?:movie|tv)/\d+/images(?:\?|$)", RegexOptions.IgnoreCase) &&
-                         requri.IndexOf("include_image_language=", StringComparison.OrdinalIgnoreCase) < 0)
-                {
-                    requri += (requri.Contains("?") ? "&" : "?") + "include_image_language=en,null";
-                }
-            }
 
             if (HttpContext.Request.Headers.ContainsKey("token") || HttpContext.Request.Headers.ContainsKey("profile"))
             {

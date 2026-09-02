@@ -166,21 +166,21 @@ public static class EpornerTo
             {
                 new MenuItem()
                 {
-                    title = "Tìm kiếm",
+                    title = "Поиск",
                     search_on = "search_on",
                     playlist_url = url,
                 },
                 new MenuItem()
                 {
-                    title = $"Sắp xếp: {(string.IsNullOrWhiteSpace(sort) ? "mới nhất" : sort)}",
+                    title = $"Сортировка: {(string.IsNullOrWhiteSpace(sort) ? "новинки" : sort)}",
                     playlist_url = "submenu",
                     submenu = new List<MenuItem>(5)
                     {
-                        new("Mới nhất", $"{url}?search={encodesearch}"),
-                        new("Xem nhiều nhất", $"{url}?sort=most-viewed&search={encodesearch}"),
-                        new("Đánh giá cao", $"{url}?sort=top-rated&search={encodesearch}"),
-                        new("Video dài", $"{url}?sort=longest&search={encodesearch}"),
-                        new("Video ngắn", $"{url}?sort=shortest&search={encodesearch}")
+                        new("Новинки", $"{url}?search={encodesearch}"),
+                        new("Топ просмотра", $"{url}?sort=most-viewed&search={encodesearch}"),
+                        new("Топ рейтинга", $"{url}?sort=top-rated&search={encodesearch}"),
+                        new("Длинные ролики", $"{url}?sort=longest&search={encodesearch}"),
+                        new("Короткие ролики", $"{url}?sort=shortest&search={encodesearch}")
                     }
                 }
             };
@@ -197,7 +197,7 @@ public static class EpornerTo
         {
             new MenuItem()
             {
-                title = "Tìm kiếm",
+                title = "Поиск",
                 search_on = "search_on",
                 playlist_url = url,
             }
@@ -207,22 +207,22 @@ public static class EpornerTo
         {
             menu.Add(new MenuItem()
             {
-                title = $"Sắp xếp: {(string.IsNullOrWhiteSpace(sort) ? "mới nhất" : sort)}",
+                title = $"Сортировка: {(string.IsNullOrWhiteSpace(sort) ? "новинки" : sort)}",
                 playlist_url = "submenu",
                 submenu = new List<MenuItem>(5)
                 {
-                    new("Mới nhất", url),
-                    new("Xem nhiều nhất", $"{url}?sort=most-viewed"),
-                    new("Đánh giá cao", $"{url}?sort=top-rated"),
-                    new("Video dài", $"{url}?sort=longest"),
-                    new("Video ngắn", $"{url}?sort=shortest")
+                    new("Новинки", url),
+                    new("Топ просмотра", $"{url}?sort=most-viewed"),
+                    new("Топ рейтинга", $"{url}?sort=top-rated"),
+                    new("Длинные ролики", $"{url}?sort=longest"),
+                    new("Короткие ролики", $"{url}?sort=shortest")
                 }
             });
         }
 
         var catmenu = new List<MenuItem>(70)
         {
-            new("Tất cả", url),
+            new("Все", url),
             new("4K UHD", $"{url}?c=4k-porn"),
             new("60 FPS", $"{url}?c=60fps"),
             new("Amateur", $"{url}?c=amateur"),
@@ -295,7 +295,7 @@ public static class EpornerTo
 
         menu.Add(new MenuItem()
         {
-            title = $"Danh mục: {catmenu.FirstOrDefault(i => i.playlist_url.EndsWith($"c={c}"))?.title ?? "tất cả"}",
+            title = $"Категория: {catmenu.FirstOrDefault(i => i.playlist_url.EndsWith($"c={c}"))?.title ?? "все"}",
             playlist_url = "submenu",
             submenu = catmenu
         });
