@@ -495,6 +495,9 @@ sync_latest_modules() {
                 pull Modules/LampaWeb/plugins/autotracks.js \"\$lampaweb/plugins/autotracks.js\"
                 pull Modules/LampaWeb/plugins/vietnamese.js \"\$lampaweb/plugins/vietnamese.js\"
                 pull Modules/LampaWeb/plugins/adminpanel.js \"\$lampaweb/plugins/adminpanel.js\"
+                # Jackett magnet resolver (client hook .torrent -> magnet + server plugin).
+                # Quen file nay thi /torrents POST link .torrent -> TorrServer cong khai 400.
+                pull Modules/LampaWeb/plugins/jackett.js \"\$lampaweb/plugins/jackett.js\"
             fi
             if [ -d \"\$lampaweb/Controllers\" ]; then
                 pull Modules/LampaWeb/Controllers/ApiController.cs \"\$lampaweb/Controllers/ApiController.cs\"
@@ -540,6 +543,28 @@ sync_latest_modules() {
                 pull Modules/OnlineRUS/VkMovie/Model.cs \"\$vkmovie/Model.cs\"
                 pull Modules/OnlineRUS/VkMovie/ModInit.cs \"\$vkmovie/ModInit.cs\"
                 pull Modules/OnlineRUS/VkMovie/manifest.json \"\$vkmovie/manifest.json\"
+            fi
+        done
+
+        # Nguon RUS vua dong bo tu upstream lampac (ban da chinh): Gencit, Videoseed,
+        # FlixCDN. Khong co trong lampac-nextgen.zip nen phai tu tao thu muc va lay ca
+        # manifest.json; mods/ override thi chi cap nhat khi thu muc da ton tai.
+        for rusmod in Gencit Videoseed FlixCDN; do
+            rustarget=/root/lampac/module/OnlineRUS/\$rusmod
+            mkdir -p \"\$rustarget\"
+            for rusfile in manifest.json Controller.cs Model.cs ModInit.cs Service.cs ModuleConf.cs; do
+                if curl -fsSL --retry 3 \"\$base/Modules/OnlineRUS/\$rusmod/\$rusfile?cb=\$stamp\" -o \"/tmp/rus-\$rusmod-\$rusfile\"; then
+                    mv \"/tmp/rus-\$rusmod-\$rusfile\" \"\$rustarget/\$rusfile\"
+                    echo \"  [sync] rus/\$rusmod/\$rusfile\"
+                else
+                    rm -f \"/tmp/rus-\$rusmod-\$rusfile\"
+                fi
+            done
+            rusmods=/root/lampac/mods/OnlineRUS/\$rusmod
+            if [ -d \"\$rusmods\" ]; then
+                for rusfile in manifest.json Controller.cs Model.cs ModInit.cs Service.cs ModuleConf.cs; do
+                    [ -f \"\$rustarget/\$rusfile\" ] && cp \"\$rustarget/\$rusfile\" \"\$rusmods/\$rusfile\" 2>/dev/null && echo \"  [sync] rusmods/\$rusmod/\$rusfile\"
+                done
             fi
         done
 
@@ -698,6 +723,30 @@ install_custom_modules() {
             for vkmoviefile in manifest.json Controller.cs Model.cs ModInit.cs; do
                 curl -fSL --retry 3 \"\$vkmoviebase/\$vkmoviefile?cb=\$syncstamp\" -o \"\$vkmovietarget/\$vkmoviefile\"
             done
+        done
+
+        # Nguon RUS dong bo tu upstream (ban da chinh): Gencit, Videoseed, FlixCDN.
+        # Khong nam trong lampac-nextgen.zip nen phai tu tao thu muc; moi file bo qua
+        # an toan khi khong co tren nguon (khong duoc phep dung ca cai dat).
+        for rusmod in Gencit Videoseed FlixCDN; do
+            rusbase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineRUS/\$rusmod\"
+            rustarget=/root/lampac/module/OnlineRUS/\$rusmod
+            mkdir -p \"\$rustarget\"
+            for rusfile in manifest.json Controller.cs Model.cs ModInit.cs Service.cs ModuleConf.cs; do
+                if curl -fsSL --retry 3 \"\$rusbase/\$rusfile?cb=\$syncstamp\" -o \"/tmp/\$rusmod-\$rusfile\"; then
+                    mv \"/tmp/\$rusmod-\$rusfile\" \"\$rustarget/\$rusfile\"
+                    echo \"  [\$rusmod] \$rusfile\"
+                else
+                    rm -f \"/tmp/\$rusmod-\$rusfile\"
+                    echo \"  [\$rusmod] bo qua \$rusfile - khong co tren nguon\"
+                fi
+            done
+            rusmods=/root/lampac/mods/OnlineRUS/\$rusmod
+            if [ -d \"\$rusmods\" ]; then
+                for rusfile in manifest.json Controller.cs Model.cs ModInit.cs Service.cs ModuleConf.cs; do
+                    [ -f \"\$rustarget/\$rusfile\" ] && cp \"\$rustarget/\$rusfile\" \"\$rusmods/\$rusfile\" 2>/dev/null
+                done
+            fi
         done
 
         movieshubbase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineENG/MoviesHub\"
