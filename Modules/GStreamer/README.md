@@ -299,3 +299,25 @@ gst-inspect-1.0 --version
 ```
 
 В portable Windows эта команда может быть недоступна в обычном терминале: модуль настраивает пути GStreamer только внутри процесса Core. Версия GStreamer, результат проверки аппаратного encoder и доступность HDR backend записываются при запуске Core. Если версия успешно определяется, `gst_version` вручную задавать не нужно.
+
+## Ghi chú (fork nguyenquocngu7863-ai/lampac)
+
+### Hành vi chọn audio (từ bản gốc upstream)
+
+`Modules/GStreamer/plugins/gst.js` là bản gốc **lampac-nextgen**. Khi nguồn có **nhiều hơn một** track audio,
+plugin luôn hiện hộp **"Chọn audio"** (Выберите аудиодорожку) và phát track người dùng chọn. Nó **không** tự
+động chọn tiếng Anh, để phim lồng tiếng (ví dụ chỉ có tiếng Tây Ban Nha) không bị chọn nhầm track. Nếu chỉ có
+một track thì phát luôn, không hỏi.
+
+### Warm-up segment 4K HDR (bị bỏ ở bản fork — cần cài lại nếu xem HDR)
+
+Bản fork trước có thêm một "warm up" chủ động: tải trước `master.m3u8` + `init.mp4` + `seg/0.m4s` bằng
+XMLHttpRequest rồi mới giao cho hls.js, để segment 4K HDR đầu tiên nằm sẵn trong cache đĩa, tránh hls.js
+hết hạn (fragment timeout) khi CPU encode lạnh. Bản gốc upstream **không có** phần này, nên khi xem nguồn
+4K HDR qua GStreamer lần đầu hls.js có thể retry và hơi chậm một chút.
+
+> **Trạng thái hiện tại (chủ yếu dùng chế độ copy):** đang dùng bản gốc upstream, **không** có warm-up 4K HDR.
+> Sau này nếu xem HDR (hoặc gặp `fragment timeout` / phát 4K HDR hay đơ lúc mở), hãy cài lại phần warm-up
+> bằng cách thêm logic `isLargeHdrSource()` + `warmupFirstSegment()` (lấy từ commit cũ của fork, ví dụ
+> commit bổ sung warm-up trước bản `7a7af6e`) vào `Modules/GStreamer/plugins/gst.js`, rồi đồng bộ file này
+> lên máy.
