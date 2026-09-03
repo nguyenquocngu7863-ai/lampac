@@ -671,19 +671,10 @@
                     return;
                 }
 
-                // Prefer the original English audio whenever probe metadata
-                // identifies it.  Files without an English track still show
-                // the selector, so Vietnamese/dub-only releases remain usable.
-                var englishTrack = items.find(function (item) {
-                    return /(?:^|[^a-z])(en|eng|english)(?:[^a-z]|$)/i.test(
-                        (item.subtitle || '') + ' ' + (item.title || '')
-                    );
-                });
-                if (englishTrack) {
-                    playAudioTrack(englishTrack);
-                    return;
-                }
-
+                // Always ask the user which audio track to play when there is
+                // more than one.  Auto-selecting English breaks dubbed releases
+                // (e.g. Spanish-only movies) where the English track is not the
+                // one the viewer wants, so we never pass a default here.
                 var last_controller = Lampa.Controller.enabled().name;
 
                 Lampa.Select.show({
