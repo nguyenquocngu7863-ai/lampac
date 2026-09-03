@@ -1,7 +1,7 @@
 # Sổ tay lỗi thường gặp — lampac trên Termux (Ubuntu proot)
 
 > Cẩm nang bỏ túi cho bản cài Termux + Ubuntu proot. Mỗi lỗi kèm cách nhận biết và cách xử lý.
-> Nhánh bản vá: `arena/01a05db8-lampac`.
+> Nhánh bản vá: `arena/01a06710-lampac`.
 
 ---
 
@@ -71,7 +71,7 @@
 - **Xử lý:** thêm `?cb=$(date +%s)` vào URL, `rm -f` file cũ trước khi tải, và `grep` xác nhận nội dung mới.
 - Nếu raw vẫn cache → dùng **api.github.com** (host khác, không cache), đọc field `content` (base64):
   ```
-  https://api.github.com/repos/nguyenquocngu7863-ai/lampac/contents/<đường-dẫn-file>?ref=arena/01a05db8-lampac
+  https://api.github.com/repos/nguyenquocngu7863-ai/lampac/contents/<đường-dẫn-file>?ref=arena/01a06710-lampac
   ```
 
 ### 3.2 Mẫu deploy nhanh 1 file C# (chạy trong Termux)
@@ -79,7 +79,7 @@
 lampac stop
 proot-distro login ubuntu -- bash -c 'cat > /root/upd.py <<"E"
 import urllib.request,json,base64,os
-BR="arena/01a05db8-lampac"
+BR="arena/01a06710-lampac"
 def get(p):
     u="https://api.github.com/repos/nguyenquocngu7863-ai/lampac/contents/"+p+"?ref="+BR
     j=json.loads(urllib.request.urlopen(urllib.request.Request(u,headers={"User-Agent":"curl"}),timeout=30).read())
@@ -98,7 +98,7 @@ lampac start
 
 ### 3.3 Cập nhật toàn bộ bản vá
 ```bash
-cd ~/lampac && curl -fSL "https://api.github.com/repos/nguyenquocngu7863-ai/lampac/contents/setup-termux.sh?ref=arena/01a05db8-lampac" -o ~/sp.json && grep -o '"content": *"[^"]*"' ~/sp.json | cut -d'"' -f4 | tr -d '\n' | base64 -d > setup-termux.sh && bash setup-termux.sh --sync-all
+cd ~/lampac && curl -fSL "https://api.github.com/repos/nguyenquocngu7863-ai/lampac/contents/setup-termux.sh?ref=arena/01a06710-lampac" -o ~/sp.json && grep -o '"content": *"[^"]*"' ~/sp.json | cut -d'"' -f4 | tr -d '\n' | base64 -d > setup-termux.sh && bash setup-termux.sh --sync-all
 lampac start
 ```
 
@@ -149,7 +149,7 @@ Luồng đúng: Lampa gửi link → lampac `/jackett/resolve` đổi link `.tor
 
 ## 7. Quy trình an toàn mỗi khi sửa bản vá
 
-1. Sửa trong repo, push nhánh `arena/01a05db8-lampac` (không push `main`, không tạo PR).
+1. Sửa trong repo, push nhánh `arena/01a06710-lampac` (không push `main`, không tạo PR).
 2. Termux: `lampac stop`.
 3. Kéo file (api.github.com base64) ghi **cả** `module/` và `mods/`, `mkdir -p` trước khi ghi.
 4. `grep` xác nhận nội dung mới (từ khóa đặc trưng của bản vá).
