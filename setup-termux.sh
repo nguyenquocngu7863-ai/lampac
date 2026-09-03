@@ -463,9 +463,13 @@ sync_latest_modules() {
                 echo \"  [sync] skip (missing dir): \$dest\"
                 return 0
             fi
-            curl -fSL --retry 3 \"\$base/\$src?cb=\$stamp\" -o \"\$dest.tmp\"
-            mv \"\$dest.tmp\" \"\$dest\"
-            echo \"  [sync] \$dest\"
+            if curl -fsSL --retry 3 \"\$base/\$src?cb=\$stamp\" -o \"\$dest.tmp\"; then
+                mv \"\$dest.tmp\" \"\$dest\"
+                echo \"  [sync] \$dest\"
+            else
+                rm -f \"\$dest.tmp\"
+                echo \"  [sync] skip (404/missing): \$src\"
+            fi
         }
         # Remove modules and site definitions retired from the repository so
         # an existing installation cannot load them after a lightweight sync.
@@ -474,7 +478,9 @@ sync_latest_modules() {
                /root/lampac/module/OnlineENG/OpenDirectory \
                /root/lampac/mods/OnlineENG/CineWave \
                /root/lampac/mods/OnlineENG/Mapple4K \
-               /root/lampac/mods/OnlineENG/OpenDirectory
+               /root/lampac/mods/OnlineENG/OpenDirectory \
+               /root/lampac/module/Adult/OneJav \
+               /root/lampac/mods/Adult/OneJav
         rm -f /root/lampac/module/NextHUB/sites/85po.yaml \
               /root/lampac/mods/NextHUB/sites/85po.yaml \
               /root/lampac/module/LampaWeb/plugins/player-landscape.js \
@@ -686,7 +692,9 @@ install_custom_modules() {
                /root/lampac/module/OnlineENG/OpenDirectory \
                /root/lampac/mods/OnlineENG/CineWave \
                /root/lampac/mods/OnlineENG/Mapple4K \
-               /root/lampac/mods/OnlineENG/OpenDirectory
+               /root/lampac/mods/OnlineENG/OpenDirectory \
+               /root/lampac/module/Adult/OneJav \
+               /root/lampac/mods/Adult/OneJav
         rm -f /root/lampac/module/NextHUB/sites/85po.yaml \
               /root/lampac/mods/NextHUB/sites/85po.yaml
 
