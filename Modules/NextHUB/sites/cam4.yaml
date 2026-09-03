@@ -3,7 +3,7 @@ displayindex: 90
 displayname: cam4
 rch_access: apk,cors
 stream_access: apk,cors,web
-host: https://ru4.cam4.com
+host: https://www.cam4.com
 priorityBrowser: http
 cache_time: 2
 streamproxy: true
@@ -21,42 +21,25 @@ menu:
     Cặp đôi: couple?page={page}
     Nam: male?page={page}
     Chuyển giới: transgender?page={page}
-    MILF: niches/milf?page={page}
-    Trưởng thành: niches/mature-ass?page={page}
-    18+: niches/18-plus-girls?page={page}
-    Châu Á: niches/asian?page={page}
-    Latina: niches/latina?page={page}
-    Da đen: niches/ebony?page={page}
-    Ả Rập: niches/arab?page={page}
-    Ấn Độ: niches/indian?page={page}
-    Slavic: niches/slavic-girls?page={page}
-    Ngực lớn: niches/big-tits?page={page}
-    Mông lớn: niches/big-ass?page={page}
-    Nhỏ nhắn: niches/petite?page={page}
-    Tóc vàng: niches/blonde?page={page}
-    Tóc đỏ: niches/redheads?page={page}
-    Rậm lông: niches/hairy-pussy?page={page}
-    Nghiệp dư: niches/amateur?page={page}
-    BBW: niches/bbw?page={page}
-    BDSM: niches/bdsm?page={page}
-    Đồ chơi: niches/sex-toys?page={page}
-    Máy rung: niches/fuck-machine?page={page}
-    Squirt: niches/squirt?page={page}
-    Hậu môn: niches/anal?page={page}
-    Đồng tính nữ: niches/lesbian?page={page}
-    Liên chủng tộc: niches/interracial?page={page}
-    Nữ thống trị: niches/fem-dom?page={page}
-    Chân: niches/feet?page={page}
-    Hút thuốc: niches/smoking?page={page}
-    Hình xăm: niches/tattoos?page={page}
-    Cosplay: niches/cosplay?page={page}
-    Thể thao: niches/sport?page={page}
-    Tắm: niches/shower?page={page}
-    Đồ lót: niches/lingerie?page={page}
-    Da: niches/leather?page={page}
-    Cao su: niches/latex?page={page}
-    Gamer: niches/gamer?page={page}
-    Giả tưởng: niches/fantasy?page={page}
+    Teen: female/teen?page={page}
+    Babe: female/babe?page={page}
+    MILF: female/milf?page={page}
+    Vợ: female/wife?page={page}
+    Emo: female/emo?page={page}
+    Goth: female/goth?page={page}
+    Trưởng thành: female/mature?page={page}
+    Bà già: female/granny?page={page}
+    Domina: female/domina?page={page}
+    Phục tùng: female/submissive?page={page}
+    Bầu: female/pregnant?page={page}
+    Châu Á: female/asian?page={page}
+    Da đen: female/black?page={page}
+    Ả Rập: female/arab?page={page}
+    Ấn Độ: female/indian?page={page}
+    Latina: female/hispanic?page={page}
+    Da trắng: female/white?page={page}
+    Lai: female/interracial?page={page}
+    Thổ dân: female/native-american?page={page}
 
 list:
   uri: "?page={page}"
