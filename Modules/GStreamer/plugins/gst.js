@@ -178,7 +178,7 @@
             setTimeout(() => {
                 Lampa.Player.close();
 
-                Lampa.Loading.start(function () { }, 'Получение списка аудио дорожек...');
+                Lampa.Loading.start(function () { }, 'Đang lấy danh sách audio...');
 
                 var src = e.data.url.replace(/&(preload|stat|m3u)/g, '&play');
 
@@ -194,7 +194,7 @@
 
                         var json = typeof response === 'string' ? JSON.parse(response) : response;
                         if (!json || !json.id || !json.hls) {
-                            Lampa.Noty.show('Не удалось запустить транскодинг');
+                            Lampa.Noty.show('Không thể khởi động transcoding');
                             return;
                         }
 
@@ -253,7 +253,7 @@
                         // is more than one. Auto-selecting English breaks dubbed
                         // releases (e.g. Spanish-only movies).
                         Lampa.Select.show({
-                            title: 'Выберите аудиодорожку',
+                            title: 'Chọn audio',
                             items: items,
                             onSelect: function (item) {
                                 Lampa.Select.close();
@@ -268,13 +268,13 @@
                         // source. Retry once instead of erroring immediately.
                         addAttempts++;
                         if (addAttempts < 2) {
-                            Lampa.Loading.start(function () { }, 'Ожидание транскодинга...');
+                            Lampa.Loading.start(function () { }, 'Đang chờ transcoding...');
                             setTimeout(addSource, 5000);
                             return;
                         }
 
                         Lampa.Loading.stop();
-                        Lampa.Noty.show('Не удалось запустить транскодинг');
+                        Lampa.Noty.show('Không thể khởi động transcoding');
                     });
                 }
 

@@ -304,8 +304,8 @@ gst-inspect-1.0 --version
 
 ### Hành vi chọn audio (từ bản gốc upstream)
 
-`Modules/GStreamer/plugins/gst.js` là bản gốc **lampac-nextgen**. Khi nguồn có **nhiều hơn một** track audio,
-plugin luôn hiện hộp **"Chọn audio"** (Выберите аудиодорожку) và phát track người dùng chọn. Nó **không** tự
+`Modules/GStreamer/plugins/gst.js` là bản gốc **lampac-nextgen** (đã việt hoá các dòng thông báo: "Chọn audio", "Đang lấy danh sách audio...", v.v.). Khi nguồn có **nhiều hơn một** track audio,
+plugin luôn hiện hộp **"Chọn audio"** và phát track người dùng chọn. Nó **không** tự
 động chọn tiếng Anh, để phim lồng tiếng (ví dụ chỉ có tiếng Tây Ban Nha) không bị chọn nhầm track. Nếu chỉ có
 một track thì phát luôn, không hỏi.
 
