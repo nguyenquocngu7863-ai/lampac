@@ -1,6 +1,70 @@
 (function () {
     var taskId = null;
     var heartbeatTimer = null;
+    var hlsTimeoutTimer = null;
+
+    function getHlsConstructor() {
+        if (typeof window !== 'undefined' && window.Hls)
+            return window.Hls;
+
+        // `Hls` is not necessarily loaded when this plugin is evaluated.
+        // `typeof` keeps this safe on old WebViews where the global is absent.
+        if (typeof Hls !== 'undefined')
+            return Hls;
+
+        return null;
+    }
+
+    function applyHlsTimeouts() {
+        var hls = getHlsConstructor();
+        if (!hls || !hls.DefaultConfig)
+            return false;
+
+        // hls.js 1.x keeps fragment timeout separately from the manifest
+        // timeout. GStreamer may need long to produce a cold segment; use
+        // generous timeouts so playback waits instead of erroring early.
+        var config = hls.DefaultConfig;
+        config.manifestLoadingTimeOut = 120000;
+        config.manifestLoadingMaxRetryTimeout = 120000;
+        config.levelLoadingTimeOut = 120000;
+        config.levelLoadingMaxRetryTimeout = 120000;
+        config.fragLoadingTimeOut = 120000;
+        config.fragLoadingMaxRetry = 6;
+        config.fragLoadingRetryDelay = 1000;
+        config.fragLoadingMaxRetryTimeout = 120000;
+
+        return true;
+    }
+
+    function tuneHlsTimeouts() {
+        try {
+            if (applyHlsTimeouts()) {
+                if (hlsTimeoutTimer) {
+                    clearInterval(hlsTimeoutTimer);
+                    hlsTimeoutTimer = null;
+                }
+                return;
+            }
+
+            // Some Lampa builds load hls.js lazily immediately before the
+            // player is created. Retry briefly instead of silently leaving the
+            // library's 10/20-second defaults in place.
+            if (hlsTimeoutTimer)
+                return;
+
+            var attempts = 0;
+            hlsTimeoutTimer = setInterval(function () {
+                attempts++;
+
+                if (applyHlsTimeouts() || attempts >= 120) {
+                    clearInterval(hlsTimeoutTimer);
+                    hlsTimeoutTimer = null;
+                }
+            }, 250);
+        } catch (error) {
+            console.log('GStreamer', 'could not tune hls.js timeouts', error);
+        }
+    }
 
     function account(url) {
         url = url + '';
@@ -118,67 +182,56 @@
 
                 var src = e.data.url.replace(/&(preload|stat|m3u)/g, '&play');
 
-                var network = new Lampa.Reguest();
-                network.timeout = 40000;
+                var addAttempts = 0;
 
-                network.native(account('{localhost}/gst/add?linkencode=' + encodeURIComponent(Lampa.Base64.encode(src))), function (response) {
-                    Lampa.Loading.stop();
+                function addSource() {
+                    // 4K/HDR probe + first segment can take well over a minute.
+                    var network = new Lampa.Reguest();
+                    network.timeout = 120000;
 
-                    var json = typeof response === 'string' ? JSON.parse(response) : response;
-                    if (!json || !json.id || !json.hls) {
-                        Lampa.Noty.show('Не удалось запустить транскодинг');
-                        return;
-                    }
+                    network.native(account('{localhost}/gst/add?linkencode=' + encodeURIComponent(Lampa.Base64.encode(src))), function (response) {
+                        Lampa.Loading.stop();
 
-                    var tracks = json.probe && Array.isArray(json.probe.tracks)
-                        ? json.probe.tracks
-                        : [];
+                        var json = typeof response === 'string' ? JSON.parse(response) : response;
+                        if (!json || !json.id || !json.hls) {
+                            Lampa.Noty.show('Не удалось запустить транскодинг');
+                            return;
+                        }
 
-                    var items = tracks
-                        .filter(function (track) {
-                            return track && track.type === 'audio';
-                        })
-                        .map(function (track, index) {
-                            return formatAudioItem(track, index);
-                        });
+                        // GStreamer may take long to produce a cold fragment.
+                        tuneHlsTimeouts();
 
-                    
+                        var tracks = json.probe && Array.isArray(json.probe.tracks)
+                            ? json.probe.tracks
+                            : [];
 
-                    delete e.data.torrent_hash;
-                    e.data.hls_type = 'hlsjs';
-                    e.data.hls_manifest_timeout = 20000;
-
-                    if (!items.length || items.length == 1) {
-                        e.data.url_orig = e.data.url
-                        e.data.url = json.hls;
-                        Lampa.Player.play(e.data);
-                        Lampa.Player.playlist(createPlaylist(e.data, json.audioIndex))
-                        Lampa.Player.callback(function () {
-                            Lampa.Controller.toggle('modal')
-
-                            e.data.url = e.data.url_orig
-
-                            Lampa.PlayerPlaylist.get().forEach(function (p) {
-                                p.url = p.url_orig
+                        var items = tracks
+                            .filter(function (track) {
+                                return track && track.type === 'audio';
                             })
-                        })
-                        taskId = json.id;
-                        return;
-                    }
+                            .map(function (track, index) {
+                                return formatAudioItem(track, index);
+                            });
 
-                    var last_controller = Lampa.Controller.enabled().name
+                        var last_controller = Lampa.Controller.enabled().name
 
-                    Lampa.Select.show({
-                        title: 'Выберите аудиодорожку',
-                        items: items,
-                        onSelect: function (item) {
-                            Lampa.Select.close();
+                        delete e.data.torrent_hash;
+                        e.data.hls_type = 'hlsjs';
+                        e.data.hls_manifest_timeout = 120000;
+                        e.data.hls_retry_timeout = 120000;
+                        e.data.hls_frag_timeout = 120000;
+                        e.data.hls_frag_retry_timeout = 120000;
+
+                        function startPlayback(item) {
+                            var audioIndex = item ? item.audioIndex : 0;
 
                             e.data.url_orig = e.data.url
-                            e.data.url = json.hls + '?audio=' + item.audioIndex;
+                            e.data.url = audioIndex
+                                ? json.hls + '?audio=' + audioIndex
+                                : json.hls;
 
                             Lampa.Player.play(e.data);
-                            Lampa.Player.playlist(createPlaylist(e.data, item.audioIndex))
+                            Lampa.Player.playlist(createPlaylist(e.data, audioIndex))
                             Lampa.Player.callback(function () {
                                 Lampa.Controller.toggle('modal')
 
@@ -189,15 +242,43 @@
                                 })
                             })
                             taskId = json.id;
-                        },
-                        onBack: function () {
-                            Lampa.Controller.toggle(last_controller)
                         }
+
+                        if (!items.length || items.length == 1) {
+                            startPlayback(items[0]);
+                            return;
+                        }
+
+                        // Always ask the user which audio track to play when there
+                        // is more than one. Auto-selecting English breaks dubbed
+                        // releases (e.g. Spanish-only movies).
+                        Lampa.Select.show({
+                            title: 'Выберите аудиодорожку',
+                            items: items,
+                            onSelect: function (item) {
+                                Lampa.Select.close();
+                                startPlayback(item);
+                            },
+                            onBack: function () {
+                                Lampa.Controller.toggle(last_controller)
+                            }
+                        });
+                    }, function (error) {
+                        // The server returns 502 while it is still probing a slow
+                        // source. Retry once instead of erroring immediately.
+                        addAttempts++;
+                        if (addAttempts < 2) {
+                            Lampa.Loading.start(function () { }, 'Ожидание транскодинга...');
+                            setTimeout(addSource, 5000);
+                            return;
+                        }
+
+                        Lampa.Loading.stop();
+                        Lampa.Noty.show('Не удалось запустить транскодинг');
                     });
-                }, function (error) {
-                    Lampa.Loading.stop();
-                    Lampa.Noty.show('Не удалось запустить транскодинг');
-                });
+                }
+
+                addSource();
             }, 10);
         }
     }
