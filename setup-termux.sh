@@ -587,6 +587,25 @@ sync_latest_modules() {
             done
         fi
 
+        # OneJav (SISI 18+): nguon JAV torrent onejav.com. Buoc dau: trang chu +
+        # danh muc /tag/<name>. Phan phat (torrent -> magnet qua TorrServer) tinh sau.
+        ojvtarget=/root/lampac/module/Adult/OneJav
+        mkdir -p \"\$ojvtarget\"
+        for ojvfile in manifest.json Controller.cs ModInit.cs Service.cs OneJav.csproj; do
+            if curl -fsSL --retry 3 \"\$base/Modules/Adult/OneJav/\$ojvfile?cb=\$stamp\" -o \"/tmp/ojv-\$ojvfile\"; then
+                mv \"/tmp/ojv-\$ojvfile\" \"\$ojvtarget/\$ojvfile\"
+                echo \"  [sync] adult/OneJav/\$ojvfile\"
+            else
+                rm -f \"/tmp/ojv-\$ojvfile\"
+            fi
+        done
+        ojvmods=/root/lampac/mods/Adult/OneJav
+        if [ -d \"\$ojvmods\" ]; then
+            for ojvfile in manifest.json Controller.cs ModInit.cs Service.cs OneJav.csproj; do
+                [ -f \"\$ojvtarget/\$ojvfile\" ] && cp \"\$ojvtarget/\$ojvfile\" \"\$ojvmods/\$ojvfile\" 2>/dev/null && echo \"  [sync] adult mods/OneJav/\$ojvfile\"
+            done
+        fi
+
         # MoviesHub cung duoc sync o day: lampac sync la du de cap nhat 2 nguoi nay.
         # Danh sach file .cs KHONG hardcode nua: doc tu "tree" trong manifest.json cua chinh module.
         # Them nguon cung kieu (lop Movies4U/MoviesDrive) => chi can sua manifest.json trong repo,
@@ -785,6 +804,26 @@ install_custom_modules() {
         if [ -d \"\$ailbmods\" ]; then
             for ailbfile in manifest.json Controller.cs Model.cs ModInit.cs; do
                 [ -f \"\$ailbtarget/\$ailbfile\" ] && cp \"\$ailbtarget/\$ailbfile\" \"\$ailbmods/\$ailbfile\" 2>/dev/null
+            done
+        fi
+
+        # OneJav: nguon JAV torrent (SISI 18+), route /ojv. Buoc dau: trang chu + danh muc.
+        ojvbase=\"${CUSTOM_SOURCE_BASE}/Modules/Adult/OneJav\"
+        ojvtarget=/root/lampac/module/Adult/OneJav
+        mkdir -p \"\$ojvtarget\"
+        for ojvfile in manifest.json Controller.cs ModInit.cs Service.cs OneJav.csproj; do
+            if curl -fsSL --retry 3 \"\$ojvbase/\$ojvfile?cb=\$syncstamp\" -o \"/tmp/ojv-\$ojvfile\"; then
+                mv \"/tmp/ojv-\$ojvfile\" \"\$ojvtarget/\$ojvfile\"
+                echo \"  [OneJav] \$ojvfile\"
+            else
+                rm -f \"/tmp/ojv-\$ojvfile\"
+                echo \"  [OneJav] bo qua \$ojvfile - khong co tren nguon\"
+            fi
+        done
+        ojvmods=/root/lampac/mods/Adult/OneJav
+        if [ -d \"\$ojvmods\" ]; then
+            for ojvfile in manifest.json Controller.cs ModInit.cs Service.cs OneJav.csproj; do
+                [ -f \"\$ojvtarget/\$ojvfile\" ] && cp \"\$ojvtarget/\$ojvfile\" \"\$ojvmods/\$ojvfile\" 2>/dev/null
             done
         fi
 
