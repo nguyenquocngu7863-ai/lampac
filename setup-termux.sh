@@ -22,7 +22,7 @@ ROOT_PASSWORD="${LAMPAC_PASSWD:-lampac}"
 # Mặc định trỏ nhánh làm việc của bản tuỳ biến (AdminPanel phân nhóm + tìm kiếm,
 # module ENG/VN, bản sửa `lampac update`). Đặt LAMPAC_CUSTOM_SOURCE_BASE để đổi
 # sang fork/nhánh khác mà không cần sửa file này.
-CUSTOM_SOURCE_BASE="${LAMPAC_CUSTOM_SOURCE_BASE:-https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a06710-lampac}"
+CUSTOM_SOURCE_BASE="${LAMPAC_CUSTOM_SOURCE_BASE:-https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a0673e-lampac}"
 
 MODE=""
 [[ "${1:-}" == "--install" ]] && MODE="install"
@@ -74,7 +74,7 @@ show_help() {
     printf "  ${CYAN}LAMPAC_PORT${RESET}     Listen port (default: 9118)\n"
     printf "  ${CYAN}LAMPAC_PASSWD${RESET}   Root password (default: lampac)\n"
     printf "  ${CYAN}LAMPAC_CUSTOM_SOURCE_BASE${RESET} Raw-git base URL for --sync/--sync-all\n"
-    printf "                      (default: .../lampac/arena/01a06710-lampac;\n"
+    printf "                      (default: .../lampac/arena/01a0673e-lampac;\n"
     printf "                      không dùng main — nhánh đó đang chậm hơn)\n\n"
     printf "${BOLD}How it works:${RESET}\n"
     printf "  This script installs Lampac inside proot-distro Ubuntu.\n"
@@ -587,24 +587,6 @@ sync_latest_modules() {
             done
         fi
 
-        # OneJav (SISI 18+): nguon JAV torrent onejav.com. Buoc dau: trang chu +
-        # danh muc /tag/<name>. Phan phat (torrent -> magnet qua TorrServer) tinh sau.
-        ojvtarget=/root/lampac/module/Adult/OneJav
-        mkdir -p \"\$ojvtarget\"
-        for ojvfile in manifest.json Controller.cs ModInit.cs Service.cs OneJav.csproj; do
-            if curl -fsSL --retry 3 \"\$base/Modules/Adult/OneJav/\$ojvfile?cb=\$stamp\" -o \"/tmp/ojv-\$ojvfile\"; then
-                mv \"/tmp/ojv-\$ojvfile\" \"\$ojvtarget/\$ojvfile\"
-                echo \"  [sync] adult/OneJav/\$ojvfile\"
-            else
-                rm -f \"/tmp/ojv-\$ojvfile\"
-            fi
-        done
-        ojvmods=/root/lampac/mods/Adult/OneJav
-        if [ -d \"\$ojvmods\" ]; then
-            for ojvfile in manifest.json Controller.cs ModInit.cs Service.cs OneJav.csproj; do
-                [ -f \"\$ojvtarget/\$ojvfile\" ] && cp \"\$ojvtarget/\$ojvfile\" \"\$ojvmods/\$ojvfile\" 2>/dev/null && echo \"  [sync] adult mods/OneJav/\$ojvfile\"
-            done
-        fi
 
         # MoviesHub cung duoc sync o day: lampac sync la du de cap nhat 2 nguoi nay.
         # Danh sach file .cs KHONG hardcode nua: doc tu "tree" trong manifest.json cua chinh module.
@@ -807,25 +789,6 @@ install_custom_modules() {
             done
         fi
 
-        # OneJav: nguon JAV torrent (SISI 18+), route /ojv. Buoc dau: trang chu + danh muc.
-        ojvbase=\"${CUSTOM_SOURCE_BASE}/Modules/Adult/OneJav\"
-        ojvtarget=/root/lampac/module/Adult/OneJav
-        mkdir -p \"\$ojvtarget\"
-        for ojvfile in manifest.json Controller.cs ModInit.cs Service.cs OneJav.csproj; do
-            if curl -fsSL --retry 3 \"\$ojvbase/\$ojvfile?cb=\$syncstamp\" -o \"/tmp/ojv-\$ojvfile\"; then
-                mv \"/tmp/ojv-\$ojvfile\" \"\$ojvtarget/\$ojvfile\"
-                echo \"  [OneJav] \$ojvfile\"
-            else
-                rm -f \"/tmp/ojv-\$ojvfile\"
-                echo \"  [OneJav] bo qua \$ojvfile - khong co tren nguon\"
-            fi
-        done
-        ojvmods=/root/lampac/mods/Adult/OneJav
-        if [ -d \"\$ojvmods\" ]; then
-            for ojvfile in manifest.json Controller.cs ModInit.cs Service.cs OneJav.csproj; do
-                [ -f \"\$ojvtarget/\$ojvfile\" ] && cp \"\$ojvtarget/\$ojvfile\" \"\$ojvmods/\$ojvfile\" 2>/dev/null
-            done
-        fi
 
         movieshubbase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineENG/MoviesHub\"
         movieshubtarget=/root/lampac/module/OnlineENG/MoviesHub
@@ -1230,14 +1193,14 @@ case "${1:-}" in
         ;;
     branch)
         cur="$(cd "$(dirname "$0")" && git branch --show-current 2>/dev/null || echo unknown)"
-        base="${LAMPAC_CUSTOM_SOURCE_BASE:-default (arena/01a06710-lampac)}"
+        base="${LAMPAC_CUSTOM_SOURCE_BASE:-default (arena/01a0673e-lampac)}"
         echo ""
         echo "  Git branch  : $cur"
         echo "  Source base : $base"
         echo ""
         echo "  Nhánh mới nhất (không dùng main):"
-        echo "    cd ~/lampac && git fetch origin && git checkout arena/01a06710-lampac"
-        echo "    echo 'export LAMPAC_CUSTOM_SOURCE_BASE=https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a06710-lampac' >> ~/.bashrc"
+        echo "    cd ~/lampac && git fetch origin && git checkout arena/01a0673e-lampac"
+        echo "    echo 'export LAMPAC_CUSTOM_SOURCE_BASE=https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a0673e-lampac' >> ~/.bashrc"
         echo "    source ~/.bashrc && lampac sync && lampac stop && lampac start"
         echo ""
         ;;
