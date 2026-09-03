@@ -568,6 +568,25 @@ sync_latest_modules() {
             fi
         done
 
+        # AiLiberty: nguon anime moi (ailiberty.top), dung lazy proxy /lite/ailiberty/video.m3u8
+        # vi link het han rat nhanh. Khong co trong lampac-nextgen.zip -> tu tao thu muc.
+        ailbtarget=/root/lampac/module/OnlineAnime/AiLiberty
+        mkdir -p \"\$ailbtarget\"
+        for ailbfile in manifest.json Controller.cs Model.cs ModInit.cs; do
+            if curl -fsSL --retry 3 \"\$base/Modules/OnlineAnime/AiLiberty/\$ailbfile?cb=\$stamp\" -o \"/tmp/ailb-\$ailbfile\"; then
+                mv \"/tmp/ailb-\$ailbfile\" \"\$ailbtarget/\$ailbfile\"
+                echo \"  [sync] anime/AiLiberty/\$ailbfile\"
+            else
+                rm -f \"/tmp/ailb-\$ailbfile\"
+            fi
+        done
+        ailbmods=/root/lampac/mods/OnlineAnime/AiLiberty
+        if [ -d \"\$ailbmods\" ]; then
+            for ailbfile in manifest.json Controller.cs Model.cs ModInit.cs; do
+                [ -f \"\$ailbtarget/\$ailbfile\" ] && cp \"\$ailbtarget/\$ailbfile\" \"\$ailbmods/\$ailbfile\" 2>/dev/null && echo \"  [sync] anime mods/AiLiberty/\$ailbfile\"
+            done
+        fi
+
         # MoviesHub cung duoc sync o day: lampac sync la du de cap nhat 2 nguoi nay.
         # Danh sach file .cs KHONG hardcode nua: doc tu "tree" trong manifest.json cua chinh module.
         # Them nguon cung kieu (lop Movies4U/MoviesDrive) => chi can sua manifest.json trong repo,
@@ -748,6 +767,26 @@ install_custom_modules() {
                 done
             fi
         done
+
+        # AiLiberty: nguon anime moi (ailiberty.top), lazy proxy link (het han nhanh).
+        ailbbase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineAnime/AiLiberty\"
+        ailbtarget=/root/lampac/module/OnlineAnime/AiLiberty
+        mkdir -p \"\$ailbtarget\"
+        for ailbfile in manifest.json Controller.cs Model.cs ModInit.cs; do
+            if curl -fsSL --retry 3 \"\$ailbbase/\$ailbfile?cb=\$syncstamp\" -o \"/tmp/ailb-\$ailbfile\"; then
+                mv \"/tmp/ailb-\$ailbfile\" \"\$ailbtarget/\$ailbfile\"
+                echo \"  [AiLiberty] \$ailbfile\"
+            else
+                rm -f \"/tmp/ailb-\$ailbfile\"
+                echo \"  [AiLiberty] bo qua \$ailbfile - khong co tren nguon\"
+            fi
+        done
+        ailbmods=/root/lampac/mods/OnlineAnime/AiLiberty
+        if [ -d \"\$ailbmods\" ]; then
+            for ailbfile in manifest.json Controller.cs Model.cs ModInit.cs; do
+                [ -f \"\$ailbtarget/\$ailbfile\" ] && cp \"\$ailbtarget/\$ailbfile\" \"\$ailbmods/\$ailbfile\" 2>/dev/null
+            done
+        fi
 
         movieshubbase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineENG/MoviesHub\"
         movieshubtarget=/root/lampac/module/OnlineENG/MoviesHub
