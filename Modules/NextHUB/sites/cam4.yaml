@@ -26,7 +26,7 @@ menu:
         Nam: male
         Chuyển giới: transgender
     - name: Danh mục
-      arg: cat
+      arg: tag
       format: "{value}?page={page}"
       submenu:
         Tất cả: female
