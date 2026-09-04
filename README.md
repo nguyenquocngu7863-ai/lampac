@@ -197,6 +197,45 @@ Từng dòng:
 5. `if [ -d mods/… ]` — có overlay `mods/` thì chép; không có thì bỏ qua. Đừng copy `&amp;&amp;` từ web.
 6. `grep` — xác nhận file mới. Không thấy = chưa vào đúng chỗ.
 
+**Nhiều file trong một lệnh.** Muốn chép vài file khác module, gộp các cặp
+`curl … -o ….tmp` + `mv` vào cùng `bash -lc '…'` (mỗi file một cặp, `set -e` dừng
+sớm nếu một file lỗi). Bản vá hiện tại cho **GStreamer `gst.js`** và **Cam4
+`cam4.yaml`** copy nguyên khối:
+
+```bash
+proot-distro login ubuntu -- bash -lc '
+set -e
+base=https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a0673e-lampac
+stamp=$(date +%s)
+
+# gst.js (plugin GStreamer)
+curl -fSL --retry 3 "$base/Modules/GStreamer/plugins/gst.js?cb=$stamp" \
+  -o /root/lampac/module/GStreamer/plugins/gst.js.tmp
+mv /root/lampac/module/GStreamer/plugins/gst.js.tmp /root/lampac/module/GStreamer/plugins/gst.js
+[ -d /root/lampac/mods/GStreamer/plugins ] && cp /root/lampac/module/GStreamer/plugins/gst.js /root/lampac/mods/GStreamer/plugins/gst.js
+
+# cam4.yaml (site NextHUB)
+curl -fSL --retry 3 "$base/Modules/NextHUB/sites/cam4.yaml?cb=$stamp" \
+  -o /root/lampac/module/NextHUB/sites/cam4.yaml.tmp
+mv /root/lampac/module/NextHUB/sites/cam4.yaml.tmp /root/lampac/module/NextHUB/sites/cam4.yaml
+[ -d /root/lampac/mods/NextHUB/sites ] && cp /root/lampac/module/NextHUB/sites/cam4.yaml /root/lampac/mods/NextHUB/sites/cam4.yaml
+
+# Xác nhận file mới đã vào đúng chỗ
+echo "--- gst.js ---"
+grep -n "Chọn audio" /root/lampac/module/GStreamer/plugins/gst.js
+echo "--- cam4.yaml (không kết quả = OK) ---"
+grep -n "niches/milf" /root/lampac/module/NextHUB/sites/cam4.yaml || echo "OK: không còn niches"
+'
+```
+
+- `base` phải khớp nhánh **đang chạy** (kiểm tra `git branch --show-current` và
+  `LAMPAC_CUSTOM_SOURCE_BASE`). Mẫu trên dùng nhánh làm việc `arena/01a0673e-lampac`.
+- `[ -d /root/lampac/mods/… ] && cp …` — chỉ chép sang overlay `mods/` khi nó tồn tại;
+  không có thì bỏ qua (đừng copy `&amp;&amp;` lẫn từ web).
+- `grep … || echo "OK"` — tránh để `set -e` dừng khi file mới **không còn** chuỗi cũ.
+- Sau đó: `lampac stop && lampac start` (NextHUB đọc YAML lúc khởi động; `gst.js` là
+  plugin client — thoát hẳn Lampa / hard refresh là đủ, restart không hại).
+
 Sau khi curl:
 
 - File **C#** (`.cs`, controller): `lampac stop && lampac start` (compile lúc start).
