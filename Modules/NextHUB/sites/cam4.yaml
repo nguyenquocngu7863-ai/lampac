@@ -15,40 +15,33 @@ headers_stream:
   Accept: "*/*"
 
 menu:
-  customs:
-    - name: Giới tính
-      arg: gender
-      format: "{value}?page={page}"
-      submenu:
-        Tất cả: ""
-        Nữ: female
-        Cặp đôi: couple
-        Nam: male
-        Chuyển giới: transgender
-    - name: Danh mục
-      arg: tag
-      format: "{value}?page={page}"
-      submenu:
-        Tất cả: female
-        Teen: female/teen
-        Babe: female/babe
-        MILF: female/milf
-        Vợ: female/wife
-        Emo: female/emo
-        Goth: female/goth
-        Trưởng thành: female/mature
-        Bà già: female/granny
-        Domina: female/domina
-        Phục tùng: female/submissive
-        Bầu: female/pregnant
-        Châu Á: female/asian
-        Da đen: female/black
-        Ả Rập: female/arab
-        Ấn Độ: female/indian
-        Latina: female/hispanic
-        Da trắng: female/white
-        Lai: female/interracial
-        Thổ dân: female/native-american
+  sort:
+    Tất cả: "?page={page}"
+    Nữ: "female?page={page}"
+    Cặp đôi: "couple?page={page}"
+    Nam: "male?page={page}"
+    Chuyển giới: "transgender?page={page}"
+  categories:
+    Tất cả: "female?page={page}"
+    Teen: "female/teen?page={page}"
+    Babe: "female/babe?page={page}"
+    MILF: "female/milf?page={page}"
+    Vợ: "female/wife?page={page}"
+    Emo: "female/emo?page={page}"
+    Goth: "female/goth?page={page}"
+    Trưởng thành: "female/mature?page={page}"
+    Bà già: "female/granny?page={page}"
+    Domina: "female/domina?page={page}"
+    Phục tùng: "female/submissive?page={page}"
+    Bầu: "female/pregnant?page={page}"
+    Châu Á: "female/asian?page={page}"
+    Da đen: "female/black?page={page}"
+    Ả Rập: "female/arab?page={page}"
+    Ấn Độ: "female/indian?page={page}"
+    Latina: "female/hispanic?page={page}"
+    Da trắng: "female/white?page={page}"
+    Lai: "female/interracial?page={page}"
+    Thổ dân: "female/native-american?page={page}"
 
 list:
   uri: "?page={page}"
