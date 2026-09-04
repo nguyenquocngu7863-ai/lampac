@@ -232,7 +232,12 @@ grep -n "niches/milf" /root/lampac/module/NextHUB/sites/cam4.yaml || echo "OK: k
   `LAMPAC_CUSTOM_SOURCE_BASE`). Mẫu trên dùng nhánh làm việc `arena/01a0673e-lampac`.
 - `[ -d /root/lampac/mods/… ] && cp …` — chỉ chép sang overlay `mods/` khi nó tồn tại;
   không có thì bỏ qua (đừng copy `&amp;&amp;` lẫn từ web).
-- `grep … || echo "OK"` — tránh để `set -e` dừng khi file mới **không còn** chuỗi cũ.
+- Toàn khối `echo` / `grep … || echo "OK"` ở cuối là **mẫu xác nhận của bản vá cụ thể**
+  (`gst.js` → "Chọn audio", `cam4.yaml` → hết "niches/milf"). Đây **không phải** lệnh cứng:
+  khi chép file khác thì **đổi dòng grep** cho khớp nội dung đang sửa (chuỗi mới cần có / chuỗi
+  cũ cần mất). Muốn "chỉ cần file, không cần kiểm tra" thì bỏ hẳn phần `echo`/`grep` cuối.
+- `grep … || echo "OK"` — tránh để `set -e` dừng khi file mới **không còn** chuỗi cũ
+  (điều mình muốn). Nếu kiểm tra chuỗi **phải có** thì bỏ `|| echo`, để grep tự fail.
 - Sau đó: `lampac stop && lampac start` (NextHUB đọc YAML lúc khởi động; `gst.js` là
   plugin client — thoát hẳn Lampa / hard refresh là đủ, restart không hại).
 
