@@ -142,6 +142,7 @@ Luồng đúng: Lampa gửi link → lampac `/jackett/resolve` đổi link `.tor
 
 - **VidCore**: để tiếng Anh (ENG); **UhdMovies**: đã ẩn (controller gỡ).
 - **Stripchat**, **OneJav**: đã gỡ hoàn toàn, không hồi sinh.
+- **Cam4 (NextHUB)**: site cam live — server chỉ render MỘT tốp model cố định cho mỗi đường dẫn (`/female`, `/female/teen`, `/male`, …); `?page=N` chỉ có tác dụng trong app trình duyệt nên request HTTP thuần trang nào cũng trả cùng danh sách → phân trang cũ "không load được trang, cứ lặp lại". Đã sửa trong `cam4.yaml`: `total_pages: 1` (tắt 30 trang ảo do Lampa tự suy ra) + mở rộng "Danh mục" thành 53 đường dẫn thật (mỗi danh mục = một dàn model khác nhau). Muốn kiểm tra mạng của bạn có được cam4 phân trang thật không, xem 2 lệnh curl trong comment đầu file `Modules/NextHUB/sites/cam4.yaml`; nếu khác nhau thì tăng `total_pages` lên (vd 10).
 - Nguồn RUS mới đồng bộ: **Gencit, Videoseed, FlixCDN** — `setup-termux.sh --sync-all` tự kéo; nếu thiếu sau khi sync, kiểm tra log `[sync] rus/...`.
 - Muốn thêm nguồn kiểu MoviesHub: sửa `manifest.json` (mục tree) trong repo, không cần sửa script.
 

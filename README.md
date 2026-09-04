@@ -205,7 +205,7 @@ sớm nếu một file lỗi). Bản vá hiện tại cho **GStreamer `gst.js`**
 ```bash
 proot-distro login ubuntu -- bash -lc '
 set -e
-base=https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a0673e-lampac
+base=https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/arena/01a06ac7-lampac
 stamp=$(date +%s)
 
 # gst.js (plugin GStreamer)
@@ -223,17 +223,18 @@ mv /root/lampac/module/NextHUB/sites/cam4.yaml.tmp /root/lampac/module/NextHUB/s
 # Xác nhận file mới đã vào đúng chỗ
 echo "--- gst.js ---"
 grep -n "Chọn audio" /root/lampac/module/GStreamer/plugins/gst.js
-echo "--- cam4.yaml (không kết quả = OK) ---"
-grep -n "niches/milf" /root/lampac/module/NextHUB/sites/cam4.yaml || echo "OK: không còn niches"
+echo "--- cam4.yaml (phải thấy total_pages: 1) ---"
+grep -n "total_pages: 1" /root/lampac/module/NextHUB/sites/cam4.yaml
 '
 ```
 
 - `base` phải khớp nhánh **đang chạy** (kiểm tra `git branch --show-current` và
-  `LAMPAC_CUSTOM_SOURCE_BASE`). Mẫu trên dùng nhánh làm việc `arena/01a0673e-lampac`.
+  `LAMPAC_CUSTOM_SOURCE_BASE`). Mẫu trên dùng nhánh làm việc `arena/01a06ac7-lampac`.
 - `[ -d /root/lampac/mods/… ] && cp …` — chỉ chép sang overlay `mods/` khi nó tồn tại;
   không có thì bỏ qua (đừng copy `&amp;&amp;` lẫn từ web).
 - Toàn khối `echo` / `grep … || echo "OK"` ở cuối là **mẫu xác nhận của bản vá cụ thể**
-  (`gst.js` → "Chọn audio", `cam4.yaml` → hết "niches/milf"). Đây **không phải** lệnh cứng:
+  (`gst.js` → "Chọn audio", `cam4.yaml` → có "total_pages: 1" — bản vá phân trang cam4:
+  tắt 30 trang ảo lặp nội dung, danh mục đổi thành đường dẫn thật). Đây **không phải** lệnh cứng:
   khi chép file khác thì **đổi dòng grep** cho khớp nội dung đang sửa (chuỗi mới cần có / chuỗi
   cũ cần mất). Muốn "chỉ cần file, không cần kiểm tra" thì bỏ hẳn phần `echo`/`grep` cuối.
 - `grep … || echo "OK"` — tránh để `set -e` dừng khi file mới **không còn** chuỗi cũ

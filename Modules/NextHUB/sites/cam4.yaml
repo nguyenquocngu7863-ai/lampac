@@ -14,47 +14,101 @@ headers_stream:
   Origin: "{host}"
   Accept: "*/*"
 
+# CAM4 là directory cam LIVE: mỗi đường dẫn (/female, /female/teen, /male, ...)
+# chỉ được server render MỘT tốp model (~vài chục). Tham số ?page=N chỉ có tác
+# dụng trong app React phía trình duyệt — request HTTP thuần (cách NextHUB tải
+# trang, priorityBrowser: http) luôn nhận cùng một danh sách, nên trang 2, 3...
+# trả về đúng nội dung trang 1 => Lampa cộng dồn thành "lặp lại vô hạn".
+# Vì vậy: total_pages: 1 (tắt phân trang ảo) và mở rộng "categories" để mỗi
+# mục là MỘT ĐƯỜNG DẪN thật (mỗi path = một dàn model khác nhau).
+# Muốn kiểm tra mạng của bạn có được CAM4 phân trang thật hay không:
+#   curl -s "https://www.cam4.com/female?page=1" | grep -o '"username":"[^"]*"' | head -5
+#   curl -s "https://www.cam4.com/female?page=2" | grep -o '"username":"[^"]*"' | head -5
+# Hai danh sách KHÁC nhau => server có phân trang; khi đó có thể tăng
+# total_pages (vd 10) — route bên dưới đã sẵn ?page={page}.
 menu:
+  bind: false
+  route:
+    -: "{host}/{cat ?? sort}?page={page}"
   sort:
-    Tất cả: "?page={page}"
-    Nữ: "female?page={page}"
-    Cặp đôi: "couple?page={page}"
-    Nam: "male?page={page}"
-    Chuyển giới: "transgender?page={page}"
+    Tất cả: ""
+    Nữ: female
+    Cặp đôi: couple
+    Nam: male
+    Chuyển giới: transgender
   categories:
-    Tất cả: "female?page={page}"
-    Teen: "female/teen?page={page}"
-    Babe: "female/babe?page={page}"
-    MILF: "female/milf?page={page}"
-    Vợ: "female/wife?page={page}"
-    Emo: "female/emo?page={page}"
-    Goth: "female/goth?page={page}"
-    Trưởng thành: "female/mature?page={page}"
-    Bà già: "female/granny?page={page}"
-    Domina: "female/domina?page={page}"
-    Phục tùng: "female/submissive?page={page}"
-    Bầu: "female/pregnant?page={page}"
-    Châu Á: "female/asian?page={page}"
-    Da đen: "female/black?page={page}"
-    Ả Rập: "female/arab?page={page}"
-    Ấn Độ: "female/indian?page={page}"
-    Latina: "female/hispanic?page={page}"
-    Da trắng: "female/white?page={page}"
-    Lai: "female/interracial?page={page}"
-    Thổ dân: "female/native-american?page={page}"
+    Tất cả: female
+    Mới lên sóng: female/new
+    Nói tiếng Anh: female/english
+    Teen +18: female/teen
+    Babe: female/babe
+    MILF: female/milf
+    Vợ: female/wife
+    Emo: female/emo
+    Goth: female/goth
+    Trưởng thành: female/mature
+    Bà già: female/granny
+    Domina: female/domina
+    Phục tùng: female/submissive
+    Bầu: female/pregnant
+    Nhỏ nhắn: female/petite-female-body
+    Gầy: female/skinny-female-body
+    Trung bình: female/average-female-body
+    Lực lưỡng: female/athletic-female-body
+    Đẫy đà: female/curvy-female-body
+    BBW: female/bbw-female-body
+    Ngực tí hon: female/tiny-breasts
+    Ngực nhỏ: female/small-breasts
+    Ngực vừa: female/medium-breasts
+    Ngực lớn: female/big-breasts
+    Ngực khủng: female/huge-breasts
+    Châu Á: female/asian
+    Da đen: female/black
+    Ả Rập: female/arab
+    Ấn Độ: female/indian
+    Latina: female/hispanic
+    Da trắng: female/white
+    Lai: female/interracial
+    Thổ dân: female/native-american
+    Ở Mỹ: female/united-states
+    Tóc đen: female/black-hair
+    Tóc vàng: female/blonde-hair
+    Tóc nâu: female/brown-hair
+    Tóc đỏ: female/red-hair
+    Tóc xám: female/grey-hair
+    Tóc trắng: female/white-hair
+    Trọc đầu: female/bald
+    Nhiều lông: female/hairy
+    Ít lông: female/little
+    Cạo sạch: female/shaved
+    Thẳng: female/straight
+    Đồng tính nữ: female/gay
+    Lưỡng tính: female/bisexual
+    Tò mò 2 giới: female/bicurious
+    Show riêng tư: female/private-show
+    Show nhóm: female/group-show
+    Live Touch: female/livetouch
+    HD: female/hd
+    Mobile: female/mobile
 
 list:
   uri: "?page={page}"
+  total_pages: 1
 
 contentParse:
   eval: |
+    var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
     var match = Regex.Match(html, "\"username\":\"([^\"]+)\".*?\"src\":\"([^\"]+)\".*?\"poster\":\"([^\"]+)\"");
     while(match.Success){
-      playlists.Add(new PlaylistItem(){
-        name =  match.Groups[1].Value,
-        video = match.Groups[2].Value.Replace("\\u002F", "/"),
-        picture = match.Groups[3].Value.Replace("\\u002F", "/")
-      });
+      string username = match.Groups[1].Value;
+      if (seen.Add(username))
+      {
+        playlists.Add(new PlaylistItem(){
+          name = username,
+          video = match.Groups[2].Value.Replace("\\u002F", "/"),
+          picture = match.Groups[3].Value.Replace("\\u002F", "/")
+        });
+      }
       match = match.NextMatch();
     }
     return playlists;
