@@ -39,7 +39,8 @@ public class StripchatController : BaseSisiController
                 ("accept", "application/json, text/plain, */*"),
                 ("referer", "https://stripchat.com/"),
                 ("origin", "https://stripchat.com"),
-                ("accept-language", "en-US,en;q=0.9")
+                ("accept-language", "en-US,en;q=0.9"),
+                ("user-agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36")
             );
 
             await httpHydra.GetSpan(StripchatTo.Uri(init.host, sort, pg), span =>
