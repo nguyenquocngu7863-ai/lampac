@@ -43,7 +43,9 @@ public class ModInit : IModuleLoaded, IModuleSisi
             displayindex = 20,
             streamproxy = true,
             qualitys_proxy = false,
-            rhub = false,
+            rhub = true,
+            rhub_fallback = true,
+            rhub_streamproxy = true,
             httpversion = 2,
             headers = HeadersModel.Init(
                 ("User-Agent", ua),
