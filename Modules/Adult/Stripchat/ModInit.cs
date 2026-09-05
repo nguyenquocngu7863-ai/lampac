@@ -35,10 +35,28 @@ public class ModInit : IModuleLoaded, IModuleSisi
 
     void updateConf()
     {
-        conf = ModuleInvoke.Init("Stripchat", new SisiSettings("Stripchat", "https://stripchat.com")
+        const string ua = "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36";
+        const string site = "https://stripchat.com";
+
+        conf = ModuleInvoke.Init("Stripchat", new SisiSettings("Stripchat", site)
         {
             displayindex = 20,
-            streamproxy = true
+            streamproxy = true,
+            qualitys_proxy = false,
+            rhub = false,
+            httpversion = 2,
+            headers = HeadersModel.Init(
+                ("User-Agent", ua),
+                ("Referer", site + "/"),
+                ("Accept-Language", "en-US,en;q=0.9")
+            ).ToDictionary(),
+            headers_stream = HeadersModel.Init(
+                ("User-Agent", ua),
+                ("Referer", site + "/"),
+                ("Origin", site),
+                ("Accept", "*/*"),
+                ("Accept-Language", "en-US,en;q=0.9")
+            ).ToDictionary()
         });
     }
 }
