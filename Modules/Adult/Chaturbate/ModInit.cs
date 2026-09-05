@@ -56,7 +56,9 @@ public class ModInit : IModuleLoaded, IModuleSisi
             // bound to the IP that requested the room page; Android cannot
             // play the mmcdn URL itself (CORS + token IP mismatch).
             kit = false,
-            rhub = false,
+            rhub = true,
+            rhub_fallback = true,
+            rhub_streamproxy = true,
             qualitys_proxy = false,
             url_reserve = false,
 
@@ -79,7 +81,9 @@ public class ModInit : IModuleLoaded, IModuleSisi
         // Keep the live HLS proxy on even if an older init.conf/Kit profile
         // still has streamproxy=false from before this fix.
         conf.kit = false;
-        conf.rhub = false;
+        conf.rhub = true;
+        conf.rhub_fallback = true;
+        conf.rhub_streamproxy = true;
         conf.qualitys_proxy = false;
         conf.url_reserve = false;
         conf.streamproxy = true;
