@@ -975,7 +975,7 @@ install_custom_modules() {
             done
         fi
 
-        for adultmodule in BongaCams Chaturbate Ebalovo Eporner HQporner Po85 PornHub Porntrex Runetki Spankbang Stripchat Xhamster Xnxx Xvideos XvideosRED; do
+        for adultmodule in BongaCams Chaturbate Ebalovo Eporner HQporner Po85 PornHub Porntrex Runetki Spankbang Xhamster Xnxx Xvideos XvideosRED; do
             adulttarget=\"/root/lampac/module/Adult/\$adultmodule\"
             if [ -d \"\$adulttarget\" ]; then
                 curl -fSL --retry 3 \"${CUSTOM_SOURCE_BASE}/Modules/Adult/\$adultmodule/Service.cs?cb=\$syncstamp\" -o \"\$adulttarget/Service.cs.tmp\"
