@@ -556,6 +556,19 @@ sync_latest_modules() {
             fi
         done
 
+        # Stripchat (livecam): xac minh 2026-09-05 (list 90, potok ra hlsProxy).
+        scsynctarget=/root/lampac/module/Adult/Stripchat
+        mkdir -p \"$scsynctarget\"
+        for scsyncfile in manifest.json Controller.cs ModInit.cs Service.cs; do
+            if curl -fsSL --retry 3 \"$base/Modules/Adult/Stripchat/\$scsyncfile?cb=\$stamp\" -o \"/tmp/scsync-\$scsyncfile\"; then
+                mv \"/tmp/scsync-\$scsyncfile\" \"$scsynctarget/\$scsyncfile\"
+                echo \"  [sync] stripchat/\$scsyncfile\"
+            else
+                rm -f \"/tmp/scsync-\$scsyncfile\"
+                echo \"  [sync] stripchat: bo qua \$scsyncfile (nguon khong co)\"
+            fi
+        done
+
         # VK Video quoc te: tim ca original_title va giu HLS/DASH multi-audio.
         for vkmovie in /root/lampac/module/OnlineRUS/VkMovie /root/lampac/mods/OnlineRUS/VkMovie; do
             if [ -d \"\$vkmovie\" ]; then
@@ -771,6 +784,20 @@ install_custom_modules() {
             fi
         done
 
+        # Stripchat (livecam): xac minh 2026-09-05 (list 90, potok ra proxy 206).
+        scbase=\"\${CUSTOM_SOURCE_BASE}/Modules/Adult/Stripchat\"
+        sctarget=/root/lampac/module/Adult/Stripchat
+        mkdir -p \"\$sctarget\"
+        for scfile in manifest.json Controller.cs ModInit.cs Service.cs; do
+            if curl -fsSL --retry 3 \"\$scbase/\$scfile?cb=\$syncstamp\" -o \"/tmp/sc-\$scfile\"; then
+                mv \"/tmp/sc-\$scfile\" \"\$sctarget/\$scfile\"
+                echo \"  [stripchat] \$scfile\"
+            else
+                rm -f \"/tmp/sc-\$scfile\"
+                echo \"  [stripchat] bo qua \$scfile - khong co tren nguon\"
+            fi
+        done
+
         # MoviesHub = MoviesDrive + Movies4U + resolver HubCloud/GDrive dung chung. Danh sach file
         # lay tu "tree" trong manifest.json (giong khoi sync_latest_modules): them nguon cung ho
         # khong can sua file nay; manifest khong co tren nguon thi dung danh sach cu.
@@ -948,7 +975,7 @@ install_custom_modules() {
             done
         fi
 
-        for adultmodule in BongaCams Chaturbate Ebalovo Eporner HQporner Po85 PornHub Porntrex Runetki Spankbang Xhamster Xnxx Xvideos XvideosRED; do
+        for adultmodule in BongaCams Chaturbate Ebalovo Eporner HQporner Po85 PornHub Porntrex Runetki Spankbang Stripchat Xhamster Xnxx Xvideos XvideosRED; do
             adulttarget=\"/root/lampac/module/Adult/\$adultmodule\"
             if [ -d \"\$adulttarget\" ]; then
                 curl -fSL --retry 3 \"${CUSTOM_SOURCE_BASE}/Modules/Adult/\$adultmodule/Service.cs?cb=\$syncstamp\" -o \"\$adulttarget/Service.cs.tmp\"
