@@ -49,15 +49,24 @@ public static class StripchatTo
         foreach (var t in arr)
         {
             string username = t.Value<string>("username");
-            string hls = t.Value<string>("hlsPlaylist");
             if (string.IsNullOrWhiteSpace(username))
                 continue;
+
+            // live HLS theo yt-dlp: https://edge-hls.{host}/hls/{id}/master/{id}_auto.m3u8 (id số, không phải preview _240p)
+            string liveHls = null;
+            string idStr = t.Value<string>("id");
+            if (string.IsNullOrWhiteSpace(idStr))
+                idStr = t.Value<string>("streamName");
+            if (!string.IsNullOrWhiteSpace(idStr))
+                liveHls = $"https://edge-hls.doppiocdn.media/hls/{idStr}/master/{idStr}_auto.m3u8";
+            string previewHls = t.Value<string>("hlsPlaylist");
+            string hls = !string.IsNullOrWhiteSpace(liveHls) ? liveHls : previewHls;
 
             // filter non-public shows - keep online but allow all
             // isLive check optional, many SISI modules filter live only
             // keep all for now
 
-            string img = t.Value<string>("previewUrlThumbSmall") ?? t.Value<string>("avatarUrl") ?? "";
+            string img = t.Value<string>("previewUrlThumbBig") ?? t.Value<string>("previewUrlThumbSmall") ?? t.Value<string>("avatarUrl") ?? "";
             if (!string.IsNullOrEmpty(img))
                 img = img.Replace("\\", "");
 
