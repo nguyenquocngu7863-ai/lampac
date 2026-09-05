@@ -20,20 +20,20 @@ public class Po85Controller : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("po85")]
-    async public Task<ActionResult> Index(string search, string sort, string c, int pg = 1)
+    async public Task<ActionResult> Index(string search, string sort, string c, string t, int pg = 1)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
 
     rhubFallback:
-        var cache = await InvokeCacheResult(ipkey($"po85:{search}:{sort}:{c}:{pg}"), 10, jsonContext.ListPlaylistItem, async e =>
+        var cache = await InvokeCacheResult(ipkey($"po85:{search}:{sort}:{c}:{t}:{pg}"), 10, jsonContext.ListPlaylistItem, async e =>
         {
             if (init.httpversion == 1)
                 httpHydra.RegisterHttp(httpClient);
 
             List<PlaylistItem> playlists = null;
 
-            await httpHydra.GetSpan(Po85To.Uri(init.host, search, sort, c, pg), span =>
+            await httpHydra.GetSpan(Po85To.Uri(init.host, search, sort, c, t, pg), span =>
             {
                 playlists = Po85To.Playlist("po85/vidosik", span);
             });
@@ -51,7 +51,7 @@ public class Po85Controller : BaseSisiController
             StatiCacheDisabled = true;
 
         return PlaylistResult(cache,
-            Po85To.Menu(host, search, sort, c)
+            Po85To.Menu(host, search, sort, c, t)
         );
     }
 

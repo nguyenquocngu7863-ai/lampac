@@ -14,7 +14,7 @@ namespace Po85;
 public static class Po85To
 {
     #region Uri
-    public static string Uri(string host, string search, string sort, string c, int pg)
+    public static string Uri(string host, string search, string sort, string c, string t, int pg)
     {
         var url = StringBuilderPool.ThreadInstance;
 
@@ -26,6 +26,13 @@ public static class Po85To
             url.Append("search/");
             url.Append(HttpUtility.UrlEncode(search));
             url.Append("/?from_videos=");
+            url.Append(pg);
+        }
+        else if (!string.IsNullOrEmpty(t))
+        {
+            url.Append("tags/");
+            url.Append(t);
+            url.Append("/?from=");
             url.Append(pg);
         }
         else if (!string.IsNullOrEmpty(c))
@@ -127,7 +134,7 @@ public static class Po85To
     #endregion
 
     #region Menu
-    public static List<MenuItem> Menu(string host, string search, string sort, string c)
+    public static List<MenuItem> Menu(string host, string search, string sort, string c, string t)
     {
         string url = $"{host}/po85";
 
@@ -167,12 +174,42 @@ public static class Po85To
         #endregion
 
         var memoryCache = HybridCache.GetMemory();
-        string menuKey = $"Po85_menu_{host}_{sort}_{c}";
+        string menuKey = $"Po85_menu_{host}_{sort}_{c}_{t}";
 
         if (memoryCache.TryGetValue(menuKey, out List<MenuItem> menu))
             return menu;
 
-        menu = new List<MenuItem>(3)
+        var tagmenu = new List<MenuItem>(27)
+        {
+            new("Tự chụp 自拍", $"{url}?t=zi-pai"),
+            new("Tự sướng 自慰", $"{url}?t=zi-wei"),
+            new("Nghèo nàn 貧乳", $"{url}?t=pin-ru"),
+            new("Em gái 妹", $"{url}?t=mei"),
+            new("Trên giường 床上", $"{url}?t=chuang-shang"),
+            new("Bướm non 嫩逼", $"{url}?t=nen-bi"),
+            new("Muội muội 妹妹", $"{url}?t=mei-mei"),
+            new("Khỏa thân 全裸", $"{url}?t=quan-luo"),
+            new("Rên rỉ 淫叫", $"{url}?t=yin-jiao"),
+            new("Banh bướm 掰逼", $"{url}?t=bai-bi"),
+            new("Bào ngư 鮑魚", $"{url}?t=bao-yu"),
+            new("Mông đẹp 美臀", $"{url}?t=mei-tun"),
+            new("Vú to 大奶", $"{url}?t=da-nai"),
+            new("Quần lót 內褲", $"{url}?t=nei-ku2"),
+            new("Lỗ đít 屁眼", $"{url}?t=pi-yan"),
+            new("Em gái 妹子", $"{url}?t=mei-zi"),
+            new("Nhật Bản 日本", $"{url}?t=ri-ben"),
+            new("Bú cu 口交", $"{url}?t=kou-jiao"),
+            new("Dễ thương 可愛", $"{url}?t=ke-ai"),
+            new("Làm tình 做愛", $"{url}?t=zuo-ai"),
+            new("Vú khủng 巨乳", $"{url}?t=ju-ru"),
+            new("Cởi đồ 脫衣", $"{url}?t=tuo-yi"),
+            new("Lên đỉnh 高潮", $"{url}?t=gao-chao"),
+            new("Phun nước 噴水", $"{url}?t=pen-shui"),
+            new("Đài Loan 台灣", $"{url}?t=tai-wan"),
+            new("Học sinh 學生", $"{url}?t=xue-sheng"),
+        };
+
+        menu = new List<MenuItem>(4)
         {
             new MenuItem()
             {
@@ -186,11 +223,17 @@ public static class Po85To
                 playlist_url = "submenu",
                 submenu = new List<MenuItem>(4)
                 {
-                    new("Mới nhất", $"{url}?c={c}"),
-                    new("4K", $"{url}?c={c}&sort=4k"),
-                    new("Đánh giá cao", $"{url}?c={c}&sort=top-rated"),
-                    new("Xem nhiều nhất", $"{url}?c={c}&sort=most-popular")
+                    new("Mới nhất", $"{url}?c={c}&t={t}"),
+                    new("4K", $"{url}?c={c}&t={t}&sort=4k"),
+                    new("Đánh giá cao", $"{url}?c={c}&t={t}&sort=top-rated"),
+                    new("Xem nhiều nhất", $"{url}?c={c}&t={t}&sort=most-popular")
                 }
+            },
+            new MenuItem()
+            {
+                title = "Thể loại",
+                playlist_url = "submenu",
+                submenu = tagmenu
             }
         };
 
@@ -232,22 +275,17 @@ public static class Po85To
             stream_links.TryAdd(label, vurl);
         }
 
-        // link download MP4 (dropdown): lay ca nhan "MP4 480p, 18.93 Mb" lam label
-        var dlm = System.Text.RegularExpressions.Regex.Match(html.ToString(),
-            @"<a[^>]*href=""(https?://[^'""]+/get_file/[^'""]+download=true[^'""]*)""[^>]*>([^<]+)</a>");
-        if (dlm.Success)
+        // link download MP4 (dropdown): moi quality mot hash rieng
+        // ("MP4 480p, ...", "MP4 720p, ...", "MP4 1080p, ...")
+        foreach (System.Text.RegularExpressions.Match dlm in
+            System.Text.RegularExpressions.Regex.Matches(html.ToString(),
+            @"<a[^>]*href=""(https?://[^'""]+/get_file/[^'""]+download=true[^'""]*)""[^>]*>([^<]+)</a>"))
         {
             string dlurl = dlm.Groups[1].Value.Replace("&amp;", "&");
             string label = dlm.Groups[2].Value.Trim();
             if (string.IsNullOrEmpty(label))
                 label = "download";
             stream_links.TryAdd(label, dlurl);
-        }
-        else
-        {
-            string dl = Rx.Match(html, @"(https?://[^'""]+/get_file/[^'""]+download=true[^'""]*)");
-            if (!string.IsNullOrEmpty(dl))
-                stream_links.TryAdd("download", dl.Replace("&amp;", "&"));
         }
 
         return stream_links.Reverse().ToDictionary(k => k.Key, v => v.Value);
