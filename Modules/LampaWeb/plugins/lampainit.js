@@ -56,7 +56,7 @@
     // backup of every client entry, remove only old Lampac-hosted add-ons, then
     // add the current server list below in its declared order. Third-party
     // plugin URLs (for example jsDelivr) are never touched.
-    var resetKey = 'lampac_plugin_reset_20260830_v4';
+    var resetKey = 'lampac_plugin_reset_20260905_v5';
     if (Lampa.Storage.get(resetKey, 'false') !== 'true') {
       Lampa.Storage.set('lampac_plugins_backup_20260823', plugins);
       var lampacPluginPath = /\/(?:dlna|tracks|transcoding|tmdbproxy|cubproxy|online|online-compact|vietnamese|jackett|watchtogether|catalog|dorama|subsense-auto|subsense|subfinder|stremiosub|adminpanel|gst|autotracks|sisi|sisi-layout|sisi-restyle|startpage|sync|timecode|bookmark|ts|backup)\.js(?:[?#]|$)/i;
