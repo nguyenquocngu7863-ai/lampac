@@ -542,6 +542,20 @@ sync_latest_modules() {
             fi
         done
 
+        # Po85 (85po.com, KVS): xac minh thiet bi 2026-09-05. Khong co trong
+        # lampac-nextgen.zip nen mkdir + lay full file.
+        po85synctarget=/root/lampac/module/Adult/Po85
+        mkdir -p \"\$po85synctarget\"
+        for po85syncfile in manifest.json Controller.cs ModInit.cs Service.cs; do
+            if curl -fsSL --retry 3 \"\$base/Modules/Adult/Po85/\$po85syncfile?cb=\$stamp\" -o \"/tmp/po85sync-\$po85syncfile\"; then
+                mv \"/tmp/po85sync-\$po85syncfile\" \"\$po85synctarget/\$po85syncfile\"
+                echo \"  [sync] po85/\$po85syncfile\"
+            else
+                rm -f \"/tmp/po85sync-\$po85syncfile\"
+                echo \"  [sync] po85: bo qua \$po85syncfile (nguon khong co)\"
+            fi
+        done
+
         # VK Video quoc te: tim ca original_title va giu HLS/DASH multi-audio.
         for vkmovie in /root/lampac/module/OnlineRUS/VkMovie /root/lampac/mods/OnlineRUS/VkMovie; do
             if [ -d \"\$vkmovie\" ]; then
@@ -740,6 +754,23 @@ install_custom_modules() {
             fi
         done
 
+        # Po85 (85po.com, KVS): xac minh thiet bi 2026-09-05 (list 60 items,
+        # vidosik ra link, strem proxy 206 video/mp4). Khong co trong
+        # lampac-nextgen.zip nen mkdir + lay full file, bo qua tung file neu
+        # nguon khong co (an toan duoi set -euo pipefail).
+        po85base=\"\${CUSTOM_SOURCE_BASE}/Modules/Adult/Po85\"
+        po85target=/root/lampac/module/Adult/Po85
+        mkdir -p \"\$po85target\"
+        for po85file in manifest.json Controller.cs ModInit.cs Service.cs; do
+            if curl -fsSL --retry 3 \"\$po85base/\$po85file?cb=\$syncstamp\" -o \"/tmp/po85-\$po85file\"; then
+                mv \"/tmp/po85-\$po85file\" \"\$po85target/\$po85file\"
+                echo \"  [po85] \$po85file\"
+            else
+                rm -f \"/tmp/po85-\$po85file\"
+                echo \"  [po85] bo qua \$po85file - khong co tren nguon\"
+            fi
+        done
+
         # MoviesHub = MoviesDrive + Movies4U + resolver HubCloud/GDrive dung chung. Danh sach file
         # lay tu "tree" trong manifest.json (giong khoi sync_latest_modules): them nguon cung ho
         # khong can sua file nay; manifest khong co tren nguon thi dung danh sach cu.
@@ -917,7 +948,7 @@ install_custom_modules() {
             done
         fi
 
-        for adultmodule in BongaCams Chaturbate Ebalovo Eporner HQporner PornHub Porntrex Runetki Spankbang Xhamster Xnxx Xvideos XvideosRED; do
+        for adultmodule in BongaCams Chaturbate Ebalovo Eporner HQporner Po85 PornHub Porntrex Runetki Spankbang Xhamster Xnxx Xvideos XvideosRED; do
             adulttarget=\"/root/lampac/module/Adult/\$adultmodule\"
             if [ -d \"\$adulttarget\" ]; then
                 curl -fSL --retry 3 \"${CUSTOM_SOURCE_BASE}/Modules/Adult/\$adultmodule/Service.cs?cb=\$syncstamp\" -o \"\$adulttarget/Service.cs.tmp\"
