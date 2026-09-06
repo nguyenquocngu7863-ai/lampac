@@ -463,7 +463,7 @@ public partial class GStask
             // A 4K HDR segment may legitimately take longer than the old
             // 45-second guard on a CPU-only ARM64 phone. The client plugin
             // uses the same 120-second upper bound for fragment requests.
-            var timeout = TimeSpan.FromSeconds(IsVideoTranscoded ? 120 : 45);
+            var timeout = TimeSpan.FromSeconds(IsVideoTranscoded ? 30 : 15);
 
             while (Stopwatch.GetElapsedTime(start) < timeout)
             {

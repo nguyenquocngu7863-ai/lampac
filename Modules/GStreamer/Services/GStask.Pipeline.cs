@@ -42,8 +42,8 @@ public partial class GStask
             location="{{sourceUrl}}"
             is-live=false
             keep-alive=true
-            timeout=90
-            retries=5
+            timeout=15
+            retries=2
             {{blockSizeOption}}
             {{retryOptions}} !
         """);
