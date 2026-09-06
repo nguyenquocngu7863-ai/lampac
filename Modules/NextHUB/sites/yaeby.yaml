@@ -192,7 +192,7 @@ menu:
     BDSM: bdsm
     Trên thuyền: seks-na-lodke
   customs:
-    - name: Studio
+    - name: Hãng phim
       arg: studio
       format: channels/{value}/?mode=async&function=get_block&block_id=list_videos_common_videos_list&sort_by=post_date_and_popularity&from={page}
       submenu:

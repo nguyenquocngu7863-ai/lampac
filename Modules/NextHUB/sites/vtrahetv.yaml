@@ -83,7 +83,7 @@ menu:
     Mảnh mai: khudyye
     Nhật Bản: yaponki
   customs:
-    - name: Studio
+    - name: Hãng phim
       arg: studio
       format: "{value}"
       submenu:
