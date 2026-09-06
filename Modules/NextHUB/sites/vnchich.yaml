@@ -1,0 +1,100 @@
+enable: true
+displayindex: 426
+displayname: VnChich
+rch_access: apk
+stream_access: apk
+host: https://vn.vnchich.vip
+priorityBrowser: http
+streamproxy: true
+headers:
+  user-agent: "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36"
+headers_stream:
+  referer: "{host}/"
+  user-agent: "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36"
+
+menu:
+  sort:
+    Mới nhất: -publishedAt
+    Xem nhiều nhất: -views
+    Thích nhiều nhất: -likes
+  categories:
+    Tất cả: ""
+    Sinh viên: sinh viên
+    Học sinh: học sinh
+    Ngoại tình: ngoại tình
+    Vụng trộm: vụng trộm
+    Máy bay: máy bay
+    Gái gọi: gái gọi
+    Massage: massage
+    Cosplay: cosplay
+    Thủ dâm: thủ dâm
+    Xuất tinh: xuất tinh
+    Bạo dâm: bạo dâm
+    Lesbian: lesbian
+    Hậu môn: hậu môn
+    Vú to: vú to
+    Mông to: mông to
+    Quay lén: quay lén
+    Live stream: livestream
+    Việt Nam: việt nam
+
+route:
+  eval: |
+    string q = !string.IsNullOrEmpty(search) ? search : cat;
+    string qs = !string.IsNullOrEmpty(q) ? $"&search={HttpUtility.UrlEncode(q)}" : "";
+    string s = !string.IsNullOrEmpty(sort) ? sort : "-publishedAt";
+    return $"{host}/api/v1/videos?start={(page - 1) * 12}&count=12&sort={s}{qs}";
+
+list:
+  uri: api/v1/videos?start=0&count=12&sort=-publishedAt
+
+search:
+  uri: api/v1/videos?start=0&count=12&sort=-publishedAt&search={search}
+
+contentParse:
+  eval: |
+    var parts = Regex.Split(html, "\"uuid\":\"");
+    foreach (var part in parts.Skip(1))
+    {
+      string uuid = Regex.Match(part, "^([^\"]+)").Groups[1].Value;
+      if (string.IsNullOrEmpty(uuid)) continue;
+      string name = Regex.Match(part, "\"name\":\"((?:[^\"\\\\]|\\\\.)*)\"").Groups[1].Value;
+      name = Regex.Replace(name, "\\\\u([0-9a-fA-F]{4})", m => ((char)Convert.ToInt32(m.Groups[1].Value, 16)).ToString());
+      name = Regex.Unescape(name);
+      if (string.IsNullOrEmpty(name)) continue;
+      int d = 0;
+      var dm = Regex.Match(part, "\"duration\":(\\d+)");
+      if (dm.Success) d = int.Parse(dm.Groups[1].Value);
+      string pic = Regex.Match(part, "\"fileUrl\":\"([^\"]+)\"").Groups[1].Value;
+      if (string.IsNullOrEmpty(pic))
+      {
+        string tp = Regex.Match(part, "\"thumbnailPath\":\"([^\"]+)\"").Groups[1].Value;
+        if (!string.IsNullOrEmpty(tp)) pic = init.host + tp;
+      }
+      playlists.Add(new PlaylistItem()
+      {
+        name = name,
+        video = "nexthub/vidosik?uri=" + Shared.Services.Utilities.AesTo.Encrypt($"{plugin}_-:-_{init.host}/api/v1/videos/{uuid}"),
+        picture = pic,
+        time = $"{d / 60:D2}:{d % 60:D2}"
+      });
+    }
+    return playlists;
+
+view:
+  viewsource: true
+  eval: |
+    var j = JObject.Parse(html);
+    var files = j["files"] as JArray;
+    if (files != null)
+    {
+      foreach (var f in files)
+      {
+        var res = f["resolution"];
+        string label = res != null ? (string)res["label"] : null;
+        if (label != null && label.Contains("Audio")) continue;
+        string furl = (string)f["fileUrl"];
+        if (!string.IsNullOrEmpty(furl)) return furl;
+      }
+    }
+    return null;
