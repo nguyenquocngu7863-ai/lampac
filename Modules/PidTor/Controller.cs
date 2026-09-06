@@ -500,6 +500,47 @@ public class PiTor : BaseOnlineController
         short index = tsid != -1 ? tsid : (short)1;
         string magnet = $"magnet:?xt=urn:btih:{id}&" + Regex.Replace(HttpContext.Request.QueryString.Value.Remove(0, 1), "&(account_email|uid|token|nws_id|tsid)=[^&]+", "").Replace("&.m3u8", "");
 
+        #region play_timeout - kiểm tra seed trước khi phát (chỉ local TorrServer)
+        if (init.play_timeout > 0 && (init.torrs == null || init.torrs.Length == 0) && (init.auth_torrs == null || init.auth_torrs.Count == 0))
+        {
+            if (System.IO.File.Exists("data/ts/accs.db"))
+            {
+                string accsdb = System.IO.File.ReadAllText("data/ts/accs.db");
+                string tpasswd = Regex.Match(accsdb, "\"ts\":\"([^\"]+)\"").Groups[1].Value;
+                string tshost = $"http://{CoreInit.conf.listen.localhost}:{ModInit.tsport}";
+                var tshead = HeadersModel.Init("Authorization", $"Basic {CrypTo.Base64($"ts:{tpasswd}")}");
+
+                string addRes = await Http.Post($"{tshost}/torrents", "{\"action\":\"add\",\"link\":\"" + magnet + "\",\"title\":\"\",\"poster\":\"\",\"save_to_db\":false}", timeoutSeconds: 10, headers: tshead);
+                string thash = addRes == null ? null : Regex.Match(addRes, "\"hash\":\"([^\"]+)\"").Groups[1].Value;
+
+                bool alive = false;
+                if (!string.IsNullOrEmpty(thash))
+                {
+                    var deadline = DateTime.UtcNow.AddSeconds(init.play_timeout);
+                    while (DateTime.UtcNow < deadline)
+                    {
+                        var tstat = await Http.Get<Stat>($"{tshost}/stream?link={thash}&index={index}&stat", timeoutSeconds: 8, headers: tshead);
+                        if (tstat?.file_stats != null && tstat.file_stats.Length > 0)
+                        {
+                            alive = true;
+                            break;
+                        }
+
+                        await Task.Delay(2000);
+                    }
+                }
+
+                if (!alive)
+                {
+                    if (!string.IsNullOrEmpty(thash))
+                        _ = Http.Post($"{tshost}/torrents", "{\"action\":\"rem\",\"hash\":\"" + thash + "\"}", headers: tshead);
+
+                    return StatusCode(503, "torrent không có seed hoặc quá chậm, đã dừng (play_timeout)");
+                }
+            }
+        }
+        #endregion
+
         #region auth_stream
         async Task<ActionResult> auth_stream(string host, string login, string passwd, bool aes, string uhost = null, Dictionary<string, string> addheaders = null)
         {

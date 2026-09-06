@@ -39,6 +39,11 @@ public class PidTorSettings : Igroup, ICloneable
 
     public int min_sid { get; set; }
 
+    /// <summary>
+    /// Giây chờ torrent có seed trước khi phát (local TorrServer). Hết giờ mà chưa lấy được metadata thì trả 503 luôn thay vì treo máy. 0 = tắt.
+    /// </summary>
+    public int play_timeout { get; set; }
+
     public long max_size { get; set; }
 
     public long max_serial_size { get; set; }
