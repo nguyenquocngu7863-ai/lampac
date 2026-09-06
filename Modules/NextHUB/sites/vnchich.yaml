@@ -76,7 +76,8 @@ contentParse:
         name = name,
         video = "nexthub/vidosik?uri=" + Shared.Services.Utilities.AesTo.Encrypt($"{plugin}_-:-_{init.host}/api/v1/videos/{uuid}"),
         picture = pic,
-        time = $"{d / 60:D2}:{d % 60:D2}"
+        time = $"{d / 60:D2}:{d % 60:D2}",
+        json = true
       });
     }
     return playlists;
