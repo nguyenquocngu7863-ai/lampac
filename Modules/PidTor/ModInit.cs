@@ -67,7 +67,6 @@ public class ModInit : IModuleLoaded, IModuleOnline
             enable = true,
             displayindex = 551,
             min_sid = 15,
-            play_timeout = 20,
             emptyVoice = true,
             redapi = "http://jac.red"
         });
