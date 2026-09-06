@@ -89,13 +89,19 @@ view:
     var files = j["files"] as JArray;
     if (files != null)
     {
+      string best = null;
+      int bestRes = -1;
       foreach (var f in files)
       {
         var res = f["resolution"];
         string label = res != null ? (string)res["label"] : null;
         if (label != null && label.Contains("Audio")) continue;
         string furl = (string)f["fileUrl"];
-        if (!string.IsNullOrEmpty(furl)) return furl;
+        if (string.IsNullOrEmpty(furl)) continue;
+        int rid = 0;
+        try { rid = res != null && res["id"] != null ? (int)res["id"] : 0; } catch { rid = 0; }
+        if (rid >= bestRes) { bestRes = rid; best = furl; }
       }
+      if (best != null) return best;
     }
     return null;
