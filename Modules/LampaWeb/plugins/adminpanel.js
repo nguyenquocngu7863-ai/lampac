@@ -27,7 +27,7 @@
     var css = document.createElement('style');
     css.id = 'lampac-adminpanel-iframe-css';
     css.textContent =
-      '.lampac-adminpanel-iframe-wrap{display:flex;flex-direction:column;height:100%;width:100%;background:#0c0e12}' +
+      '.lampac-adminpanel-iframe-wrap{display:flex;flex-direction:column;height:100%;width:100%;background:#0c0e12;padding-bottom:calc(76px + env(safe-area-inset-bottom, 0px));box-sizing:border-box}' +
       '.lampac-adminpanel-iframe{flex:1;width:100%;min-height:60vh;border:none;background:#0c0e12}' +
       '.lampac-adminpanel-toolbar{display:flex;align-items:center;gap:8px;padding:8px 12px;background:#13161d;border-bottom:1px solid #2a3040;flex-shrink:0}' +
       '.lampac-adminpanel-toolbar .btn{font-size:12px;padding:6px 12px;border-radius:6px;border:1px solid #3ec9d1;background:rgba(62,201,209,.12);color:#3ec9d1;cursor:pointer}' +
