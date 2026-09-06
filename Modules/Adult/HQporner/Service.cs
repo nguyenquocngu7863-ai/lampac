@@ -128,9 +128,9 @@ public static class HQpornerTo
                 playlist_url = "submenu",
                 submenu = new List<MenuItem>(3)
                 {
-                    new("Самые новые", $"{url}?c={c}"),
-                    new("Топ недели", $"{url}?c={c}&sort=week"),
-                    new("Топ месяца", $"{url}?c={c}&sort=month")
+                    new("Mới nhất", $"{url}?c={c}"),
+                    new("Top tuần", $"{url}?c={c}&sort=week"),
+                    new("Top tháng", $"{url}?c={c}&sort=month")
                 }
             });
         }
