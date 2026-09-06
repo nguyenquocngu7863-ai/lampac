@@ -62,8 +62,8 @@ search:
 
 contentParse:
   eval: |
-    html = html.Replace("\\\\\"", "\"");
-    var parts = Regex.Split(html, "\"href\":\"/watch/");
+    string clean = html.Replace("\\\\\"", "\"");
+    var parts = Regex.Split(clean, "\"href\":\"/watch/");
     foreach (var part in parts.Skip(1))
     {
       string slug = Regex.Match(part, "^([^\"\\\\]+)").Groups[1].Value;
