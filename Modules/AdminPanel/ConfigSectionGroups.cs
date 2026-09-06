@@ -148,7 +148,7 @@ public static class ConfigSectionGroups
             result.Add(new GroupDto(
                 "src-adult-nexthub",
                 "Nguồn · NextHUB / 18+",
-                "Site YAML NextHUB tự phát hiện. Thường chỉ cần đổi enable. streamproxy đi qua Lampac; useproxy/useproxystream cần proxy ngoài; rhub/rch giữ nguyên.",
+                "Site YAML NextHUB tự phát hiện. Có thể đổi enable, host (mirror), streamproxy và các quyền truy cập — giá trị lưu vào init.conf sẽ đè YAML.",
                 nextHubKeys));
         }
 
@@ -174,7 +174,7 @@ public static class ConfigSectionGroups
             list.Add(new GroupDto(
                 "src-adult-nexthub",
                 "Nguồn · NextHUB / 18+",
-                "Site YAML NextHUB tự phát hiện. Thường chỉ cần đổi enable. streamproxy đi qua Lampac; useproxy/useproxystream cần proxy ngoài.",
+                "Site YAML NextHUB tự phát hiện. Có thể đổi enable, host (mirror), streamproxy và các quyền truy cập — giá trị lưu vào init.conf sẽ đè YAML.",
                 nextHubKeys));
         }
 

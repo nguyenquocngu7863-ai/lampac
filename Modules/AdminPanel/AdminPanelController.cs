@@ -197,6 +197,61 @@ public class AdminPanelController : BaseController
         return Content(json, "application/json; charset=utf-8");
     }
 
+    // Top-level scalar keys we expose as per-site overrides in AdminPanel.
+    // Values saved here are merged over the YAML by ModuleInvoke.Init.
+    // NOTE: saving pins these values in init.conf — a later YAML update of
+    // the same key will NOT take effect until the override is removed.
+    static readonly string[] NextHubOverrideKeys =
+    {
+        "displayname", "host", "displayindex", "streamproxy", "stream_access",
+        "rch_access", "priorityBrowser", "useproxy", "useproxystream", "rhub"
+    };
+
+    static JObject NextHubSiteTemplate(string path, bool enabled)
+    {
+        var template = new JObject { ["enable"] = enabled };
+        try
+        {
+            foreach (var rawLine in System.IO.File.ReadLines(path))
+            {
+                if (string.IsNullOrEmpty(rawLine) || char.IsWhiteSpace(rawLine[0]) || rawLine[0] == '#')
+                    continue; // only top-level keys
+
+                int colon = rawLine.IndexOf(':');
+                if (colon <= 0)
+                    continue;
+
+                string key = rawLine.Substring(0, colon).Trim();
+                if (!NextHubOverrideKeys.Contains(key, StringComparer.Ordinal))
+                    continue;
+
+                string val = rawLine.Substring(colon + 1).Trim();
+                if (val.Length >= 2 && val[0] == '"' && val[val.Length - 1] == '"')
+                    val = val.Substring(1, val.Length - 2);
+                else if (val.Length >= 2 && val[0] == '\'' && val[val.Length - 1] == '\'')
+                    val = val.Substring(1, val.Length - 2);
+
+                if (string.IsNullOrEmpty(val) || val.StartsWith("{") || val.StartsWith("["))
+                    continue;
+
+                if (bool.TryParse(val, out var b))
+                    template[key] = b;
+                else if (int.TryParse(val, System.Globalization.NumberStyles.Integer,
+                    System.Globalization.CultureInfo.InvariantCulture, out var n))
+                    template[key] = n;
+                else
+                    template[key] = val;
+            }
+        }
+        catch
+        {
+        }
+        return template;
+    }
+
+    static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> NextHubSitePaths =
+        new(StringComparer.Ordinal);
+
     static Dictionary<string, bool> DiscoverNextHubSites()
     {
         var result = new Dictionary<string, bool>(StringComparer.Ordinal);
@@ -232,6 +287,7 @@ public class AdminPanelController : BaseController
                     break;
                 }
                 result[slug] = enabled;
+                NextHubSitePaths[slug] = path;
             }
         }
         catch
@@ -271,11 +327,17 @@ public class AdminPanelController : BaseController
         }
 
         // Every NextHUB YAML is independently overrideable through a root key
-        // with the same slug. Supply an enable template even before the source
-        // has been opened, allowing AdminPanel to manage all installed sites.
+        // with the same slug. Supply an override template (parsed from the
+        // YAML top-level scalars) even before the source has been opened,
+        // allowing AdminPanel to manage all installed sites.
         foreach (var site in nextHubSites ?? DiscoverNextHubSites())
         {
-            if (root.Property(site.Key) == null)
+            if (root.Property(site.Key) != null)
+                continue;
+
+            if (NextHubSitePaths.TryGetValue(site.Key, out var sitePath))
+                root[site.Key] = NextHubSiteTemplate(sitePath, site.Value);
+            else
                 root[site.Key] = new JObject { ["enable"] = site.Value };
         }
 
