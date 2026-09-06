@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Caching.Memory;
+using Newtonsoft.Json.Linq;
 using Shared;
 using Shared.Attributes;
 using Shared.Models.Base;
@@ -501,7 +502,15 @@ public class PiTor : BaseOnlineController
         string magnet = $"magnet:?xt=urn:btih:{id}&" + Regex.Replace(HttpContext.Request.QueryString.Value.Remove(0, 1), "&(account_email|uid|token|nws_id|tsid)=[^&]+", "").Replace("&.m3u8", "");
 
         #region play_timeout - kiểm tra seed trước khi phát (chỉ local TorrServer)
-        if (init.play_timeout > 0 && (init.torrs == null || init.torrs.Length == 0) && (init.auth_torrs == null || init.auth_torrs.Count == 0))
+        int playTimeout = 20;
+        try
+        {
+            if (CoreInit.CurrentConf != null && CoreInit.CurrentConf.TryGetValue("PidTor", out var ptconf) && ptconf is JObject pto && pto.TryGetValue("play_timeout", out var ptv))
+                playTimeout = ptv.Value<int>();
+        }
+        catch { }
+
+        if (playTimeout > 0 && (init.torrs == null || init.torrs.Length == 0) && (init.auth_torrs == null || init.auth_torrs.Count == 0))
         {
             if (System.IO.File.Exists("data/ts/accs.db"))
             {
@@ -516,7 +525,7 @@ public class PiTor : BaseOnlineController
                 bool alive = false;
                 if (!string.IsNullOrEmpty(thash))
                 {
-                    var deadline = DateTime.UtcNow.AddSeconds(init.play_timeout);
+                    var deadline = DateTime.UtcNow.AddSeconds(playTimeout);
                     while (DateTime.UtcNow < deadline)
                     {
                         var tstat = await Http.Get<Stat>($"{tshost}/stream?link={thash}&index={index}&stat", timeoutSeconds: 8, headers: tshead);
