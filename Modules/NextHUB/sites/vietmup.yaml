@@ -1,0 +1,92 @@
+enable: true
+displayindex: 427
+displayname: VietMup
+rch_access: apk
+stream_access: apk
+host: https://vietmup.pro
+priorityBrowser: http
+streamproxy: true
+headers:
+  user-agent: "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36"
+headers_stream:
+  referer: "{host}/"
+  user-agent: "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36"
+
+menu:
+  sort:
+    Mới nhất: ""
+    Xem nhiều nhất: view_count
+    Hot trong tuần: view_by_week
+  categories:
+    Tất cả: ""
+    Việt Nam: vietnam
+    Sinh viên: sinh-vien
+    Phim sex sinh viên: phim-sex-sinh-vien
+    Gái xinh: gai-xinh
+    Gái teen: gai-teen
+    Teen: teen
+    Tự quay: tu-quay
+    Thủ dâm: thu-dam
+    Check hàng: check-hang
+    Idol live: idol-live
+    Vú bự: vu-bu-vu-to
+    Bú cu: blowjob-bu-cu
+    Bú lồn: bu-lon-vet-mang
+    Hậu môn: anal-lo-dit
+    Xuất tinh vào miệng: cia-xuat-tinh-vao-mieng
+    Loli: loli-minh-day
+    Bạo dâm: bdsm
+    Amateur: amateur
+    Anime: anime
+    Da đen: blacked-sex-da-den
+    Song tính: bisexual-song-tinh
+
+route:
+  eval: |
+    if (!string.IsNullOrEmpty(search))
+      return $"{host}/search?q={HttpUtility.UrlEncode(search)}" + (page > 1 ? $"&page={page}" : "");
+    string q = cat ?? "";
+    string s = !string.IsNullOrEmpty(sort) ? sort : "";
+    string basePath = string.IsNullOrEmpty(q) ? "/" : $"/category/{q}";
+    string qs = "";
+    if (page > 1) qs += $"page={page}";
+    if (!string.IsNullOrEmpty(s)) qs += (qs == "" ? "" : "&") + $"sort={s}";
+    if (qs != "") qs = "?" + qs;
+    return $"{host}{basePath}{qs}";
+
+list:
+  uri: /
+
+search:
+  uri: /search?q={search}
+
+contentParse:
+  eval: |
+    var parts = Regex.Split(html, "\\\"href\\\":\\\"/watch/");
+    foreach (var part in parts.Skip(1))
+    {
+      string slug = Regex.Match(part, "^([^\"\\\\]+)").Groups[1].Value;
+      if (string.IsNullOrEmpty(slug)) continue;
+      string pic = Regex.Match(part, "\\\"src\\\":\\\"(https://cdn\\.vietmup\\.pro/[^\"\\\\]+)").Groups[1].Value;
+      string name = Regex.Match(part, "\\\"alt\\\":\\\"((?:[^\"\\\\]|\\\\.)*)\"").Groups[1].Value;
+      name = Regex.Replace(name, "\\\\u([0-9a-fA-F]{4})", m => ((char)Convert.ToInt32(m.Groups[1].Value, 16)).ToString());
+      name = Regex.Unescape(name);
+      if (string.IsNullOrEmpty(name)) continue;
+      playlists.Add(new PlaylistItem()
+      {
+        name = name,
+        video = "nexthub/vidosik?uri=" + Shared.Services.Utilities.AesTo.Encrypt($"{plugin}_-:-_{init.host}/watch/{slug}"),
+        picture = pic,
+        json = true
+      });
+    }
+    return playlists;
+
+view:
+  viewsource: true
+  eval: |
+    var m = Regex.Match(html, "https://cdn\\.vietmup\\.pro/m3u8/[^\"\\\\ ]+\\.m3u8");
+    if (m.Success) return m.Value;
+    var m2 = Regex.Match(html, "https://[^\"]+\\.m3u8");
+    if (m2.Success) return m2.Value;
+    return null;
