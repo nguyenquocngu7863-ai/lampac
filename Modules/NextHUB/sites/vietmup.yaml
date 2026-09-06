@@ -14,7 +14,7 @@ headers_stream:
 
 menu:
   sort:
-    Mới nhất: ""
+    Mới nhất: "latest"
     Xem nhiều nhất: view_count
     Hot trong tuần: view_by_week
   categories:
