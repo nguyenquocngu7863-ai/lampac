@@ -333,10 +333,16 @@ public class PiTor : BaseOnlineController
                         if (string.IsNullOrWhiteSpace(hashmagnet))
                             continue;
 
+                        string trName = torrent.torrent?.Tracker ?? string.Empty;
+                        if (!string.IsNullOrEmpty(trName))
+                            trName = char.ToUpper(trName[0]) + trName.Substring(1);
+
+                        string rowTitle = string.IsNullOrEmpty(torrent.voice) ? $"[{trName}]" : $"[{trName}] {torrent.voice}";
+
                         stpl.Append(
-                            torrent.voice,
+                            rowTitle,
                             null,
-                            $"{torrent.quality} / {torrent.mediainfo} / {torrent.sid}",
+                            $"{torrent.quality} / {torrent.mediainfo} / {torrent.sid} / {torrent.name}",
                             accsArgs($"{host}/lite/pidtor/serial/{hashmagnet}?{torrent.tr}&rjson={rjson}&title={en_title}&original_title={en_original_title}&s={s}")
                         );
                     }
@@ -354,10 +360,14 @@ public class PiTor : BaseOnlineController
                     if (string.IsNullOrWhiteSpace(hashmagnet))
                         continue;
 
+                    string mTrName = torrent.torrent?.Tracker ?? string.Empty;
+                    if (!string.IsNullOrEmpty(mTrName))
+                        mTrName = char.ToUpper(mTrName[0]) + mTrName.Substring(1);
+
                     mtpl.Append(
-                        torrent.voice,
+                        string.IsNullOrEmpty(torrent.voice) ? $"[{mTrName}]" : $"[{mTrName}] {torrent.voice}",
                         accsArgs($"{host}/lite/pidtor/s{hashmagnet}?{torrent.tr}") + (ModInit.conf.gst ? "&.m3u8" : ""),
-                        voice_name: $"{torrent.quality} / {torrent.mediainfo} / {torrent.sid}",
+                        voice_name: $"{torrent.quality} / {torrent.mediainfo} / {torrent.sid} / {torrent.name}",
                         quality: torrent.quality.Replace("p", ""),
                         hls_manifest_timeout: (int)TimeSpan.FromSeconds(60).TotalMilliseconds
                     );
