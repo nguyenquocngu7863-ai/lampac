@@ -18,14 +18,17 @@ public class Po85Controller : BaseSisiController
 
     public Po85Controller() : base(ModInit.conf) { }
 
-    [HttpGet, Staticache(manually: true)]
-    [Route("po85")]
-    async public Task<ActionResult> Index(string search, string sort, string c, string t, int pg = 1)
-    {
-        if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
-            return badInitMsg;
+        [HttpGet, Staticache(manually: true)]
+        [Route("po85")]
+        async public Task<ActionResult> Index(string search, string sort, string c, string t, int pg = 1)
+        {
+            if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
+                return badInitMsg;
 
-    rhubFallback:
+            if (string.IsNullOrEmpty(sort))
+                sort = "latest-updates";
+
+            rhubFallback:
         var cache = await InvokeCacheResult(ipkey($"po85:{search}:{sort}:{c}:{t}:{pg}"), 10, jsonContext.ListPlaylistItem, async e =>
         {
             if (init.httpversion == 1)
