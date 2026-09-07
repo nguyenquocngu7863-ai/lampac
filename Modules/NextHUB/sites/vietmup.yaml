@@ -80,7 +80,8 @@ contentParse:
         name = name,
         video = "nexthub/vidosik?uri=" + Shared.Services.Utilities.AesTo.Encrypt($"{plugin}_-:-_{init.host}/watch/{slug}"),
         picture = pic,
-        json = true
+        json = true,
+        bookmark = new Shared.Models.SISI.Base.Bookmark() { site = "vietmup", href = slug, image = pic }
       });
     }
     return playlists;
