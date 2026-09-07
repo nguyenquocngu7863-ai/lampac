@@ -544,14 +544,14 @@ sync_latest_modules() {
 
         # Vidrock (vidrock.ru, ENG): thay VidCore, AES-GCM, max 1080p, tmdb-based.
         vidrocktarget=/root/lampac/module/OnlineENG/Vidrock
-        mkdir -p "$vidrocktarget"
+        mkdir -p \"$vidrocktarget\"
         for vidrockfile in manifest.json Controller.cs ModInit.cs; do
-            if curl -fsSL --retry 3 "$base/Modules/OnlineENG/Vidrock/$vidrockfile?cb=$stamp" -o "/tmp/vidrock-$vidrockfile"; then
-                mv "/tmp/vidrock-$vidrockfile" "$vidrocktarget/$vidrockfile"
-                echo "  [sync] vidrock/$vidrockfile"
+            if curl -fsSL --retry 3 \"$base/Modules/OnlineENG/Vidrock/$vidrockfile?cb=$stamp\" -o \"/tmp/vidrock-$vidrockfile\"; then
+                mv \"/tmp/vidrock-$vidrockfile\" \"$vidrocktarget/$vidrockfile\"
+                echo \"  [sync] vidrock/$vidrockfile\"
             else
-                rm -f "/tmp/vidrock-$vidrockfile"
-                echo "  [sync] vidrock: bo qua $vidrockfile (nguon khong co)"
+                rm -f \"/tmp/vidrock-$vidrockfile\"
+                echo \"  [sync] vidrock: bo qua $vidrockfile (nguon khong co)\"
             fi
         done
 
