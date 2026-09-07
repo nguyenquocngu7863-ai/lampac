@@ -36,7 +36,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
     {
         conf = ModuleInvoke.Init("Ebalovo", new SisiSettings("Ebalovo", "https://www.ebalovo.pro")
         {
-            displayindex = 30,
+            displayindex = 226,
             rch_access = "apk",
             stream_access = "apk,cors",
             streamproxy = true,
