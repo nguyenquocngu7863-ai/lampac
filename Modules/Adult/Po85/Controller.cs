@@ -144,6 +144,11 @@ public class Po85Controller : BaseSisiController
         if (await IsRequestBlocked(rch: true))
             return badInitMsg;
 
+        // 4K KVS: signed CDN URL — client tu tai bang TLS Chrome that
+        // (server curl bi 403 Access denied errno 6)
+        if (!string.IsNullOrEmpty(link) && link.Contains("remote_control.php"))
+            return Redirect(link);
+
         if (rch?.enable == true && 484 > rch.InfoConnected()?.apkVersion)
         {
             rch.Disabled(); // на версиях ниже java.lang.OutOfMemoryError
