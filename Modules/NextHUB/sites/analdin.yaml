@@ -1,5 +1,5 @@
 enable: true
-displayindex: 400
+displayindex: 32
 displayname: Analdin
 rch_access: apk,cors
 stream_access: apk,cors

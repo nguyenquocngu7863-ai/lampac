@@ -1,7 +1,7 @@
 enable: true
 stream_access: apk
 streamproxy: true
-displayindex: 280
+displayindex: 30
 displayname: Beeg
 host: https://beeg.com
 

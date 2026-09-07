@@ -36,7 +36,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
     {
         conf = ModuleInvoke.Init("HQporner", new SisiSettings("HQporner", "https://m.hqporner.com")
         {
-            displayindex = 15,
+            displayindex = 31,
             rch_access = "apk,cors",
             stream_access = "apk,cors,web",
             geostreamproxy = ["ALL"],

@@ -37,7 +37,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
         conf = ModuleInvoke.Init("Xnxx", new SisiSettings("Xnxx", "https://www.xnxx-ru.com")
         {
             httpversion = 2,
-            displayindex = 19,
+            displayindex = 24,
             rch_access = "apk,cors",
             stream_access = "apk,cors,web"
         });

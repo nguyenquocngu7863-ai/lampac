@@ -39,7 +39,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
         conf = ModuleInvoke.Init("Eporner", new SisiSettings("Eporner", "https://www.eporner.com")
         {
             httpversion = 2,
-            displayindex = 17,
+            displayindex = 26,
             rch_access = "apk,cors",
             stream_access = "apk,cors",
 

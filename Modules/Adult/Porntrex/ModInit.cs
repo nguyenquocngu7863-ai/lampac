@@ -39,7 +39,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
     {
         conf = ModuleInvoke.Init("Porntrex", new SisiSettings("Porntrex", "https://www.porntrex.com")
         {
-            displayindex = 18,
+            displayindex = 27,
             streamproxy = true,
             rch_access = "apk",
             stream_access = "apk",

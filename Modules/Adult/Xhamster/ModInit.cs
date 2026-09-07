@@ -45,7 +45,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
         conf = ModuleInvoke.Init("Xhamster", new SisiSettings("Xhamster", "https://ru.xhamster.com")
         {
             httpversion = 2,
-            displayindex = 13,
+            displayindex = 23,
             rch_access = "apk,cors",
             stream_access = "apk,cors,web",
             headers_image = HeadersModel.Init(

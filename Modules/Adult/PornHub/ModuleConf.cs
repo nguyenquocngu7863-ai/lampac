@@ -9,7 +9,7 @@ public class ModuleConf
     public SisiSettings PornHub { get; set; } = new SisiSettings("PornHub", "https://rt.pornhub.com", streamproxy: true, rch_access: "apk,cors", stream_access: "apk")
     {
         httpversion = 2,
-        displayindex = 11,
+        displayindex = 20,
         streamproxy_preview = true,
         rchstreamproxy = "web,cors",
         headers = HeadersModel.Init(
@@ -42,7 +42,7 @@ public class ModuleConf
     public SisiSettings PornHubPremium { get; set; } = new SisiSettings("PornHubPremium", "https://rt.pornhubpremium.com", enable: false, stream_access: "apk,cors")
     {
         httpversion = 2,
-        displayindex = 10,
+        displayindex = 21,
         rchstreamproxy = "web",
         headers = HeadersModel.Init(
             ("sec-fetch-dest", "document"),

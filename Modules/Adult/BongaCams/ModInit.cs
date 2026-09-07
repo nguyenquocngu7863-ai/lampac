@@ -47,7 +47,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
         {
             spider = false,
             httpversion = 2,
-            displayindex = 22,
+            displayindex = 60,
             rch_access = "apk",
             stream_access = "apk,cors,web",
             kit = false,

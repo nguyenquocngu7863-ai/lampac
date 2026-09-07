@@ -45,7 +45,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
         conf = ModuleInvoke.Init("Spankbang", new SisiSettings("Spankbang", site)
         {
             httpversion = 2,
-            displayindex = 16,
+            displayindex = 25,
             rch_access = "apk,cors,web",
             stream_access = "apk,cors,web",
             streamproxy = true,

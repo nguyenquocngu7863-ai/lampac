@@ -46,7 +46,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
         conf = ModuleInvoke.Init("Xvideos", new SisiSettings("Xvideos", "https://www.xv-ru.com")
         {
             httpversion = 2,
-            displayindex = 12,
+            displayindex = 22,
             rch_access = "apk,cors",
             stream_access = "apk,cors,web"
         });

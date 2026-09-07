@@ -1,5 +1,5 @@
 enable: true
-displayindex: 360
+displayindex: 42
 displayname: Lenkino
 rch_access: apk,cors
 stream_access: apk,cors

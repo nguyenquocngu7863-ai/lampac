@@ -36,7 +36,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
     {
         conf = ModuleInvoke.Init("Tizam", new SisiSettings("Tizam", "https://tv4.tizam.org")
         {
-            displayindex = 21,
+            displayindex = 29,
             rch_access = "apk,cors",
             stream_access = "apk,cors",
             rchstreamproxy = "web"

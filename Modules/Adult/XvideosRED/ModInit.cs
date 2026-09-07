@@ -37,7 +37,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
         conf = ModuleInvoke.Init("XvideosRED", new SisiSettings("XvideosRED", "https://www.xvideos.red")
         {
             enable = false,
-            displayindex = 20
+            displayindex = 28
         });
     }
 }
