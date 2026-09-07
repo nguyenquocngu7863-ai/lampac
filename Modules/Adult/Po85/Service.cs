@@ -269,34 +269,9 @@ public static class Po85To
 
         var stream_links = new Dictionary<string, string>(2);
 
-        // flashvars: video_url / video_alt_url / video_alt_url2 / video_alt_url3 (4K):
-        // 'function/0/https://...get_file...mp4/?br=2847', kem (name)_text: '4K'
-        string htmlStr = html.ToString();
-        foreach (System.Text.RegularExpressions.Match vm in
-            System.Text.RegularExpressions.Regex.Matches(htmlStr,
-            @"(video_(?:alt_)?url\d*):\s*'([^']+)'"))
-        {
-            string varName = vm.Groups[1].Value;
-            string vurl = vm.Groups[2].Value;
-            if (vurl.StartsWith("function/"))
-            {
-                var fm = System.Text.RegularExpressions.Regex.Match(vurl, @"^function/\d+/(.+)$");
-                if (!fm.Success)
-                    continue;
-                vurl = fm.Groups[1].Value;
-            }
-            if (!vurl.StartsWith("http"))
-                continue;
-            vurl = vurl.Replace("\\/", "/");
-            string vlabel = System.Text.RegularExpressions.Regex.Match(htmlStr,
-                varName + @"_text:\s*'([^']+)'").Groups[1].Value;
-            if (string.IsNullOrEmpty(vlabel))
-            {
-                var brm = System.Text.RegularExpressions.Regex.Match(vurl, @"[?&]br=(\d+)");
-                vlabel = brm.Success ? $"br{brm.Groups[1].Value}" : "mp4";
-            }
-            stream_links.TryAdd(vlabel, vurl);
-        }
+        // Link flashvars (video_url / video_alt_url*) bi Cloudflare chan khi tai
+        // server-side (403/404, hash gan voi phien xem tren trinh duyet that),
+        // chi dung link download dropdown (toi da 1080p) de phat duoc.
 
         // link download MP4 (dropdown): moi quality mot hash rieng
         // ("MP4 480p, ...", "MP4 720p, ...", "MP4 1080p, ...")
