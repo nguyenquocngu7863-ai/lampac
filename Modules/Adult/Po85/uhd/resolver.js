@@ -31,11 +31,13 @@ async function resolve4k(pageUrl, fileUrl) {
   const page = await ctx.newPage();
   try {
     const target = fileUrl + (fileUrl.includes('?') ? '&' : '?') + 'rnd=' + Date.now();
+    const wantPath = fileUrl.split('?')[0];
     let done;
     const found = new Promise((resolve) => { done = resolve; });
     const timer = setTimeout(() => done(null), 25000);
     const onResp = (r) => {
-      if (r.url().includes('/get_file/') && r.status() === 302)
+      // chi nhan 302 cua dung file 4K yeu cau (bo qua autoplay 480p cua player)
+      if (r.status() === 302 && r.url().startsWith(wantPath))
         done(r.headers()['location'] || '');
     };
     page.on('response', onResp);
