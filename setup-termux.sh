@@ -542,6 +542,19 @@ sync_latest_modules() {
             fi
         done
 
+        # Vidrock (vidrock.ru, ENG): thay VidCore, AES-GCM, max 1080p, tmdb-based.
+        vidrocktarget=/root/lampac/module/OnlineENG/Vidrock
+        mkdir -p "$vidrocktarget"
+        for vidrockfile in manifest.json Controller.cs ModInit.cs; do
+            if curl -fsSL --retry 3 "$base/Modules/OnlineENG/Vidrock/$vidrockfile?cb=$stamp" -o "/tmp/vidrock-$vidrockfile"; then
+                mv "/tmp/vidrock-$vidrockfile" "$vidrocktarget/$vidrockfile"
+                echo "  [sync] vidrock/$vidrockfile"
+            else
+                rm -f "/tmp/vidrock-$vidrockfile"
+                echo "  [sync] vidrock: bo qua $vidrockfile (nguon khong co)"
+            fi
+        done
+
         # Po85 (85po.com, KVS): xac minh thiet bi 2026-09-05. Khong co trong
         # lampac-nextgen.zip nen mkdir + lay full file.
         po85synctarget=/root/lampac/module/Adult/Po85
