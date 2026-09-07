@@ -46,7 +46,7 @@ route:
     if (!string.IsNullOrEmpty(search))
       return $"{host}/search?q={HttpUtility.UrlEncode(search)}" + (page > 1 ? $"&page={page}" : "");
     string q = cat ?? "";
-    string s = !string.IsNullOrEmpty(sort) ? sort : "";
+    string s = !string.IsNullOrEmpty(sort) ? sort : null;
     string basePath = string.IsNullOrEmpty(q) ? "/" : $"/category/{q}";
     string qs = "";
     if (page > 1) qs += $"page={page}";
