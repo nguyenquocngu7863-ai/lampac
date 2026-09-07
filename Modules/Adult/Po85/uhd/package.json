@@ -1,0 +1,9 @@
+{
+  "name": "po85-uhd-resolver",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Giai ma link 4K 85po bang Chrome that (85po chi nha file 2160p cho phien trinh duyet co /vi/ + TLS Chrome)",
+  "dependencies": {
+    "playwright-core": "^1.49.0"
+  }
+}

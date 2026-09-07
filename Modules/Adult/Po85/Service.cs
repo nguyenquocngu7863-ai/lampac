@@ -1,12 +1,14 @@
 using Microsoft.Extensions.Caching.Memory;
 using Shared;
 using Shared.Models.SISI.Base;
+using Shared.Services;
 using Shared.Services.Hybrid;
 using Shared.Services.Pools;
 using Shared.Services.RxEnumerate;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Web;
 
 namespace Po85;
@@ -260,6 +262,101 @@ public static class Po85To
             return null;
 
         return uri;
+    }
+
+    /// <summary>
+    /// Ban /vi/ cua trang phim: flashvars URL co prefix /vi/get_file/
+    /// (ban thuong khong co) — chi URL /vi/ moi mo duoc file 2160p.
+    /// </summary>
+    public static string ViPage(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return uri;
+
+        try
+        {
+            var u = new Uri(uri, UriKind.Absolute);
+            string path = u.AbsolutePath;
+            if (path.StartsWith("/vi/"))
+                return uri;
+
+            if (path.StartsWith("/v/") || path.StartsWith("/watch/"))
+                return $"{u.Scheme}://{u.Authority}/vi{path}{u.Query}";
+        }
+        catch { }
+
+        return uri;
+    }
+
+    /// <summary>
+    /// Tach URL 2160p tu flashvars (video_alt_url3, co the boc function/0/).
+    /// </summary>
+    public static string ParseUhd(ReadOnlySpan<char> html)
+    {
+        if (html.IsEmpty)
+            return null;
+
+        string s = html.ToString();
+        var m = System.Text.RegularExpressions.Regex.Match(s,
+            @"video_alt_url3:\s*'(?:function/\d+/)?([^']+)'");
+        if (!m.Success)
+            return null;
+
+        string uhd = m.Groups[1].Value.Replace("\\/", "/");
+        if (!uhd.StartsWith("http"))
+            return null;
+
+        if (!uhd.Contains("2160") && !uhd.ToLowerInvariant().Contains("4k"))
+            return null;
+
+        return uhd;
+    }
+
+    static readonly System.Net.Http.HttpClient uhdClient = FriendlyHttp.CreateHttpClient();
+
+    /// <summary>
+    /// Nho node resolver (127.0.0.1:9196, chay bang Chrome that) mo file 4K,
+    /// tra ve signed CDN URL. Cache 15 phut theo id phim.
+    /// </summary>
+    public static async Task<string> ResolveUhd(string pageUrl, string fileUrl)
+    {
+        try
+        {
+            var idm = System.Text.RegularExpressions.Regex.Match(pageUrl ?? "", @"/v/([0-9]+)/");
+            string vid = idm.Success ? idm.Groups[1].Value : (pageUrl ?? fileUrl);
+
+            var memoryCache = HybridCache.GetMemory();
+            string cacheKey = $"Po85_uhd_{vid}";
+
+            if (memoryCache.TryGetValue(cacheKey, out string cached))
+                return string.IsNullOrEmpty(cached) ? null : cached;
+
+            string req = "http://127.0.0.1:9196/r?page=" + HttpUtility.UrlEncode(pageUrl)
+                + "&file=" + HttpUtility.UrlEncode(fileUrl);
+
+            string signed = null;
+            using (var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(45)))
+            {
+                string json = await uhdClient.GetStringAsync(req, cts.Token);
+                var jm = System.Text.RegularExpressions.Regex.Match(json ?? "", @"\"location\"\s*:\s*\"([^\"]+)\"");
+                if (jm.Success)
+                    signed = jm.Groups[1].Value;
+            }
+
+            if (!string.IsNullOrEmpty(signed) && signed.Contains("2160p"))
+            {
+                if (CoreInit.conf.lowMemoryMode == false)
+                    memoryCache.Set(cacheKey, signed, TimeSpan.FromMinutes(15));
+                return signed;
+            }
+
+            memoryCache.Set(cacheKey, "", TimeSpan.FromMinutes(3));
+            return null;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     public static Dictionary<string, string> StreamLinks(ReadOnlySpan<char> html)

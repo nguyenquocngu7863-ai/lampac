@@ -86,9 +86,15 @@ public class Po85Controller : BaseSisiController
                 if (url == null)
                     return OnError("uri");
 
-                await httpHydra.GetSpan(url, span =>
+                // ban /vi/: dropdown nhu cu + flashvars co prefix /vi/get_file/
+                // (chi URL /vi/ moi mo duoc file 2160p)
+                string viPage = Po85To.ViPage(url);
+                string uhdFile = null;
+
+                await httpHydra.GetSpan(viPage, span =>
                 {
                     cache.links = Po85To.StreamLinks(span);
+                    uhdFile = Po85To.ParseUhd(span);
                 });
 
                 if (cache.links == null || cache.links.Count == 0)
@@ -97,6 +103,20 @@ public class Po85Controller : BaseSisiController
                         goto reset;
 
                     return OnError("stream_links", refresh_proxy: true);
+                }
+
+                // 4K: nho node resolver mo bang Chrome that, lay signed CDN URL
+                if (!string.IsNullOrEmpty(uhdFile))
+                {
+                    string signed = await Po85To.ResolveUhd(viPage, uhdFile);
+                    if (!string.IsNullOrEmpty(signed))
+                    {
+                        var with4k = new Dictionary<string, string>(cache.links.Count + 1);
+                        with4k.TryAdd("4K", signed);
+                        foreach (var kv in cache.links)
+                            with4k.TryAdd(kv.Key, kv.Value);
+                        cache.links = with4k;
+                    }
                 }
 
                 proxyManager?.Success();
