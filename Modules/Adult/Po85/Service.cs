@@ -269,19 +269,33 @@ public static class Po85To
 
         var stream_links = new Dictionary<string, string>(2);
 
-        // flashvars: video_url: 'function/0/https://...get_file...mp4/?br=446'
-        string vurl = Rx.Match(html, @"video_url:\s*'function/\d+/([^']+)'");
-        if (string.IsNullOrEmpty(vurl))
-            vurl = Rx.Match(html, @"video_url:\s*'([^']+)'");
-
-        if (!string.IsNullOrEmpty(vurl))
+        // flashvars: video_url / video_alt_url / video_alt_url2 / video_alt_url3 (4K):
+        // 'function/0/https://...get_file...mp4/?br=2847', kem (name)_text: '4K'
+        string htmlStr = html.ToString();
+        foreach (System.Text.RegularExpressions.Match vm in
+            System.Text.RegularExpressions.Regex.Matches(htmlStr,
+            @"(video_(?:alt_)?url\d*):\s*'([^']+)'"))
         {
+            string varName = vm.Groups[1].Value;
+            string vurl = vm.Groups[2].Value;
+            if (vurl.StartsWith("function/"))
+            {
+                var fm = System.Text.RegularExpressions.Regex.Match(vurl, @"^function/\d+/(.+)$");
+                if (!fm.Success)
+                    continue;
+                vurl = fm.Groups[1].Value;
+            }
+            if (!vurl.StartsWith("http"))
+                continue;
             vurl = vurl.Replace("\\/", "/");
-            string label = "mp4";
-            var brm = System.Text.RegularExpressions.Regex.Match(vurl, @"[?&]br=(\d+)");
-            if (brm.Success)
-                label = $"br{brm.Groups[1].Value}";
-            stream_links.TryAdd(label, vurl);
+            string vlabel = System.Text.RegularExpressions.Regex.Match(htmlStr,
+                varName + @"_text:\s*'([^']+)'").Groups[1].Value;
+            if (string.IsNullOrEmpty(vlabel))
+            {
+                var brm = System.Text.RegularExpressions.Regex.Match(vurl, @"[?&]br=(\d+)");
+                vlabel = brm.Success ? $"br{brm.Groups[1].Value}" : "mp4";
+            }
+            stream_links.TryAdd(vlabel, vurl);
         }
 
         // link download MP4 (dropdown): moi quality mot hash rieng
@@ -297,7 +311,25 @@ public static class Po85To
             stream_links.TryAdd(label, dlurl);
         }
 
-        return stream_links.Reverse().ToDictionary(k => k.Key, v => v.Value);
+        return stream_links.OrderByDescending(kv => StreamQualityRank(kv.Key + " " + kv.Value))
+            .ToDictionary(k => k.Key, v => v.Value);
     }
     #endregion
+
+    #region StreamQualityRank
+    static int StreamQualityRank(string s)
+    {
+        string l = s.ToLowerInvariant();
+        if (l.Contains("2160") || l.Contains("4k"))
+            return 2160;
+        if (l.Contains("1080"))
+            return 1080;
+        if (l.Contains("720"))
+            return 720;
+        if (l.Contains("480"))
+            return 480;
+        if (l.Contains("360"))
+            return 360;
+        return 0;
+    }
 }
