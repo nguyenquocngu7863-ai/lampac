@@ -112,9 +112,9 @@ public class Po85Controller : BaseSisiController
                     if (!string.IsNullOrEmpty(signed))
                     {
                         var with4k = new Dictionary<string, string>(cache.links.Count + 1);
-                        with4k.TryAdd("4K", signed);
                         foreach (var kv in cache.links)
                             with4k.TryAdd(kv.Key, kv.Value);
+                        with4k.TryAdd("4K", signed);
                         cache.links = with4k;
                     }
                 }

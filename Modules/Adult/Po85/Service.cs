@@ -393,7 +393,7 @@ public static class Po85To
     {
         string l = s.ToLowerInvariant();
         if (l.Contains("2160") || l.Contains("4k"))
-            return 2160;
+            return 1050;
         if (l.Contains("1080"))
             return 1080;
         if (l.Contains("720"))
