@@ -38,7 +38,8 @@ search:
 contentParse:
   nodes: //div[contains(@class,'item ')]
   name:
-    node: .//strong
+    node: .//a
+    attribute: title
   href:
     node: .//a
     attribute: href
