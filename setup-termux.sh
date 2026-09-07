@@ -526,6 +526,19 @@ sync_latest_modules() {
                 pull Modules/OnlineENG/VidLink/ModInit.cs \"\$vidlink/ModInit.cs\"
             fi
         done
+        # Vidrock (vidrock.ru, ENG): thay VidCore, AES-GCM, max 1080p, tmdb-based.
+        vidrocktarget=/root/lampac/module/OnlineENG/Vidrock
+        mkdir -p \"\$vidrocktarget\"
+        for vidrockfile in manifest.json Controller.cs ModInit.cs; do
+            if curl -fsSL --retry 3 \"\$base/Modules/OnlineENG/Vidrock/\$vidrockfile?cb=\$stamp\" -o \"/tmp/vidrock-\$vidrockfile\"; then
+                mv \"/tmp/vidrock-\$vidrockfile\" \"\$vidrocktarget/\$vidrockfile\"
+                echo \"  [sync] vidrock/\$vidrockfile\"
+            else
+                rm -f \"/tmp/vidrock-\$vidrockfile\"
+                echo \"  [sync] vidrock: bo qua \$vidrockfile (nguon khong co)\"
+            fi
+        done
+
         # VidCore: da xac minh thiet bi 2026-08-31 (movie 1288445 + tv 125988) -> duoc
         # cho vao sync nhe. Khac VidLink/Videasy, thu muc module chua co san trong
         # lampac-nextgen.zip nen phai tu mkdir va lay ca manifest.json; moi file bo qua
@@ -539,19 +552,6 @@ sync_latest_modules() {
             else
                 rm -f \"/tmp/vidcore-\$vidcorefile\"
                 echo \"  [sync] vidcore: bo qua \$vidcorefile (nguon khong co)\"
-            fi
-        done
-
-        # Vidrock (vidrock.ru, ENG): thay VidCore, AES-GCM, max 1080p, tmdb-based.
-        vidrocktarget=/root/lampac/module/OnlineENG/Vidrock
-        mkdir -p \"$vidrocktarget\"
-        for vidrockfile in manifest.json Controller.cs ModInit.cs; do
-            if curl -fsSL --retry 3 \"$base/Modules/OnlineENG/Vidrock/\$vidrockfile?cb=\$stamp\" -o \"/tmp/vidrock-\$vidrockfile\"; then
-                mv \"/tmp/vidrock-\$vidrockfile\" \"\$vidrocktarget/\$vidrockfile\"
-                echo \"  [sync] vidrock/\$vidrockfile\"
-            else
-                rm -f \"/tmp/vidrock-\$vidrockfile\"
-                echo \"  [sync] vidrock: bo qua \$vidrockfile (nguon khong co)\"
             fi
         done
 
@@ -571,10 +571,10 @@ sync_latest_modules() {
 
         # Stripchat (livecam): xac minh 2026-09-05 (list 90, potok ra hlsProxy).
         scsynctarget=/root/lampac/module/Adult/Stripchat
-        mkdir -p \"$scsynctarget\"
+        mkdir -p \"\$scsynctarget\"
         for scsyncfile in manifest.json Controller.cs ModInit.cs Service.cs; do
-            if curl -fsSL --retry 3 \"$base/Modules/Adult/Stripchat/\$scsyncfile?cb=\$stamp\" -o \"/tmp/scsync-\$scsyncfile\"; then
-                mv \"/tmp/scsync-\$scsyncfile\" \"$scsynctarget/\$scsyncfile\"
+            if curl -fsSL --retry 3 \"\$base/Modules/Adult/Stripchat/\$scsyncfile?cb=\$stamp\" -o \"/tmp/scsync-\$scsyncfile\"; then
+                mv \"/tmp/scsync-\$scsyncfile\" \"\$scsynctarget/\$scsyncfile\"
                 echo \"  [sync] stripchat/\$scsyncfile\"
             else
                 rm -f \"/tmp/scsync-\$scsyncfile\"
