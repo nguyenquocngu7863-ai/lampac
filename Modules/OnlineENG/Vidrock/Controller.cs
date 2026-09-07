@@ -91,7 +91,9 @@ public class VidrockController : BaseENGController
         try
         {
             string url = $"{ApiBase}/api/{mediaType}/{query}";
+            Console.WriteLine($"Vidrock fetch {url}");
             var json = await httpHydra.Get<JObject>(url, addheaders: apiHeaders, statusCodeOK: false);
+            Console.WriteLine($"Vidrock json null? {json==null} url={url}");
             if (json == null)
             {
                 Console.WriteLine($"Vidrock: empty json ({mediaType}:{query}) {url}");
