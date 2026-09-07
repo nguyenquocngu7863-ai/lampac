@@ -75,7 +75,7 @@ public class VidrockController : BaseENGController
         string mediaType = season > 0 ? "tv" : "movie";
         string query = mediaType == "movie"
             ? tmdbId.ToString()
-            : $"{tmdbId}_{season}_{Math.Max(episode, (short)1)}";
+            : $"{tmdbId}/{season}/{Math.Max(episode, (short)1)}";
 
         string memKey = $"vidrock:{mediaType}:{query}";
         if (hybridCache.TryGetValue(memKey, out List<ResolvedStream> cached) && cached != null && cached.Count > 0)
