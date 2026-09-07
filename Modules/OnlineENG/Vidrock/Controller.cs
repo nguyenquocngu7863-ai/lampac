@@ -46,7 +46,11 @@ public class VidrockController : BaseENGController
 
         var resolved = await Resolve(id, s, e);
         if (resolved == null || resolved.Count == 0)
+        {
+            if (s > 0)
+                return Content($"Vidrock debug tv:{id}/{s}/{e} null");
             return OnError("stream", 502);
+        }
 
         var qualities = new StreamQualityTpl(resolved.Count);
         foreach (var item in resolved)
