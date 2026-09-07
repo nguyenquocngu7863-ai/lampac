@@ -1,5 +1,5 @@
 enable: true
-displayindex: 60
+displayindex: 63
 displayname: cam4
 rch_access: apk,cors
 stream_access: apk,cors,web
