@@ -338,7 +338,7 @@ public static class Po85To
             using (var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(45)))
             {
                 string json = await uhdClient.GetStringAsync(req, cts.Token);
-                var jm = System.Text.RegularExpressions.Regex.Match(json ?? "", @"\"location\"\s*:\s*\"([^\"]+)\"");
+                var jm = System.Text.RegularExpressions.Regex.Match(json ?? "", "\"location\"\\s*:\\s*\"([^\"]+)\"");
                 if (jm.Success)
                     signed = jm.Groups[1].Value;
             }
