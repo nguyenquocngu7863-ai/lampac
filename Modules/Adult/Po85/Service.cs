@@ -57,10 +57,18 @@ public static class Po85To
             url.Append("most-popular/?from=");
             url.Append(pg);
         }
-        else
+        else if (sort == "latest-updates")
         {
             url.Append("latest-updates/?from=");
             url.Append(pg);
+        }
+        else
+        {
+            if (pg > 1)
+            {
+                url.Append("?from=");
+                url.Append(pg);
+            }
         }
 
         return url.ToString();
@@ -219,11 +227,12 @@ public static class Po85To
             },
             new MenuItem()
             {
-                title = $"Sắp xếp: {(string.IsNullOrEmpty(sort) ? "Mới nhất" : sort)}",
+                title = $"Sắp xếp: {(string.IsNullOrEmpty(sort) ? "Trang chủ" : sort)}",
                 playlist_url = "submenu",
-                submenu = new List<MenuItem>(4)
+                submenu = new List<MenuItem>(5)
                 {
-                    new("Mới nhất", $"{url}?c={c}&t={t}"),
+                    new("Trang chủ (Đang xem)", $"{url}?c={c}&t={t}"),
+                    new("Mới nhất", $"{url}?c={c}&t={t}&sort=latest-updates"),
                     new("4K", $"{url}?c={c}&t={t}&sort=4k"),
                     new("Đánh giá cao", $"{url}?c={c}&t={t}&sort=top-rated"),
                     new("Xem nhiều nhất", $"{url}?c={c}&t={t}&sort=most-popular")

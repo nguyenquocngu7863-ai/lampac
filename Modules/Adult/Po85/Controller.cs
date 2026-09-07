@@ -23,12 +23,9 @@ public class Po85Controller : BaseSisiController
         async public Task<ActionResult> Index(string search, string sort, string c, string t, int pg = 1)
         {
             if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
-                return badInitMsg;
+            return badInitMsg;
 
-            if (string.IsNullOrEmpty(sort))
-                sort = "latest-updates";
-
-            rhubFallback:
+        rhubFallback:
         var cache = await InvokeCacheResult(ipkey($"po85:{search}:{sort}:{c}:{t}:{pg}"), 10, jsonContext.ListPlaylistItem, async e =>
         {
             if (init.httpversion == 1)
