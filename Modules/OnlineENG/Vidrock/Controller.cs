@@ -46,11 +46,7 @@ public class VidrockController : BaseENGController
 
         var resolved = await Resolve(id, s, e);
         if (resolved == null || resolved.Count == 0)
-        {
-            if (s > 0)
-                return Content($"Vidrock debug tv:{id}/{s}/{e} null");
             return OnError("stream", 502);
-        }
 
         var qualities = new StreamQualityTpl(resolved.Count);
         foreach (var item in resolved)
@@ -95,9 +91,7 @@ public class VidrockController : BaseENGController
         try
         {
             string url = $"{ApiBase}/api/{mediaType}/{query}";
-            Console.WriteLine($"Vidrock fetch {url}");
             var json = await httpHydra.Get<JObject>(url, addheaders: apiHeaders, statusCodeOK: false);
-            Console.WriteLine($"Vidrock json null? {json==null} url={url}");
             if (json == null)
             {
                 Console.WriteLine($"Vidrock: empty json ({mediaType}:{query}) {url}");
