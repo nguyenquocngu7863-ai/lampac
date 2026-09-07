@@ -4,6 +4,7 @@ displayname: Veporn
 rch_access: apk,cors
 stream_access: apk,cors
 rchstreamproxy: web
+streamproxy: true
 host: https://veporn.com
 priorityBrowser: http
 
