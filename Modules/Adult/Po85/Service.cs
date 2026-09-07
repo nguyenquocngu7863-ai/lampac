@@ -68,7 +68,9 @@ public static class Po85To
         {
             if (pg > 1)
             {
-                url.Append("?from=");
+                // trang chu "Dang xem" tren web khong phan trang bang ?from= (lap)
+                // dung latest-updates de trang 2+ ra phim moi nhat, khong lap
+                url.Append("latest-updates/?from=");
                 url.Append(pg);
             }
         }
