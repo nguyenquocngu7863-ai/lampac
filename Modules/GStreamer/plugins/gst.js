@@ -268,12 +268,15 @@
                         // source. Retry once instead of erroring immediately.
                         addAttempts++;
                         if (addAttempts < 2) {
+                            Lampa.Loading.stop();
                             Lampa.Loading.start(function () { }, 'Đang chờ transcoding...');
                             setTimeout(addSource, 5000);
                             return;
                         }
 
                         Lampa.Loading.stop();
+                        // Fail-safe: Lampa queues Loading.start calls, one stop may not clear the stacked overlay
+                        setTimeout(function () { try { Lampa.Loading.stop(); } catch(e) {} }, 300);
                         Lampa.Noty.show('Không thể khởi động transcoding');
                     });
                 }
