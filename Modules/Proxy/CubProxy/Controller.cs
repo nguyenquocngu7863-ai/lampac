@@ -302,6 +302,14 @@ public class CubProxyController : BaseController
                 }
                 else
                 {
+                    // Force English for cub collections/categories/posters (viewru off)
+                    if (uri.Contains("collections", System.StringComparison.OrdinalIgnoreCase) || uri.Contains("categories", System.StringComparison.OrdinalIgnoreCase) || uri.Contains("poster", System.StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (uri.IndexOf("language=", System.StringComparison.OrdinalIgnoreCase) < 0)
+                            uri += (uri.Contains("?") ? "&" : "?") + "language=en";
+                        else
+                            uri = System.Text.RegularExpressions.Regex.Replace(uri, @"([?&]language=)[^&]*", "$1en", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                    }
                     foreach (var header in HttpContext.Request.Headers)
                     {
                         if (header.Key.Equals("cookie", StringComparison.OrdinalIgnoreCase) ||
