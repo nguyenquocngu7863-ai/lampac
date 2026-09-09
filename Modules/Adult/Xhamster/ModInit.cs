@@ -42,7 +42,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
 
     void updateConf()
     {
-        conf = ModuleInvoke.Init("Xhamster", new SisiSettings("Xhamster", "https://ru.xhamster.com")
+        conf = ModuleInvoke.Init("Xhamster", new SisiSettings("Xhamster", "https://xhamster.com")
         {
             httpversion = 2,
             displayindex = 23,
