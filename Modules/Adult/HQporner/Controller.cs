@@ -57,7 +57,7 @@ public class HQpornerController : BaseSisiController
             return badInitMsg;
 
     rhubFallback:
-        var cache = await InvokeCacheResult(ipkey($"HQporner:view:{uri}"), 20, jsonContext.DictionaryStringString, async e =>
+        var cache = await InvokeCacheResult(ipkey($"HQporner:view:{uri}"), 5, jsonContext.DictionaryStringString, async e =>
         {
             var stream_links = await HQpornerTo.StreamLinks(httpHydra, init.host, uri);
 
