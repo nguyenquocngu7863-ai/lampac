@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Shared;
 using Shared.Attributes;
+using Shared.Models.Base;
 using Shared.Models.SISI.Base;
 using Shared.Models.SISI.OnResult;
 using Shared.Services;
@@ -76,7 +77,7 @@ public class XhamsterController : BaseSisiController
                     await httpHydra.GetSpan(XhamsterTo.Uri(init.host, plugin, search, c, q, sort, pg), span =>
                     {
                         playlists = XhamsterTo.Playlist("xmr/vidosik", span);
-                    });
+                    }, newheaders: HeadersModel.Init(("Accept-Language", "en-US,en;q=0.9")));
 
                     if (playlists == null || playlists.Count == 0)
                     {
