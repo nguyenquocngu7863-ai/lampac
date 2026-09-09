@@ -395,21 +395,23 @@ public class PhantomController : BaseOnlineController<ModuleConf>
     static string TranslateVoice(string v)
     {
         if (string.IsNullOrEmpty(v)) return v;
-        return v.Trim() switch
+        var s = v.Trim();
+        return s switch
         {
             "Украинский" => "Tiếng Ukraina",
             "Казахский" => "Tiếng Kazakhstan",
             "Узбекский" => "Tiếng Uzbekistan",
             "Дублированный" => "Lồng tiếng",
+            "Оригинальный" => "Gốc",
+            "Оригинал" => "Gốc",
             "Русский" => "Tiếng Nga",
             "Английский" => "Tiếng Anh",
-            "Оригинал" => "Gốc",
             "Дубляж" => "Lồng tiếng",
             "Многоголосый" => "Thuyết minh đa giọng",
             "Двухголосый" => "Thuyết minh đôi",
             "Одноголосый" => "Thuyết minh đơn",
             "Субтитры" => "Phụ đề",
-            _ => v
+            _ => s.Contains("Многоголосый") ? "Thuyết minh đa giọng" : s.Contains("Дублированный") ? "Lồng tiếng" : s.Contains("Оригинальн") ? "Gốc" : v
         };
     }
 
