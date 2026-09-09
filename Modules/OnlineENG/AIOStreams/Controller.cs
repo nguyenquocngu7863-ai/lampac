@@ -273,7 +273,7 @@ public sealed class AIOStreamsController : BaseOnlineController<ModuleConf>
         if (season <= 0 || episode <= 0)
             return OnError("Stremio episode requires season and episode", 400);
 
-        Serilog.Log.Information("AIOStreams episode req: {@p}", new { addonId, title, original_title, season, episode, play, streamSource });
+        try { System.IO.File.AppendAllText("/root/lampac/data/aio_ep.log", $"{DateTime.Now:HH:mm:ss} REQ addon={addonId} s={season} e={episode} title={title} orig={original_title} play={play} src={streamSource}\n"); } catch { }
 
         List<AIOStreamItem> allStreams = await GetStreams(
             "series",
@@ -294,7 +294,7 @@ public sealed class AIOStreamsController : BaseOnlineController<ModuleConf>
             }
         }
 
-        Serilog.Log.Information("AIOStreams episode streams: {id}:{s}:{e} count={n}", addonId, season, episode, allStreams.Count);
+        try { System.IO.File.AppendAllText("/root/lampac/data/aio_ep.log", $"{DateTime.Now:HH:mm:ss} RES addon={addonId} s={season} e={episode} count={allStreams.Count}\n"); } catch { }
 
         if (allStreams.Count == 0)
             return OnError("No direct HTTP streams returned by AIOStreams", 502);
