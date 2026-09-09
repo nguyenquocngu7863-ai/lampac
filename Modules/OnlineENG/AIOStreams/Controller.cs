@@ -1027,10 +1027,16 @@ public sealed class AIOStreamsController : BaseOnlineController<ModuleConf>
 
     string BuildVideoEndpoint(AIOStreamItem stream, bool selectLink = false)
     {
-        // Ép mọi link về file.mkv để hook GST (chỉ nhận .mkv/.avi lúc tạo
-        // player) xử lý đồng đều cả link đầu lẫn link switch trong menu.
-        // Định dạng gốc vẫn giữ trong nhãn quality để client chọn.
-        string route = "file.mkv";
+        // Giữ route theo định dạng gốc: chỉ ruột matroska mới qua được GST
+        // (GService từ chối container khác với 502), mp4/m3u8 phát trực
+        // tiếp. Ép hết về .mkv khiến mọi link MP4 chết chắc ở /gst/add.
+        string route = stream.Format switch
+        {
+            "mkv" => "file.mkv",
+            "m3u8" => "file.m3u8",
+            "mp4" => "file.mp4",
+            _ => "video"
+        };
 
         string endpoint = $"{host}/lite/aiostreams/{route}?u={HttpUtility.UrlEncode(EncryptQuery(stream.Url))}";
 
