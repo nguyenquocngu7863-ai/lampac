@@ -315,20 +315,12 @@ public sealed class AIOStreamsController : BaseOnlineController<ModuleConf>
             return RedirectToPlay(firstPlay.firstLink);
         }
 
-        VoiceTpl sourceFilter = BuildEpisodeSourceFilter(
-            allStreams,
-            addonId,
-            title,
-            original_title,
-            season,
-            episode,
-            streamSource
-        );
-
-        string name = title ?? original_title ?? "AIOStreams";
-        name += $" S{season:00}E{episode:00}";
-
-        return ContentTpl(BuildEpisodeTemplate(streams, name, original_title, sourceFilter));
+        // View tập phim của Lampa chỉ nuốt được một object play duy nhất
+        // (kèm menu quality), không hiển thị được trang đa thẻ như phim lẻ.
+        // Trả dạng single-play như Videasy/VidCore; toàn bộ nguồn vẫn nằm
+        // trong menu quality với nhãn nguồn để chọn.
+        var resp = BuildVideoResponse(streams, title, original_title, season, episode);
+        return ContentTo(resp.json);
     }
 
     MovieTpl BuildEpisodeTemplate(
