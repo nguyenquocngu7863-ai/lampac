@@ -81,7 +81,7 @@ public sealed class AIOStreamsController : BaseOnlineController<ModuleConf>
         }
 
         if (isSeries)
-            return await EpisodeResponse(addonId, title, original_title, s, e, play);
+            return await EpisodeResponse(addonId, title, original_title, s, e, play, stream_source);
 
         string type = "movie";
         List<AIOStreamItem> allStreams = await GetStreams(type, addonId);
@@ -233,7 +233,8 @@ public sealed class AIOStreamsController : BaseOnlineController<ModuleConf>
         string original_title,
         short s,
         short e,
-        bool play = false
+        bool play = false,
+        string stream_source = null
     )
     {
         if (await IsRequestBlocked(rch: false, rch_check: !play))
@@ -245,7 +246,7 @@ public sealed class AIOStreamsController : BaseOnlineController<ModuleConf>
         if (string.IsNullOrWhiteSpace(stremio_id))
             return OnError("Missing Stremio series id", 400);
 
-        return await EpisodeResponse(stremio_id, title, original_title, s, e, play);
+        return await EpisodeResponse(stremio_id, title, original_title, s, e, play, stream_source);
     }
 
     async Task<ActionResult> EpisodeResponse(
@@ -254,32 +255,134 @@ public sealed class AIOStreamsController : BaseOnlineController<ModuleConf>
         string original_title,
         short season,
         short episode,
-        bool play
+        bool play,
+        string streamSource = null
     )
     {
         if (season <= 0 || episode <= 0)
             return OnError("Stremio episode requires season and episode", 400);
 
-        List<AIOStreamItem> streams = await GetStreams(
+        List<AIOStreamItem> allStreams = await GetStreams(
             "series",
             $"{addonId}:{season}:{episode}"
         );
 
-        if (streams.Count == 0)
+        if (allStreams.Count == 0)
             return OnError("No direct HTTP streams returned by AIOStreams", 502);
 
-        var video = BuildVideoResponse(
-            streams,
+        List<AIOStreamItem> streams = string.IsNullOrWhiteSpace(streamSource)
+            ? allStreams
+            : allStreams
+                .Where(i => SourceGroupName(i).Equals(streamSource, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+        if (streams.Count == 0)
+            return OnError("No streams for the selected AIOStreams source", 404);
+
+        // Bấm tập phim phải ra danh sách nguồn như phim lẻ, không play luôn link đầu.
+        if (play)
+        {
+            var firstPlay = BuildVideoResponse(streams, title, original_title, season, episode);
+            return RedirectToPlay(firstPlay.firstLink);
+        }
+
+        VoiceTpl sourceFilter = BuildEpisodeSourceFilter(
+            allStreams,
+            addonId,
             title,
             original_title,
             season,
-            episode
+            episode,
+            streamSource
         );
 
-        if (play)
-            return RedirectToPlay(video.firstLink);
+        string name = title ?? original_title ?? "AIOStreams";
+        name += $" S{season:00}E{episode:00}";
 
-        return ContentTo(video.json);
+        return ContentTpl(BuildEpisodeTemplate(streams, name, original_title, sourceFilter));
+    }
+
+    MovieTpl BuildEpisodeTemplate(
+        List<AIOStreamItem> streams,
+        string title,
+        string original_title,
+        VoiceTpl sourceFilter
+    )
+    {
+        var tpl = new MovieTpl(title, original_title, sourceFilter, streams.Count);
+        var labels = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (AIOStreamItem stream in streams)
+        {
+            string label = init.detailedLabels
+                ? BuildLinkLabel(stream)
+                : BuildShortLabel(stream);
+
+            labels.TryGetValue(label, out int count);
+            count++;
+            labels[label] = count;
+            if (count > 1)
+                label += $" #{count}";
+
+            tpl.Append(
+                label,
+                BuildVideoEndpoint(stream),
+                "play",
+                quality: stream.Quality,
+                details: BuildCardDetails(stream)
+            );
+        }
+
+        return tpl;
+    }
+
+    VoiceTpl BuildEpisodeSourceFilter(
+        List<AIOStreamItem> streams,
+        string addonId,
+        string title,
+        string original_title,
+        short season,
+        short episode,
+        string selectedSource
+    )
+    {
+        var groups = new List<string>();
+        var known = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (AIOStreamItem stream in streams)
+        {
+            string source = SourceGroupName(stream);
+            if (known.Add(source))
+                groups.Add(source);
+        }
+
+        if (groups.Count == 0)
+            return null;
+
+        var filter = new VoiceTpl(groups.Count);
+        for (int index = 0; index < groups.Count; index++)
+        {
+            string source = groups[index];
+            bool active = string.IsNullOrWhiteSpace(selectedSource)
+                ? index == 0
+                : source.Equals(selectedSource, StringComparison.OrdinalIgnoreCase);
+
+            filter.Append(
+                source,
+                active,
+                BuildIndexUrl(
+                    addonId,
+                    title,
+                    original_title,
+                    serial: 1,
+                    season: season,
+                    episode: episode,
+                    streamSource: source
+                )
+            );
+        }
+
+        return filter;
     }
 
     async Task<ActionResult> Seasons(
