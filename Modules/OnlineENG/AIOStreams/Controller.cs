@@ -40,7 +40,6 @@ public sealed class AIOStreamsController : BaseOnlineController<ModuleConf>
         bool rjson = false
     )
     {
-        try { System.IO.File.AppendAllText("/root/lampac/data/aio_req.log", $"{DateTime.UtcNow:HH:mm:ss} Index stremio_id={stremio_id} id={id} imdb_id={imdb_id} tmdb_id={tmdb_id} serial={serial} s={s} e={e} title={title}\n"); } catch { }
         if (await IsRequestBlocked(rch: false, rch_check: !play))
             return badInitMsg;
 
