@@ -86,6 +86,17 @@ public sealed class AIOStreamsController : BaseOnlineController<ModuleConf>
         string type = "movie";
         List<AIOStreamItem> allStreams = await GetStreams(type, addonId);
         if (allStreams.Count == 0)
+        {
+            string imdbMovie = await PreferImdbId(addonId, tmdb_id);
+            if (!string.IsNullOrWhiteSpace(imdbMovie) &&
+                !imdbMovie.Equals(addonId, StringComparison.OrdinalIgnoreCase))
+            {
+                allStreams = await GetStreams(type, imdbMovie);
+                if (allStreams.Count > 0)
+                    addonId = imdbMovie;
+            }
+        }
+        if (allStreams.Count == 0)
             return OnError("No direct HTTP streams returned by AIOStreams", 502);
 
         List<AIOStreamItem> streams = string.IsNullOrWhiteSpace(stream_source)
@@ -266,6 +277,20 @@ public sealed class AIOStreamsController : BaseOnlineController<ModuleConf>
             "series",
             $"{addonId}:{season}:{episode}"
         );
+
+        // Một số addon Stremio chỉ index theo IMDB (vd Reacher có theo
+        // tt9288030 nhưng không có theo tmdb:476669). Đổi sang IMDB khi được.
+        if (allStreams.Count == 0)
+        {
+            string imdbId = await PreferImdbId(addonId);
+            if (!string.IsNullOrWhiteSpace(imdbId) &&
+                !imdbId.Equals(addonId, StringComparison.OrdinalIgnoreCase))
+            {
+                allStreams = await GetStreams("series", $"{imdbId}:{season}:{episode}");
+                if (allStreams.Count > 0)
+                    addonId = imdbId;
+            }
+        }
 
         if (allStreams.Count == 0)
             return OnError("No direct HTTP streams returned by AIOStreams", 502);
@@ -1095,6 +1120,34 @@ public sealed class AIOStreamsController : BaseOnlineController<ModuleConf>
     {
         return !string.IsNullOrWhiteSpace(value) &&
             value.StartsWith("tt", StringComparison.OrdinalIgnoreCase);
+    }
+
+    async Task<string> PreferImdbId(string addonId, long tmdbHint = 0)
+    {
+        if (IsImdbId(addonId))
+            return addonId.Trim();
+
+        long tvId = ResolveTmdbId(addonId, tmdbHint);
+        if (tvId <= 0 && long.TryParse((addonId ?? string.Empty).Trim(), out long numeric) && numeric > 0)
+            tvId = numeric;
+        if (tvId <= 0)
+            return null;
+
+        try
+        {
+            JObject tvExt = await GetTmdb($"tv/{tvId}/external_ids");
+            string imdb = tvExt?.Value<string>("imdb_id");
+            if (IsImdbId(imdb))
+                return imdb.Trim();
+
+            JObject movieExt = await GetTmdb($"movie/{tvId}/external_ids");
+            imdb = movieExt?.Value<string>("imdb_id");
+            if (IsImdbId(imdb))
+                return imdb.Trim();
+        }
+        catch { }
+
+        return null;
     }
 
     static long ResolveTmdbId(string addonId, long tmdbId)
