@@ -282,7 +282,7 @@ public sealed class AIOStreamsController : BaseOnlineController<ModuleConf>
         // tt9288030 nhưng không có theo tmdb:476669). Đổi sang IMDB khi được.
         if (allStreams.Count == 0)
         {
-            string imdbId = await PreferImdbId(addonId);
+            string imdbId = await PreferImdbId(addonId, 0, title, original_title);
             if (!string.IsNullOrWhiteSpace(imdbId) &&
                 !imdbId.Equals(addonId, StringComparison.OrdinalIgnoreCase))
             {
@@ -422,6 +422,18 @@ public sealed class AIOStreamsController : BaseOnlineController<ModuleConf>
             return OnError("Series season list requires a TMDB or IMDb id", 400);
 
         List<(int Number, int EpisodeCount)> seasons = await GetSeasonRows(addonId, tvId);
+        if (seasons.Count == 0 && !IsImdbId(addonId))
+        {
+            // Không có TMDB key nên danh sách mùa trống với id tmdb:.
+            // Đổi sang IMDb id qua TVmaze (miễn phí, không key) rồi thử lại.
+            string imdb = await ResolveImdbByTvTitle(title, original_title);
+            if (IsImdbId(imdb))
+            {
+                seasons = await GetSeasonRows(imdb, 0);
+                if (seasons.Count > 0)
+                    addonId = imdb;
+            }
+        }
         if (seasons.Count == 0)
             return OnError("Unable to load series seasons", 502);
 
@@ -452,6 +464,16 @@ public sealed class AIOStreamsController : BaseOnlineController<ModuleConf>
             return OnError("Series episode list requires a TMDB or IMDb id and season", 400);
 
         List<(int Number, string Name)> episodes = await GetEpisodeRows(addonId, tvId, season);
+        if (episodes.Count == 0 && !IsImdbId(addonId))
+        {
+            string imdb = await ResolveImdbByTvTitle(title, original_title);
+            if (IsImdbId(imdb))
+            {
+                episodes = await GetEpisodeRows(imdb, 0, season);
+                if (episodes.Count > 0)
+                    addonId = imdb;
+            }
+        }
         if (episodes.Count == 0)
             return OnError("Unable to load series episodes", 502);
 
@@ -1122,7 +1144,7 @@ public sealed class AIOStreamsController : BaseOnlineController<ModuleConf>
             value.StartsWith("tt", StringComparison.OrdinalIgnoreCase);
     }
 
-    async Task<string> PreferImdbId(string addonId, long tmdbHint = 0)
+    async Task<string> PreferImdbId(string addonId, long tmdbHint = 0, string title = null, string originalTitle = null)
     {
         if (IsImdbId(addonId))
             return addonId.Trim();
@@ -1130,22 +1152,65 @@ public sealed class AIOStreamsController : BaseOnlineController<ModuleConf>
         long tvId = ResolveTmdbId(addonId, tmdbHint);
         if (tvId <= 0 && long.TryParse((addonId ?? string.Empty).Trim(), out long numeric) && numeric > 0)
             tvId = numeric;
-        if (tvId <= 0)
-            return null;
+        if (tvId > 0)
+        {
+            try
+            {
+                JObject tvExt = await GetTmdb($"tv/{tvId}/external_ids");
+                string imdb = tvExt?.Value<string>("imdb_id");
+                if (IsImdbId(imdb))
+                    return imdb.Trim();
 
+                JObject movieExt = await GetTmdb($"movie/{tvId}/external_ids");
+                imdb = movieExt?.Value<string>("imdb_id");
+                if (IsImdbId(imdb))
+                    return imdb.Trim();
+            }
+            catch { }
+        }
+
+        // Không có TMDB key: đoán IMDb id từ tiêu đề qua TVmaze (miễn phí).
         try
         {
-            JObject tvExt = await GetTmdb($"tv/{tvId}/external_ids");
-            string imdb = tvExt?.Value<string>("imdb_id");
-            if (IsImdbId(imdb))
-                return imdb.Trim();
-
-            JObject movieExt = await GetTmdb($"movie/{tvId}/external_ids");
-            imdb = movieExt?.Value<string>("imdb_id");
-            if (IsImdbId(imdb))
-                return imdb.Trim();
+            return await ResolveImdbByTvTitle(title, originalTitle);
         }
         catch { }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Đổi tiêu đề phim Bộ sang IMDb id qua TVmaze singlesearch
+    /// (miễn phí, không cần key). Chỉ nhận khi tên trả về khớp
+    /// đúng tiêu đề gửi lên để tránh nhầm phim trùng tên.
+    /// </summary>
+    async Task<string> ResolveImdbByTvTitle(string title, string originalTitle)
+    {
+        foreach (string raw in new[] { originalTitle, title })
+        {
+            string q = (raw ?? string.Empty).Trim();
+            if (q.Length < 2)
+                continue;
+
+            try
+            {
+                string uri = "https://api.tvmaze.com/singlesearch/shows?q=" + Uri.EscapeDataString(q);
+                JObject show = await InvokeCache(
+                    $"aiostreams:tvmaze:{q.ToLowerInvariant()}",
+                    TimeSpan.FromHours(24),
+                    () => Http.Get<JObject>(uri, timeoutSeconds: 8, proxy: proxy)
+                );
+
+                string name = show?["name"]?.Value<string>();
+                string imdb = show?["externals"]?.Value<string>("imdb");
+                if (IsImdbId(imdb) &&
+                    string.Equals((name ?? string.Empty).Trim(), q, StringComparison.OrdinalIgnoreCase))
+                {
+                    return imdb.Trim();
+                }
+            }
+            catch { }
+        }
 
         return null;
     }
