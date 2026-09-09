@@ -4,6 +4,8 @@ namespace TorrServer;
 
 public class ModuleConf : ModuleBaseConf
 {
+    public bool enable { get; set; } = true;
+
     public string releases { get; set; }
 
     public bool rdb { get; set; }
