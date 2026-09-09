@@ -273,6 +273,8 @@ public sealed class AIOStreamsController : BaseOnlineController<ModuleConf>
         if (season <= 0 || episode <= 0)
             return OnError("Stremio episode requires season and episode", 400);
 
+        Serilog.Log.Information("AIOStreams episode req: {@p}", new { addonId, title, original_title, season, episode, play, streamSource });
+
         List<AIOStreamItem> allStreams = await GetStreams(
             "series",
             $"{addonId}:{season}:{episode}"
@@ -291,6 +293,8 @@ public sealed class AIOStreamsController : BaseOnlineController<ModuleConf>
                     addonId = imdbId;
             }
         }
+
+        Serilog.Log.Information("AIOStreams episode streams: {id}:{s}:{e} count={n}", addonId, season, episode, allStreams.Count);
 
         if (allStreams.Count == 0)
             return OnError("No direct HTTP streams returned by AIOStreams", 502);
