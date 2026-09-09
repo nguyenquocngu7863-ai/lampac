@@ -152,7 +152,7 @@ public static class OnlineAPI
                 {
                     new ForkPlaylistItem()
                     {
-                        title = $"Перевод: {active ?? "выбрать"}",
+                        title = $"Bản dịch: {active ?? "выбрать"}",
                         playlist_url = "submenu",
                         submenu = submenu,
                         logo_30x30 = Icon.Filter

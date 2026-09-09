@@ -20,7 +20,7 @@ public class ModInit : IModuleLoaded, IModuleOnline
         if (args.serial == 1)
         {
             if (args.original_language != null && args.original_language.Split("|")[0] is "ko" or "cn")
-                online.Add(new(conf, arg_title: " (Грузинский)"));
+                online.Add(new(conf, arg_title: " (Tiếng Gruzia)"));
         }
 
         return online;

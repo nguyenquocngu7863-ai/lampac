@@ -18,7 +18,7 @@ public class ModInit : IModuleLoaded, IModuleOnline
         var online = new List<ModuleOnlineItem>();
 
         if (args.kinopoisk_id > 0)
-            online.Add(new(conf, arg_title: " (Грузинский)"));
+            online.Add(new(conf, arg_title: " (Tiếng Gruzia)"));
 
         return online;
     }

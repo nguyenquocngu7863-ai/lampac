@@ -108,7 +108,7 @@ public class AllohaController : BaseOnlineController<ModuleConf>
                 if (directors_cut && trId == 66)
                 {
                     mtpl.Append(
-                        "Режиссерская версия",
+                        "Bản đạo diễn",
                         $"{link}&directors_cut=true",
                         "call",
                         $"{streamlink}&directors_cut=true",
@@ -140,7 +140,7 @@ public class AllohaController : BaseOnlineController<ModuleConf>
                 foreach (var season in data.seasons.OrderBy(x => x.season))
                 {
                     tpl.Append(
-                        $"{season.season} сезон",
+                        $"{season.season} Mùa",
                         $"{host}/lite/alloha?rjson={rjson}&s={season.season}{defaultargs}",
                         season.season.ToString()
                     );
@@ -192,7 +192,7 @@ public class AllohaController : BaseOnlineController<ModuleConf>
                     string link = $"{host}/lite/alloha/video?t={activTranslate}&s={s}&e={episodeNum}&token_movie={data.token}" + defaultargs;
 
                     etpl.Append(
-                        $"{episodeNum} серия",
+                        $"{episodeNum} Tập",
                         title ?? original_title,
                         s,
                         episodeNum,

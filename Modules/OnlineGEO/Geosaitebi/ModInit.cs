@@ -18,7 +18,7 @@ public class ModInit : IModuleLoaded, IModuleOnline
         var online = new List<ModuleOnlineItem>();
 
         if (args.serial == -1 || args.serial == 0)
-            online.Add(new(conf, arg_title: " (Грузинский)"));
+            online.Add(new(conf, arg_title: " (Tiếng Gruzia)"));
 
         return online;
     }
