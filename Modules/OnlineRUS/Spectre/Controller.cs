@@ -190,7 +190,7 @@ public class SpectreController : BaseOnlineController<ModuleConf>
                                 t = id_translation;
 
                             vtpl.Append(
-                                voice.Value<string>("translation"),
+                                TranslateVoice(voice.Value<string>("translation")),
                                 t == id_translation,
                                 $"{host}/lite/spectre?rjson={rjson}&s={s}&t={id_translation}{defaultargs}"
                             );
@@ -208,7 +208,7 @@ public class SpectreController : BaseOnlineController<ModuleConf>
                             if (voice.Value<int>("id_translation") != t)
                                 continue;
 
-                            string translation = voice.Value<string>("translation");
+                            string translation = TranslateVoice(voice.Value<string>("translation"));
                             short e = voice.Value<short>("episode");
 
                             string link = $"{host}/lite/spectre/video?id_file={voice.Value<long>("id")}&token_movie={data.Value<string>("token_movie")}";
@@ -249,7 +249,7 @@ public class SpectreController : BaseOnlineController<ModuleConf>
                             t = id_translation;
 
                         vtpl.Append(
-                            voice.Value<string>("translation"),
+                            TranslateVoice(voice.Value<string>("translation")),
                             t == id_translation,
                             $"{host}/lite/spectre?rjson={rjson}&s={s}&t={id_translation}{defaultargs}"
                         );
@@ -317,7 +317,7 @@ public class SpectreController : BaseOnlineController<ModuleConf>
                                 t = id_translation;
 
                             vtpl.Append(
-                                voice.Value<string>("translation"),
+                                TranslateVoice(voice.Value<string>("translation")),
                                 t == id_translation,
                                 $"{host}/lite/spectre?rjson={rjson}&s={s}&t={id_translation}{defaultargs}"
                             );
@@ -331,7 +331,7 @@ public class SpectreController : BaseOnlineController<ModuleConf>
                     {
                         foreach (var voice in episode.Value.Select(i => i.Value))
                         {
-                            string translation = voice.Value<string>("translation");
+                            string translation = TranslateVoice(voice.Value<string>("translation"));
                             if (voice.Value<int>("id_translation") != t)
                                 continue;
 
@@ -405,6 +405,28 @@ public class SpectreController : BaseOnlineController<ModuleConf>
     #region SpiderSearch
     [HttpGet, Staticache(manually: true)]
     [Route("lite/spectre-search")]
+
+    static string TranslateVoice(string v)
+    {
+        if (string.IsNullOrEmpty(v)) return v;
+        return v.Trim() switch
+        {
+            "Украинский" => "Tiếng Ukraina",
+            "Казахский" => "Tiếng Kazakhstan",
+            "Узбекский" => "Tiếng Uzbekistan",
+            "Дублированный" => "Lồng tiếng",
+            "Русский" => "Tiếng Nga",
+            "Английский" => "Tiếng Anh",
+            "Оригинал" => "Gốc",
+            "Дубляж" => "Lồng tiếng",
+            "Многоголосый" => "Thuyết minh đa giọng",
+            "Двухголосый" => "Thuyết minh đôi",
+            "Одноголосый" => "Thuyết minh đơn",
+            "Субтитры" => "Phụ đề",
+            _ => v
+        };
+    }
+
     async public Task<ActionResult> RouteSpiderSearch(string title, bool origsource = false, bool rjson = false)
     {
         if (string.IsNullOrWhiteSpace(title))
