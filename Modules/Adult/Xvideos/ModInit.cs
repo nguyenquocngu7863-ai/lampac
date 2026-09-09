@@ -42,8 +42,8 @@ public class ModInit : IModuleLoaded, IModuleSisi
 
     void updateConf()
     {
-        // https://www.xv-ru.com
-        conf = ModuleInvoke.Init("Xvideos", new SisiSettings("Xvideos", "https://www.xvideos.com")
+        // https://www.xvideos.com (block mạng này: /c/, /tags/, search chập chờn) — dùng mirror RU cho ổn định
+        conf = ModuleInvoke.Init("Xvideos", new SisiSettings("Xvideos", "https://www.xv-ru.com")
         {
             httpversion = 2,
             displayindex = 22,
