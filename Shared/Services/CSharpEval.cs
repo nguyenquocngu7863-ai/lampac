@@ -18,6 +18,8 @@ namespace Shared.Services;
 
 public static class CSharpEval
 {
+    static readonly Serilog.ILogger Log = Serilog.Log.ForContext(typeof(CSharpEval));
+
     static ConcurrentDictionary<Fnv1aHash, dynamic> scripts = new();
 
     #region Execute<T>
