@@ -20,7 +20,7 @@ public class ModInit : IModuleLoaded, IModuleOnline
 
         return new List<ModuleOnlineItem>()
         {
-            new(conf, arg_title: " (Украинский)")
+            new(conf, arg_title: " (Tiếng Ukraina)")
         };
     }
 

@@ -26,7 +26,7 @@ public class ModInit : IModuleLoaded, IModuleOnline
         var online = new List<ModuleOnlineItem>();
 
         if (!args.isanime)
-            online.Add(new(conf, arg_title: " (Украинский)"));
+            online.Add(new(conf, arg_title: " (Tiếng Ukraina)"));
 
         return online;
     }
