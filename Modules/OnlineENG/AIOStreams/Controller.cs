@@ -273,7 +273,7 @@ public sealed class AIOStreamsController : BaseOnlineController<ModuleConf>
         if (season <= 0 || episode <= 0)
             return OnError("Stremio episode requires season and episode", 400);
 
-        try { System.IO.File.AppendAllText("/root/lampac/data/aio_ep.log", $"{DateTime.Now:HH:mm:ss} REQ addon={addonId} s={season} e={episode} title={title} orig={original_title} play={play} src={streamSource}\n"); } catch { }
+        try { System.IO.File.AppendAllText("/root/lampac/data/aio_ep.log", $"{DateTime.Now:HH:mm:ss} REQ {HttpContext?.Request?.QueryString} UA={HttpContext?.Request?.Headers["User-Agent"]}\n"); } catch { }
 
         List<AIOStreamItem> allStreams = await GetStreams(
             "series",
