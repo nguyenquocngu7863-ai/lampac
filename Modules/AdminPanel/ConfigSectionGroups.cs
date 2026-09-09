@@ -60,7 +60,7 @@ public static class ConfigSectionGroups
             {
                 "AIOStreams", "Autoembed", "Hydraflix", "MovPI", "Playembed", "Rgshows",
                 "Smashystream", "Sootio", "Twoembed", "VidCore", "VidLink", "Videasy",
-                "Vidsrc", "WebStreamr"
+                "Vidrock", "Vidsrc", "WebStreamr"
             }),
 
         new("src-rus", "Nguồn · Nga và CIS (Modules/OnlineRUS)", "Nguồn VOD/CDN Nga.",
@@ -97,7 +97,7 @@ public static class ConfigSectionGroups
             new[]
             {
                 "NextHUB",
-                "BongaCams", "Chaturbate", "Ebalovo", "Eporner", "HQporner", "PornHub",
+                "BongaCams", "Chaturbate", "Ebalovo", "Eporner", "HQporner", "Po85", "PornHub",
                 "PornHubPremium", "Porntrex", "Runetki", "Spankbang", "Tizam",
                 "Xhamster", "Xnxx", "Xvideos", "XvideosRED",
                 "xasiat", "porn4days", "pornobolt"
