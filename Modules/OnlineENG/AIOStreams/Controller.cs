@@ -273,8 +273,6 @@ public sealed class AIOStreamsController : BaseOnlineController<ModuleConf>
         if (season <= 0 || episode <= 0)
             return OnError("Stremio episode requires season and episode", 400);
 
-        try { System.IO.File.AppendAllText("/root/lampac/data/aio_ep.log", $"{DateTime.Now:HH:mm:ss} REQ {HttpContext?.Request?.QueryString} UA={HttpContext?.Request?.Headers["User-Agent"]}\n"); } catch { }
-
         List<AIOStreamItem> allStreams = await GetStreams(
             "series",
             $"{addonId}:{season}:{episode}"
@@ -293,8 +291,6 @@ public sealed class AIOStreamsController : BaseOnlineController<ModuleConf>
                     addonId = imdbId;
             }
         }
-
-        try { System.IO.File.AppendAllText("/root/lampac/data/aio_ep.log", $"{DateTime.Now:HH:mm:ss} RES addon={addonId} s={season} e={episode} count={allStreams.Count}\n"); } catch { }
 
         if (allStreams.Count == 0)
             return OnError("No direct HTTP streams returned by AIOStreams", 502);
