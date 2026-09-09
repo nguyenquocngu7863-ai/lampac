@@ -110,6 +110,11 @@ public class ModInit : IModuleLoaded
 
         ThreadPool.QueueUserWorkItem(async _ =>
         {
+            if (conf.enable == false)
+            {
+                Log.Information("TorrServer disabled via config (enable=false) - skip spawn");
+                return;
+            }
             #region downloadUrl
             string downloadUrl;
             if (Environment.OSVersion.Platform == PlatformID.Win32NT)
