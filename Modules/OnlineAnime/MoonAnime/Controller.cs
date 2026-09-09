@@ -139,7 +139,7 @@ public class MoonAnimeController : BaseOnlineController
                             if (temp.Add(season.Key))
                             {
                                 tpl.Append(
-                                    $"{season.Key} сезон",
+                                    $"Mùa {season.Key}",
                                     $"{host}/lite/moonanime?rjson={rjson}&title={enc_title}&original_title={enc_original_title}&animeid={animeid}&s={season.Key}",
                                     season.Key
                                 );
@@ -206,7 +206,7 @@ public class MoonAnimeController : BaseOnlineController
                                 string link = $"{host}/lite/moonanime/video?vod={HttpUtility.UrlEncode(vod)}&title={enc_title}&original_title={enc_original_title}";
 
                                 etpl.Append(
-                                    $"{folder.episode} серия",
+                                    $"{folder.episode} Tập",
                                     title,
                                     s,
                                     folder.episode,
@@ -269,7 +269,7 @@ public class MoonAnimeController : BaseOnlineController
 
         var subtitles = new SubtitleTpl();
         if (!string.IsNullOrEmpty(cache.Value.subtitle))
-            subtitles.Append("По умолчанию", cache.Value.subtitle);
+            subtitles.Append("Mặc định", cache.Value.subtitle);
 
         var headers_stream = HeadersModel.Init(
             ("accept", "*/*"),

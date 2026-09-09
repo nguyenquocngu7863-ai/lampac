@@ -97,7 +97,7 @@ public struct AniLibriaInvoke
                 if (first != null)
                 {
                     etpl.Append(
-                        $"{episode.serie} серия",
+                        $"{episode.serie} Tập",
                         title,
                         season,
                         episode.serie.ToString(),

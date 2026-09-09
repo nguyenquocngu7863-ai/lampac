@@ -152,7 +152,7 @@ public class AnimebesstController : BaseOnlineController
 
                 foreach (var l in cache.Value)
                 {
-                    string name = string.IsNullOrEmpty(l.name) ? $"{l.episode} серия" : $"{l.episode} {l.name}";
+                    string name = string.IsNullOrEmpty(l.name) ? $"{l.episode} Tập" : $"{l.episode} {l.name}";
                     string voice_name = !string.IsNullOrEmpty(l.name) ? Regex.Replace(l.name, "(^\\(|\\)$)", "") : "";
 
                     string link = accsArgs($"{host}/lite/animebesst/video.m3u8?uri={HttpUtility.UrlEncode(l.uri)}&title={HttpUtility.UrlEncode(title)}");

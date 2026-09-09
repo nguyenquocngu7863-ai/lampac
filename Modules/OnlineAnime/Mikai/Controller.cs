@@ -156,7 +156,7 @@ public class MikaiController : BaseOnlineController
             string link = accsArgs($"{host}/lite/ashdi/vod.m3u8?uri={EncryptQuery(item.playLink)}");
 
             etpl.Append(
-                 $"{episodeNum} серия",
+                 $"{episodeNum} Tập",
                 title ?? original_title,
                 season,
                 episodeNum.ToString(),

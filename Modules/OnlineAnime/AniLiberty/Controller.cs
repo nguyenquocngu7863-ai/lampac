@@ -151,7 +151,7 @@ public class AniLibertyController : BaseOnlineController
                     string number = episode.ordinal;
 
                     string name = episode.name;
-                    name = string.IsNullOrEmpty(name) ? $"{number} серия" : name;
+                    name = string.IsNullOrEmpty(name) ? $"{number} Tập" : name;
 
                     var streams = new StreamQualityTpl();
                     foreach (var f in new List<(string quality, string url)>

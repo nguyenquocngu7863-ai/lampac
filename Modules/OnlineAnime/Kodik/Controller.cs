@@ -270,7 +270,7 @@ public class KodikController : BaseOnlineController<ModuleConf>
 
             string name = title ?? original_title;
             if (episode > 0)
-                name += $" ({episode} серия)";
+                name += $" ({episode} Tập)";
 
             return ContentTo(VideoTpl.ToJson(
                 "play",

@@ -184,7 +184,7 @@ public class AiLibertyController : BaseOnlineController
                     var episode = cache.Value.items[i];
                     int index = i;
 
-                    string name = string.IsNullOrEmpty(episode.title) ? "Серия" : episode.title;
+                    string name = string.IsNullOrEmpty(episode.title) ? "Tập" : episode.title;
 
                     var streams = new StreamQualityTpl();
 

@@ -198,7 +198,7 @@ public class AnimeLibController : BaseOnlineController
                 string link = $"{host}/lite/animelib/video?id={episode.id}&voice={HttpUtility.UrlEncode(activTranslate)}&title={HttpUtility.UrlEncode(title)}";
 
                 etpl.Append(
-                    $"{episode.number} серия",
+                    $"{episode.number} Tập",
                     string.IsNullOrEmpty(episode.name) ? title : $"{title} / {episode.name}",
                     episode.season,
                     episode.number,

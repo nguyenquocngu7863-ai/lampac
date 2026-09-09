@@ -122,7 +122,7 @@ public struct KodikInvoke
                 {
                     string details = similar.translation.title;
                     if (similar.last_season > 0)
-                        details += $"{SimilarTpl.OnlineSplit} {similar.last_season}й сезон";
+                        details += $"{SimilarTpl.OnlineSplit} Mùa {similar.last_season}";
 
                     var matd = similar.material_data;
 
@@ -272,7 +272,7 @@ public struct KodikInvoke
 
         string name = title ?? original_title ?? "auto";
         if (episode > 0)
-            name += $" ({episode} серия)";
+            name += $" ({episode} Tập)";
 
         var streamquality = new StreamQualityTpl();
         foreach (var l in streams)
@@ -339,7 +339,7 @@ public struct KodikInvoke
                     if (hash.Add(season))
                     {
                         tpl.Append(
-                            $"{season} сезон",
+                            $"Mùa {season}",
                             host + $"lite/kodik?rjson={rjson}&imdb_id={imdb_id}&kinopoisk_id={kinopoisk_id}&title={enc_title}&original_title={enc_original_title}&clarification={clarification}&pick={enc_pick}&s={season}",
                             season
                         );
@@ -368,7 +368,7 @@ public struct KodikInvoke
                             continue;
                     }
 
-                    string name = item.translation.title ?? "оригинал";
+                    string name = item.translation.title ?? "Gốc";
                     if (hash.Add(name))
                     {
                         if (string.IsNullOrEmpty(kid))
@@ -402,7 +402,7 @@ public struct KodikInvoke
                         streamlink += $"&{args.Remove(0, 1)}";
 
                     etpl.Append(
-                        $"{episode.Key} серия",
+                        $"{episode.Key} Tập",
                         title ?? original_title,
                         s,
                         episode.Key,

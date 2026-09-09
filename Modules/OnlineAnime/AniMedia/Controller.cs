@@ -142,7 +142,7 @@ public class AniMediaController : BaseOnlineController
                 foreach (var l in cache.Value)
                 {
                     etpl.Append(
-                        $"{l.episode} серия",
+                        $"{l.episode} Tập",
                         title,
                         l.s,
                         l.episode.ToString(),

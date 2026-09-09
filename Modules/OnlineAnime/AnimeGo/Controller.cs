@@ -180,7 +180,7 @@ public class AnimeGoController : BaseOnlineController
                     string hls = accsArgs($"{host}/lite/animego/{l.uri}&t={t ?? cache.Value.translation}");
 
                     etpl.Append(
-                        $"{l.episode} серия",
+                        $"{l.episode} Tập",
                         title,
                         s,
                         l.episode,

@@ -162,7 +162,7 @@ public class AnimeONController : BaseOnlineController
                 list.Add(new EpisodeOption
                 {
                     Episode = episode,
-                    Title = episode > 0 ? $"{episode} серия" : "Серия",
+                    Title = episode > 0 ? $"{episode} Tập" : "Tập",
                     FileUrl = file
                 });
             }

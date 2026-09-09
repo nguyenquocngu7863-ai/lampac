@@ -152,7 +152,7 @@ public class DreamerscastController : BaseOnlineController
                     string ep = string.IsNullOrWhiteSpace(item.episode) ? "1" : item.episode;
 
                     etpl.Append(
-                        string.IsNullOrWhiteSpace(item.name) ? $"{ep} серия" : item.name,
+                        string.IsNullOrWhiteSpace(item.name) ? $"{ep} Tập" : item.name,
                         title,
                         s,
                         ep,
