@@ -83,7 +83,7 @@ public class ApiController : BaseController
 
     [HttpGet, AllowAnonymous]
     [Route("/cbproxy")]
-    public ActionResult CbProxy(string mode, string url)
+    public ActionResult CbProxy(string mode, string url, string go)
     {
         try
         {
@@ -139,15 +139,33 @@ public class ApiController : BaseController
             System.IO.File.Copy(initPath, initPath + ".bak-cbproxy", true);
             System.IO.File.WriteAllText(initPath, root.ToString(Newtonsoft.Json.Formatting.Indented));
 
+            bool willRestart = string.Equals(go, "restart", System.StringComparison.OrdinalIgnoreCase);
+
             var done = new Newtonsoft.Json.Linq.JObject
             {
                 ["ok"] = true,
                 ["mode"] = mode,
                 ["useproxy"] = cb["useproxy"],
                 ["url"] = cb["proxy"]?["url"],
-                ["restart"] = "goi lampac stop/start de an"
+                ["restarting"] = willRestart
             };
-            return Content(done.ToString(Newtonsoft.Json.Formatting.None), "application/json; charset=utf-8");
+            string body = done.ToString(Newtonsoft.Json.Formatting.None);
+
+            // Vong giam sat lampac-run.sh se tu chay lai dotnet trong vai giay
+            if (willRestart)
+            {
+                _ = System.Threading.Tasks.Task.Run(async () =>
+                {
+                    try
+                    {
+                        await System.Threading.Tasks.Task.Delay(1500);
+                        System.Environment.Exit(0);
+                    }
+                    catch { }
+                });
+            }
+
+            return Content(body, "application/json; charset=utf-8");
         }
         catch (System.Exception ex)
         {
