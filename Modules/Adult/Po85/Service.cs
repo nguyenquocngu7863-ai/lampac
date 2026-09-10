@@ -263,6 +263,17 @@ public static class Po85To
         if (string.IsNullOrWhiteSpace(uri))
             return null;
 
+        uri = uri.Trim();
+
+        // Bookmark/history cua client chi luu id so (vd 20818):
+        // mo rong thanh URL day du, khong thi GetSpan that bai
+        // dan den OnError("stream_links").
+        if (System.Text.RegularExpressions.Regex.IsMatch(uri, @"^[0-9]+$"))
+            return $"https://www.85po.com/v/{uri}/";
+
+        if (uri.StartsWith("/"))
+            return $"https://www.85po.com{uri}";
+
         return uri;
     }
 
