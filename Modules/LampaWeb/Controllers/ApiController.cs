@@ -73,6 +73,89 @@ public class ApiController : BaseController
     }
     #endregion
 
+    #region CbProxy
+    // Bat/tat proxy + doi list proxy cho Chaturbate (ghi init.conf, restart de an).
+    //   GET /cbproxy                      -> xem trang thai
+    //   GET /cbproxy?mode=off             -> tat proxy (di thang)
+    //   GET /cbproxy?mode=free            -> bat, dung list free mac dinh
+    //   GET /cbproxy?mode=custom&url=<link http(s) raw .txt> -> bat, dung list rieng
+    const string CbProxyFreeList = "https://raw.githubusercontent.com/iplocate/free-proxy-list/main/protocols/http.txt";
+
+    [HttpGet, AllowAnonymous]
+    [Route("/cbproxy")]
+    public ActionResult CbProxy(string mode, string url)
+    {
+        try
+        {
+            string initPath = System.IO.Path.Combine(System.AppContext.BaseDirectory, "init.conf");
+            if (!System.IO.File.Exists(initPath))
+                return Content("{\"error\":true,\"msg\":\"no init.conf\"}", "application/json; charset=utf-8");
+
+            var root = Newtonsoft.Json.Linq.JObject.Parse(System.IO.File.ReadAllText(initPath));
+            var cb = root["Chaturbate"] as Newtonsoft.Json.Linq.JObject;
+
+            if (string.IsNullOrEmpty(mode))
+            {
+                var st = new Newtonsoft.Json.Linq.JObject
+                {
+                    ["useproxy"] = cb?["useproxy"],
+                    ["url"] = cb?["proxy"]?["url"],
+                    ["need_restart"] = true
+                };
+                return Content(st.ToString(Newtonsoft.Json.Formatting.None), "application/json; charset=utf-8");
+            }
+
+            mode = mode.Trim().ToLowerInvariant();
+
+            if (cb == null)
+            {
+                cb = new Newtonsoft.Json.Linq.JObject();
+                root["Chaturbate"] = cb;
+            }
+
+            if (mode == "off")
+            {
+                cb["useproxy"] = false;
+            }
+            else if (mode == "free")
+            {
+                cb["useproxy"] = true;
+                cb["proxy"] = new Newtonsoft.Json.Linq.JObject { ["url"] = CbProxyFreeList };
+            }
+            else if (mode == "custom")
+            {
+                if (string.IsNullOrWhiteSpace(url) ||
+                    (!url.StartsWith("http://") && !url.StartsWith("https://")))
+                    return Content("{\"error\":true,\"msg\":\"url phai la link http(s)\"}", "application/json; charset=utf-8");
+
+                cb["useproxy"] = true;
+                cb["proxy"] = new Newtonsoft.Json.Linq.JObject { ["url"] = url.Trim() };
+            }
+            else
+            {
+                return Content("{\"error\":true,\"msg\":\"mode=off|free|custom\"}", "application/json; charset=utf-8");
+            }
+
+            System.IO.File.Copy(initPath, initPath + ".bak-cbproxy", true);
+            System.IO.File.WriteAllText(initPath, root.ToString(Newtonsoft.Json.Formatting.Indented));
+
+            var done = new Newtonsoft.Json.Linq.JObject
+            {
+                ["ok"] = true,
+                ["mode"] = mode,
+                ["useproxy"] = cb["useproxy"],
+                ["url"] = cb["proxy"]?["url"],
+                ["restart"] = "goi lampac stop/start de an"
+            };
+            return Content(done.ToString(Newtonsoft.Json.Formatting.None), "application/json; charset=utf-8");
+        }
+        catch (System.Exception ex)
+        {
+            return Content("{\"error\":true,\"msg\":\"" + ex.Message.Replace("\"", "'") + "\"}", "application/json; charset=utf-8");
+        }
+    }
+    #endregion
+
 
     #region Index
     [HttpGet, AllowAnonymous]
