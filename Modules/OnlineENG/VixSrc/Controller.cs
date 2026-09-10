@@ -32,7 +32,7 @@ public class VixSrcController : BaseENGController
     [HttpGet, Staticache(manually: true)]
     [Route("lite/vixsrc/video")]
     [Route("lite/vixsrc/video.m3u8")]
-    public async Task<ActionResult> Video(long id, short s = -1, short e = -1, bool play = false)
+    public async Task<ActionResult> Video(long id, short s = -1, short e = -1, bool play = false, int srv = 0)
     {
         if (await IsRequestBlocked(rch: false, rch_check: !play))
             return badInitMsg;
@@ -44,16 +44,23 @@ public class VixSrcController : BaseENGController
         if (resolved == null || resolved.Count == 0)
             return OnError("stream", 502);
 
+        // Player trong cua app chi dung hls.js khi URL chua ".m3u8".
+        // Tra link qua route video.m3u8 cua chinh mình (redirect 302 sang proxy),
+        // thay vi dua thang link /proxy/ khong duoi (roi vao native va gãy).
+        if (play)
+        {
+            int i = Math.Clamp(srv, 0, resolved.Count - 1);
+            return RedirectToPlay(HostStreamProxy(resolved[i].Url, headers: resolved[i].Headers));
+        }
+
         var qualities = new StreamQualityTpl(resolved.Count);
-        foreach (var item in resolved)
-            qualities.Append(HlsUrl(HostStreamProxy(item.Url, headers: item.Headers)), item.Label);
+        for (int i = 0; i < resolved.Count; i++)
+            qualities.Append(MediaUrl(id, s, e, i), resolved[i].Label);
 
         if (qualities.IsEmpty)
             return OnError("stream", 502);
 
         var first = qualities.Firts();
-        if (play)
-            return RedirectToPlay(first.link);
 
         return ContentTo(VideoTpl.ToJson(
             "play",
@@ -66,12 +73,11 @@ public class VixSrcController : BaseENGController
         ));
     }
 
-    // Player trong cua app chi dung hls.js khi URL chua ".m3u8"
-    // (check regex tren URL, khong theo Content-Type). Link /proxy/ khong co
-    // duoi nen roi vao native va bao "no supported source" — them query gia,
-    // proxy bo qua query nen manifest ve nhu cu.
-    static string HlsUrl(string url)
-        => string.IsNullOrEmpty(url) ? url : url.Contains("?") ? url + "&.m3u8" : url + "?.m3u8";
+    string MediaUrl(long id, short s, short e, int srv)
+    {
+        string q = $"id={id}&s={s}&e={e}&play=true&srv={srv}";
+        return $"{host}/lite/vixsrc/video.m3u8?{q}";
+    }
 
     async Task<List<ResolvedStream>> Resolve(long tmdbId, short season, short episode)
     {
