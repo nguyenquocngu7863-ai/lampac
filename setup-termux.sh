@@ -568,6 +568,19 @@ sync_latest_modules() {
             fi
         done
 
+        # VidNest (new.vidnest.fun, ENG): custom-base64 + HLS 720p (server hollymoviehd).
+        vidnesttarget=/root/lampac/module/OnlineENG/VidNest
+        mkdir -p \"\$vidnesttarget\"
+        for vidnestfile in manifest.json Controller.cs ModInit.cs; do
+            if curl -fsSL --retry 3 \"\$base/Modules/OnlineENG/VidNest/\$vidnestfile?cb=\$stamp\" -o \"/tmp/vidnest-\$vidnestfile\"; then
+                mv \"/tmp/vidnest-\$vidnestfile\" \"\$vidnesttarget/\$vidnestfile\"
+                echo \"  [sync] vidnest/\$vidnestfile\"
+            else
+                rm -f \"/tmp/vidnest-\$vidnestfile\"
+                echo \"  [sync] vidnest: bo qua \$vidnestfile (nguon khong co)\"
+            fi
+        done
+
         # Po85 (85po.com, KVS): xac minh thiet bi 2026-09-05. Khong co trong
         # lampac-nextgen.zip nen mkdir + lay full file.
         po85synctarget=/root/lampac/module/Adult/Po85
