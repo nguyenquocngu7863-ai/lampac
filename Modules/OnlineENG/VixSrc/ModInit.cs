@@ -34,12 +34,14 @@ public class ModInit : IModuleLoaded, IModuleOnline
         UpdateConf();
         EventListener.UpdateInitFile += UpdateConf;
         EventListener.OnlineApiQuality += OnlineApiQuality;
+        EventListener.VideoTpl += VideoTplHls;
     }
 
     public void Dispose()
     {
         EventListener.UpdateInitFile -= UpdateConf;
         EventListener.OnlineApiQuality -= OnlineApiQuality;
+        EventListener.VideoTpl -= VideoTplHls;
     }
 
     private void UpdateConf()
@@ -67,5 +69,28 @@ public class ModInit : IModuleLoaded, IModuleOnline
     private string OnlineApiQuality(EventOnlineApiQuality e)
     {
         return e.balanser == "vixsrc" ? " ~ 1080p" : null;
+    }
+
+    // URL proxy khong co duoi .m3u8 nen player trong cua app khong nhan ra HLS
+    // (bao "no supported source"). Chen hls_type de client ep hls.js.
+    private string VideoTplHls(EventVideoTpl e)
+    {
+        try
+        {
+            if (e?.httpContext?.Request?.Path.Value?.Contains("vixsrc") != true)
+                return null;
+
+            string json = System.Text.Json.JsonSerializer.Serialize(
+                e.video, Shared.Models.Templates.VideoJsonContext.Default.VideoDto);
+
+            if (string.IsNullOrWhiteSpace(json) || !json.EndsWith("}"))
+                return null;
+
+            return json.Substring(0, json.Length - 1) + ",\"hls_type\":\"hlsjs\"}";
+        }
+        catch
+        {
+            return null;
+        }
     }
 }
