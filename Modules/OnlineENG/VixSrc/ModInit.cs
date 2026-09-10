@@ -23,7 +23,7 @@ public class ModInit : IModuleLoaded, IModuleOnline
             (CoreInit.conf.disableEng == false || allowWhenEngDisabled))
         {
             if (args.source != null && (args.source is "tmdb" or "cub") && long.TryParse(args.id, out long id) && id > 0)
-                online.Add(new(conf, "vixsrc", "VixSrc", " (ENG)"));
+                online.Add(new(conf, "vixsrc", "VixSrc.to", " (ENG)"));
         }
 
         return online;
