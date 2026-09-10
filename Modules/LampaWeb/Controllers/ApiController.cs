@@ -39,6 +39,40 @@ public class ApiController : BaseController
         DefaultValueHandling = DefaultValueHandling.Ignore
     }), "application/json; charset=utf-8");
 
+    #region ClientLog
+    // Nhan log request tu plugin logmirror.js tren app Lampa
+    // (man log cua ban mod khong copy duoc). Doc bang:
+    // tail -n 30 /root/lampac/data/clientlog.txt
+    [HttpGet, AllowAnonymous]
+    [Route("/clientlog")]
+    public ActionResult ClientLog(string msg)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(msg))
+                return Content("ok", "text/plain; charset=utf-8");
+
+            if (!System.IO.Directory.Exists("data"))
+                System.IO.Directory.CreateDirectory("data");
+
+            string log = System.IO.Path.Combine("data", "clientlog.txt");
+
+            try
+            {
+                if (System.IO.File.Exists(log) && new System.IO.FileInfo(log).Length > 500 * 1024)
+                    System.IO.File.Delete(log);
+            }
+            catch { }
+
+            string line = msg.Length > 2000 ? msg.Substring(0, 2000) : msg;
+            System.IO.File.AppendAllText(log, $"{DateTime.Now:HH:mm:ss} {line}\n");
+        }
+        catch { }
+
+        return Content("ok", "text/plain; charset=utf-8");
+    }
+    #endregion
+
 
     #region Index
     [HttpGet, AllowAnonymous]
