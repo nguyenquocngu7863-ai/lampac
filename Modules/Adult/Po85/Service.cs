@@ -266,10 +266,9 @@ public static class Po85To
         uri = uri.Trim();
 
         // Bookmark/history cua client chi luu id so (vd 20818):
-        // mo rong thanh URL day du, khong thi GetSpan that bai
-        // dan den OnError("stream_links").
+        // giu nguyen de ResolveLinksAsync mo trang embed doi ra URL day du.
         if (System.Text.RegularExpressions.Regex.IsMatch(uri, @"^[0-9]+$"))
-            return $"https://www.85po.com/v/{uri}/";
+            return uri;
 
         if (uri.StartsWith("/"))
             return $"https://www.85po.com{uri}";

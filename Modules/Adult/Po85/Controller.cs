@@ -85,6 +85,21 @@ public class Po85Controller : BaseSisiController
                     httpHydra.RegisterHttp(httpClient);
 
                 string url = Po85To.StreamLinksUri(uri);
+
+                // Bookmark/history chi luu id so (vd 20818), URL /v/{id}/ khong slug
+                // tra 404 — mo trang embed de lay URL day du co slug roi di tiep.
+                if (!string.IsNullOrEmpty(url) && System.Text.RegularExpressions.Regex.IsMatch(url, @"^[0-9]+$"))
+                {
+                    string full = null;
+                    await httpHydra.GetSpan($"https://www.85po.com/embed/{url}/", span =>
+                    {
+                        var m = System.Text.RegularExpressions.Regex.Match(span.ToString(), $@"/v/{url}/[^""']+/");
+                        if (m.Success)
+                            full = "https://www.85po.com" + m.Value;
+                    });
+                    url = full;
+                }
+
                 if (url == null)
                     return (null, false);
 
