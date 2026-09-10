@@ -128,8 +128,58 @@ public class ApiController : BaseController
                     (!url.StartsWith("http://") && !url.StartsWith("https://")))
                     return Content("{\"error\":true,\"msg\":\"url phai la link http(s)\"}", "application/json; charset=utf-8");
 
+                url = url.Trim();
                 cb["useproxy"] = true;
-                cb["proxy"] = new Newtonsoft.Json.Linq.JObject { ["url"] = url.Trim() };
+
+                // List JSON (vd proxifly data.json): doi sang file ip:port
+                // vi ProxyManager chi doc duoc text thuong.
+                if (url.EndsWith(".json", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    string js = null;
+                    try { js = Shared.Services.Http.Get(url, timeoutSeconds: 15).GetAwaiter().GetResult(); } catch { }
+
+                    if (string.IsNullOrWhiteSpace(js))
+                        return Content("{\"error\":true,\"msg\":\"khong tai duoc list\"}", "application/json; charset=utf-8");
+
+                    var arr = Newtonsoft.Json.Linq.JArray.Parse(js);
+                    var https = new System.Collections.Generic.List<string>();
+                    var other = new System.Collections.Generic.List<string>();
+
+                    foreach (var it in arr)
+                    {
+                        string ip = it["ip"]?.ToString();
+                        string port = it["port"]?.ToString();
+                        if (string.IsNullOrWhiteSpace(ip) || string.IsNullOrWhiteSpace(port))
+                            continue;
+
+                        string line = $"{ip}:{port}";
+                        bool okHttps = string.Equals(it["https"]?.ToString(), "True", System.StringComparison.OrdinalIgnoreCase);
+                        if (okHttps)
+                            https.Add(line);
+                        else
+                            other.Add(line);
+
+                        if (https.Count + other.Count >= 600)
+                            break;
+                    }
+
+                    var all = new System.Collections.Generic.List<string>(https.Count + other.Count);
+                    all.AddRange(https);
+                    all.AddRange(other);
+
+                    if (all.Count == 0)
+                        return Content("{\"error\":true,\"msg\":\"list rong\"}", "application/json; charset=utf-8");
+
+                    if (!System.IO.Directory.Exists("data"))
+                        System.IO.Directory.CreateDirectory("data");
+
+                    System.IO.File.WriteAllLines(System.IO.Path.Combine("data", "cbproxy.txt"), all);
+                    cb["proxy"] = new Newtonsoft.Json.Linq.JObject { ["file"] = "data/cbproxy.txt" };
+                }
+                else
+                {
+                    cb["proxy"] = new Newtonsoft.Json.Linq.JObject { ["url"] = url };
+                }
             }
             else
             {
