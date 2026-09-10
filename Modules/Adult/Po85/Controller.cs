@@ -4,6 +4,7 @@ using Shared.Attributes;
 using Shared.Models.Base;
 using Shared.Models.SISI.Base;
 using Shared.Services;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
@@ -139,6 +140,8 @@ public class Po85Controller : BaseSisiController
     reset:
         var (links, userch) = await ResolveLinksAsync(uri);
 
+        try { System.IO.File.AppendAllText("/root/lampac/data/po85_dbg.log", $"{DateTime.Now:HH:mm:ss} VIDOSIK uri={uri} n={links?.Count} keys={string.Join("|", links?.Keys ?? Enumerable.Empty<string>())}\n"); } catch { }
+
         if (links == null || links.Count == 0)
         {
             if (IsRhubFallback())
@@ -182,6 +185,8 @@ public class Po85Controller : BaseSisiController
 
         if (string.IsNullOrEmpty(link))
             return OnError("link");
+
+        try { System.IO.File.AppendAllText("/root/lampac/data/po85_dbg.log", $"{DateTime.Now:HH:mm:ss} STREM uri={uri} q={q} link={(link ?? "").Substring(0, Math.Min(90, (link ?? "").Length))} qs={HttpContext?.Request?.QueryString}\n"); } catch { }
 
         SemaphorManager semaphore = null;
         string semaphoreKey = $"po85:strem:{link}";
