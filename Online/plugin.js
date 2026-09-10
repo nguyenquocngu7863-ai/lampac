@@ -658,10 +658,43 @@
       var _this5 = this;
       this.draw(videos, {
         onEnter: function onEnter(item, html) {
-          _this5.getFileUrl(
-            item,
-            function (json, json_call) {
-              if (json && json.url) {
+          var onFile = function (json, json_call) {
+            if (Array.isArray(json) && json.length && !json.url) {
+              var list = json;
+              var enabled = Lampa.Controller.enabled().name;
+              Lampa.Select.show({
+                title: item.title || 'Chọn link',
+                items: list.map(function (v, i) {
+                  return {
+                    title: v.title || ('Link ' + (i + 1)),
+                    subtitle: v.details || v.quality || '',
+                    index: i
+                  };
+                }),
+                onBack: function () {
+                  Lampa.Controller.toggle(enabled);
+                },
+                onSelect: function (a) {
+                  var chosen = list[a.index] || {};
+                  Lampa.Select.close();
+                  Lampa.Controller.toggle(enabled);
+                  _this5.getFileUrl(
+                    {
+                      method: 'play',
+                      url: chosen.url,
+                      title: chosen.title || item.title,
+                      qualitys: chosen.quality || chosen.qualitys,
+                      season: item.season,
+                      episode: item.episode,
+                      mark: item.mark
+                    },
+                    onFile
+                  );
+                }
+              });
+              return;
+            }
+            if (json && json.url) {
                 var playlist = [];
                 var first = _this5.toPlayElement(item);
                 first.url = json.url;
@@ -743,11 +776,12 @@
                 } else {
                   Lampa.Noty.show(Lampa.Lang.translate('lampac_nolink'));
                 }
-              } else Lampa.Noty.show(Lampa.Lang.translate('lampac_nolink'));
-            },
-            true
-          );
-        },
+              } else {
+                Lampa.Noty.show(Lampa.Lang.translate('lampac_nolink'));
+              }
+            };
+            _this5.getFileUrl(item, onFile, true);
+          },
         onContextMenu: function onContextMenu(item, html, data, call) {
           _this5.getFileUrl(
             item,
