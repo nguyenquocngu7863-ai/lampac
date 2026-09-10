@@ -555,6 +555,19 @@ sync_latest_modules() {
             fi
         done
 
+        # VixSrc (vixsrc.to, ENG): API + embed playlist HLS, max 1080p, tmdb-based.
+        vixsrctarget=/root/lampac/module/OnlineENG/VixSrc
+        mkdir -p \"\$vixsrctarget\"
+        for vixsrcfile in manifest.json Controller.cs ModInit.cs; do
+            if curl -fsSL --retry 3 \"\$base/Modules/OnlineENG/VixSrc/\$vixsrcfile?cb=\$stamp\" -o \"/tmp/vixsrc-\$vixsrcfile\"; then
+                mv \"/tmp/vixsrc-\$vixsrcfile\" \"\$vixsrctarget/\$vixsrcfile\"
+                echo \"  [sync] vixsrc/\$vixsrcfile\"
+            else
+                rm -f \"/tmp/vixsrc-\$vixsrcfile\"
+                echo \"  [sync] vixsrc: bo qua \$vixsrcfile (nguon khong co)\"
+            fi
+        done
+
         # Po85 (85po.com, KVS): xac minh thiet bi 2026-09-05. Khong co trong
         # lampac-nextgen.zip nen mkdir + lay full file.
         po85synctarget=/root/lampac/module/Adult/Po85
