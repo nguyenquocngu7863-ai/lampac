@@ -55,23 +55,24 @@ public class Po85Controller : BaseSisiController
         );
     }
 
-    [HttpGet, Staticache(manually: true)]
-    [Route("po85/vidosik")]
-    async public Task<ActionResult> Vidosik(string uri)
+    /// <summary>
+    /// Resolve link upstream (get_file / signed CDN) theo uri phim.
+    /// Link upstream het han nhanh theo phien nen khong duoc nhung thang
+    /// vao URL tra ve (bookmark/history mo lai se chet) — moi lan mo lai
+    /// phai resolve moi qua ham nay (co hybridCache 20p).
+    /// Tra (null, false) khi that bai hoan toan.
+    /// </summary>
+    async Task<(Dictionary<string, string> links, bool userch)> ResolveLinksAsync(string uri)
     {
-        if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
-            return badInitMsg;
-
         SemaphorManager semaphore = null;
         string semaphoreKey = $"po85:view:{uri}";
 
-    reset:
         if (rch?.enable != true)
         {
             semaphore ??= new SemaphorManager(semaphoreKey, System.TimeSpan.FromSeconds(30));
             bool _acquired = await semaphore.WaitAsync();
             if (!_acquired)
-                return OnError();
+                return (null, false);
         }
 
         try
@@ -84,7 +85,7 @@ public class Po85Controller : BaseSisiController
 
                 string url = Po85To.StreamLinksUri(uri);
                 if (url == null)
-                    return OnError("uri");
+                    return (null, false);
 
                 // ban /vi/: dropdown nhu cu + flashvars co prefix /vi/get_file/
                 // (chi URL /vi/ moi mo duoc file 2160p)
@@ -98,12 +99,7 @@ public class Po85Controller : BaseSisiController
                 });
 
                 if (cache.links == null || cache.links.Count == 0)
-                {
-                    if (IsRhubFallback())
-                        goto reset;
-
-                    return OnError("stream_links", refresh_proxy: true);
-                }
+                    return (null, false);
 
                 // 4K: nho node resolver mo bang Chrome that, lay signed CDN URL
                 if (!string.IsNullOrEmpty(uhdFile))
@@ -125,10 +121,7 @@ public class Po85Controller : BaseSisiController
                 hybridCache.Set(memKey, cache, cacheTime(20));
             }
 
-            if (cache.userch)
-                return OnResult(cache.links);
-
-            return Json(cache.links.ToDictionary(k => k.Key, v => $"{host}/po85/strem?link={HttpUtility.UrlEncode(v.Value)}"));
+            return (cache.links, cache.userch);
         }
         finally
         {
@@ -136,10 +129,37 @@ public class Po85Controller : BaseSisiController
         }
     }
 
+    [HttpGet, Staticache(manually: true)]
+    [Route("po85/vidosik")]
+    async public Task<ActionResult> Vidosik(string uri)
+    {
+        if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
+            return badInitMsg;
+
+    reset:
+        var (links, userch) = await ResolveLinksAsync(uri);
+
+        if (links == null || links.Count == 0)
+        {
+            if (IsRhubFallback())
+                goto reset;
+
+            return OnError("stream_links", refresh_proxy: true);
+        }
+
+        if (userch)
+            return OnResult(links);
+
+        // URL strem giu theo uri+label (ben vung cho bookmark/history),
+        // moi lan mo lai Strem se resolve link upstream moi.
+        return Json(links.ToDictionary(k => k.Key, v =>
+            $"{host}/po85/strem?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(v.Key)}"));
+    }
+
 
     [HttpGet]
     [Route("po85/strem")]
-    async public Task<ActionResult> Strem(string link)
+    async public Task<ActionResult> Strem(string link, string uri, string q)
     {
         if (await IsRequestBlocked(rch: true))
             return badInitMsg;
@@ -150,6 +170,18 @@ public class Po85Controller : BaseSisiController
             if (!init.rhub_fallback)
                 return OnError("apkVersion", false);
         }
+
+        // URL dang ben vung (bookmark/history): resolve lai link upstream moi
+        // theo uri+label thay vi dung link cu da het han.
+        if (!string.IsNullOrEmpty(uri) && !string.IsNullOrEmpty(q))
+        {
+            var (links, _) = await ResolveLinksAsync(uri);
+            if (links == null || !links.TryGetValue(q, out link) || string.IsNullOrEmpty(link))
+                return OnError("stream_links", refresh_proxy: true);
+        }
+
+        if (string.IsNullOrEmpty(link))
+            return OnError("link");
 
         SemaphorManager semaphore = null;
         string semaphoreKey = $"po85:strem:{link}";
