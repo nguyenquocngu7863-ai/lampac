@@ -46,7 +46,7 @@ public class VixSrcController : BaseENGController
 
         var qualities = new StreamQualityTpl(resolved.Count);
         foreach (var item in resolved)
-            qualities.Append(HostStreamProxy(item.Url, headers: item.Headers), item.Label);
+            qualities.Append(HlsUrl(HostStreamProxy(item.Url, headers: item.Headers)), item.Label);
 
         if (qualities.IsEmpty)
             return OnError("stream", 502);
@@ -65,6 +65,13 @@ public class VixSrcController : BaseENGController
             httpContext: HttpContext
         ));
     }
+
+    // Player trong cua app chi dung hls.js khi URL chua ".m3u8"
+    // (check regex tren URL, khong theo Content-Type). Link /proxy/ khong co
+    // duoi nen roi vao native va bao "no supported source" — them query gia,
+    // proxy bo qua query nen manifest ve nhu cu.
+    static string HlsUrl(string url)
+        => string.IsNullOrEmpty(url) ? url : url.Contains("?") ? url + "&.m3u8" : url + "?.m3u8";
 
     async Task<List<ResolvedStream>> Resolve(long tmdbId, short season, short episode)
     {
