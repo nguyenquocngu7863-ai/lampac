@@ -108,6 +108,18 @@
         );
     }
 
+    // Link m3u8 cua trio Nga (mirage/spectre/phantom) ban 2160p/4K thuong la
+    // AV1 — TV cu khong decode noi. Dua qua GST transcode nhu MKV.
+    function isTrioUhdSource(data) {
+        var url = resolveMediaUrl(data);
+        if (!url) return false;
+        if (url.indexOf('/lite/mirage/') == -1 && url.indexOf('/lite/spectre/') == -1 && url.indexOf('/lite/phantom/') == -1 && url.indexOf('/lite/rustrio/') == -1)
+            return false;
+        if (url.indexOf('.m3u8') == -1) return false;
+        var label = ((data && data.voice_name) || '') + ' ' + ((data && data.title) || '');
+        return /2160|4k|uhd|av1/i.test(label);
+    }
+
     function nameAudioCodec(capsName) {
         var codec = (capsName || '')
             .replace(/^audio\/x-/i, '')
@@ -169,8 +181,9 @@
     }
 
     function handlePlayerStart(e) {
-        if (isMkvSource(e.data)) {
-            if (e.data.url.indexOf('/gst/') != -1 || e.data.url.indexOf('.m3u8') != -1)
+        var trioUhd = !isMkvSource(e.data) && isTrioUhdSource(e.data);
+        if (isMkvSource(e.data) || trioUhd) {
+            if (e.data.url.indexOf('/gst/') != -1 || (!trioUhd && e.data.url.indexOf('.m3u8') != -1))
                 return;
 
             e.abort()

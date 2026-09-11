@@ -51,7 +51,18 @@ public partial class GStask
 
     static void AppendDemuxer(StringBuilder sb, ProbeInfo probe)
     {
-        string demuxer = probe.IsAVI ? "avidemux" : "matroskademux";
+        // Input gio khong chi con MKV/WebM (mo cho MP4/TS/HLS chua codec can
+        // transcode) nen chon demuxer theo container thuc te.
+        string caps = probe.ContainerCapsName ?? probe.ContainerName ?? string.Empty;
+        string demuxer = "matroskademux";
+        if (probe.IsAVI)
+            demuxer = "avidemux";
+        else if (caps.Contains("quicktime", StringComparison.OrdinalIgnoreCase) || caps.Contains("mp4", StringComparison.OrdinalIgnoreCase))
+            demuxer = "qtdemux";
+        else if (caps.Contains("mpegts", StringComparison.OrdinalIgnoreCase))
+            demuxer = "tsdemux";
+        else if (caps.Contains("hls", StringComparison.OrdinalIgnoreCase))
+            demuxer = "hlsdemux";
 
         sb.AppendLine($$"""
         {{demuxer}}

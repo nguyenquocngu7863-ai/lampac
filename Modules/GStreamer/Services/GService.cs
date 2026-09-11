@@ -132,7 +132,21 @@ public static class GService
                 bool transcodeAVI = probe.IsAVI && conf.transcodeAVI;
 
                 if (!probe.IsMatroskaOrWebM && !transcodeAVI)
-                    return new(null, $"not matroska/webm: {probe.ContainerCapsName ?? probe.ContainerName ?? "unknown"}");
+                {
+                    // Input MP4/TS/HLS chua codec can transcode (vd AV1 trong link
+                    // m3u8 cua trio Nga) thi nhan de transcode, chi khong co
+                    // seek-cue nhu Matroska.
+                    bool needTranscode =
+                        probe.IsAV1 && conf.transcodeAV1 ||
+                        probe.IsH265 && conf.transcodeH265 ||
+                        probe.IsVP9 && conf.transcodeVP9 ||
+                        probe.IsVP8 && conf.transcodeVP8 ||
+                        probe.IsH264 && conf.transcodeH264 ||
+                        probe.Video?.IsHdr == true && conf.hdr_to_sdr;
+
+                    if (!needTranscode || probe.Video == null)
+                        return new(null, $"not matroska/webm: {probe.ContainerCapsName ?? probe.ContainerName ?? "unknown"}");
+                }
 
                 bool supportedVideo =
                     probe.IsH264 ||
