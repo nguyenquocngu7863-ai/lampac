@@ -581,6 +581,20 @@ sync_latest_modules() {
             fi
         done
 
+        # RusTrio (gop Mirage/Spectre/Phantom, RUS): hoi song song 3 nguon qua
+        # localhost roi gop the, khong sua code 3 nguon goc.
+        rustriotarget=/root/lampac/module/OnlineRUS/RusTrio
+        mkdir -p \"$rustriotarget\"
+        for rustriofile in manifest.json Controller.cs ModInit.cs; do
+            if curl -fsSL --retry 3 \"$base/Modules/OnlineRUS/RusTrio/$rustriofile?cb=$stamp\" -o \"/tmp/rustrio-$rustriofile\"; then
+                mv \"/tmp/rustrio-$rustriofile\" \"$rustriotarget/$rustriofile\"
+                echo \"  [sync] rustrio/$rustriofile\"
+            else
+                rm -f \"/tmp/rustrio-$rustriofile\"
+                echo \"  [sync] rustrio: bo qua $rustriofile (nguon khong co)\"
+            fi
+        done
+
         # Po85 (85po.com, KVS): xac minh thiet bi 2026-09-05. Khong co trong
         # lampac-nextgen.zip nen mkdir + lay full file.
         po85synctarget=/root/lampac/module/Adult/Po85
