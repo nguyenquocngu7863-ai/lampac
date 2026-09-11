@@ -12,11 +12,11 @@ namespace RusTrio;
 // Gop 3 nguon Nga Mirage/Spectre/Phantom vao 1 cho: hoi song song ca 3
 // (qua localhost, giu nguyen code goc) roi gop the lai. Nguon nao khong
 // co link thi bo qua, khoi mo tung cai thu tay.
-public class RusTrioController : BaseController
+public class RusTrioController : BaseOnlineController
 {
     static readonly string[] Sources = ["mirage", "spectre", "phantom"];
 
-    public RusTrioController()
+    public RusTrioController() : base(ModInit.conf)
     {
     }
 
