@@ -43,5 +43,7 @@ public class ModInit : IModuleLoaded, IModuleOnline
         {
             displayindex = 509
         });
+
+        conf.enabled = true;
     }
 }
