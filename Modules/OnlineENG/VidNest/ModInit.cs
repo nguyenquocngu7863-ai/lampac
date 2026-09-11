@@ -8,6 +8,8 @@ using Shared.Models.Online.Settings;
 using Shared.Services;
 using System.Collections.Generic;
 using System.Net;
+using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace VidNest;
@@ -38,6 +40,7 @@ public class ModInit : IModuleLoaded, IModuleOnline
         EventListener.OnlineApiQuality += OnlineApiQuality;
         EventListener.VideoTpl += VideoTplHls;
         EventListener.ProxyApiCreateHttpRequest += ForceHttp2;
+        EventListener.ProxyApiOverride += ProxyOverride;
     }
 
     public void Dispose()
@@ -46,6 +49,7 @@ public class ModInit : IModuleLoaded, IModuleOnline
         EventListener.OnlineApiQuality -= OnlineApiQuality;
         EventListener.VideoTpl -= VideoTplHls;
         EventListener.ProxyApiCreateHttpRequest -= ForceHttp2;
+        EventListener.ProxyApiOverride -= ProxyOverride;
     }
 
     // goodstream.cc tra 403 + challenge cho request HTTP/1.1 (da kiem chung:
@@ -61,6 +65,39 @@ public class ModInit : IModuleLoaded, IModuleOnline
         catch { }
 
         return Task.CompletedTask;
+    }
+
+    static readonly Regex PlaylistUrlRx = new("(https?://[^\\s\"']+)", RegexOptions.Compiled);
+
+    // goodstream tra playlist voi Content-Type text/html nen pipeline mac dinh
+    // khong nhan ra m3u8 (copy tho ve client, segment giu URL goc -> may tai
+    // truc tiep khong Referer -> 403). Override: tai playlist bang h2,
+    // rewrite moi URL thanh /proxy/ roi tra ve dung content-type m3u8.
+    // Tra false = da tu xu ly, true = de pipeline mac dinh xu ly.
+    static async Task<bool> ProxyOverride(EventProxyApiOverride e)
+    {
+        try
+        {
+            string uri = e?.decryptLink?.uri;
+            if (string.IsNullOrEmpty(uri) || !uri.Contains("goodstream.cc") || !uri.Contains("/pl/"))
+                return true;
+
+            string m3u = await Http.Get(uri, headers: e.decryptLink.headers, httpversion: 2, timeoutSeconds: 20, statusCodeOK: false);
+            if (string.IsNullOrWhiteSpace(m3u) || !m3u.Contains("#EXTM3U"))
+                return true;
+
+            string host = CoreInit.Host(e.httpContext);
+            string body = PlaylistUrlRx.Replace(m3u, m =>
+                ProxyLink.Encrypt(m.Value.AsSpan(), e.decryptLink, prefix: [host, "/proxy/"]));
+
+            e.httpContext.Response.ContentType = "application/vnd.apple.mpegurl";
+            await e.httpContext.Response.WriteAsync(body, Encoding.UTF8);
+            return false;
+        }
+        catch
+        {
+            return true;
+        }
     }
 
     private void UpdateConf()
