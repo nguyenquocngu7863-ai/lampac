@@ -48,12 +48,22 @@ public class VidNestController : BaseENGController
         if (resolved == null || resolved.Count == 0)
             return OnError("stream", 502);
 
-        // Link phat qua route video.m3u8 cua chinh mình (redirect 302 sang proxy)
-        // de player trong nhan ra HLS (xem bai hoc VixSrc).
+        // Link phat TRUC TIEP upstream + headers (Referer embed) de may tu tai.
+        // Ly do: Cloudflare cua goodstream chan TLS HttpClient cua server (.NET),
+        // nhung cho curl qua -> proxy server-side dinh challenge. May (ExoPlayer)
+        // dung TLS stack khac nen co co hoi qua duoc.
         if (play)
         {
             int i = Math.Clamp(srv, 0, resolved.Count - 1);
-            return RedirectToPlay(HostStreamProxy(resolved[i].Url, headers: resolved[i].Headers));
+            return ContentTo(VideoTpl.ToJson(
+                "play",
+                resolved[i].Url,
+                "English",
+                headers: resolved[i].Headers,
+                vast: init.vast,
+                hls_manifest_timeout: 120000,
+                httpContext: HttpContext
+            ));
         }
 
         var qualities = new StreamQualityTpl(resolved.Count);
