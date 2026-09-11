@@ -16,7 +16,7 @@ public class RusTrioController : BaseController
 {
     static readonly string[] Sources = ["mirage", "spectre", "phantom"];
 
-    public RusTrioController() : base(default)
+    public RusTrioController()
     {
     }
 
