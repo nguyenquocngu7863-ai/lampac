@@ -172,6 +172,16 @@ public class VidNestController : BaseENGController
                 return null;
             }
 
+            // streamsvr tra ve trang HTML, chi pl/ tra playlist m3u8 that -> uu tien pl truoc.
+            resolved.Sort((a, b) =>
+            {
+                bool pa = a.Url.Contains("/pl/");
+                bool pb = b.Url.Contains("/pl/");
+                if (pa == pb)
+                    return 0;
+                return pa ? -1 : 1;
+            });
+
             hybridCache.Set(memKey, resolved, cacheTime(30));
             proxyManager?.Success();
             Console.WriteLine($"VidNest: {resolved.Count} streams ({query})");
