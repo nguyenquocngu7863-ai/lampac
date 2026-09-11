@@ -7,6 +7,8 @@ using Shared.Models.Module.Interfaces;
 using Shared.Models.Online.Settings;
 using Shared.Services;
 using System.Collections.Generic;
+using System.Net;
+using System.Threading.Tasks;
 
 namespace VidNest;
 
@@ -35,6 +37,7 @@ public class ModInit : IModuleLoaded, IModuleOnline
         EventListener.UpdateInitFile += UpdateConf;
         EventListener.OnlineApiQuality += OnlineApiQuality;
         EventListener.VideoTpl += VideoTplHls;
+        EventListener.ProxyApiCreateHttpRequest += ForceHttp2;
     }
 
     public void Dispose()
@@ -42,6 +45,22 @@ public class ModInit : IModuleLoaded, IModuleOnline
         EventListener.UpdateInitFile -= UpdateConf;
         EventListener.OnlineApiQuality -= OnlineApiQuality;
         EventListener.VideoTpl -= VideoTplHls;
+        EventListener.ProxyApiCreateHttpRequest -= ForceHttp2;
+    }
+
+    // goodstream.cc tra 403 + challenge cho request HTTP/1.1 (da kiem chung:
+    // curl mac dinh h2 thi 200, curl --http1.1 va python thi 403). HttpClient
+    // cua proxy mac dinh dung h1.1 nen ep len h2 cho moi request toi host nay.
+    static Task ForceHttp2(EventProxyApiCreateHttpRequest e)
+    {
+        try
+        {
+            if (e?.uri?.Host?.Contains("goodstream.cc") == true && e.requestMessage != null)
+                e.requestMessage.Version = HttpVersion.Version20;
+        }
+        catch { }
+
+        return Task.CompletedTask;
     }
 
     private void UpdateConf()
