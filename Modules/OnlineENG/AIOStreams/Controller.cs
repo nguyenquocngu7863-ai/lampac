@@ -220,20 +220,11 @@ public sealed class AIOStreamsController : BaseOnlineController<ModuleConf>
             return OnError("Invalid AIOStreams stream URL", 400);
 
         List<HeadersModel> headers = DecodeHeaders(h);
-        string output = HostStreamProxy(streamUrl, headers);
 
-        if (string.IsNullOrWhiteSpace(output) ||
-            (!IsHttpUrl(output) && !output.Contains("/proxy/", StringComparison.OrdinalIgnoreCase)))
-        {
-            return OnError("Unable to prepare AIOStreams stream", 502);
-        }
-
-        // The normal /video endpoint keeps HLS/MP4 direct. The /file.mkv
-        // alias intentionally retains the MKV suffix before this redirect, so
-        // gst.js can send a selected MKV through GStreamer when that plug-in
-        // is enabled. With gst disabled, the same endpoint simply redirects
-        // to the source/proxy for VLC/direct playback.
-        return RedirectToPlay(output);
+        // Direct upstream theo yeu cau: addon Stremio tra link phat duoc luon
+        // nen 302 thang, khong relay qua /proxy/ (bot 1 hop, nhanh hon).
+        // Link co headers dac biet (proxyHeaders) co the hong — bao de revert.
+        return RedirectToPlay(streamUrl);
     }
 
     [HttpGet, Staticache(manually: true)]
