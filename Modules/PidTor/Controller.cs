@@ -327,7 +327,7 @@ public class PiTor : BaseOnlineController
                         if (torrent?.torrent?.info?.seasons == null || torrent.torrent.info.seasons.Length == 0)
                             continue;
 
-                        if (!torrent.torrent.info.seasons.Contains(s) || torrent.torrent.info.seasons.Length != 1) // многосезонный
+                        if (!torrent.torrent.info.seasons.Contains(s))
                             continue;
 
                         string hashmagnet = Regex.Match(torrent.magnet, "magnet:\\?xt=urn:btih:([a-zA-Z0-9]+)").Groups[1].Value.ToLower();
