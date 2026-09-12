@@ -80,6 +80,12 @@ public class ModuleConf : ModuleBaseConf
     /// </summary>
     public int aac_channels { get; set; }
 
+    /// <summary>
+    /// Night-mode kiểu Kodi: nén dải động (tiếng động không nổ) + nâng gain
+    /// (giọng rõ). Chỉ tác dụng khi audio phải transcode (không phải AAC passthrough).
+    /// </summary>
+    public bool dialog_boost { get; set; }
+
 
     /// <summary>
     /// если нужна нарезка m4s сегментов срого по segment_seconds

@@ -260,6 +260,17 @@ public partial class GStask
         }
         else
         {
+            // Night-mode: nen tieng dong + nang gain giong noi truoc khi encode.
+            string dialogFilter = conf.dialog_boost ? """
+            audiodynamic
+                characteristics=soft-knee
+                mode=compressor
+                threshold=0.12
+                ratio=5.0 !
+            audioamplify
+                amplification=1.5 !
+            """ : "";
+
             sb.AppendLine($$"""
             mq.src_1 !
             decodebin !
@@ -274,6 +285,7 @@ public partial class GStask
                 layout=interleaved,
                 rate={{aacSamplerate}},
                 channels={{aacChannels}} !
+            {{dialogFilter}}
             avenc_aac
                 bitrate={{bitrate}} !
             aacparse !
