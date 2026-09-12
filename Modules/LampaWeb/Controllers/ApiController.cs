@@ -73,6 +73,59 @@ public class ApiController : BaseController
     }
     #endregion
 
+    #region VlcSubFetch
+    // Tai sub remote ve Download/lampac-subs/ tren may (server va app chung may),
+    // tra duong dan local de plugin vlcsub.js ban sang VLC qua extra subtitles_location.
+    // Wiki VLC: subtitles_location chi nhan path file cuc bo, khong nhan link https.
+    static readonly System.Net.Http.HttpClient vlcsubHttp = new System.Net.Http.HttpClient()
+    {
+        Timeout = TimeSpan.FromSeconds(25)
+    };
+
+    [HttpGet, AllowAnonymous]
+    [Route("/vlcsub/fetch")]
+    public async Task<ActionResult> VlcSubFetch(string url)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(url) || !url.StartsWith("http"))
+                return Json(new { error = "bad url" });
+
+            string dl = "/data/data/com.termux/files/home/storage/shared/Download/lampac-subs";
+            try { System.IO.Directory.CreateDirectory(dl); } catch { }
+            if (!System.IO.Directory.Exists(dl))
+                return Json(new { error = "no storage" });
+
+            string name = Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(
+                System.Text.Encoding.UTF8.GetBytes(url)))[..16].ToLower();
+            string fp = System.IO.Path.Combine(dl, name + ".srt");
+
+            if (!System.IO.File.Exists(fp))
+            {
+                using var req = new System.Net.Http.HttpRequestMessage(
+                    System.Net.Http.HttpMethod.Get, url);
+                req.Headers.TryAddWithoutValidation("User-Agent",
+                    "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36");
+                using var res = await vlcsubHttp.SendAsync(req);
+                if (!res.IsSuccessStatusCode)
+                    return Json(new { error = $"http {(int)res.StatusCode}" });
+                byte[] body = await res.Content.ReadAsByteArrayAsync();
+                if (body.Length < 50 || body.Length > 2 * 1024 * 1024)
+                    return Json(new { error = "bad size" });
+                string head = System.Text.Encoding.UTF8.GetString(body, 0, Math.Min(20, body.Length));
+                string ext = head.StartsWith("WEBVTT", StringComparison.OrdinalIgnoreCase) ? ".vtt" : ".srt";
+                fp = System.IO.Path.Combine(dl, name + ext);
+                if (!System.IO.File.Exists(fp))
+                    await System.IO.File.WriteAllBytesAsync(fp, body);
+                return Json(new { path = $"/sdcard/Download/lampac-subs/{name}{ext}" });
+            }
+
+            return Json(new { path = $"/sdcard/Download/lampac-subs/{name}.srt" });
+        }
+        catch (Exception ex) { return Json(new { error = ex.Message }); }
+    }
+    #endregion
+
     #region CbProxy
     // Bat/tat proxy + doi list proxy cho Chaturbate (ghi init.conf, restart de an).
     //   GET /cbproxy                      -> xem trang thai
