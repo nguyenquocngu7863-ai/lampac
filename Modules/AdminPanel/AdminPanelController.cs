@@ -154,6 +154,9 @@ public class AdminPanelController : BaseController
     {
         var path = Path.Combine(ModInit.modpath, "index.html");
         var html = System.IO.File.ReadAllText(path, Encoding.UTF8);
+        // WebView giu file cu rat lau -> cam cache de sua CSS co tac dung ngay
+        Response.Headers["Cache-Control"] = "no-store, no-cache, must-revalidate";
+        Response.Headers["Pragma"] = "no-cache";
         return Content(html, "text/html; charset=utf-8");
     }
 
