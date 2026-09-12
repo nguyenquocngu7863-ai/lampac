@@ -2017,6 +2017,7 @@
       <main>
         <!-- Toast container -->
         <div class="toast-container" id="toastContainer"></div>
+        <div id="cssVer" style="font-size:10px;color:var(--text-faint);text-align:center;padding:2px 0 6px;">css-v5 · theme=<span id="themeVer">?</span></div>
 
         <!-- PANEL: Sections (JSON) -->
         <div class="panel active" id="panel-sections" data-panel="sections">
@@ -2260,6 +2261,7 @@
 
       function setTheme(dark) {
         document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+        try { document.getElementById('themeVer').textContent = (dark ? 'dark' : 'light'); } catch (e) { }
         const meta = $('#metaTheme');
         if (meta) meta.setAttribute('content', dark ? '#0c0e12' : '#f4f5f8');
         try { localStorage.setItem(LAMPAC_THEME_STORAGE_KEY, dark ? 'dark' : 'light'); } catch (e) { }
