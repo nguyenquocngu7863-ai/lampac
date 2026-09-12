@@ -128,23 +128,43 @@ button:disabled { opacity: .5; }
 
   function askPw() {
     return new Promise(function (resolve) {
-      var v = prompt('Mật khẩu root của lampac:');
-      if (!v) { resolve(false); return; }
-      var keep = v;
-      var xhr = new XMLHttpRequest();
-      xhr.open('POST', '/adminpanel/api/login', true);
-      xhr.setRequestHeader('Content-Type', 'application/json');
-      xhr.timeout = 15000;
-      xhr.onload = function () {
-        try {
-          var j = JSON.parse(xhr.responseText);
-          if (j && !j.error && j.ok !== false) { setPw(keep); resolve(true); return; }
-        } catch (e) {}
-        resolve(false);
-      };
-      xhr.onerror = function () { resolve(false); };
-      xhr.ontimeout = function () { resolve(false); };
-      xhr.send(JSON.stringify({ password: v, remember: true }));
+      var ov = document.createElement('div');
+      ov.style.cssText = 'position:fixed;inset:0;background:#000a;display:flex;' +
+        'align-items:center;justify-content:center;z-index:50;padding:20px';
+      ov.innerHTML = '<div class="card" style="width:100%;max-width:340px">' +
+        '<h2>Mật khẩu root</h2>' +
+        '<div class="f"><label>Password</label>' +
+        '<input id="pwIn" type="password" style="width:100%;padding:10px;font-size:16px;' +
+        'border-radius:8px;border:1px solid var(--line);background:var(--bg2);color:var(--txt)"></div>' +
+        '<div class="actions"><button class="pri" id="pwOk" style="flex:1">Vào</button></div></div>';
+      document.body.appendChild(ov);
+      var inp = ov.querySelector('#pwIn');
+      function done(ok) {
+        try { document.body.removeChild(ov); } catch (e) {}
+        resolve(ok);
+      }
+      function go() {
+        var v = inp.value || '';
+        if (!v) { done(false); return; }
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', '/adminpanel/api/login', true);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.timeout = 15000;
+        xhr.onload = function () {
+          try {
+            var j = JSON.parse(xhr.responseText);
+            if (j && !j.error && j.ok !== false) { setPw(v); done(true); return; }
+          } catch (e) {}
+          msg('Sai mật khẩu', true);
+          done(false);
+        };
+        xhr.onerror = function () { done(false); };
+        xhr.ontimeout = function () { done(false); };
+        xhr.send(JSON.stringify({ password: v, remember: true }));
+      }
+      ov.querySelector('#pwOk').onclick = go;
+      inp.onkeydown = function (e) { if (e.key === 'Enter') go(); };
+      setTimeout(function () { try { inp.focus(); } catch (e) {} }, 300);
     });
   }
 
