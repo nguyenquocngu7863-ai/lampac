@@ -339,6 +339,11 @@ button:disabled { opacity: .5; }
     });
   }
 
+  // Dien thoai: sidebar an mac dinh — tu mo san de thay danh sach module.
+  if (window.innerWidth <= 700) {
+    try { $('side').classList.add('mob'); } catch (e) {}
+  }
+
   load();
 })();
 </script>
