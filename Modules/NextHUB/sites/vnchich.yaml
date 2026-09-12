@@ -105,4 +105,15 @@ view:
       }
       if (best != null) return best;
     }
+    // Video remote (isLocal=false, vd mirror tu x.jvideos.top) khong co files,
+    // chi co streamingPlaylists HLS -> lay playlistUrl.
+    var pls = j["streamingPlaylists"] as JArray;
+    if (pls != null)
+    {
+      foreach (var p in pls)
+      {
+        string purl = (string)p["playlistUrl"];
+        if (!string.IsNullOrEmpty(purl)) return purl;
+      }
+    }
     return null;
