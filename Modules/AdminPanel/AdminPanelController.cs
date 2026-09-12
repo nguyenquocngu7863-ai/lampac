@@ -22,6 +22,18 @@ public class AdminPanelController : BaseController
     const string CurrentFile = "current.conf";
     const string UsersFile = "users.json";
 
+    // Plugin client (WebView) co the bi chan cookie — chap nhan them header.
+    bool IsRootAuthed()
+    {
+        if (Request.Cookies.TryGetValue("accspasswd", out var passwd) &&
+            passwd == CoreInit.rootPasswd)
+            return true;
+        if (Request.Headers.TryGetValue("X-Root-Passwd", out var h) &&
+            h.ToString() == CoreInit.rootPasswd)
+            return true;
+        return false;
+    }
+
     [HttpGet]
     [AllowAnonymous]
     [Route("/adminpanel/auth")]
@@ -172,9 +184,12 @@ public class AdminPanelController : BaseController
     }
 
     [HttpPost]
+    [AllowAnonymous]
     [Route("/adminpanel/api/restart")]
     public ActionResult ApiRestart()
     {
+        if (!IsRootAuthed())
+            return AdminJsonError(401, "unauthorized");
         // Vong giam sat lampac-run.sh tu chay lai dotnet trong vai giay
         _ = Task.Run(async () =>
         {
@@ -204,9 +219,12 @@ public class AdminPanelController : BaseController
     }
 
     [HttpGet]
+    [AllowAnonymous]
     [Route("/adminpanel/api/groups/catalog")]
     public ActionResult GroupsCatalog()
     {
+        if (!IsRootAuthed())
+            return AdminJsonError(401, "unauthorized");
         var sites = DiscoverNextHubSites();
         var built = ConfigSectionGroups.BuildCatalog(sites.Keys);
         var current = LoadCurrentRoot(sites);
@@ -387,9 +405,12 @@ public class AdminPanelController : BaseController
     }
 
     [HttpGet]
+    [AllowAnonymous]
     [Route("/adminpanel/api/current")]
     public ActionResult GetCurrent()
     {
+        if (!IsRootAuthed())
+            return AdminJsonError(401, "unauthorized");
         var current = LoadCurrentRoot(DiscoverNextHubSites());
         return Content(current.ToString(Formatting.Indented), "application/json; charset=utf-8");
     }
@@ -426,9 +447,12 @@ public class AdminPanelController : BaseController
     }
 
     [HttpPost]
+    [AllowAnonymous]
     [Route("/adminpanel/api/init/section/{key}")]
     public async Task<IActionResult> SaveInitSection(string key)
     {
+        if (!IsRootAuthed())
+            return AdminJsonError(401, "unauthorized");
         if (string.IsNullOrWhiteSpace(key) || key.Contains('/') || key.Contains('\\'))
             return AdminJsonError(400, "invalid section key");
 
