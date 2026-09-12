@@ -84,7 +84,7 @@ public class ApiController : BaseController
 
     [HttpGet, AllowAnonymous]
     [Route("/vlcsub/fetch")]
-    public async Task<ActionResult> VlcSubFetch(string url)
+    public async Task<ActionResult> VlcSubFetch(string url, string fname)
     {
         void VLog(string m)
         {
@@ -94,6 +94,24 @@ public class ApiController : BaseController
                     System.IO.Directory.CreateDirectory("data");
                 System.IO.File.AppendAllText(System.IO.Path.Combine("data", "clientlog.txt"),
                     $"{DateTime.Now:HH:mm:ss} vlcsub {m}\n");
+            }
+            catch { }
+        }
+
+        // Don file cu >7 ngay cho folder gon.
+        void Cleanup(string dl)
+        {
+            try
+            {
+                foreach (var f in System.IO.Directory.GetFiles(dl))
+                {
+                    try
+                    {
+                        if (DateTime.UtcNow - System.IO.File.GetLastWriteTimeUtc(f) > TimeSpan.FromDays(7))
+                            System.IO.File.Delete(f);
+                    }
+                    catch { }
+                }
             }
             catch { }
         }
@@ -110,10 +128,20 @@ public class ApiController : BaseController
             try { System.IO.Directory.CreateDirectory(dl); } catch { }
             if (!System.IO.Directory.Exists(dl))
                 return Json(new { error = "no storage" });
+            Cleanup(dl);
 
-            string name = Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(
-                System.Text.Encoding.UTF8.GetBytes(url)))[..16].ToLower();
-            string fp = System.IO.Path.Combine(dl, name + ".srt");
+            string hash = Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(
+                System.Text.Encoding.UTF8.GetBytes(url)))[..8].ToLower();
+            // fname = "tt0137523_vie_0" tu plugin — loc ky tu la de dat ten hien thi.
+            string tag = "sub";
+            if (!string.IsNullOrWhiteSpace(fname))
+            {
+                var clean = new string(fname.Take(60).Select(ch =>
+                    char.IsLetterOrDigit(ch) ? ch : '_').ToArray()).Trim('_');
+                if (clean.Length >= 3) tag = clean;
+            }
+            string baseName = $"{tag}_{hash}";
+            string fp = System.IO.Path.Combine(dl, baseName + ".srt");
 
             if (!System.IO.File.Exists(fp))
             {
@@ -132,15 +160,15 @@ public class ApiController : BaseController
                 }
                 string head = System.Text.Encoding.UTF8.GetString(body, 0, Math.Min(20, body.Length));
                 string ext = head.StartsWith("WEBVTT", StringComparison.OrdinalIgnoreCase) ? ".vtt" : ".srt";
-                fp = System.IO.Path.Combine(dl, name + ext);
+                fp = System.IO.Path.Combine(dl, baseName + ext);
                 if (!System.IO.File.Exists(fp))
                     await System.IO.File.WriteAllBytesAsync(fp, body);
-                VLog($"ok {name}{ext} {body.Length}b");
-                return Json(new { path = $"/sdcard/Download/lampac-subs/{name}{ext}" });
+                VLog($"ok {baseName}{ext} {body.Length}b");
+                return Json(new { path = $"/sdcard/Download/lampac-subs/{baseName}{ext}" });
             }
 
-            VLog($"cache {name}.srt");
-            return Json(new { path = $"/sdcard/Download/lampac-subs/{name}.srt" });
+            VLog($"cache {baseName}.srt");
+            return Json(new { path = $"/sdcard/Download/lampac-subs/{baseName}.srt" });
         }
         catch (Exception ex) { VLog("EX " + ex.Message); return Json(new { error = ex.Message }); }
     }
