@@ -50,6 +50,7 @@
     /* Tokens aligned with stats/dashboard.html */
     [data-theme="dark"] {
       --bg: #0c0e12;
+      --bg-grad: radial-gradient(1200px 500px at 50% -10%, rgba(62, 201, 209, 0.09), transparent 60%), #0c0e12;
       --surface: #13161d;
       --surface-2: #1a1e28;
       --surface-3: #222733;
@@ -80,6 +81,7 @@
 
     [data-theme="light"] {
       --bg: #f4f5f8;
+      --bg-grad: radial-gradient(1200px 500px at 50% -10%, rgba(13, 148, 153, 0.08), transparent 60%), #f4f5f8;
       --surface: #ffffff;
       --surface-2: #f0f1f5;
       --surface-3: #e8eaf0;
@@ -118,7 +120,8 @@
       font-family: var(--font-body);
       font-size: var(--text-base);
       color: var(--text);
-      background: var(--bg);
+      background: var(--bg-grad, var(--bg));
+      background-attachment: fixed;
       line-height: 1.5;
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
@@ -520,6 +523,7 @@
       overflow-y: auto;
       overflow-x: hidden;
       padding: var(--sp-5);
+      padding-bottom: calc(var(--sp-5) + env(safe-area-inset-bottom, 0px) + 76px);
       min-height: 0;
     }
 
