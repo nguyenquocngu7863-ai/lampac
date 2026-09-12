@@ -86,10 +86,25 @@ public class ApiController : BaseController
     [Route("/vlcsub/fetch")]
     public async Task<ActionResult> VlcSubFetch(string url)
     {
+        void VLog(string m)
+        {
+            try
+            {
+                if (!System.IO.Directory.Exists("data"))
+                    System.IO.Directory.CreateDirectory("data");
+                System.IO.File.AppendAllText(System.IO.Path.Combine("data", "clientlog.txt"),
+                    $"{DateTime.Now:HH:mm:ss} vlcsub {m}\n");
+            }
+            catch { }
+        }
+
         try
         {
             if (string.IsNullOrWhiteSpace(url) || !url.StartsWith("http"))
+            {
+                VLog("bad url");
                 return Json(new { error = "bad url" });
+            }
 
             string dl = "/data/data/com.termux/files/home/storage/shared/Download/lampac-subs";
             try { System.IO.Directory.CreateDirectory(dl); } catch { }
@@ -111,18 +126,23 @@ public class ApiController : BaseController
                     return Json(new { error = $"http {(int)res.StatusCode}" });
                 byte[] body = await res.Content.ReadAsByteArrayAsync();
                 if (body.Length < 50 || body.Length > 2 * 1024 * 1024)
+                {
+                    VLog($"bad size {body.Length} {url[..Math.Min(80, url.Length)]}");
                     return Json(new { error = "bad size" });
+                }
                 string head = System.Text.Encoding.UTF8.GetString(body, 0, Math.Min(20, body.Length));
                 string ext = head.StartsWith("WEBVTT", StringComparison.OrdinalIgnoreCase) ? ".vtt" : ".srt";
                 fp = System.IO.Path.Combine(dl, name + ext);
                 if (!System.IO.File.Exists(fp))
                     await System.IO.File.WriteAllBytesAsync(fp, body);
+                VLog($"ok {name}{ext} {body.Length}b");
                 return Json(new { path = $"/sdcard/Download/lampac-subs/{name}{ext}" });
             }
 
+            VLog($"cache {name}.srt");
             return Json(new { path = $"/sdcard/Download/lampac-subs/{name}.srt" });
         }
-        catch (Exception ex) { return Json(new { error = ex.Message }); }
+        catch (Exception ex) { VLog("EX " + ex.Message); return Json(new { error = ex.Message }); }
     }
     #endregion
 
