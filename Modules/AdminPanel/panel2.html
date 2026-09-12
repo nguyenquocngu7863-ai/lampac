@@ -283,11 +283,28 @@ button:disabled { opacity: .5; }
     });
     html += '<div class="actions"><button class="pri" id="bSave">Lưu</button>' +
       '<button id="bRe">Lưu + Restart</button></div></div>';
+    html += '<div class="card"><h2>JSON thô</h2>' +
+      '<div class="sub">Đúng đoạn init của mục này — sửa tay rồi lưu</div>' +
+      '<div class="f" style="grid-template-columns:1fr"><textarea id="bJson" rows="14" ' +
+      'style="width:100%;padding:8px;font-size:13px;font-family:ui-monospace,monospace">' +
+      esc(JSON.stringify(sec, null, 2)) + '</textarea></div>' +
+      '<div class="actions"><button class="pri" id="bSaveJ">Lưu JSON</button></div></div>';
     var main = $('main');
     main.innerHTML = html;
     renderSide($('q').value);
     $('bSave').onclick = function () { save(key, false); };
     $('bRe').onclick = function () { save(key, true); };
+    $('bSaveJ').onclick = function () {
+      var out;
+      try { out = JSON.parse($('bJson').value); }
+      catch (e) { msg('JSON hỏng: ' + e.message, true); return; }
+      msg('Đang lưu ' + key + '...');
+      api('/adminpanel/api/init/section/' + encodeURIComponent(key), 'POST', out).then(function () {
+        current[key] = out;
+        renderCard(key, out, false);
+        msg('Đã lưu ' + key + ' — nhớ Restart');
+      }).catch(function (e) { msg('Lỗi: ' + e.message, true); });
+    };
   }
 
   function collect() {
