@@ -161,6 +161,34 @@ public class AdminPanelController : BaseController
     }
 
     [HttpGet]
+    [Route("/panel2")]
+    public ActionResult Panel2()
+    {
+        var path = Path.Combine(ModInit.modpath, "panel2.html");
+        var html = System.IO.File.ReadAllText(path, Encoding.UTF8);
+        Response.Headers["Cache-Control"] = "no-store, no-cache, must-revalidate";
+        Response.Headers["Pragma"] = "no-cache";
+        return Content(html, "text/html; charset=utf-8");
+    }
+
+    [HttpPost]
+    [Route("/adminpanel/api/restart")]
+    public ActionResult ApiRestart()
+    {
+        // Vong giam sat lampac-run.sh tu chay lai dotnet trong vai giay
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(1500).ConfigureAwait(false);
+                Environment.Exit(0);
+            }
+            catch { }
+        });
+        return AdminJsonOk();
+    }
+
+    [HttpGet]
     [Route("/adminpanel/api/groups")]
     public ActionResult Groups()
     {
