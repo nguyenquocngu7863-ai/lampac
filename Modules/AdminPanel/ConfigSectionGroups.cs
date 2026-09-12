@@ -60,14 +60,14 @@ public static class ConfigSectionGroups
             {
                 "AIOStreams", "Autoembed", "Hydraflix", "MovPI", "Playembed", "Rgshows",
                 "Smashystream", "Sootio", "Twoembed", "VidCore", "VidLink", "Videasy",
-                "Vidrock", "Vidsrc", "WebStreamr"
+                "VidNest", "Vidrock", "Vidsrc", "VixSrc", "WebStreamr"
             }),
 
         new("src-rus", "Nguồn · Nga và CIS (Modules/OnlineRUS)", "Nguồn VOD/CDN Nga.",
             new[]
             {
                 "CDNvideohub", "Collaps", "FanCDN", "FlixCDN", "Gencit", "HDVB", "Kinobase", "Kinogo",
-                "Kinotochka", "LeProduction", "PizdatoeHD", "RutubeMovie",
+                "Kinotochka", "LeProduction", "PizdatoeHD", "RusTrio", "RutubeMovie",
                 "Spectre", "VeoVeo", "Vibix", "VideoDB", "Videoseed", "VkMovie", "Zetflix", "ZetflixDB"
 
                 // Mirage/Phantom nằm ở nhóm "Nguồn cần trình duyệt" (cần Chromium).
