@@ -114,3 +114,68 @@ The HTML **`/adminpanel`** page remains available in a browser.
 | **`ModInit.cs`** | **`IModuleLoaded`**: сохраняет **`modpath`** для раздачи HTML. |
 | **`manifest.json`** | Включение модуля и список подгружаемых **`.cs`**. |
 | **`auth.html`**, **`index.html`** | Интерфейс входа и панели. |
+
+---
+
+## Từ điển key trong admin panel (tiếng Việt)
+
+Quy ước: sửa xong mục nào bấm **Lưu**, đổi config cần **Restart** mới ăn.
+Lưu trong panel là **ghim đè** giá trị vào `init.conf` — cập nhật yaml/code sau này
+không thắng được giá trị đã ghim cho tới khi xóa ô đó.
+
+### Key dùng chung của mọi nguồn
+
+| Key | Nghĩa |
+|-----|-------|
+| `enable` / `enabled` | Bật/tắt nguồn. Tắt flag vẫn tốn giờ compile lúc start — muốn nhẹ máy thì cho vào `BaseModule.SkipModules`. |
+| `displayname` | Tên hiện trong app. |
+| `displayindex` | Thứ tự hiện: số nhỏ lên trước (menu 18+ xếp Việt 10-12, quốc tế 20-44...). |
+| `apihost` | Host API của nguồn. Đổi mirror khi host cũ chết là đổi ô này. |
+| `host` | Host trang web nguồn (dùng khi cạo web / dựng link). |
+| `cookie` | Cookie dán thêm khi nguồn chặn bot hoặc đòi đăng nhập. |
+| `cache_time` / `cacheSeconds` | Giữ kết quả resolve bao lâu (giây). Link ký theo giờ thì cache phải NGẮN hơn hạn link. |
+| `geo_hide` | Tự ẩn nguồn khi bị chặn địa lý thay vì báo lỗi. |
+
+### Nhóm proxy / phát (dễ nhầm nhất)
+
+| Key | Nghĩa |
+|-----|-------|
+| `useproxy` | Nguồn dùng proxy để **tải danh sách/link** (vượt chặn IP hosting). |
+| `useproxystream` | Dùng proxy cả khi **phát** (tốn băng thông server, chỉ bật khi máy xem không tới được upstream). |
+| `streamproxy` | Phát qua proxy của lampac (server rewrite playlist). Tắt = máy xem tải trực tiếp upstream. |
+| `rch_access` | Ai được dùng RCH - nhờ máy client tải hộ (`apk` = app, `cors`/`web` = web). |
+| `stream_access` | Ai được xem stream (`apk`, `cors`/`web`). |
+| `rchstreamproxy` | Kênh RCH đi qua proxy (`web`, `phone`, `tv`, `all`). |
+| `streamproxy_preview` | Proxy cả ảnh preview/poster. |
+| `rch` (mục riêng) | Remote Client Helper: nhờ điện thoại tải hộ các host chặn IP datacenter (vd Chaturbate). |
+| `proxy` (mục riêng) | Proxy server dùng để **tải** (list `ip:port`, `url` hoặc `file`). |
+| `serverproxy` (mục riêng) | Proxy server dùng để **phát** (`/proxy/`): `enable`, `cache_hls`, `showOrigUri` (bật tạm để soi URL gốc upstream rồi tắt). |
+| `priorityBrowser` | Kênh tải ưu tiên (`http` = HTTP thường, thay vì mở trình duyệt Chromium). |
+| `rhub` | Hub trung gian cho một số nguồn. |
+| `apn` / `apnstream` | Kênh proxy riêng của lampac cho client có hỗ trợ. |
+
+### Site NextHUB (yaml: xasiat, vnchich...)
+
+File gốc nằm `Modules/NextHUB/sites/*.yaml`. Panel chỉ cho sửa các ô override
+an toàn (`enable`, `displayname`, `host`, `displayindex`, `streamproxy`,
+`stream_access`, `rch_access`, `rchstreamproxy`, `streamproxy_preview`,
+`useproxy`, `useproxystream`, `priorityBrowser`, `rhub`, ...). Sửa sâu
+(menu/list/search/view) phải sửa thẳng file yaml rồi restart.
+
+### Hệ thống hay đụng
+
+| Mục | Ô quan trọng |
+|-----|--------------|
+| `listen` | `port` (9118), `ip`. Đổi port là đổi luôn URL plugin/app. |
+| `cub` | `api_key` TMDB (trống là liệt kê mùa ENG rỗng), `mirror`, `viewru` (false = tiêu đề Anh). |
+| `PidTor` | `torrs` (TS đang dùng — remote Oracle của user, restore cũ hay làm mất), `play_timeout` (0 = tắt chờ torrent). |
+| `TorrServer` | TS local (`enable`, `tsport`, `CacheSize`, `PreloadCache`, `TorrentDisconnectTimeout`). |
+| `JacRed` | Nguồn torrent Red/Jackett (`apikey`, `disableJackett`). |
+| `Jackett` | Tracker local (port 9117, `api_key` lấy từ ServerConfig.json của Jackett). |
+| `gst` | Transcode: `enable`, `transcodeAV1/H264/H265/VP9`, `hdr_to_sdr`. Tắt là `/gst/*` 403 hẳn. |
+| `online` | `with_search` (nguồn nào vào tìm kiếm chung). |
+| `accsdb` | Tài khoản, giới hạn request, khóa IP. |
+| `cache` / `Staticache` | Cache RAM/đĩa. Sửa plugin JS mà app vẫn cũ là do 2 lớp này + cache WebView. |
+| `GC` | Giới hạn RAM cho build Roslyn trong container. |
+| `chromium` | Trình duyệt headless cho site khó (85po 4K). |
+| `LampaWeb` | `initPlugins` (plugin nào nạp cho app: online, sisi, gst, sub...). Tắt ở đây không gỡ plugin khỏi app đã cài. |
