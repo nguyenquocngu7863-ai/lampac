@@ -2272,7 +2272,7 @@
           if (t === 'light') return false;
           if (t === 'dark') return true;
         } catch (e) { /* ignore */ }
-        return window.matchMedia('(prefers-color-scheme: dark)').matches;
+        return false; // mac dinh sang, ai thich den thi bam nut mat troi
       }
 
       function syncThemeBtn() {
