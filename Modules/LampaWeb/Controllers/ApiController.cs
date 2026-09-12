@@ -73,6 +73,61 @@ public class ApiController : BaseController
     }
     #endregion
 
+    #region VlcSubResolve
+    // Doan imdb theo ten phim cho torrent/bookmark (khong co the phim de lay ID).
+    // Dung Cinemeta catalog search, doi chieu year neu co. Tra imdb de plugin tim sub.
+    [HttpGet, AllowAnonymous]
+    [Route("/vlcsub/resolve")]
+    public async Task<ActionResult> VlcSubResolve(string title, int year = 0)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(title) || title.Length < 2)
+                return Json(new { error = "bad title" });
+            string q = Uri.EscapeDataString(title.Trim());
+            foreach (var type in new[] { "movie", "series" })
+            {
+                try
+                {
+                    using var req = new System.Net.Http.HttpRequestMessage(
+                        System.Net.Http.HttpMethod.Get,
+                        $"https://v3-cinemeta.strem.io/catalog/{type}/top/search={q}.json");
+                    req.Headers.TryAddWithoutValidation("User-Agent", "Mozilla/5.0");
+                    using var res = await vlcsubHttp.SendAsync(req);
+                    if (!res.IsSuccessStatusCode) continue;
+                    using var doc = System.Text.Json.JsonDocument.Parse(
+                        await res.Content.ReadAsByteArrayAsync());
+                    if (!doc.RootElement.TryGetProperty("metas", out var metas)) continue;
+                    foreach (var m in metas.EnumerateArray())
+                    {
+                        string id = m.TryGetProperty("id", out var jeId) ? jeId.GetString() ?? "" : "";
+                        if (!id.StartsWith("tt")) continue;
+                        string name = m.TryGetProperty("name", out var jeName) ? jeName.GetString() ?? "" : "";
+                        int y = 0;
+                        if (m.TryGetProperty("year", out var jeYear))
+                        {
+                            if (jeYear.ValueKind == System.Text.Json.JsonValueKind.Number)
+                                y = jeYear.GetInt32();
+                            else int.TryParse(jeYear.GetString(), out y);
+                        }
+                        if (string.IsNullOrEmpty(name)) continue;
+                        if (year > 0 && y > 0 && Math.Abs(y - year) > 1) continue;
+                        // Ten phai khop gan dung de khoi sai phim.
+                        if (name.Equals(title.Trim(), StringComparison.OrdinalIgnoreCase) ||
+                            name.StartsWith(title.Trim(), StringComparison.OrdinalIgnoreCase) ||
+                            title.Trim().StartsWith(name, StringComparison.OrdinalIgnoreCase) ||
+                            year > 0)
+                            return Json(new { imdb = id, title = name, year = y, type });
+                    }
+                }
+                catch { }
+            }
+            return Json(new { error = "not found" });
+        }
+        catch (Exception ex) { return Json(new { error = ex.Message }); }
+    }
+    #endregion
+
     #region VlcSubFetch
     // Tai sub remote ve Download/lampac-subs/ tren may (server va app chung may),
     // tra duong dan local de plugin vlcsub.js ban sang VLC qua extra subtitles_location.
