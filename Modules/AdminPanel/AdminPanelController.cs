@@ -246,6 +246,22 @@ public class AdminPanelController : BaseController
         return Content(json, "application/json; charset=utf-8");
     }
 
+    [HttpGet]
+    [AllowAnonymous]
+    [Route("/adminpanel/api/sitetpl/{slug}")]
+    public ActionResult SiteTemplate(string slug)
+    {
+        if (!IsRootAuthed())
+            return AdminJsonError(401, "unauthorized");
+        if (string.IsNullOrWhiteSpace(slug) || slug.Any(c => !(char.IsLetterOrDigit(c) || c == '-')))
+            return AdminJsonError(400, "invalid slug");
+        var sites = DiscoverNextHubSites();
+        if (!sites.TryGetValue(slug, out var enabled) ||
+            !NextHubSitePaths.TryGetValue(slug, out var path))
+            return AdminJsonError(404, "unknown site");
+        var tpl = NextHubSiteTemplate(path, enabled);
+        return Content(tpl.ToString(Newtonsoft.Json.Formatting.None), "application/json; charset=utf-8");
+    }
     // Top-level scalar keys we expose as per-site overrides in AdminPanel.
     // Values saved here are merged over the YAML by ModuleInvoke.Init.
     // NOTE: saving pins these values in init.conf — a later YAML update of
