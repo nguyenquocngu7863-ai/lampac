@@ -269,7 +269,9 @@ public class AdminPanelController : BaseController
     static readonly string[] NextHubOverrideKeys =
     {
         "displayname", "host", "displayindex", "streamproxy", "stream_access",
-        "rch_access", "priorityBrowser", "useproxy", "useproxystream", "rhub"
+        "rch_access", "priorityBrowser", "useproxy", "useproxystream", "rhub",
+        "rchstreamproxy", "streamproxy_preview", "geostreamproxy", "ignore_no_picture",
+        "model", "kit", "hls", "route", "qualitys_proxy", "url_reserve"
     };
 
     static JObject NextHubSiteTemplate(string path, bool enabled)
