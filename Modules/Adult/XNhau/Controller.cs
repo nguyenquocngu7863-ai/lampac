@@ -25,10 +25,13 @@ public class XNhauController : BaseSisiController
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
         return badInitMsg;
 
-        // xNhau search không hỗ trợ phân trang — trả list rỗng từ trang 2 trở đi
+        // xNhau search: chỉ lấy 24 video đầu tiên từ trang web (không pagination thực sự)
+        // Nếu pg > 1, vẫn lấy từ URL nhưng giới hạn kết quả về 24 item đầu
         if (pg > 1 && !string.IsNullOrWhiteSpace(search) && !search.Contains("/members/") && !search.StartsWith("member:"))
         {
-            return Json(new { count = 0, total_pages = 0, menu = XNhauTo.Menu(host, search, sort, c, t), list = new List<PlaylistItem>() });
+            // Trang web không hỗ trợ pagination cho search — trả cùng 24 kết quả nhưng đánh dấu không có thêm trang
+            // Để plugin/app hiểu rằng đây là trang cuối
+            return Json(new { count = 0, total_pages = 1, menu = XNhauTo.Menu(host, search, sort, c, t), list = new List<PlaylistItem>() });
         }
 
     rhubFallback:

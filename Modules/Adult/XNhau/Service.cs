@@ -35,8 +35,7 @@ public static class XNhauTo
             url.Append("/");
             if (pg > 1)
             {
-                // xNhau pagination: data-parameters="from_videos+from_albums:N"
-                url.Append("?from_videos+from_albums=");
+                url.Append("?from=");
                 url.Append(pg);
             }
         }
@@ -47,8 +46,7 @@ public static class XNhauTo
             url.Append("/");
             if (pg > 1)
             {
-                // xNhau pagination: data-parameters="from_videos+from_albums:N"
-                url.Append("?from_videos+from_albums=");
+                url.Append("?from=");
                 url.Append(pg);
             }
         }
@@ -59,8 +57,7 @@ public static class XNhauTo
             url.Append("/");
             if (pg > 1)
             {
-                // xNhau pagination: data-parameters="from_videos+from_albums:N"
-                url.Append("?from_videos+from_albums=");
+                url.Append("?from=");
                 url.Append(pg);
             }
         }
@@ -71,8 +68,7 @@ public static class XNhauTo
             url.Append("/");
             if (pg > 1)
             {
-                // xNhau pagination: data-parameters="from_videos+from_albums:N"
-                url.Append("?from_videos+from_albums=");
+                url.Append("?from=");
                 url.Append(pg);
             }
         }
@@ -83,8 +79,7 @@ public static class XNhauTo
             url.Append("/");
             if (pg > 1)
             {
-                // xNhau pagination: data-parameters="from_videos+from_albums:N"
-                url.Append("?from_videos+from_albums=");
+                url.Append("?from=");
                 url.Append(pg);
             }
         }
@@ -93,8 +88,7 @@ public static class XNhauTo
             url.Append("clip-sex-moi/");
             if (pg > 1)
             {
-                // xNhau pagination: data-parameters="from_videos+from_albums:N"
-                url.Append("?from_videos+from_albums=");
+                url.Append("?from=");
                 url.Append(pg);
             }
         }
@@ -103,8 +97,7 @@ public static class XNhauTo
             url.Append("clip-sex-hot/");
             if (pg > 1)
             {
-                // xNhau pagination: data-parameters="from_videos+from_albums:N"
-                url.Append("?from_videos+from_albums=");
+                url.Append("?from=");
                 url.Append(pg);
             }
         }
@@ -113,8 +106,7 @@ public static class XNhauTo
             url.Append("clip-sex-hay/");
             if (pg > 1)
             {
-                // xNhau pagination: data-parameters="from_videos+from_albums:N"
-                url.Append("?from_videos+from_albums=");
+                url.Append("?from=");
                 url.Append(pg);
             }
         }
