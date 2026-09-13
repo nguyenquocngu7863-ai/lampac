@@ -609,6 +609,21 @@ sync_latest_modules() {
             fi
         done
 
+        # XNhau (xnhau.cab, KVS): xac minh thiet bi 2026-09-13 (list 40 items,
+        # vidosik 720p/480p, strem proxy 206 video/mp4). Khong co trong
+        # lampac-nextgen.zip nen mkdir + lay full file.
+        xnhausynctarget=/root/lampac/module/Adult/XNhau
+        mkdir -p \"\$xnhausynctarget\"
+        for xnhausyncfile in manifest.json Controller.cs ModInit.cs Service.cs; do
+            if curl -fsSL --retry 3 \"\$base/Modules/Adult/XNhau/\$xnhausyncfile?cb=\$stamp\" -o \"/tmp/xnhausync-\$xnhausyncfile\"; then
+                mv \"/tmp/xnhausync-\$xnhausyncfile\" \"\$xnhausynctarget/\$xnhausyncfile\"
+                echo \"  [sync] xnhau/\$xnhausyncfile\"
+            else
+                rm -f \"/tmp/xnhausync-\$xnhausyncfile\"
+                echo \"  [sync] xnhau: bo qua \$xnhausyncfile (nguon khong co)\"
+            fi
+        done
+
         # Stripchat (livecam): xac minh 2026-09-05 (list 90, potok ra hlsProxy).
         scsynctarget=/root/lampac/module/Adult/Stripchat
         mkdir -p \"\$scsynctarget\"
@@ -784,6 +799,23 @@ install_custom_modules() {
             fi
         done
 
+        # XNhau (xnhau.cab, KVS): xac minh thiet bi 2026-09-13 (list 40 items,
+        # vidosik ra link, strem proxy 206 video/mp4). Khong co trong
+        # lampac-nextgen.zip nen mkdir + lay full file, bo qua tung file neu
+        # nguon khong co (an toan duoi set -euo pipefail).
+        xnhaubase=\"\${CUSTOM_SOURCE_BASE}/Modules/Adult/XNhau\"
+        xnhautarget=/root/lampac/module/Adult/XNhau
+        mkdir -p \"$xnhautarget\"
+        for xnhaufile in manifest.json Controller.cs ModInit.cs Service.cs; do
+            if curl -fsSL --retry 3 \"$xnhaubase/$xnhaufile?cb=$syncstamp\" -o \"/tmp/xnhau-$xnhaufile\"; then
+                mv \"/tmp/xnhau-$xnhaufile\" \"$xnhautarget/$xnhaufile\"
+                echo \"  [xnhau] $xnhaufile\"
+            else
+                rm -f \"/tmp/xnhau-$xnhaufile\"
+                echo \"  [xnhau] bo qua $xnhaufile - khong co tren nguon\"
+            fi
+        done
+
         # Stripchat (livecam): xac minh 2026-09-05 (list 90, potok ra proxy 206).
         scbase=\"\${CUSTOM_SOURCE_BASE}/Modules/Adult/Stripchat\"
         sctarget=/root/lampac/module/Adult/Stripchat
@@ -899,7 +931,7 @@ install_custom_modules() {
             done
         fi
 
-        for adultmodule in BongaCams Chaturbate Ebalovo Eporner HQporner Po85 PornHub Porntrex Runetki Spankbang Xhamster Xnxx Xvideos XvideosRED; do
+        for adultmodule in BongaCams Chaturbate Ebalovo Eporner HQporner Po85 PornHub Porntrex Runetki Spankbang Xhamster Xnxx XNhau Xvideos XvideosRED; do
             adulttarget=\"/root/lampac/module/Adult/\$adultmodule\"
             if [ -d \"\$adulttarget\" ]; then
                 curl -fSL --retry 3 \"${CUSTOM_SOURCE_BASE}/Modules/Adult/\$adultmodule/Service.cs?cb=\$syncstamp\" -o \"\$adulttarget/Service.cs.tmp\"

@@ -180,6 +180,122 @@
         return playlist
     }
 
+    function objectField(object, name) {
+        if (!object)
+            return undefined;
+
+        if (object[name] !== undefined)
+            return object[name];
+
+        var pascalName = name.charAt(0).toUpperCase() + name.slice(1);
+        return object[pascalName];
+    }
+
+    function isLargeHdrSource(json) {
+        var probe = objectField(json, 'probe');
+        var video = objectField(probe, 'video');
+        if (!video)
+            return false;
+
+        var width = Number(objectField(video, 'width') || 0);
+        var height = Number(objectField(video, 'height') || 0);
+        if (Math.max(width, height) < 3000)
+            return false;
+
+        var isHdr = objectField(video, 'isHdr') === true ||
+            objectField(video, 'isDolbyVision') === true;
+        var transfer = String(
+            objectField(video, 'videoTransfer') ||
+            objectField(video, 'transfer') ||
+            objectField(video, 'colorimetry') ||
+            ''
+        );
+
+        return isHdr || /pq|hlg|dolby|2084|bt2100/i.test(transfer);
+    }
+
+    function gstBaseUrl(hlsUrl) {
+        var match = String(hlsUrl || '').match(/^(.*)\/master\.m3u8(?:\?.*)?$/i);
+        return match ? match[1] : null;
+    }
+
+    function warmupRequest(url, responseType, callback) {
+        var xhr = new XMLHttpRequest();
+        var finished = false;
+
+        function finish(success) {
+            if (finished)
+                return;
+
+            finished = true;
+            callback(success === true);
+        }
+
+        try {
+            xhr.open('GET', url, true);
+            xhr.timeout = 120000;
+            if (responseType)
+                xhr.responseType = responseType;
+            xhr.setRequestHeader('Cache-Control', 'no-cache');
+            xhr.onload = function () {
+                finish(xhr.status >= 200 && xhr.status < 400);
+            };
+            xhr.onerror = function () { finish(false); };
+            xhr.ontimeout = function () { finish(false); };
+            xhr.onabort = function () { finish(false); };
+            xhr.send();
+        } catch (error) {
+            finish(false);
+        }
+    }
+
+    function warmupFirstSegment(hlsUrl, audioIndex, callback) {
+        var base = gstBaseUrl(hlsUrl);
+        if (!base) {
+            callback(false);
+            return;
+        }
+
+        var query = '?audio=' + encodeURIComponent(audioIndex || 0);
+
+        // Prime the exact same task and audio track that hls.js will use. The
+        // first 4K HDR fragment is then already in Lampac's disk cache when
+        // the TV player starts, so a cold CPU encode cannot hit the short
+        // WebView fragment timeout.
+        warmupRequest(base + '/master.m3u8' + query, 'text', function (masterOk) {
+            if (!masterOk) {
+                callback(false);
+                return;
+            }
+
+            warmupRequest(base + '/init.mp4' + query, 'arraybuffer', function (initOk) {
+                if (!initOk) {
+                    callback(false);
+                    return;
+                }
+
+                warmupRequest(base + '/seg/0.m4s' + query, 'arraybuffer', callback);
+            });
+        });
+    }
+
+    function playWithWarmup(json, hlsUrl, audioIndex, play) {
+        if (!isLargeHdrSource(json)) {
+            play();
+            return;
+        }
+
+        Lampa.Loading.start(function () { }, 'Chuẩn bị đoạn HDR 4K đầu tiên...');
+        warmupFirstSegment(hlsUrl, audioIndex, function (success) {
+            Lampa.Loading.stop();
+
+            if (!success)
+                console.log('GStreamer', '4K HDR warmup failed; letting hls.js retry');
+
+            play();
+        });
+    }
+
     function handlePlayerStart(e) {
         var trioUhd = !isMkvSource(e.data) && isTrioUhdSource(e.data);
         if (isMkvSource(e.data) || trioUhd) {
@@ -243,18 +359,20 @@
                                 ? json.hls + '?audio=' + audioIndex
                                 : json.hls;
 
-                            Lampa.Player.play(e.data);
-                            Lampa.Player.playlist(createPlaylist(e.data, audioIndex))
-                            Lampa.Player.callback(function () {
-                                Lampa.Controller.toggle('modal')
+                            playWithWarmup(json, e.data.url, audioIndex, function () {
+                                Lampa.Player.play(e.data);
+                                Lampa.Player.playlist(createPlaylist(e.data, audioIndex))
+                                Lampa.Player.callback(function () {
+                                    Lampa.Controller.toggle('modal')
 
-                                e.data.url = e.data.url_orig
+                                    e.data.url = e.data.url_orig
 
-                                Lampa.PlayerPlaylist.get().forEach(function (p) {
-                                    p.url = p.url_orig
+                                    Lampa.PlayerPlaylist.get().forEach(function (p) {
+                                        p.url = p.url_orig
+                                    })
                                 })
-                            })
-                            taskId = json.id;
+                                taskId = json.id;
+                            });
                         }
 
                         if (!items.length || items.length == 1) {

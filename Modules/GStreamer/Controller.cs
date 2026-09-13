@@ -449,6 +449,10 @@ public class GStreamerController : BaseController
 
         gstask.PinSegmentFile(index);
 
+        var segSw = System.Diagnostics.Stopwatch.StartNew();
+        bool cacheHit = false;
+        long ensureMs = -1;
+
         try
         {
             if (gstask.IsFrozen)
@@ -466,6 +470,7 @@ public class GStreamerController : BaseController
 
             if (gstask.TryOpenSegmentFile(index, out var cachedSegment))
             {
+                cacheHit = true;
                 gstask.SetClientSegmentIndex(index, cacheHit: true);
                 gstask.QueueSegmentPrefetch(index);
 
@@ -473,6 +478,15 @@ public class GStreamerController : BaseController
                     cachedSegment,
                     HttpContext.RequestAborted
                 );
+
+                try
+                {
+                    System.IO.File.AppendAllText(
+                        "/root/lampac/data/gst_seg.log",
+                        $"{DateTime.UtcNow:HH:mm:ss} id={id} seg={index} hit=True ensureMs=-1 totalMs={segSw.ElapsedMilliseconds} bytes={cachedSegment.Length}\n"
+                    );
+                }
+                catch { }
             }
             else
             {
@@ -499,7 +513,10 @@ public class GStreamerController : BaseController
                 {
                     if (!gstask.TryOpenSegmentFile(index, out segmentFile))
                     {
-                        if (!gstask.EnsureClientSegment(index, HttpContext.RequestAborted))
+                        var ensureSw = System.Diagnostics.Stopwatch.StartNew();
+                        bool ensured = gstask.EnsureClientSegment(index, HttpContext.RequestAborted);
+                        ensureMs = ensureSw.ElapsedMilliseconds;
+                        if (!ensured)
                         {
                             if (HttpContext.RequestAborted.IsCancellationRequested)
                                 return;
@@ -529,6 +546,15 @@ public class GStreamerController : BaseController
                     segmentFile,
                     HttpContext.RequestAborted
                 );
+
+                try
+                {
+                    System.IO.File.AppendAllText(
+                        "/root/lampac/data/gst_seg.log",
+                        $"{DateTime.UtcNow:HH:mm:ss} id={id} seg={index} hit={cacheHit} ensureMs={ensureMs} totalMs={segSw.ElapsedMilliseconds} bytes={segmentFile.Length}\n"
+                    );
+                }
+                catch { }
             }
         }
         finally

@@ -1928,6 +1928,14 @@
             </svg>
             <span class="btn-label">Lưu</span>
           </button>
+          <button type="button" class="btn btn-ghost btn-sm" id="restartLampacBtn" title="Restart lampac (mất ~1 phút)">
+            <svg style="width:13px;height:13px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+              stroke-linecap="round">
+              <path d="M12 2v10" />
+              <path d="M18.36 6.64a9 9 0 1 1-12.72 0" />
+            </svg>
+            <span class="btn-label">Restart lampac</span>
+          </button>
         </div>
       </header>
 
@@ -3429,6 +3437,16 @@
       /* ── Event Listeners ── */
       $('#reloadBtn').addEventListener('click', refresh);
       $('#saveInitBtn').addEventListener('click', saveActiveConfig);
+      $('#restartLampacBtn').addEventListener('click', async () => {
+        if (!confirm('Restart lampac? (mất ~1 phút)')) return;
+        try {
+          const res = await api('/adminpanel/api/restart', { method: 'POST' });
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          showToast('Đã restart — đợi 1 phút rồi dùng', 'ok');
+        } catch (e) {
+          showToast('Lỗi restart: ' + (e.message || e), 'err');
+        }
+      });
       $('#formatInitBtn').addEventListener('click', () => {
         try {
           $('#initRaw').value = JSON.stringify(JSON.parse($('#initRaw').value), null, 2);
