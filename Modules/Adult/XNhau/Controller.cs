@@ -88,8 +88,19 @@ public class XNhauController : BaseSisiController
                 string url = XNhauTo.StreamLinksUri(uri);
 
                 // Bookmark/history chi luu id so: mo trang video truc tiep theo id
-                if (!string.IsNullOrEmpty(url) && System.Text.RegularExpressions.Regex.IsMatch(url, @"^[0-9]+$"))
-                    url = $"{init.host}/video/{url}/";
+                // Nếu bookmark lưu số thuần (vd: "540932") hoặc URL đầy đủ chứa ?uri=
+                if (!string.IsNullOrEmpty(url)) {
+                    if (System.Text.RegularExpressions.Regex.IsMatch(url, @"^[0-9]+$"))
+                        url = $"{init.host}/video/{url}/";
+                    else if (url.Contains("?uri=")) {
+                        // Bookmark lưu URL như: https://xnhau.cab/video/540932/?uri=https://xnhau.cab/video/540932/
+                        // Giữ nguyên URL (đã có host và video path)
+                        url = url.Split("?uri=")[0]; // Lấy phần trước ?uri= để đảm bảo URL sạch
+                        if (url.EndsWith("/")) url = url.TrimEnd('/');
+                    } else if (url.StartsWith("/")) {
+                        url = $"https://xnhau.cab{url}";
+                    }
+                }
 
                 if (url == null)
                     return (null, false);
