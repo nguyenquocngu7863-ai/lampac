@@ -1,0 +1,9 @@
+{
+  "name": "VietSexBlog",
+  "description": "VietSexBlog - Phim sex Viet Nam",
+  "version": "1.0.0",
+  "author": "Lampac",
+  "site": "https://x.vietsex.blog",
+  "enable": true,
+  "dynamic": true
+}

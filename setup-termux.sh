@@ -624,6 +624,36 @@ sync_latest_modules() {
             fi
         done
 
+        # SexViet100 (sexviet100.com): xac minh thiet bi 2026-09-14 (list,
+        # vidosik + strem proxy, PNG-boc-TS strip). Khong co trong
+        # lampac-nextgen.zip nen mkdir + lay full file.
+        sex100synctarget=/root/lampac/module/Adult/SexViet100
+        mkdir -p \"\$sex100synctarget\"
+        for sex100syncfile in manifest.json Controller.cs ModInit.cs Service.cs; do
+            if curl -fsSL --retry 3 \"\$base/Modules/Adult/SexViet100/\$sex100syncfile?cb=\$stamp\" -o \"/tmp/sex100sync-\$sex100syncfile\"; then
+                mv \"/tmp/sex100sync-\$sex100syncfile\" \"\$sex100synctarget/\$sex100syncfile\"
+                echo \"  [sync] sexviet100/\$sex100syncfile\"
+            else
+                rm -f \"/tmp/sex100sync-\$sex100syncfile\"
+                echo \"  [sync] sexviet100: bo qua \$sex100syncfile (nguon khong co)\"
+            fi
+        done
+
+        # VietSexBlog (x.vietsex.blog): xac minh thiet bi 2026-09-15 (list 24,
+        # vidosik + proxy strip PNG-boc-TS). Khong co trong
+        # lampac-nextgen.zip nen mkdir + lay full file.
+        vsbsynctarget=/root/lampac/module/Adult/VietSexBlog
+        mkdir -p \"\$vsbsynctarget\"
+        for vsbsyncfile in manifest.json Controller.cs ModInit.cs Service.cs README.md; do
+            if curl -fsSL --retry 3 \"\$base/Modules/Adult/VietSexBlog/\$vsbsyncfile?cb=\$stamp\" -o \"/tmp/vsbsync-\$vsbsyncfile\"; then
+                mv \"/tmp/vsbsync-\$vsbsyncfile\" \"\$vsbsynctarget/\$vsbsyncfile\"
+                echo \"  [sync] vietsexblog/\$vsbsyncfile\"
+            else
+                rm -f \"/tmp/vsbsync-\$vsbsyncfile\"
+                echo \"  [sync] vietsexblog: bo qua \$vsbsyncfile (nguon khong co)\"
+            fi
+        done
+
         # Stripchat (livecam): xac minh 2026-09-05 (list 90, potok ra hlsProxy).
         scsynctarget=/root/lampac/module/Adult/Stripchat
         mkdir -p \"\$scsynctarget\"
@@ -813,6 +843,40 @@ install_custom_modules() {
             else
                 rm -f \"/tmp/xnhau-$xnhaufile\"
                 echo \"  [xnhau] bo qua $xnhaufile - khong co tren nguon\"
+            fi
+        done
+
+        # SexViet100 (sexviet100.com): xac minh thiet bi 2026-09-14 (list,
+        # vidosik + strem proxy, PNG-boc-TS strip). Khong co trong
+        # lampac-nextgen.zip nen mkdir + lay full file, bo qua tung file neu
+        # nguon khong co (an toan duoi set -euo pipefail).
+        sex100base=\"\${CUSTOM_SOURCE_BASE}/Modules/Adult/SexViet100\"
+        sex100target=/root/lampac/module/Adult/SexViet100
+        mkdir -p \"$sex100target\"
+        for sex100file in manifest.json Controller.cs ModInit.cs Service.cs; do
+            if curl -fsSL --retry 3 \"$sex100base/$sex100file?cb=$syncstamp\" -o \"/tmp/sex100-$sex100file\"; then
+                mv \"/tmp/sex100-$sex100file\" \"$sex100target/$sex100file\"
+                echo \"  [sexviet100] $sex100file\"
+            else
+                rm -f \"/tmp/sex100-$sex100file\"
+                echo \"  [sexviet100] bo qua $sex100file - khong co tren nguon\"
+            fi
+        done
+
+        # VietSexBlog (x.vietsex.blog): xac minh thiet bi 2026-09-15 (list 24,
+        # vidosik + proxy strip PNG-boc-TS). Khong co trong
+        # lampac-nextgen.zip nen mkdir + lay full file, bo qua tung file neu
+        # nguon khong co (an toan duoi set -euo pipefail).
+        vsbbase=\"\${CUSTOM_SOURCE_BASE}/Modules/Adult/VietSexBlog\"
+        vsbtarget=/root/lampac/module/Adult/VietSexBlog
+        mkdir -p \"$vsbtarget\"
+        for vsbfile in manifest.json Controller.cs ModInit.cs Service.cs README.md; do
+            if curl -fsSL --retry 3 \"$vsbbase/$vsbfile?cb=$syncstamp\" -o \"/tmp/vsb-$vsbfile\"; then
+                mv \"/tmp/vsb-$vsbfile\" \"$vsbtarget/$vsbfile\"
+                echo \"  [vietsexblog] $vsbfile\"
+            else
+                rm -f \"/tmp/vsb-$vsbfile\"
+                echo \"  [vietsexblog] bo qua $vsbfile - khong co tren nguon\"
             fi
         done
 
