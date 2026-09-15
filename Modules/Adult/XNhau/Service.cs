@@ -52,12 +52,18 @@ public static class XNhauTo
         }
         else if (!string.IsNullOrWhiteSpace(search))
         {
+            string encsearch = HttpUtility.UrlEncode(search);
             url.Append("search/");
-            url.Append(HttpUtility.UrlEncode(search));
+            url.Append(encsearch);
             url.Append("/");
             if (pg > 1)
             {
-                url.Append("?from=");
+                // Search phan trang qua AJAX (giong web): ?mode=async&function=get_block&...
+                url.Append("?mode=async&function=get_block&block_id=list_videos_videos_list_search_result&q=");
+                url.Append(encsearch);
+                url.Append("&from_videos=");
+                url.Append(pg);
+                url.Append("&from_albums=");
                 url.Append(pg);
             }
         }
@@ -156,9 +162,6 @@ public static class XNhauTo
 
             string quality = row.Match("<span class=\"hd[^\\\"]*\\\">([^<]+)</span>", trim: true);
 
-            var idm = System.Text.RegularExpressions.Regex.Match(href, @"/video/([0-9]+)/");
-            string vid = idm.Success ? idm.Groups[1].Value : href;
-
             var pl = new PlaylistItem()
             {
                 video = $"{uri}?uri={HttpUtility.UrlEncode(href)}",
@@ -170,7 +173,7 @@ public static class XNhauTo
                 bookmark = new Bookmark()
                 {
                     site = "xnhau",
-                    href = vid,
+                    href = href,
                     image = picture
                 }
             };
@@ -317,6 +320,7 @@ public static class XNhauTo
         string s = html.ToString();
         var stream_links = new Dictionary<string, string>(3);
 
+        // Cách 1: video_url: '...' (xNhau player)
         var m480 = System.Text.RegularExpressions.Regex.Match(s, @"video_url:\s*'([^']+)'");
         var t480 = System.Text.RegularExpressions.Regex.Match(s, @"video_url_text:\s*'([^']+)'");
         if (m480.Success && m480.Groups[1].Value.StartsWith("http"))
@@ -326,6 +330,20 @@ public static class XNhauTo
         var t720 = System.Text.RegularExpressions.Regex.Match(s, @"video_alt_url_text:\s*'([^']+)'");
         if (m720.Success)
             stream_links.TryAdd(t720.Success ? t720.Groups[1].Value : "720p", m720.Groups[1].Value);
+
+        // Fallback: parse iframe src / source src (nếu video_url không tìm thấy)
+        if (stream_links.Count == 0)
+        {
+            var iframe = System.Text.RegularExpressions.Regex.Match(s, "<iframe[^>]+src=[\"']([^\"']+)[\"']");
+            if (iframe.Success)
+                stream_links.TryAdd("stream", iframe.Groups[1].Value);
+            else
+            {
+                var source = System.Text.RegularExpressions.Regex.Match(s, "<source[^>]+src=[\"']([^\"']+)[\"']");
+                if (source.Success)
+                    stream_links.TryAdd("stream", source.Groups[1].Value);
+            }
+        }
 
         return stream_links.OrderByDescending(kv => StreamQualityRank(kv.Key + " " + kv.Value))
             .ToDictionary(k => k.Key, v => v.Value);

@@ -4,38 +4,45 @@ using Shared.Attributes;
 using Shared.Models.Base;
 using Shared.Models.SISI.Base;
 using Shared.Services;
+using Shared.Services.Hybrid;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
+using System.Text;
 using System.Threading.Tasks;
 using System.Web;
 
-namespace XNhau;
+namespace SexViet100;
 
-public class XNhauController : BaseSisiController
+public class SexViet100Controller : BaseSisiController
 {
     static readonly HttpClient httpClient = FriendlyHttp.CreateHttpClient();
 
-    public XNhauController() : base(ModInit.conf) { }
+    public SexViet100Controller() : base(ModInit.conf) { }
 
     [HttpGet, Staticache(manually: true)]
-    [Route("xnhau")]
+    [Route("sexviet100")]
     async public Task<ActionResult> Index(string search, string sort, string c, string t, int pg = 1)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
-        return badInitMsg;
+            return badInitMsg;
+
+        // Search của site không có phân trang thật (/search/{kw}/trang/2/ trả 0 item).
+        // Trả rỗng cho pg>1 để app dừng ở trang 1 thay vì lặp lại 20 kết quả cũ.
+        if (pg > 1 && !string.IsNullOrWhiteSpace(search))
+            return Json(new { count = 0, total_pages = 1, menu = SexViet10To.Menu(host), list = new List<PlaylistItem>() });
 
     rhubFallback:
-        var cache = await InvokeCacheResult(ipkey($"xnhau:{search}:{sort}:{c}:{t}:{pg}"), 10, jsonContext.ListPlaylistItem, async e =>
+        var cache = await InvokeCacheResult(ipkey($"sexviet100:{search}:{sort}:{c}:{t}:{pg}"), 10, jsonContext.ListPlaylistItem, async e =>
         {
             if (init.httpversion == 1)
                 httpHydra.RegisterHttp(httpClient);
 
             List<PlaylistItem> playlists = null;
 
-            await httpHydra.GetSpan(XNhauTo.Uri(init.host, search, sort, c, t, pg), span =>
+            await httpHydra.GetSpan(SexViet10To.Uri(init.host, search, sort, c, t, pg), span =>
             {
-                playlists = XNhauTo.Playlist("xnhau/vidosik", span);
+                playlists = SexViet10To.Playlist("sexviet100/vidosik", span.ToString());
             });
 
             if (playlists == null || playlists.Count == 0)
@@ -50,15 +57,13 @@ public class XNhauController : BaseSisiController
         if (rch?.enable == true)
             StatiCacheDisabled = true;
 
-        return PlaylistResult(cache,
-            XNhauTo.Menu(host, search, sort, c, t)
-        );
+        return PlaylistResult(cache, SexViet10To.Menu(host));
     }
 
     async Task<(Dictionary<string, string> links, bool userch)> ResolveLinksAsync(string uri)
     {
         SemaphorManager semaphore = null;
-        string semaphoreKey = $"xnhau:view:{uri}";
+        string semaphoreKey = $"sexviet100:view:{uri}";
 
         if (rch?.enable != true)
         {
@@ -76,36 +81,37 @@ public class XNhauController : BaseSisiController
                 if (init.httpversion == 1)
                     httpHydra.RegisterHttp(httpClient);
 
-                string url = XNhauTo.StreamLinksUri(uri);
+                string url = uri;
+                if (uri.StartsWith("/"))
+                    url = $"https://sexviet100.com{uri}";
+                else if (!uri.StartsWith("http"))
+                    url = $"https://sexviet100.com/{uri}";
 
-                // Bookmark/history chi luu id so: mo trang video truc tiep theo id
-                // Nếu bookmark lưu số thuần (vd: "540932") hoặc URL đầy đủ chứa ?uri=
-                if (!string.IsNullOrEmpty(url)) {
-                    if (System.Text.RegularExpressions.Regex.IsMatch(url, @"^[0-9]+$"))
-                        url = $"{init.host}/video/{url}/";
-                    else if (url.Contains("?uri=")) {
-                        // Bookmark lưu URL như: https://xnhau.cab/video/540932/?uri=https://xnhau.cab/video/540932/
-                        // Giữ nguyên URL (đã có host và video path)
-                        url = url.Split("?uri=")[0]; // Lấy phần trước ?uri= để đảm bảo URL sạch
-                        if (url.EndsWith("/")) url = url.TrimEnd('/');
-                    } else if (url.StartsWith("/")) {
-                        url = $"https://xnhau.cab{url}";
-                    }
-                }
-
-                if (url == null)
-                    return (null, false);
+                string videoId = null;
 
                 await httpHydra.GetSpan(url, span =>
                 {
-                    cache.links = XNhauTo.StreamLinks(span);
+                    videoId = SexViet10To.GetVideoId(span.ToString());
                 });
+
+                if (string.IsNullOrEmpty(videoId))
+                    return (null, false);
+
+                var apiUrl = "https://sexviet100.com/api/player";
+                var content = new StringContent($"id={videoId}&server=1", Encoding.UTF8, "application/x-www-form-urlencoded");
+                var request = new HttpRequestMessage(HttpMethod.Post, apiUrl);
+                request.Content = content;
+                request.Headers.Add("X-Requested-With", "XMLHttpRequest");
+
+                var response = await httpClient.SendAsync(request);
+                var json = await response.Content.ReadAsStringAsync();
+
+                cache.links = SexViet10To.StreamLinks(json);
 
                 if (cache.links == null || cache.links.Count == 0)
                     return (null, false);
 
                 proxyManager?.Success();
-
                 cache.userch = rch?.enable == true;
                 hybridCache.Set(memKey, cache, cacheTime(20));
             }
@@ -119,7 +125,7 @@ public class XNhauController : BaseSisiController
     }
 
     [HttpGet, Staticache(manually: true)]
-    [Route("xnhau/vidosik")]
+    [Route("sexviet100/vidosik")]
     async public Task<ActionResult> Vidosik(string uri)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
@@ -140,66 +146,36 @@ public class XNhauController : BaseSisiController
             return OnResult(links);
 
         return Json(links.ToDictionary(k => k.Key, v =>
-            $"{host}/xnhau/strem?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(v.Key)}"));
-    }
-
-
-    [HttpGet]
-    [Route("xnhau/uploader")]
-    async public Task<ActionResult> Uploader(string uri)
-    {
-        if (await IsRequestBlocked(rch: true))
-            return Json(new { name = "", member = "" });
-
-        string url = XNhauTo.StreamLinksUri(uri);
-        if (!string.IsNullOrEmpty(url) && System.Text.RegularExpressions.Regex.IsMatch(url, @"^[0-9]+$"))
-            url = $"{init.host}/video/{url}/";
-        if (string.IsNullOrEmpty(url))
-            return Json(new { name = "", member = "" });
-
-        string memKey = ipkey($"xnhau:uploader:{url}");
-        if (!hybridCache.TryGetValue(memKey, out Dictionary<string, string> info))
-        {
-            info = null;
-            await httpHydra.GetSpan(url, span =>
-            {
-                var m = System.Text.RegularExpressions.Regex.Match(span.ToString(),
-                    @"<a class=""avatar"" href=""((?:https?://[^/]+)?/members/[0-9]+/)""[^>]*title=""([^""]+)""");
-                if (m.Success)
-                {
-                    string murl = m.Groups[1].Value;
-                    if (murl.StartsWith("/"))
-                        murl = $"{init.host}{murl}";
-                    info = new Dictionary<string, string>
-                    {
-                        ["name"] = HttpUtility.HtmlDecode(m.Groups[2].Value),
-                        ["member"] = murl
-                    };
-                }
-            });
-
-            if (info == null)
-                return OnError("uploader");
-
-            hybridCache.Set(memKey, info, cacheTime(60));
-        }
-
-        return Json(info);
+            $"{host}/sexviet100/video.m3u8?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(v.Key)}"));
     }
 
     [HttpGet]
-    [Route("xnhau/strem")]
-    async public Task<ActionResult> Strem(string link, string uri, string q)
+    [Route("sexviet100/video")]
+    [Route("sexviet100/video.m3u8")]
+    async public Task<ActionResult> Video(string uri, string q)
     {
         if (await IsRequestBlocked(rch: true))
             return badInitMsg;
 
-        if (rch?.enable == true && 484 > rch.InfoConnected()?.apkVersion)
-        {
-            rch.Disabled();
-            if (!init.rhub_fallback)
-                return OnError("apkVersion", false);
-        }
+        // Player trong app chỉ dùng hls.js khi URL chứa ".m3u8".
+        // Trả link qua route video.m3u8 của chính mình (redirect 302 sang proxy),
+        // thay vì đưa thẳng link /proxy/ không đuôi (rơi vào native và gãy).
+        var (links, _) = await ResolveLinksAsync(uri);
+        if (links == null || !links.TryGetValue(q, out string link) || string.IsNullOrEmpty(link))
+            return OnError("stream_links", refresh_proxy: true);
+
+        var direct = httpHeaders(init, HeadersModel.Init(
+            ("referer", "https://sexviet100.com/")
+        ));
+        return Redirect(HostStreamProxy(link, direct));
+    }
+
+    [HttpGet]
+    [Route("sexviet100/strem")]
+    async public Task<ActionResult> Strem(string link, string uri, string q)
+    {
+        if (await IsRequestBlocked(rch: true))
+            return badInitMsg;
 
         if (!string.IsNullOrEmpty(uri) && !string.IsNullOrEmpty(q))
         {
@@ -212,7 +188,7 @@ public class XNhauController : BaseSisiController
             return OnError("link");
 
         SemaphorManager semaphore = null;
-        string semaphoreKey = $"xnhau:strem:{link}";
+        string semaphoreKey = $"sexviet100:strem:{link}";
 
         if (rch?.enable != true)
         {
@@ -231,7 +207,7 @@ public class XNhauController : BaseSisiController
                     ("sec-fetch-dest", "document"),
                     ("sec-fetch-mode", "navigate"),
                     ("sec-fetch-site", "none"),
-                    ("referer", "https://xnhau.cab/")
+                    ("referer", "https://sexviet100.com/")
                 ));
 
                 if (rch?.enable == true)
@@ -248,7 +224,7 @@ public class XNhauController : BaseSisiController
                 {
                     proxyManager?.Success();
                     var direct = httpHeaders(init, HeadersModel.Init(
-                        ("referer", "https://xnhau.cab/")
+                        ("referer", "https://sexviet100.com/")
                     ));
                     hybridCache.Set(memKey, link, cacheTime(40));
                     return Redirect(HostStreamProxy(link, direct));
