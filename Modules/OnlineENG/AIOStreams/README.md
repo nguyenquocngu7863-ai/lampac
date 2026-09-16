@@ -41,8 +41,20 @@ trang cấu hình AIOStreams; Lampac không cố sửa ngược cấu hình riê
 - `subtitles/movie/{id}.json`
 - `subtitles/series/{id}:{season}:{episode}.json`
 
-Module giữ flow series `Season -> Episode -> release -> player`. Stream HTTP(S)
-được nhận; `magnet:` và mục chỉ có `externalUrl` không được mở. Các mục có
+Module giữ flow series `Season -> Episode -> chọn nguồn -> release -> player`.
+Stream HTTP(S) được nhận; `magnet:` và mục chỉ có `externalUrl` không được mở.
+
+### Tập phim Bộ: pop-up chọn nguồn
+
+`lite/aiostreams/episode` nhận thêm cờ `source_pick=1`. Khi có cờ này và chưa có
+`stream_source`, route trả JSON `{type:"sources", default, sources:[{name, streams,
+quality, url}]}` — mỗi nguồn một `url` đã chốt `stream_source` — để `Online/plugin.js`
+bật `Lampa.Select` cho người dùng chọn, rồi mới gọi lại lấy `VideoTpl`. Menu chất
+lượng vì thế chỉ chứa link của nguồn vừa chọn thay vì gộp mọi provider.
+
+Không có `source_pick` (plugin cũ, hoặc gọi tay) thì hành vi cũ được giữ nguyên:
+một `VideoTpl` với toàn bộ nguồn trong menu chất lượng. Nguồn đã chọn được client
+nhớ theo thẻ phim; playlist và menu ngữ cảnh dùng nguồn đã nhớ, không hỏi lại. Các mục có
 `behaviorHints.notWebReady` hoặc metadata `.mkv` đi route MKV để plugin
 GStreamer quyết định; HLS/MP4 rõ ràng giữ route direct.
 

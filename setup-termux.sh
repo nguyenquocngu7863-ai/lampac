@@ -745,6 +745,22 @@ sync_latest_modules() {
                 pull Modules/AdminPanel/index.html \"\$admin/index.html\"
             fi
         done
+        # AIOStreams phim Bo: bam mot tap -> pop-up chon nguon (server tra
+        # {type:'sources'} khi co source_pick=1), menu chat luong sau do chi
+        # chua link cua dung nguon vua chon. Doi ca 2 file cung luc:
+        #   - Controller.cs sinh source_pick + danh sach nguon
+        #   - Online/plugin.js bat pop-up Lampa.Select va nho nguon da chon
+        # Plugin cu + server moi (hoac nguoc lai) van chay dung hanh vi cu.
+        for aiomod in /root/lampac/module/OnlineENG/AIOStreams /root/lampac/mods/OnlineENG/AIOStreams; do
+            if [ -d \"\$aiomod\" ]; then
+                pull Modules/OnlineENG/AIOStreams/Controller.cs \"\$aiomod/Controller.cs\"
+            fi
+        done
+        for onlinemod in /root/lampac/module/Online /root/lampac/mods/Online; do
+            if [ -d \"\$onlinemod\" ]; then
+                pull Online/plugin.js \"\$onlinemod/plugin.js\"
+            fi
+        done
     "
 
     ok "Latest patch files applied"

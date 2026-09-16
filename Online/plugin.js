@@ -566,7 +566,7 @@
       }
     };
     // ── play / quality ──
-    this.getFileUrl = function (file, call, waiting_rch) {
+    this.getFileUrl = function (file, call, waiting_rch, options) {
       var _this = this;
 
       if (Lampa.Storage.field('player') !== 'inner' && file.stream && Lampa.Platform.is('apple')) {
@@ -584,7 +584,9 @@
         network['native'](
           account(file.url),
           function (json) {
-            if (json.rch) {
+            if (json && json.sources && json.sources.length) {
+              _this.pickEpisodeSource(json, file, waiting_rch, call, options && options.interactive);
+            } else if (json.rch) {
               if (waiting_rch) {
                 waiting_rch = false;
                 Lampa.Loading.stop();
@@ -654,6 +656,99 @@
       var url = data.url;
       if (typeof url === 'string' && /\.m3u8?(?:$|[?#])/i.test(url)) data.hls_type = 'hlsjs';
     };
+    // ── AIOStreams phim Bộ: pop-up chọn nguồn cho từng tập ──
+    // Server gửi { type: 'sources' } thay vì nhét mọi link vào một menu chất
+    // lượng. Hỏi người dùng chọn nguồn trước, rồi mới lấy link của nguồn đó.
+    this.episodeSourceKey = function () {
+      return 'aiostreams_source_' + (object.movie.id || object.movie.number_of_seasons || '');
+    };
+    this.pickEpisodeSource = function (json, file, waiting_rch, call, interactive) {
+      var _this9 = this;
+      var sources = json.sources || [];
+      if (!sources.length) {
+        call(false, {});
+        return;
+      }
+      if (interactive) {
+        this.showEpisodeSources(json, sources, file, waiting_rch, call);
+        return;
+      }
+      // Không hỏi (playlist tự nạp tập kế, menu ngữ cảnh): dùng nguồn đã chọn
+      // lần trước, không có thì lấy nguồn mặc định server gợi ý.
+      var preferred = Lampa.Storage.get(this.episodeSourceKey(), '');
+      var chosen =
+        sources.find(function (s) {
+          return s.name == preferred;
+        }) ||
+        sources.find(function (s) {
+          return s.name == json['default'];
+        }) ||
+        sources[0];
+      this.resolveEpisodeSource(chosen, file, waiting_rch, call, false);
+    };
+    this.showEpisodeSources = function (json, sources, file, waiting_rch, call) {
+      var _this9 = this;
+      Lampa.Loading.stop();
+      network.clear();
+      var items = sources.map(function (s) {
+        return {
+          title: s.quality ? s.name + ' — ' + s.quality + ' (' + s.streams + ')' : s.name + ' (' + s.streams + ')',
+          url: s.url,
+          name: s.name,
+          selected: s.name == json['default']
+        };
+      });
+      Lampa.Select.show({
+        title: Lampa.Lang.translate('settings_rest_source'),
+        items: items,
+        onBack: function onBack() {
+          Lampa.Controller.toggle('content');
+          call(false, {});
+        },
+        onSelect: function onSelect(a) {
+          Lampa.Storage.set(_this9.episodeSourceKey(), a.name);
+          _this9.resolveEpisodeSource(a, file, waiting_rch, call, true);
+        }
+      });
+    };
+    this.resolveEpisodeSource = function (chosen, file, waiting_rch, call, startLoading) {
+      var _this9 = this;
+      if (!chosen || !chosen.url) {
+        Lampa.Loading.stop();
+        call(false, {});
+        return;
+      }
+      // getFileUrl đã bật spinner trước khi hỏi nguồn; chỉ bật lại khi đi từ
+      // pop-up ra (lúc đó showEpisodeSources đã tắt spinner để hiện danh sách).
+      if (startLoading) {
+        Lampa.Loading.start(function () {
+          Lampa.Loading.stop();
+          Lampa.Controller.toggle('content');
+          network.clear();
+        });
+      }
+      network.timeout(BALANCER_TIMEOUT);
+      network['native'](
+        account(chosen.url),
+        function (stream) {
+          Lampa.Loading.stop();
+          if (stream && stream.url) {
+            _this9.applyHlsType(stream);
+            call(stream, stream);
+          } else {
+            call(false, {});
+          }
+        },
+        function () {
+          Lampa.Loading.stop();
+          call(false, {});
+        },
+        waiting_rch,
+        {
+          headers: addHeaders()
+        }
+      );
+    };
     this.display = function (videos) {
       var _this5 = this;
       this.draw(videos, {
@@ -714,6 +809,10 @@
                               function () {
                                 cell.url = '';
                                 call();
+                              },
+                              false,
+                              {
+                                interactive: false
                               }
                             );
                           };
@@ -753,11 +852,14 @@
             item,
             function (stream) {
               call({
-                file: stream.url,
-                quality: item.qualitys
+                file: stream ? stream.url : '',
+                quality: (stream && stream.quality) || item.qualitys
               });
             },
-            true
+            true,
+            {
+              interactive: false
+            }
           );
         }
       });

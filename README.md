@@ -802,6 +802,51 @@ Lampac có module **AIOStreams** tùy chọn. Module này chỉ gọi manifest v
 
 Manifest URL có thể chứa UUID, password, API key hoặc token; không đưa nó vào Git, log hoặc chat. Các nguồn cũ như **HDVB, KKPhim, K20, WebStreamr và Sootio** vẫn giữ nguyên làm fallback. AIOStreams chỉ là nguồn riêng thêm vào, không thay thế chúng.
 
+### Phim Bộ — pop-up chọn nguồn cho từng tập
+
+Trước đây bấm một tập là Lampa phát luôn link đầu, còn **toàn bộ** nguồn của mọi
+provider bị nhét vào chung một menu chất lượng (mục nào cũng nhãn dài, khó chọn).
+Nay tập phim Bộ đi qua hai bước:
+
+```text
+bấm tập → GET /lite/aiostreams/episode?...&source_pick=1
+        ← {"type":"sources","default":"...","sources":[{name,streams,quality,url}]}
+        → pop-up "Nguồn" (Lampa.Select)
+        → GET .../episode?...&stream_source=<nguồn đã chọn>
+        ← VideoTpl: menu chất lượng chỉ còn link của đúng nguồn đó
+```
+
+- `source_pick=1` do `Online/plugin.js` gửi lên, nghĩa là *client có hỗ trợ pop-up*.
+  Server không nhận cờ này (plugin cũ) thì vẫn trả `VideoTpl` gộp mọi nguồn như cũ —
+  hai phía lệch version không làm hỏng luồng nào.
+- Nguồn được xếp theo **độ phân giải cao nhất trước**, cùng độ phân giải thì nguồn
+  nhiều link hơn thắng; mục đầu là `default` và được đánh dấu trong pop-up.
+- Nguồn đã chọn được nhớ theo từng thẻ phim (`Lampa.Storage` key
+  `aiostreams_source_<movie.id>`), nên xem tập kế tiếp không bị hỏi lại.
+- **Không hỏi** ở hai chỗ dễ làm phiền: playlist tự nạp tập kế tiếp và menu ngữ cảnh
+  (copy link) — hai luồng này tự dùng nguồn đã nhớ, chưa nhớ thì lấy `default`.
+
+Cả hai file phải đi cùng nhau, đã nằm trong `sync_latest_modules()`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nguyenquocngu7863-ai/lampac/<nhánh>/setup-termux.sh -o setup-termux.sh
+bash setup-termux.sh --sync && lampac stop && lampac start
+```
+
+`Controller.cs` là file C# nên **bắt buộc restart** Lampac; `plugin.js` (`/online.js`)
+là plugin client nên chỉ cần thoát hẳn Lampa hoặc hard refresh.
+
+Kiểm tra nhanh server đã trả danh sách nguồn chưa (dùng id phim Bộ thật của bạn):
+
+```bash
+proot-distro login ubuntu -- bash -lc \
+  'curl -s "http://127.0.0.1:9118/lite/aiostreams/episode?stremio_id=tt9288030&s=1&e=1&source_pick=1" | head -c 400'
+```
+
+Kết quả phải bắt đầu bằng `{"type":"sources"` và có mảng `sources`. Nếu vẫn ra
+`{"title":...,"method":"play"` thì file `Controller.cs` chưa được sync hoặc Lampac
+chưa restart.
+
 ### Local host AIOStreams trên Ubuntu proot
 
 Sau khi chạy `bash setup-termux.sh --sync-all`, cài AIOStreams chính chủ bằng:

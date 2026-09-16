@@ -37,7 +37,8 @@ public sealed class AIOStreamsController : BaseOnlineController<ModuleConf>
         short s = -1,
         short e = -1,
         bool play = false,
-        bool rjson = false
+        bool rjson = false,
+        int source_pick = 0
     )
     {
         if (await IsRequestBlocked(rch: false, rch_check: !play))
@@ -76,12 +77,13 @@ public sealed class AIOStreamsController : BaseOnlineController<ModuleConf>
                 title,
                 original_title,
                 tmdb_id,
-                s
+                s,
+                source_pick == 1
             );
         }
 
         if (isSeries)
-            return await EpisodeResponse(addonId, title, original_title, s, e, play, stream_source);
+            return await EpisodeResponse(addonId, title, original_title, s, e, play, stream_source, source_pick == 1);
 
         string type = "movie";
         List<AIOStreamItem> allStreams = await GetStreams(type, addonId);
@@ -236,7 +238,8 @@ public sealed class AIOStreamsController : BaseOnlineController<ModuleConf>
         short s,
         short e,
         bool play = false,
-        string stream_source = null
+        string stream_source = null,
+        int source_pick = 0
     )
     {
         if (await IsRequestBlocked(rch: false, rch_check: !play))
@@ -248,7 +251,7 @@ public sealed class AIOStreamsController : BaseOnlineController<ModuleConf>
         if (string.IsNullOrWhiteSpace(stremio_id))
             return OnError("Missing Stremio series id", 400);
 
-        return await EpisodeResponse(stremio_id, title, original_title, s, e, play, stream_source);
+        return await EpisodeResponse(stremio_id, title, original_title, s, e, play, stream_source, source_pick == 1);
     }
 
     async Task<ActionResult> EpisodeResponse(
@@ -258,7 +261,8 @@ public sealed class AIOStreamsController : BaseOnlineController<ModuleConf>
         short season,
         short episode,
         bool play,
-        string streamSource = null
+        string streamSource = null,
+        bool sourcePick = false
     )
     {
         if (season <= 0 || episode <= 0)
@@ -286,6 +290,12 @@ public sealed class AIOStreamsController : BaseOnlineController<ModuleConf>
         if (allStreams.Count == 0)
             return OnError("No direct HTTP streams returned by AIOStreams", 502);
 
+        // Bấm một tập phim Bộ: trả danh sách NGUỒN để client bật pop-up chọn,
+        // thay vì nhét mọi nguồn của mọi provider vào cùng một menu chất lượng.
+        // Chỉ áp dụng khi client có hỗ trợ (gửi source_pick=1) và chưa chốt nguồn.
+        if (sourcePick && !play && string.IsNullOrWhiteSpace(streamSource))
+            return BuildEpisodeSourcePick(allStreams, addonId, title, original_title, season, episode);
+
         List<AIOStreamItem> streams = string.IsNullOrWhiteSpace(streamSource)
             ? allStreams
             : allStreams
@@ -302,12 +312,107 @@ public sealed class AIOStreamsController : BaseOnlineController<ModuleConf>
             return RedirectToPlay(firstPlay.firstLink);
         }
 
-        // View tập phim của Lampa chỉ nuốt được một object play duy nhất
-        // (kèm menu quality), không hiển thị được trang đa thẻ như phim lẻ.
-        // Trả dạng single-play như Videasy/VidCore; toàn bộ nguồn vẫn nằm
-        // trong menu quality với nhãn nguồn để chọn.
+        // Sau khi người dùng đã chọn nguồn trong pop-up, view tập phim của Lampa
+        // chỉ nuốt được một object play duy nhất (kèm menu quality). Menu đó giờ
+        // chỉ chứa các link của đúng nguồn vừa chọn, nhãn vẫn đầy đủ như phim lẻ.
         var resp = BuildVideoResponse(streams, title, original_title, season, episode);
         return ContentTo(resp.json);
+    }
+
+    /// <summary>
+    /// Gom stream của một tập theo nguồn (SourceGroupName) rồi trả JSON nhẹ để
+    /// plugin Online bật pop-up "Chọn nguồn". Mỗi nguồn kèm link đã chốt
+    /// <c>stream_source</c> — gọi link đó mới nhận VideoTpl để phát.
+    /// Không trả link phát trực tiếp ở bước này nên không lộ URL khi chưa chọn.
+    /// </summary>
+    ActionResult BuildEpisodeSourcePick(
+        List<AIOStreamItem> allStreams,
+        string addonId,
+        string title,
+        string original_title,
+        short season,
+        short episode
+    )
+    {
+        var groups = new Dictionary<string, (int Count, List<string> Qualities)>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (AIOStreamItem stream in allStreams)
+        {
+            string name = SourceGroupName(stream);
+
+            if (!groups.TryGetValue(name, out var stat))
+                stat = (0, new List<string>(4));
+
+            stat.Count++;
+
+            if (!string.IsNullOrWhiteSpace(stream.Quality) && !stat.Qualities.Contains(stream.Quality))
+                stat.Qualities.Add(stream.Quality);
+
+            groups[name] = stat;
+        }
+
+        if (groups.Count == 0)
+            return OnError("No streams for the selected AIOStreams source", 404);
+
+        // Nguồn tốt nhất lên đầu: độ phân giải cao nhất trước, cùng độ phân giải
+        // thì nguồn nhiều link hơn thắng. Client đánh dấu mục đầu là mặc định.
+        List<KeyValuePair<string, (int Count, List<string> Qualities)>> ordered = groups
+            .OrderByDescending(g => g.Value.Qualities.Count > 0 ? g.Value.Qualities.Max(q => QualityRank(q)) : 0)
+            .ThenByDescending(g => g.Value.Count)
+            .ThenBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var sources = new JArray();
+
+        foreach (var group in ordered)
+        {
+            string quality = group.Value.Qualities.Count > 0
+                ? string.Join(", ", group.Value.Qualities.OrderByDescending(q => QualityRank(q)))
+                : null;
+
+            var item = new JObject
+            {
+                ["name"] = group.Key,
+                ["streams"] = group.Value.Count,
+                ["url"] = BuildEpisodeUrl(
+                    addonId,
+                    title,
+                    original_title,
+                    season,
+                    episode,
+                    streamSource: group.Key
+                )
+            };
+
+            if (quality != null)
+                item["quality"] = quality;
+
+            sources.Add(item);
+        }
+
+        string episodeName = string.IsNullOrWhiteSpace(title)
+            ? string.IsNullOrWhiteSpace(original_title) ? "AIOStreams" : original_title
+            : title;
+
+        var result = new JObject
+        {
+            ["type"] = "sources",
+            ["balanser"] = "aiostreams",
+            ["name"] = $"{episodeName} S{season:00}E{episode:00}",
+            ["s"] = season,
+            ["e"] = episode,
+            ["default"] = ordered[0].Key,
+            ["sources"] = sources
+        };
+
+        return ContentTo(result.ToString(Formatting.None), "application/json; charset=utf-8");
+    }
+
+    /// <summary>Xếp chất lượng giảm dần để nhãn nguồn hiện bản cao nhất trước.</summary>
+    static int QualityRank(string quality)
+    {
+        Match match = Regex.Match(quality ?? string.Empty, @"(\d+)p", RegexOptions.IgnoreCase);
+        return match.Success && int.TryParse(match.Groups[1].Value, out int value) ? value : 0;
     }
 
     MovieTpl BuildEpisodeTemplate(
@@ -439,7 +544,8 @@ public sealed class AIOStreamsController : BaseOnlineController<ModuleConf>
         string title,
         string original_title,
         long tmdb_id,
-        short season
+        short season,
+        bool sourcePick = false
     )
     {
         long tvId = ResolveTmdbId(addonId, tmdb_id);
@@ -473,12 +579,15 @@ public sealed class AIOStreamsController : BaseOnlineController<ModuleConf>
                 ? $"Episode {number}"
                 : $"{number}. {episodeName}";
 
+            // source_pick=1 báo client hỗ trợ pop-up chọn nguồn; server cũ bỏ qua
+            // tham số lạ nên plugin cũ/server mới vẫn chạy như trước.
             string link = BuildEpisodeUrl(
                 addonId,
                 title,
                 original_title,
                 season,
-                (short)number
+                (short)number,
+                sourcePick: sourcePick
             );
 
             string streamLink = BuildEpisodeUrl(
@@ -1045,7 +1154,9 @@ public sealed class AIOStreamsController : BaseOnlineController<ModuleConf>
         string original_title,
         short season,
         short episode,
-        bool play = false
+        bool play = false,
+        string streamSource = null,
+        bool sourcePick = false
     )
     {
         string query =
@@ -1054,8 +1165,14 @@ public sealed class AIOStreamsController : BaseOnlineController<ModuleConf>
             $"&original_title={HttpUtility.UrlEncode(original_title)}" +
             $"&s={season}&e={episode}";
 
+        if (!string.IsNullOrWhiteSpace(streamSource))
+            query += $"&stream_source={HttpUtility.UrlEncode(streamSource)}";
+
         if (play)
             query += "&play=true";
+
+        if (sourcePick)
+            query += "&source_pick=1";
 
         return accsArgs($"{host}/lite/aiostreams/episode?{query}");
     }
