@@ -526,6 +526,20 @@ sync_latest_modules() {
                 pull Modules/OnlineENG/VidLink/ModInit.cs \"\$vidlink/ModInit.cs\"
             fi
         done
+        # VaPlayer (streamdata.vaplayer.ru, ENG): JSON thang, m3u8 da chat
+        # luong 480p/720p/1080p, H.264+AAC, imdb-based, khong can Playwright.
+        vaplayertarget=/root/lampac/module/OnlineENG/VaPlayer
+        mkdir -p \"$vaplayertarget\"
+        for vaplayerfile in manifest.json Controller.cs ModInit.cs; do
+            if curl -fsSL --retry 3 \"$base/Modules/OnlineENG/VaPlayer/$vaplayerfile?cb=$stamp\" -o \"/tmp/vaplayer-$vaplayerfile\"; then
+                mv \"/tmp/vaplayer-$vaplayerfile\" \"$vaplayertarget/$vaplayerfile\"
+                echo \"  [sync] vaplayer/$vaplayerfile\"
+            else
+                rm -f \"/tmp/vaplayer-$vaplayerfile\"
+                echo \"  [sync] vaplayer: bo qua $vaplayerfile (nguon khong co)\"
+            fi
+        done
+
         # Vidrock (vidrock.ru, ENG): thay VidCore, AES-GCM, max 1080p, tmdb-based.
         vidrocktarget=/root/lampac/module/OnlineENG/Vidrock
         mkdir -p \"\$vidrocktarget\"

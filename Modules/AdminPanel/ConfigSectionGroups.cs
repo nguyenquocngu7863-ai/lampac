@@ -59,7 +59,7 @@ public static class ConfigSectionGroups
             new[]
             {
                 "AIOStreams", "Autoembed", "Hydraflix", "MovPI", "Playembed", "Rgshows",
-                "Smashystream", "Sootio", "Twoembed", "VidCore", "VidLink", "Videasy",
+                "Smashystream", "Sootio", "Twoembed", "VaPlayer", "VidCore", "VidLink", "Videasy",
                 "VidNest", "Vidrock", "Vidsrc", "VixSrc", "WebStreamr"
             }),
 
