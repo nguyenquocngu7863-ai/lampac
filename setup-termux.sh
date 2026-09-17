@@ -668,6 +668,21 @@ sync_latest_modules() {
             fi
         done
 
+        # Phe69 (phe69.shop, WordPress): list/search/category + page/N, iframe
+        # play.phe69.shop unpack DeanEdwards, fallback slug-guess mp4
+        # phim.phe69.uk. Khong co trong lampac-nextgen.zip nen mkdir + lay full file.
+        phe69synctarget=/root/lampac/module/Adult/Phe69
+        mkdir -p \"\$phe69synctarget\"
+        for phe69syncfile in manifest.json Controller.cs ModInit.cs Service.cs README.md; do
+            if curl -fsSL --retry 3 \"\$base/Modules/Adult/Phe69/\$phe69syncfile?cb=\$stamp\" -o \"/tmp/phe69sync-\$phe69syncfile\"; then
+                mv \"/tmp/phe69sync-\$phe69syncfile\" \"\$phe69synctarget/\$phe69syncfile\"
+                echo \"  [sync] phe69/\$phe69syncfile\"
+            else
+                rm -f \"/tmp/phe69sync-\$phe69syncfile\"
+                echo \"  [sync] phe69: bo qua \$phe69syncfile (nguon khong co)\"
+            fi
+        done
+
         # Stripchat (livecam): xac minh 2026-09-05 (list 90, potok ra hlsProxy).
         scsynctarget=/root/lampac/module/Adult/Stripchat
         mkdir -p \"\$scsynctarget\"
@@ -891,6 +906,23 @@ install_custom_modules() {
             else
                 rm -f \"/tmp/vsb-$vsbfile\"
                 echo \"  [vietsexblog] bo qua $vsbfile - khong co tren nguon\"
+            fi
+        done
+
+        # Phe69 (phe69.shop, WordPress): xac minh thiet bi 2026-09-17 (list 10,
+        # vidosik slug-guess mp4, proxy 206). Khong co trong
+        # lampac-nextgen.zip nen mkdir + lay full file, bo qua tung file neu
+        # nguon khong co (an toan duoi set -euo pipefail).
+        phe69base=\"\${CUSTOM_SOURCE_BASE}/Modules/Adult/Phe69\"
+        phe69target=/root/lampac/module/Adult/Phe69
+        mkdir -p \"$phe69target\"
+        for phe69file in manifest.json Controller.cs ModInit.cs Service.cs README.md; do
+            if curl -fsSL --retry 3 \"$phe69base/$phe69file?cb=$syncstamp\" -o \"/tmp/phe69-$phe69file\"; then
+                mv \"/tmp/phe69-$phe69file\" \"$phe69target/$phe69file\"
+                echo \"  [phe69] $phe69file\"
+            else
+                rm -f \"/tmp/phe69-$phe69file\"
+                echo \"  [phe69] bo qua $phe69file - khong co tren nguon\"
             fi
         done
 
