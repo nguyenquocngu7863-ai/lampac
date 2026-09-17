@@ -78,7 +78,10 @@ public static class GService
                     return new(null, "Uri");
                 }
 
-                string probeKey = $"ProbeInfo:{uri.AbsoluteUri}";
+                // Cache theo host+path (bỏ query): link ký (token/expiry/box_mac)
+                // đổi mỗi lần resolve, giữ nguyên query là cache không bao giờ
+                // trúng → probe lại 30s mỗi lần bấm. Path định danh file đủ tốt.
+                string probeKey = $"ProbeInfo:{uri.GetLeftPart(UriPartial.Path)}";
 
                 var httpHeaders = await Http.ResponseHeaders(sourceUrl, timeoutSeconds: 45);
                 if (httpHeaders == null)
@@ -329,7 +332,7 @@ public static class GService
         }
 
         sourceUrl = uri.AbsoluteUri;
-        string probeKey = $"ProbeInfo:{sourceUrl}";
+        string probeKey = $"ProbeInfo:{uri.GetLeftPart(UriPartial.Path)}";
 
         return await GetProbeInfo(probeKey, sourceUrl).ConfigureAwait(false);
     }
