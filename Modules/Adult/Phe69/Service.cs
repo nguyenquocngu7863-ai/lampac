@@ -110,7 +110,9 @@ public static class Phe69To
         {
             if (string.IsNullOrEmpty(k[i]))
                 continue;
-            p = Regex.Replace(p, @"\b" + Regex.Escape(Base62(i)) + @"\b", k[i]);
+            string word = Base62(i);
+            string repl = k[i];
+            p = Regex.Replace(p, @"\b" + Regex.Escape(word) + @"\b", m2 => repl);
         }
 
         return p;
@@ -122,6 +124,7 @@ public static class Phe69To
         if (string.IsNullOrEmpty(unpacked))
             return links;
 
+        unpacked = unpacked.Replace("\\'", "'");
         foreach (Match m in Regex.Matches(unpacked, @"'label':'([^']+)','type':'[^']+','file':'(https?[^']+\.mp4)'"))
         {
             string file = m.Groups[2].Value.Replace("\\/", "/");

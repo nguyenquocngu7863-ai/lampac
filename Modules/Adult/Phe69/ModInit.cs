@@ -40,6 +40,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
         {
             displayindex = 13,
             streamproxy = true,
+            httpversion = 2,
             rch_access = "apk",
             stream_access = "apk",
             headers_stream = HeadersModel.Init(

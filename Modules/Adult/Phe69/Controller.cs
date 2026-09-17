@@ -58,7 +58,7 @@ public class Phe69Controller : BaseSisiController
     async Task<(Dictionary<string, string> links, bool userch)> ResolveLinksAsync(string uri)
     {
         SemaphorManager semaphore = null;
-        string semaphoreKey = $"phe69:view:{uri}";
+        string semaphoreKey = $"phe69:view:v3:{uri}";
 
         if (rch?.enable != true)
         {
@@ -104,6 +104,7 @@ public class Phe69Controller : BaseSisiController
                 if (string.IsNullOrEmpty(playerHtml))
                     return (null, false);
 
+                System.Console.WriteLine($"Phe69: playerHtml len={playerHtml.Length} haspack={playerHtml.Contains("eval(function(p,a,c")} iframe={iframe}");
                 cache.links = Phe69To.StreamLinks(Phe69To.UnpackDeanEdwards(playerHtml));
 
                 if ((cache.links == null || cache.links.Count == 0) && !string.IsNullOrEmpty(uri))
