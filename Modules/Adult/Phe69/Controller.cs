@@ -156,8 +156,11 @@ public class Phe69Controller : BaseSisiController
         if (userch)
             return OnResult(links);
 
+        // Link gốc là mp4 trực tiếp, KHÔNG phải HLS: trả qua route /video
+        // (không đuôi .m3u8) để app phát native. Đưa mp4 vào URL .m3u8 là
+        // hls.js parse ra lỗi "no EXTM3U delimiter" (manifestParsingError).
         return Json(links.ToDictionary(k => k.Key, v =>
-            $"{host}/phe69/video.m3u8?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(v.Key)}"));
+            $"{host}/phe69/video?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(v.Key)}"));
     }
 
     [HttpGet]
