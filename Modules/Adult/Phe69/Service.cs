@@ -15,6 +15,12 @@ public static class Phe69To
 
         if (!string.IsNullOrWhiteSpace(search))
         {
+            if (pg > 1)
+            {
+                url.Append("page/");
+                url.Append(pg);
+                url.Append("/");
+            }
             url.Append("?s=");
             url.Append(HttpUtility.UrlEncode(search));
         }
