@@ -141,14 +141,13 @@ for root in /root/lampac/module /root/lampac/mods; do
     rm -rf "$root/OnlineENG/CineWave"
     rm -rf "$root/OnlineENG/Mapple4K"
     rm -rf "$root/OnlineENG/OpenDirectory"
-    rm -f "$root/NextHUB/sites/85po.yaml"
 done
 '
 
 lampac start
 ```
 
-Kiểm tra bốn nguồn đã biến mất:
+Kiểm tra ba nguồn đã biến mất:
 
 ```bash
 proot-distro login ubuntu -- bash -c '
@@ -156,8 +155,7 @@ for root in /root/lampac/module /root/lampac/mods; do
     for path in \
         OnlineENG/CineWave \
         OnlineENG/Mapple4K \
-        OnlineENG/OpenDirectory \
-        NextHUB/sites/85po.yaml; do
+        OnlineENG/OpenDirectory; do
         if [ -e "$root/$path" ]; then
             echo "CON: $root/$path"
         else

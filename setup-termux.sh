@@ -481,9 +481,7 @@ sync_latest_modules() {
                /root/lampac/mods/OnlineENG/OpenDirectory \
                /root/lampac/module/Adult/OneJav \
                /root/lampac/mods/Adult/OneJav
-        rm -f /root/lampac/module/NextHUB/sites/85po.yaml \
-              /root/lampac/mods/NextHUB/sites/85po.yaml \
-              /root/lampac/module/LampaWeb/plugins/player-landscape.js \
+        rm -f /root/lampac/module/LampaWeb/plugins/player-landscape.js \
               /root/lampac/mods/LampaWeb/plugins/player-landscape.js
 
         # Latest patch:
@@ -695,8 +693,6 @@ install_custom_modules() {
                /root/lampac/mods/OnlineENG/OpenDirectory \
                /root/lampac/module/Adult/OneJav \
                /root/lampac/mods/Adult/OneJav
-        rm -f /root/lampac/module/NextHUB/sites/85po.yaml \
-              /root/lampac/mods/NextHUB/sites/85po.yaml
 
         # VidCore dat LEN DAU ham install_custom_modules(), khong phai ngau nhien:
         # ca khoi nay chay trong guest script co set -euo pipefail, va nhung khoi o
@@ -876,7 +872,7 @@ install_custom_modules() {
         nexthubroottarget=/root/lampac/module/NextHUB
         nexthubtarget=\"\$nexthubroottarget/sites\"
         if [ -d \"\$nexthubtarget\" ]; then
-            for file in 24rolika.yaml 24video.yaml 3movs.yaml analdin.yaml batsa.yaml beeg.yaml bigboss.yaml brazzrus.yaml cam4.yaml crocotube.yaml ebasos.yaml ebun.yaml familyporn.yaml fapguru.yaml film-adult.yaml fpo.yaml gayporntube.yaml hellporno.yaml hochutv.yaml huyamba.yaml jopaonline.yaml lenkino.yaml lenporno.yaml noodlemagazine.yaml oxax.yaml perfektdamen.yaml porn4days.yaml porndig.yaml pornhub.yaml pornk.yaml porno365.yaml porno666.yaml pornoakt.yaml pornobolt.yaml pornobriz.yaml pornokaef.yaml pornone.yaml pornve.yaml prostoporno.yaml rusporno.yaml rusvideos.yaml sex-studentki.yaml sexporno.yaml sexxxxhub.yaml sosushka.yaml trahkino.yaml uporno.yaml veporn.yaml vporno.yaml vtrahe.yaml vtrahetv.yaml watchporn.yaml xasiat.yaml xozilla.yaml xxxperevod.yaml yaeby.yaml youjizz.yaml; do
+            for file in 24rolika.yaml 24video.yaml 3movs.yaml 85po.yaml analdin.yaml batsa.yaml beeg.yaml bigboss.yaml brazzrus.yaml cam4.yaml crocotube.yaml ebasos.yaml ebun.yaml familyporn.yaml fapguru.yaml film-adult.yaml fpo.yaml gayporntube.yaml hellporno.yaml hochutv.yaml huyamba.yaml jopaonline.yaml lenkino.yaml lenporno.yaml noodlemagazine.yaml oxax.yaml perfektdamen.yaml porn4days.yaml porndig.yaml pornhub.yaml pornk.yaml porno365.yaml porno666.yaml pornoakt.yaml pornobolt.yaml pornobriz.yaml pornokaef.yaml pornone.yaml pornve.yaml prostoporno.yaml rusporno.yaml rusvideos.yaml sex-studentki.yaml sexporno.yaml sexxxxhub.yaml sosushka.yaml trahkino.yaml uporno.yaml veporn.yaml vporno.yaml vtrahe.yaml vtrahetv.yaml watchporn.yaml xasiat.yaml xozilla.yaml xxxperevod.yaml yaeby.yaml youjizz.yaml; do
                 curl -fSL --retry 3 \"\$nexthubrootbase/sites/\$file?cb=\$syncstamp\" -o \"\$nexthubtarget/\$file.tmp\"
                 mv \"\$nexthubtarget/\$file.tmp\" \"\$nexthubtarget/\$file\"
             done
