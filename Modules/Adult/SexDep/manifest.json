@@ -1,0 +1,9 @@
+{
+  "name": "SexDep",
+  "description": "SexDep - Phim sex Viet Nam",
+  "version": "1.0.0",
+  "author": "Lampac",
+  "site": "https://x.sexdep.co.uk",
+  "enable": true,
+  "dynamic": true
+}
