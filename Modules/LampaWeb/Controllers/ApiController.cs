@@ -1767,6 +1767,99 @@ public class ApiController : BaseController
         return ContentTo(plugin, "application/javascript; charset=utf-8");
     }
 
+    [HttpGet, AllowAnonymous]
+    [Route("stremiosub-mx.js")]
+    public ActionResult StremioSubMx()
+    {
+        SetHeadersNoCache();
+        string plugin = FileCache.ReadAllText($"{ModInit.modpath}/plugins/stremiosub-mx.js", "stremiosub-mx.js");
+        return ContentTo(plugin, "application/javascript; charset=utf-8");
+    }
+
+    [HttpGet, AllowAnonymous]
+    [Route("aioeppick.js")]
+    public ActionResult AioEpPick()
+    {
+        SetHeadersNoCache();
+        string plugin = FileCache.ReadAllText($"{ModInit.modpath}/plugins/aioeppick.js", "aioeppick.js");
+        return ContentTo(plugin, "application/javascript; charset=utf-8");
+    }
+
+    // MX Bridge relay: plugin day sub tim duoc len server truoc, app bridge
+    // lay ve khi nhan intent video-only (khong cho menu hien sau MX).
+    sealed class MxOffer
+    {
+        public string Video;
+        public string Title;
+        public List<string> Subs = new();
+        public DateTime Expires;
+    }
+
+    static readonly Dictionary<string, MxOffer> MxOffers = new();
+    static readonly object MxOffersLock = new();
+
+    [HttpPost, AllowAnonymous]
+    [Route("mxbridge/offer")]
+    public ActionResult MxOfferPost([FromBody] System.Text.Json.JsonElement body)
+    {
+        try
+        {
+            string video = body.TryGetProperty("video", out var v) ? v.GetString() : null;
+            if (string.IsNullOrWhiteSpace(video))
+                return Content("{\"ok\":false}", "application/json; charset=utf-8");
+
+            string title = body.TryGetProperty("title", out var t) ? (t.GetString() ?? "") : "";
+            var subs = new List<string>();
+            if (body.TryGetProperty("subs", out var s) && s.ValueKind == System.Text.Json.JsonValueKind.Array)
+            {
+                foreach (var item in s.EnumerateArray())
+                {
+                    string u = item.ValueKind == System.Text.Json.JsonValueKind.String
+                        ? item.GetString()
+                        : (item.TryGetProperty("url", out var su) ? su.GetString() : null);
+                    if (!string.IsNullOrWhiteSpace(u) && (u.StartsWith("http://") || u.StartsWith("https://")))
+                        subs.Add(u);
+                    if (subs.Count >= 10)
+                        break;
+                }
+            }
+
+            lock (MxOffersLock)
+            {
+                foreach (var k in MxOffers.Where(kv => kv.Value.Expires < DateTime.UtcNow).Select(kv => kv.Key).ToList())
+                    MxOffers.Remove(k);
+                while (MxOffers.Count >= 20)
+                    MxOffers.Remove(MxOffers.OrderBy(kv => kv.Value.Expires).First().Key);
+                MxOffers[video] = new MxOffer { Video = video, Title = title, Subs = subs, Expires = DateTime.UtcNow.AddMinutes(3) };
+            }
+
+            return Content("{\"ok\":true}", "application/json; charset=utf-8");
+        }
+        catch
+        {
+            return Content("{\"ok\":false}", "application/json; charset=utf-8");
+        }
+    }
+
+    [HttpGet, AllowAnonymous]
+    [Route("mxbridge/offer")]
+    public ActionResult MxOfferGet(string video)
+    {
+        MxOffer found = null;
+        lock (MxOffersLock)
+        {
+            if (!string.IsNullOrWhiteSpace(video) && MxOffers.TryGetValue(video, out var exact) && exact.Expires >= DateTime.UtcNow)
+                found = exact;
+            else
+                found = MxOffers.Values.Where(o => o.Expires >= DateTime.UtcNow).OrderByDescending(o => o.Expires).FirstOrDefault();
+        }
+
+        if (found == null)
+            return Content("{\"ok\":false}", "application/json; charset=utf-8");
+
+        return Content(JsonConvert.SerializeObject(new { ok = true, video = found.Video, title = found.Title, subs = found.Subs }), "application/json; charset=utf-8");
+    }
+
     // Server-side fetcher cho SubSense: trình duyệt bị chặn CORS khi tải file
     // phụ đề trực tiếp từ các nguồn như OpenSubtitles, nên tải qua server.
     private static readonly System.Net.Http.HttpClient SubSenseHttpClient = CreateSubSenseHttpClient();

@@ -46,10 +46,13 @@ public class ModInit : IModuleLoaded, IModuleSisi
         try
         {
             string uri = e?.decryptLink?.uri;
-            if (string.IsNullOrEmpty(uri) || (!uri.Contains("tiktokcdn.com") && !uri.Contains("nidplay.blog")))
+            if (string.IsNullOrEmpty(uri) || (!uri.Contains("tiktokcdn.com") && !uri.Contains("nidplay.blog") && !uri.Contains("ibyteimg.com")))
                 return true;
 
-            byte[] data = await Http.Download(uri, referer: "https://x.vietsex.blog/", timeoutSeconds: 20);
+            string referer = uri.Contains("vietsex") || uri.Contains("tiktokcdn.com") || uri.Contains("nidplay.blog")
+                ? "https://x.vietsex.blog/"
+                : "https://vietmup.pro/";
+            byte[] data = await Http.Download(uri, referer: referer, timeoutSeconds: 20);
             if (data == null || data.Length < 376)
                 return true;
 

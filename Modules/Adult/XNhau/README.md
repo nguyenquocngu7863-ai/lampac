@@ -1,6 +1,6 @@
-# XNhau (xnhau.cab)
+# XNhau (xnhau.limo)
 
-Module Adult cho nguồn xnhau.cab (Việt).
+Module Adult cho nguồn xnhau.limo (Việt).
 
 ## Cấu hình
 - `manifest.json`: module Adult, `enable: true`, `dynamic: true`

@@ -374,3 +374,12 @@ healthchecksdb
 
 # Local scratch test page for online-compact plugin
 /.test-compact/
+
+# Termux on-device build/test artifacts (never commit - gay pack push hong)
+**/.playwright/
+Modules/Adult/XNhau/*.dll
+Modules/Adult/XNhau/*.bak
+Modules/Adult/XNhau/*.deps.json
+Modules/Adult/XNhau/*.runtimeconfig.json
+Modules/Adult/XNhau/*.staticwebassets.endpoints.json
+playwright.ps1

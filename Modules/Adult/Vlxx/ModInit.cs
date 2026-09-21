@@ -7,19 +7,18 @@ using Shared.Models.SISI.Base;
 using Shared.Services;
 using System.Collections.Generic;
 
-namespace XNhau;
+namespace Vlxx;
 
 public class ModInit : IModuleLoaded, IModuleSisi
 {
     public static SisiSettings conf;
-
     public static string modpath;
 
     public List<SisiModuleItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, SisiEventsModel args)
     {
         return new List<SisiModuleItem>()
         {
-            new("xNhau", conf, "xnhau")
+            new("Vlxx", conf, "vlxx")
         };
     }
 
@@ -37,18 +36,18 @@ public class ModInit : IModuleLoaded, IModuleSisi
 
     void updateConf()
     {
-        conf = ModuleInvoke.Init("XNhau", new SisiSettings("XNhau", "https://xnhau.limo")
+        conf = ModuleInvoke.Init("Vlxx", new SisiSettings("Vlxx", "https://vlxx.phd")
         {
-            displayindex = 11,
+            displayindex = 16,
             streamproxy = true,
             httpversion = 2,
             rch_access = "apk",
             stream_access = "apk",
             headers_stream = HeadersModel.Init(
-                ("referer", "https://xnhau.limo/")
+                ("referer", "https://vlxx.phd/")
             ).ToDictionary(),
             headers_image = HeadersModel.Init(
-                ("referer", "https://xnhau.limo/")
+                ("referer", "https://vlxx.phd/")
             ).ToDictionary()
         });
     }

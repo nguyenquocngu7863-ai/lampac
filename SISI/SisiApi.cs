@@ -138,11 +138,11 @@ public class SisiApiController : BaseController
 
         var channels = new List<ChannelItem>(50)
         {
-            new("Закладки", $"{host}/sisi/bookmarks", 0)
+            new("Bookmark", $"{host}/sisi/bookmarks", 0)
         };
 
         if (ModInit.conf.history.enable)
-            channels.Add(new("История", $"{host}/sisi/historys", 1));
+            channels.Add(new("Lịch sử", $"{host}/sisi/historys", 1));
 
         #region send
         void send(string name, BaseSettings _init, string plugin = null, int displayindex = -1, BaseSettings myinit = null)

@@ -638,18 +638,17 @@ sync_latest_modules() {
             fi
         done
 
-        # SexViet100 (sexviet100.com): xac minh thiet bi 2026-09-14 (list,
-        # vidosik + strem proxy, PNG-boc-TS strip). Khong co trong
-        # lampac-nextgen.zip nen mkdir + lay full file.
-        sex100synctarget=/root/lampac/module/Adult/SexViet100
-        mkdir -p \"\$sex100synctarget\"
-        for sex100syncfile in manifest.json Controller.cs ModInit.cs Service.cs; do
-            if curl -fsSL --retry 3 \"\$base/Modules/Adult/SexViet100/\$sex100syncfile?cb=\$stamp\" -o \"/tmp/sex100sync-\$sex100syncfile\"; then
-                mv \"/tmp/sex100sync-\$sex100syncfile\" \"\$sex100synctarget/\$sex100syncfile\"
-                echo \"  [sync] sexviet100/\$sex100syncfile\"
+        # Viet69z (viet69z.to): WordPress (list, vidosik uuid -> emb API).
+        # Khong co trong lampac-nextgen.zip nen mkdir + lay full file.
+        v69synctarget=/root/lampac/module/Adult/Viet69z
+        mkdir -p \"\$v69synctarget\"
+        for v69syncfile in manifest.json Controller.cs ModInit.cs Service.cs; do
+            if curl -fsSL --retry 3 \"\$base/Modules/Adult/Viet69z/\$v69syncfile?cb=\$stamp\" -o \"/tmp/v69sync-\$v69syncfile\"; then
+                mv \"/tmp/v69sync-\$v69syncfile\" \"\$v69synctarget/\$v69syncfile\"
+                echo \"  [sync] viet69z/\$v69syncfile\"
             else
-                rm -f \"/tmp/sex100sync-\$sex100syncfile\"
-                echo \"  [sync] sexviet100: bo qua \$sex100syncfile (nguon khong co)\"
+                rm -f \"/tmp/v69sync-\$v69syncfile\"
+                echo \"  [sync] viet69z: bo qua \$v69syncfile (nguon khong co)\"
             fi
         done
 
@@ -693,6 +692,51 @@ sync_latest_modules() {
             else
                 rm -f \"/tmp/scsync-\$scsyncfile\"
                 echo \"  [sync] stripchat: bo qua \$scsyncfile (nguon khong co)\"
+            fi
+        done
+
+        # SexDep (x.sexdep.co.uk, motchill): list/search/category + ?page=N,
+        # data-link /storage/m3u8/{slug}/index.m3u8. Khong co trong
+        # lampac-nextgen.zip nen mkdir + lay full file.
+        sexdepsynctarget=/root/lampac/module/Adult/SexDep
+        mkdir -p \"\$sexdepsynctarget\"
+        for sexdepsyncfile in manifest.json Controller.cs ModInit.cs Service.cs README.md; do
+            if curl -fsSL --retry 3 \"\$base/Modules/Adult/SexDep/\$sexdepsyncfile?cb=\$stamp\" -o \"/tmp/sexdepsync-\$sexdepsyncfile\"; then
+                mv \"/tmp/sexdepsync-\$sexdepsyncfile\" \"\$sexdepsynctarget/\$sexdepsyncfile\"
+                echo \"  [sync] sexdep/\$sexdepsyncfile\"
+            else
+                rm -f \"/tmp/sexdepsync-\$sexdepsyncfile\"
+                echo \"  [sync] sexdep: bo qua \$sexdepsyncfile (nguon khong co)\"
+            fi
+        done
+
+        # HeoVl (heovl.im): list/category/search + ?page=N, embed streamforester/
+        # vcast POST /videos/{id}/config. Khong co trong
+        # lampac-nextgen.zip nen mkdir + lay full file.
+        heovlsynctarget=/root/lampac/module/Adult/HeoVl
+        mkdir -p \"\$heovlsynctarget\"
+        for heovlsyncfile in manifest.json Controller.cs ModInit.cs Service.cs README.md; do
+            if curl -fsSL --retry 3 \"\$base/Modules/Adult/HeoVl/\$heovlsyncfile?cb=\$stamp\" -o \"/tmp/heovlsync-\$heovlsyncfile\"; then
+                mv \"/tmp/heovlsync-\$heovlsyncfile\" \"\$heovlsynctarget/\$heovlsyncfile\"
+                echo \"  [sync] heovl/\$heovlsyncfile\"
+            else
+                rm -f \"/tmp/heovlsync-\$heovlsyncfile\"
+                echo \"  [sync] heovl: bo qua \$heovlsyncfile (nguon khong co)\"
+            fi
+        done
+
+        # Vlxx (vlxx.phd, motchill huid): list/path-pagination, POST ajax.php
+        # lay iframe embed -> window.__SRC HLS. Khong co trong
+        # lampac-nextgen.zip nen mkdir + lay full file.
+        vlxxsynctarget=/root/lampac/module/Adult/Vlxx
+        mkdir -p \"\$vlxxsynctarget\"
+        for vlxxsyncfile in manifest.json Controller.cs ModInit.cs Service.cs README.md; do
+            if curl -fsSL --retry 3 \"\$base/Modules/Adult/Vlxx/\$vlxxsyncfile?cb=\$stamp\" -o \"/tmp/vlxxsync-\$vlxxsyncfile\"; then
+                mv \"/tmp/vlxxsync-\$vlxxsyncfile\" \"\$vlxxsynctarget/\$vlxxsyncfile\"
+                echo \"  [sync] vlxx/\$vlxxsyncfile\"
+            else
+                rm -f \"/tmp/vlxxsync-\$vlxxsyncfile\"
+                echo \"  [sync] vlxx: bo qua \$vlxxsyncfile (nguon khong co)\"
             fi
         done
 
@@ -875,20 +919,19 @@ install_custom_modules() {
             fi
         done
 
-        # SexViet100 (sexviet100.com): xac minh thiet bi 2026-09-14 (list,
-        # vidosik + strem proxy, PNG-boc-TS strip). Khong co trong
-        # lampac-nextgen.zip nen mkdir + lay full file, bo qua tung file neu
-        # nguon khong co (an toan duoi set -euo pipefail).
-        sex100base=\"\${CUSTOM_SOURCE_BASE}/Modules/Adult/SexViet100\"
-        sex100target=/root/lampac/module/Adult/SexViet100
-        mkdir -p \"$sex100target\"
-        for sex100file in manifest.json Controller.cs ModInit.cs Service.cs; do
-            if curl -fsSL --retry 3 \"$sex100base/$sex100file?cb=$syncstamp\" -o \"/tmp/sex100-$sex100file\"; then
-                mv \"/tmp/sex100-$sex100file\" \"$sex100target/$sex100file\"
-                echo \"  [sexviet100] $sex100file\"
+        # Viet69z (viet69z.to): WordPress (list, vidosik uuid -> emb API).
+        # Khong co trong lampac-nextgen.zip nen mkdir + lay full file, bo qua
+        # tung file neu nguon khong co (an toan duoi set -euo pipefail).
+        v69base=\"\${CUSTOM_SOURCE_BASE}/Modules/Adult/Viet69z\"
+        v69target=/root/lampac/module/Adult/Viet69z
+        mkdir -p \"$v69target\"
+        for v69file in manifest.json Controller.cs ModInit.cs Service.cs; do
+            if curl -fsSL --retry 3 \"$v69base/$v69file?cb=$syncstamp\" -o \"/tmp/v69-$v69file\"; then
+                mv \"/tmp/v69-$v69file\" \"$v69target/$v69file\"
+                echo \"  [viet69z] $v69file\"
             else
-                rm -f \"/tmp/sex100-$sex100file\"
-                echo \"  [sexviet100] bo qua $sex100file - khong co tren nguon\"
+                rm -f \"/tmp/v69-$v69file\"
+                echo \"  [viet69z] bo qua $v69file - khong co tren nguon\"
             fi
         done
 
@@ -923,6 +966,57 @@ install_custom_modules() {
             else
                 rm -f \"/tmp/phe69-$phe69file\"
                 echo \"  [phe69] bo qua $phe69file - khong co tren nguon\"
+            fi
+        done
+
+        # SexDep (x.sexdep.co.uk, motchill): list/search/category + ?page=N,
+        # data-link /storage/m3u8/{slug}/index.m3u8. Khong co trong
+        # lampac-nextgen.zip nen mkdir + lay full file, bo qua tung file neu
+        # nguon khong co (an toan duoi set -euo pipefail).
+        sexdepbase=\"\${CUSTOM_SOURCE_BASE}/Modules/Adult/SexDep\"
+        sexdeptarget=/root/lampac/module/Adult/SexDep
+        mkdir -p \"$sexdeptarget\"
+        for sexdepfile in manifest.json Controller.cs ModInit.cs Service.cs README.md; do
+            if curl -fsSL --retry 3 \"$sexdepbase/$sexdepfile?cb=$syncstamp\" -o \"/tmp/sexdep-$sexdepfile\"; then
+                mv \"/tmp/sexdep-$sexdepfile\" \"$sexdeptarget/$sexdepfile\"
+                echo \"  [sexdep] $sexdepfile\"
+            else
+                rm -f \"/tmp/sexdep-$sexdepfile\"
+                echo \"  [sexdep] bo qua $sexdepfile - khong co tren nguon\"
+            fi
+        done
+
+        # HeoVl (heovl.im): list/category/search + ?page=N, embed streamforester/
+        # vcast POST /videos/{id}/config. Khong co trong
+        # lampac-nextgen.zip nen mkdir + lay full file, bo qua tung file neu
+        # nguon khong co (an toan duoi set -euo pipefail).
+        heovlbase=\"\${CUSTOM_SOURCE_BASE}/Modules/Adult/HeoVl\"
+        heovltarget=/root/lampac/module/Adult/HeoVl
+        mkdir -p \"$heovltarget\"
+        for heovlfile in manifest.json Controller.cs ModInit.cs Service.cs README.md; do
+            if curl -fsSL --retry 3 \"$heovlbase/$heovlfile?cb=$syncstamp\" -o \"/tmp/heovl-$heovlfile\"; then
+                mv \"/tmp/heovl-$heovlfile\" \"$heovltarget/$heovlfile\"
+                echo \"  [heovl] $heovlfile\"
+            else
+                rm -f \"/tmp/heovl-$heovlfile\"
+                echo \"  [heovl] bo qua $heovlfile - khong co tren nguon\"
+            fi
+        done
+
+        # Vlxx (vlxx.phd, motchill huid): list/path-pagination, POST ajax.php
+        # lay iframe embed -> window.__SRC HLS. Khong co trong
+        # lampac-nextgen.zip nen mkdir + lay full file, bo qua tung file neu
+        # nguon khong co (an toan duoi set -euo pipefail).
+        vlxxbase=\"\${CUSTOM_SOURCE_BASE}/Modules/Adult/Vlxx\"
+        vlxxtarget=/root/lampac/module/Adult/Vlxx
+        mkdir -p \"$vlxxtarget\"
+        for vlxxfile in manifest.json Controller.cs ModInit.cs Service.cs README.md; do
+            if curl -fsSL --retry 3 \"$vlxxbase/$vlxxfile?cb=$syncstamp\" -o \"/tmp/vlxx-$vlxxfile\"; then
+                mv \"/tmp/vlxx-$vlxxfile\" \"$vlxxtarget/$vlxxfile\"
+                echo \"  [vlxx] $vlxxfile\"
+            else
+                rm -f \"/tmp/vlxx-$vlxxfile\"
+                echo \"  [vlxx] bo qua $vlxxfile - khong co tren nguon\"
             fi
         done
 

@@ -167,8 +167,10 @@
     function createPlaylist(data, audioIndex) {
         var playlist = []
 
-        if (data.playlist) {
+        if (data.playlist && Array.isArray(data.playlist)) {
             data.playlist.forEach(function (p) {
+                if (!p || typeof p.url !== 'string' || !p.url)
+                    return;
                 playlist.push({
                     title: p.title,
                     url_orig: p.url,

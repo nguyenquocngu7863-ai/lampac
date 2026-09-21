@@ -34,7 +34,34 @@ Nhãn trên card (2K, 4K) là site tự gắn, không phản ánh file thật. D
 - `get_file` của flashvars có thể 404 (hash cũ) → ưu tiên link download.
 - `get_file` trả file trực tiếp (206), không redirect → `Strem` fallback `HostStreamProxy(link)` kèm `Referer: https://www.85po.com/` khi `GetLocation` rỗng.
 - Đã verify end-to-end: proxy trả `206 video/mp4`.
+- Redesign: `/strem` BAT BUOC giu buoc theo-redirect (GetLocation + RCH neu bat).
+  Ban viet lai tung cat mat (proxy thang URL route) → curl van 200 nhung app bao
+  "no supported source". Bai hoc: dung bao "xong" khi chua test phat that tren app.
+
+### 4. UHD resolver (4K, node + Chrome thật, port 9196)
+
+- File 2160p chỉ nhả cho phiên trình duyệt có `/vi/` + TLS Chrome: server curl 403 ngay cả kèm cookie.
+- `uhd/resolver.js` (playwright-core + system chrome `/usr/bin/google-chrome`) mở trang `/vi/`, đặt `<video src=file+rnd>` rồi bắt response 302 để lấy signed `remote_control.php` (valid ~15-25p). Health check: `GET 127.0.0.1:9196/health` → `ok`.
+- Playwright riêng ở `/root/lampac/.playwright` (không dùng node host Termux — android bị từ chối). ModInit tự `npm i` lần đầu + spawn resolver kèm supervisor loop.
 
 ## Khung code
 
 Theo mẫu `Modules/Adult/Porntrex` (cùng engine KVS): `Controller.cs` (3 routes), `Service.cs` (Uri/Playlist/Menu/StreamLinks), `ModInit.cs` (`SisiSettings` + `headers_stream` Referer), `manifest.json` (`dynamic: true`, tree 3 file). Lampac biên dịch lúc khởi động (`compilation Po85`), không cần build tay — copy file vào `module/Adult/Po85/` rồi restart là test được. Deploy qua `setup-termux.sh --sync` (block Po85 trong cả `sync_latest_modules` và `install_custom_modules`).
+
+## Redesign 2026-09 (web doi giao dien, giu engine KVS)
+
+- List: `<div class="item` + link `/video/{id}/{slug}/`, poster `data-original`,
+  quality `is-4k/is-2k/is-hd`, duration `<div class="duration">`.
+- Trang `/video/` chi co template; player + flashvars chuyen sang `/embed/{id}/`
+  (`EmbedPage()` doi sang). Bo dropdown download.
+- `video_alt_url2/3` co the la URL trang locale (khong phai file) — `AltPages()`
+  mo tiep trang do lay flashvars day du (1080p/2160p). Noi dung KHAC nhau theo
+  locale (`/en/` vs `/ja/`) — thieu quality thi quet ca 2.
+- File `*_2160p.mp4` co san trong flashvars thi parse thang, khong can resolver.
+- Sort `/4k/` chet (404) — bo khoi menu. Category moi theo vung
+  (ri-ben/zhong-guo/tai-wan/ma-lai-xi-ya/xin-jia-po/xiang-gang).
+- Phan trang KVS moi: AJAX `{page}?mode=async&function=get_block&block_id={id}&...&from=N`
+  (`?from=` tra 404, `?page=` bi lo). Xem chi tiet trong skill `devfetch-proxy`.
+- `/strem` GIU buoc theo-redirect cu (GetLocation + RCH neu bat): link get_file la
+  route trung gian, proxy thang route thi curl van 200 nhung app hong.
+- Recon qua module tam `DevFetch` (`/devfetch?url=&re=`) khi CF chan IP ngoai.

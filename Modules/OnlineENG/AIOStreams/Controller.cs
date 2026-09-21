@@ -295,17 +295,14 @@ public sealed class AIOStreamsController : BaseOnlineController<ModuleConf>
         if (streams.Count == 0)
             return OnError("No streams for the selected AIOStreams source", 404);
 
-        // Bấm tập phim phải ra danh sách nguồn như phim lẻ, không play luôn link đầu.
+        // Bấm tập phim: single-play + moi FILE mot dong trong quality.
+        // Plugin client (aioeppick.js) chen hien popup chon trong so do.
         if (play)
         {
             var firstPlay = BuildVideoResponse(streams, title, original_title, season, episode);
             return RedirectToPlay(firstPlay.firstLink);
         }
 
-        // View tập phim của Lampa chỉ nuốt được một object play duy nhất
-        // (kèm menu quality), không hiển thị được trang đa thẻ như phim lẻ.
-        // Trả dạng single-play như Videasy/VidCore; toàn bộ nguồn vẫn nằm
-        // trong menu quality với nhãn nguồn để chọn.
         var resp = BuildVideoResponse(streams, title, original_title, season, episode);
         return ContentTo(resp.json);
     }
@@ -481,23 +478,16 @@ public sealed class AIOStreamsController : BaseOnlineController<ModuleConf>
                 (short)number
             );
 
-            string streamLink = BuildEpisodeUrl(
-                addonId,
-                title,
-                original_title,
-                season,
-                (short)number,
-                play: true
-            );
-
+            // Khong gan streamlink: de tap nao cung di qua link -> fetch ->
+            // plugin popup chon nguon. Gan streamlink la app phat thang,
+            // popup chua kip hien (tu mo player truoc).
             tpl.Append(
                 name,
                 title ?? original_title,
                 season,
                 (short)number,
                 link,
-                "call",
-                streamlink: streamLink
+                "call"
             );
         }
 

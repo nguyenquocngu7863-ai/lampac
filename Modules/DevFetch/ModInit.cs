@@ -7,19 +7,19 @@ using Shared.Models.SISI.Base;
 using Shared.Services;
 using System.Collections.Generic;
 
-namespace XNhau;
+namespace DevFetch;
 
+// TAM: proxy cleanup cho agent tu fetch web qua IP may (xoa ca module truoc khi push)
 public class ModInit : IModuleLoaded, IModuleSisi
 {
     public static SisiSettings conf;
-
     public static string modpath;
 
     public List<SisiModuleItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, SisiEventsModel args)
     {
         return new List<SisiModuleItem>()
         {
-            new("xNhau", conf, "xnhau")
+            new("DevFetch", conf, "devfetch")
         };
     }
 
@@ -37,19 +37,12 @@ public class ModInit : IModuleLoaded, IModuleSisi
 
     void updateConf()
     {
-        conf = ModuleInvoke.Init("XNhau", new SisiSettings("XNhau", "https://xnhau.limo")
+        conf = ModuleInvoke.Init("DevFetch", new SisiSettings("DevFetch", "https://example.com")
         {
-            displayindex = 11,
-            streamproxy = true,
-            httpversion = 2,
+            displayindex = 99,
+            streamproxy = false,
             rch_access = "apk",
             stream_access = "apk",
-            headers_stream = HeadersModel.Init(
-                ("referer", "https://xnhau.limo/")
-            ).ToDictionary(),
-            headers_image = HeadersModel.Init(
-                ("referer", "https://xnhau.limo/")
-            ).ToDictionary()
         });
     }
 }

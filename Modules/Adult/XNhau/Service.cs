@@ -25,11 +25,11 @@ public static class XNhauTo
 
         if (!string.IsNullOrWhiteSpace(search) && search.Contains("/members/"))
         {
-            // Feed nguoi dang: dan link member (https://xnhau.cab/members/16566/)
+            // Feed nguoi dang: dan link member (https://xnhau.limo/members/16566/)
             // vao o tim kiem — lay thang trang member
             string murl = search.Trim();
             if (murl.StartsWith("/"))
-                murl = $"https://xnhau.cab{murl}";
+                murl = $"https://xnhau.limo{murl}";
             url.Clear();
             url.Append(murl.TrimEnd('/'));
             url.Append("/");
@@ -147,14 +147,14 @@ public static class XNhauTo
 
             string href = g[1].Value;
             if (href.StartsWith("/"))
-                href = $"https://xnhau.cab{href}";
+                href = $"https://xnhau.limo{href}";
 
             var img = row.Groups("data-original=\"([^\"]+)\"");
             string picture = img[1].Value;
             if (string.IsNullOrEmpty(picture))
                 picture = row.Match("data-webp=\"([^\"]+)\"");
             if (!string.IsNullOrEmpty(picture) && picture.StartsWith("/"))
-                picture = $"https://xnhau.cab{picture}";
+                picture = $"https://xnhau.limo{picture}";
 
             string time = row.Match("<span class=\"duration\"[^>]*>(.*?)</span>", trim: true);
             if (string.IsNullOrEmpty(time))
@@ -307,7 +307,7 @@ public static class XNhauTo
             return uri;
 
         if (uri.StartsWith("/"))
-            return $"https://xnhau.cab{uri}";
+            return $"https://xnhau.limo{uri}";
 
         return uri;
     }

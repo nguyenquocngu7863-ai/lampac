@@ -1,0 +1,95 @@
+name: termux-checks
+
+# Luoi an toan cho Termux/proot: bat loi cu phap truoc khi sync/test tren may,
+# khoi ton vong restart 60-80s de phat hien loi danh may.
+on:
+  push:
+    paths:
+      - 'setup-termux.sh'
+      - 'Modules/**'
+      - '.github/workflows/termux-checks.yml'
+  pull_request:
+    paths:
+      - 'setup-termux.sh'
+      - 'Modules/**'
+      - '.github/workflows/termux-checks.yml'
+
+jobs:
+  shell-syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: bash -n (vo hieu hoa guest escape hong la vo ngay o day)
+        run: |
+          set -e
+          bash -n setup-termux.sh
+          for f in *.sh; do bash -n "$f"; done
+          echo OK
+
+  sync-coverage:
+    # Module Adult moi PHAI co block pull trong CA 2 ham sync_latest_modules
+    # va install_custom_modules — thieu 1 ben la --sync khong bao gio keo ve may.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: moi module duoc nhac phai co mat o ca 2 ham sync
+        run: |
+          python3 - <<'PYEOF'
+          import re, sys
+          from pathlib import Path
+
+          sh = Path('setup-termux.sh').read_text()
+          refs = re.findall(r'Modules/Adult/([A-Za-z0-9_]+)', sh)
+          counts = {}
+          for r in refs:
+              counts[r] = counts.get(r, 0) + 1
+
+          fail = False
+          for name in sorted(counts):
+              moddir = Path('Modules/Adult') / name
+              if not moddir.is_dir():
+                  print(f'FAIL: setup-termux.sh nhac Modules/Adult/{name} nhung khong co thu muc')
+                  fail = True
+                  continue
+              for need in ('Controller.cs', 'ModInit.cs'):
+                  if not (moddir / need).exists():
+                      print(f'FAIL: Modules/Adult/{name} thieu {need}')
+                      fail = True
+              if counts[name] < 2:
+                  print(f'FAIL: Modules/Adult/{name} chi xuat hien 1 lan (thieu block o 1 trong 2 ham sync)')
+                  fail = True
+          if fail:
+              sys.exit(1)
+          print(f'OK ({len(counts)} adult modules referenced)')
+          PYEOF
+
+  cs-syntax:
+    # File .cs trong Modules/ compile runtime bang Roslyn tren may.
+    # O day chi loc loi syntax CS1xxx; loi thieu type (CS0246/CS0103...) la
+    # binh thuong vi thieu refs Lampac.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Roslyn parse-only, fail chi khi co error CS1xxx
+        run: |
+          set -e
+          CSC=$(ls -d "$DOTNET_ROOT"/sdk/*/Roslyn/bincore/csc.dll | sort -V | tail -1)
+          echo "csc: $CSC"
+          fail=0
+          while IFS= read -r f; do
+            out=$(dotnet "$CSC" /t:library /nologo "/out:/tmp/syncheck.dll" "$f" 2>&1 || true)
+            syn=$(echo "$out" | grep -E 'error CS1[0-9]{3}' || true)
+            if [ -n "$syn" ]; then
+              echo "SYNTAX FAIL: $f"
+              echo "$syn"
+              fail=1
+            fi
+          done < <(find Modules -name '*.cs' | sort)
+          rm -f /tmp/syncheck.dll
+          exit $fail

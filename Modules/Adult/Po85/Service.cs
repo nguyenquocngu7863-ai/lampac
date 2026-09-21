@@ -8,6 +8,7 @@ using Shared.Services.RxEnumerate;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Web;
 
@@ -46,8 +47,8 @@ public static class Po85To
         }
         else if (sort == "4k")
         {
-            url.Append("4k/?from=");
-            url.Append(pg);
+            // trang /4k/ chet 404 tren design moi -> rot ve moi nhat
+            url.Append("latest-updates/");
         }
         else if (sort == "top-rated")
         {
@@ -85,7 +86,8 @@ public static class Po85To
         if (html.IsEmpty)
             return null;
 
-        var rx = Rx.Split("<div class=\"thumb", html, 1);
+        // New HTML: <div class="item "> <a href="https://www.85po.com/video/{id}/{slug}/" title="...">
+        var rx = Rx.Split("<div class=\"item", html, 1);
         if (rx.Count == 0)
             return null;
 
@@ -93,39 +95,47 @@ public static class Po85To
 
         foreach (var row in rx.Rows())
         {
-            var g = row.Groups("<a href=\"((?:https?://[^/]+)?/v/[0-9]+/[^\\\"]+)\"[^>]*title=\"([^\\\"]+)\"");
-
-            if (string.IsNullOrWhiteSpace(g[1].Value) || string.IsNullOrWhiteSpace(g[2].Value))
+            var g = row.Groups("<a\\s+href=\"(https://www\\.85po\\.com/video/([0-9]+)/([^\"]+))\"\\s+title=\"([^\"]+)\"");
+            if (string.IsNullOrWhiteSpace(g[1].Value) || string.IsNullOrWhiteSpace(g[4].Value))
                 continue;
 
-            string href = g[1].Value;
-            if (href.StartsWith("/"))
-                href = $"https://www.85po.com{href}";
+            string href = "/video/" + g[2].Value + "/" + g[3].Value.Trim('/') + "/";
+            string vid = g[2].Value;
+            string name = HttpUtility.HtmlDecode(g[4].Value.Trim());
 
+            // Extract poster from data-original
+            string picture = "";
             var img = row.Groups("data-original=\"([^\"]+)\"");
-            string picture = img[1].Value;
+            if (!string.IsNullOrEmpty(img[1].Value))
+                picture = img[1].Value;
             if (string.IsNullOrEmpty(picture))
                 picture = row.Match("data-webp=\"([^\"]+)\"");
             if (!string.IsNullOrEmpty(picture) && picture.StartsWith("/"))
                 picture = $"https://www.85po.com{picture}";
 
-            // class "qualtiy" (sic) tren 85po, fallback "quality"
-            string quality = row.Match("<div class=\"qualtiy[^\"]*\">([^<]+)</div>", trim: true);
+            // Extract quality (4K, 2K, HD) - Match() tra ve capture group 1
+            // nen pattern phai co ngoac (ban cu khong ngoac -> luon rong).
+            // PHAI check rieng tung muc theo thu tu 4k > 2k > hd vi class
+            // tren web la "is-hd is-2k" (is-hd dung truoc) - gop chung 1
+            // regex se khop is-hd truoc va moi card deu ra HD.
+            string quality = row.Match("(is-4k)");
             if (string.IsNullOrEmpty(quality))
-                quality = row.Match("<div class=\"quality[^\"]*\">([^<]+)</div>", trim: true);
+                quality = row.Match("(is-2k)");
+            if (string.IsNullOrEmpty(quality))
+                quality = row.Match("(is-hd)");
+            if (!string.IsNullOrEmpty(quality))
+                quality = quality.Substring(3).ToUpperInvariant();
 
-            string time = row.Match("<div class=\"time\"[^>]*>(.*?)</div>", trim: true);
-
-            var idm = System.Text.RegularExpressions.Regex.Match(href, @"/v/([0-9]+)/");
-            string vid = idm.Success ? idm.Groups[1].Value : href;
+            // Extract duration
+            string time = row.Match("<div class=\"duration\">([^<]+)</div>", trim: true);
 
             var pl = new PlaylistItem()
             {
                 video = $"{uri}?uri={HttpUtility.UrlEncode(href)}",
-                name = HttpUtility.HtmlDecode(g[2].Value),
+                name = name,
                 picture = picture,
                 quality = quality,
-                time = System.Text.RegularExpressions.Regex.Replace(time ?? "", "<[^>]+>", "").Trim(),
+                time = Regex.Replace(time ?? "", "<[^>]+>", "").Trim(),
                 json = true,
                 bookmark = new Bookmark()
                 {
@@ -237,7 +247,6 @@ public static class Po85To
                 {
                     new("Trang chủ (Đang xem)", $"{url}?c={c}&t={t}"),
                     new("Mới nhất", $"{url}?c={c}&t={t}&sort=latest-updates"),
-                    new("4K", $"{url}?c={c}&t={t}&sort=4k"),
                     new("Đánh giá cao", $"{url}?c={c}&t={t}&sort=top-rated"),
                     new("Xem nhiều nhất", $"{url}?c={c}&t={t}&sort=most-popular")
                 }
@@ -277,27 +286,51 @@ public static class Po85To
     }
 
     /// <summary>
-    /// Ban /vi/ cua trang phim: flashvars URL co prefix /vi/get_file/
-    /// (ban thuong khong co) — chi URL /vi/ moi mo duoc file 2160p.
+    /// Tạo URL từ video page sang embed page (nơi có flashvars).
     /// </summary>
-    public static string ViPage(string uri)
+    public static string EmbedPage(string uri)
     {
         if (string.IsNullOrWhiteSpace(uri))
             return uri;
 
         try
         {
-            var u = new Uri(uri, UriKind.Absolute);
-            string path = u.AbsolutePath;
-            if (path.StartsWith("/vi/"))
+            // Nếu đã là embed page thì giữ nguyên
+            if (uri.Contains("/embed/"))
                 return uri;
 
-            if (path.StartsWith("/v/") || path.StartsWith("/watch/"))
-                return $"{u.Scheme}://{u.Authority}/vi{path}{u.Query}";
-        }
-        catch { }
+            // Lấy video ID từ URL (pattern: /video/{id}/)
+            var m = System.Text.RegularExpressions.Regex.Match(uri, @"/video/([0-9]+)/");
+            if (m.Success)
+                return $"https://www.85po.com/embed/{m.Groups[1].Value}/";
 
-        return uri;
+            // Fallback: thay /video/ bằng /embed/
+            return System.Text.RegularExpressions.Regex.Replace(uri, @"/video/\d+/[^/]+/", "/embed/");
+        }
+        catch
+        {
+            return uri;
+        }
+    }
+
+    /// <summary>
+    /// Trang video locale (vd video_alt_url2) chua player day du - fetch tiep de lay file.
+    /// Chi tra URL dang trang (http, khong /get_file/).
+    /// </summary>
+    public static List<string> AltPages(string html)
+    {
+        var pages = new List<string>(2);
+        if (string.IsNullOrEmpty(html))
+            return pages;
+        foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(html, @"video_alt_url[23]:\s*'([^']+)'"))
+        {
+            string u = m.Groups[1].Value.Replace("\\/", "/").Replace("&amp;", "&");
+            if (u.StartsWith("http") && !u.Contains("/get_file/") && !pages.Contains(u))
+                pages.Add(u);
+            if (pages.Count >= 2)
+                break;
+        }
+        return pages;
     }
 
     /// <summary>
@@ -334,7 +367,7 @@ public static class Po85To
     {
         try
         {
-            var idm = System.Text.RegularExpressions.Regex.Match(pageUrl ?? "", @"/v/([0-9]+)/");
+            var idm = System.Text.RegularExpressions.Regex.Match(pageUrl ?? "", @"(?:/v/|/video/|/embed/)([0-9]+)");
             string vid = idm.Success ? idm.Groups[1].Value : (pageUrl ?? fileUrl);
 
             var memoryCache = HybridCache.GetMemory();
@@ -376,23 +409,100 @@ public static class Po85To
         if (html.IsEmpty)
             return null;
 
-        var stream_links = new Dictionary<string, string>(2);
+        string s = html.ToString();
+        var stream_links = new Dictionary<string, string>(4);
 
-        // Link flashvars (video_url / video_alt_url*) bi Cloudflare chan khi tai
-        // server-side (403/404, hash gan voi phien xem tren trinh duyet that),
-        // chi dung link download dropdown (toi da 1080p) de phat duoc.
+        // 85po moi: flashvars nam tren /embed/{id}/ (trang /video/ chi co
+        // template, khong con dropdown download). video_url=SD, alt=720p,
+        // alt2=1080p, alt_url3=2160p file truc tiep (resolver giu lam fallback
+        // cho dang boc function/0/ cu).
+        string[] fvNames = new string[] { "video_url", "video_alt_url", "video_alt_url2", "video_alt_url3" };
+        string[] fvDefault = new string[] { "480p", "720p", "1080p", "2160p" };
+        for (int i = 0; i < fvNames.Length; i++)
+        {
+            var fvm = System.Text.RegularExpressions.Regex.Match(s, fvNames[i] + @":\s*'([^']+)'");
+            if (!fvm.Success)
+                continue;
+            string furl = fvm.Groups[1].Value.Replace("\\/", "/").Replace("&amp;", "&");
+            if (!furl.StartsWith("http") || !furl.Contains("/get_file/"))
+                continue;
+            string flabel = fvDefault[i];
+            var tagm = System.Text.RegularExpressions.Regex.Match(furl, @"_(2160p|1080p|720p|480p|360p)\.");
+            if (tagm.Success)
+                flabel = tagm.Groups[1].Value;
+            else if (furl.Contains("2160") || furl.ToLowerInvariant().Contains("4k"))
+                flabel = "4K";
+            if (stream_links.ContainsValue(furl))
+                continue;
+            string key = flabel;
+            int dup = 2;
+            while (stream_links.ContainsKey(key))
+                key = flabel + " " + (dup++);
+            stream_links.TryAdd(key, furl);
+        }
 
-        // link download MP4 (dropdown): moi quality mot hash rieng
+        // Fallback: link download MP4 (dropdown, design cu): moi quality mot hash
         // ("MP4 480p, ...", "MP4 720p, ...", "MP4 1080p, ...")
         foreach (System.Text.RegularExpressions.Match dlm in
-            System.Text.RegularExpressions.Regex.Matches(html.ToString(),
+            System.Text.RegularExpressions.Regex.Matches(s,
             @"<a[^>]*href=""(https?://[^'""]+/get_file/[^'""]+download=true[^'""]*)""[^>]*>([^<]+)</a>"))
         {
             string dlurl = dlm.Groups[1].Value.Replace("&amp;", "&");
             string label = dlm.Groups[2].Value.Trim();
             if (string.IsNullOrEmpty(label))
                 label = "download";
-            stream_links.TryAdd(label, dlurl);
+            if (!stream_links.ContainsValue(dlurl))
+                stream_links.TryAdd(label, dlurl);
+        }
+
+        // Fallback: data-preview attribute (signed URL)
+        if (stream_links.Count == 0)
+        {
+            var previewMatch = System.Text.RegularExpressions.Regex.Match(s, @"data-preview=""(https://www\.85po\.com/get_file/[^""]+)""");
+            if (previewMatch.Success)
+                stream_links.TryAdd("MP4", previewMatch.Groups[1].Value);
+        }
+
+        // Fallback: them &download=true vao video_url
+        if (stream_links.Count == 0)
+        {
+            var videoUrl = System.Text.RegularExpressions.Regex.Match(s, @"video_url:\s*'([^']+)'");
+            if (videoUrl.Success)
+            {
+                string url = videoUrl.Groups[1].Value.Replace("\\/", "/");
+                if (url.StartsWith("http") && url.Contains("/get_file/"))
+                {
+                    url += (url.Contains("?") ? "&" : "?") + "download=true";
+                    stream_links.TryAdd("MP4", url);
+                }
+            }
+        }
+
+        return stream_links.OrderByDescending(kv => StreamQualityRank(kv.Key + " " + kv.Value))
+            .ToDictionary(k => k.Key, v => v.Value);
+    }
+
+        // Fallback 1: data-preview attribute (signed URL, no cookie needed)
+        if (stream_links.Count == 0)
+        {
+            var previewMatch = System.Text.RegularExpressions.Regex.Match(html.ToString(), @"data-preview=""(https://www\.85po\.com/get_file/[^""]+)""");
+            if (previewMatch.Success)
+                stream_links.TryAdd("MP4", previewMatch.Groups[1].Value);
+        }
+
+        // Fallback 2: add &download=true to video_url/video_alt_url
+        if (stream_links.Count == 0)
+        {
+            var videoUrl = System.Text.RegularExpressions.Regex.Match(html.ToString(), @"video_url:\s*'([^']+)'");
+            if (videoUrl.Success)
+            {
+                string url = videoUrl.Groups[1].Value.Replace("\\/", "/");
+                if (url.StartsWith("http") && url.Contains("/get_file/"))
+                {
+                    url += (url.Contains("?") ? "&" : "?") + "download=true";
+                    stream_links.TryAdd("MP4", url);
+                }
+            }
         }
 
         return stream_links.OrderByDescending(kv => StreamQualityRank(kv.Key + " " + kv.Value))
