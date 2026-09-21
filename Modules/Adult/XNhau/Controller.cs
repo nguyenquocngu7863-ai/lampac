@@ -37,20 +37,11 @@ public class XNhauController : BaseSisiController
             await httpHydra.GetSpan(dbgUrl, span =>
             {
                 string h = span.ToString();
-                try
-                {
-                    string mark = h.Length > 200 ? h.Substring(0, 200).Replace("\n", " ").Replace("\r", "") : h;
-                    bool cf = h.Contains("challenge") || h.Contains("Just a moment") || h.Contains("cf-mitigated") || h.Contains("Attention Required");
-                    System.IO.File.AppendAllText("/root/lampac/data/xnhau_dbg.log", $"{System.DateTime.Now:HH:mm:ss} idx url={dbgUrl} len={h.Length} cf={cf} head={mark}\n");
-                }
-                catch { }
                 playlists = XNhauTo.Playlist("xnhau/vidosik", span);
             }, addheaders: HeadersModel.Init(
                 ("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"),
                 ("Referer", "https://xnhau.limo/")
             ));
-
-            try { System.IO.File.AppendAllText("/root/lampac/data/xnhau_dbg.log", $"{System.DateTime.Now:HH:mm:ss} idx count={playlists?.Count ?? -1}\n"); } catch { }
 
             if (playlists == null || playlists.Count == 0)
                 return e.Fail("playlists", refresh_proxy: string.IsNullOrEmpty(search));

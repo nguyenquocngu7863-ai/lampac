@@ -377,10 +377,16 @@
                             });
                         }
 
-                        if (!items.length || items.length == 1) {
+                        // Hien menu chon audio khi co >= 1 track
+                        // (user muon tu chon, khong tu dong).
+                        // Chi tu chay khi khong thay track nao.
+                        if (!items.length) {
                             startPlayback(items[0]);
                             return;
                         }
+
+                        // Luon hien menu (user tu chon, ke ca phim
+                        // Tay Ban Nha...). Khong tu chon English.
 
                         // Always ask the user which audio track to play when there
                         // is more than one. Auto-selecting English breaks dubbed

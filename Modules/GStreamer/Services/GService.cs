@@ -5,6 +5,7 @@ using Shared.Services.Utilities;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -78,11 +79,6 @@ public static class GService
                     return new(null, "Uri");
                 }
 
-                // Cache theo host+path (bỏ query): link ký (token/expiry/box_mac)
-                // đổi mỗi lần resolve, giữ nguyên query là cache không bao giờ
-                // trúng → probe lại 30s mỗi lần bấm. Path định danh file đủ tốt.
-                string probeKey = $"ProbeInfo:{uri.GetLeftPart(UriPartial.Path)}";
-
                 var httpHeaders = await Http.ResponseHeaders(sourceUrl, timeoutSeconds: 45);
                 if (httpHeaders == null)
                     return new(null, "ResponseHeaders");
@@ -106,6 +102,23 @@ public static class GService
                 if (string.IsNullOrEmpty(sourceUrl))
                     return new(null, "sourceUrl");
                 #endregion
+
+                // Cache theo host+path cua URL DA resolve (sau redirect),
+                // bo query (token/expiry): path dinh danh file.
+                // KHONG dung URL truoc redirect — vd mọi file AIO đều
+                // chung path /lite/aiostreams/file.mkv, cache sai file
+                // (mo file A thay track file B).
+                string probeKey;
+                {
+                    if (!Uri.TryCreate(sourceUrl, UriKind.Absolute, out var finalUri) ||
+                        (finalUri.Scheme != Uri.UriSchemeHttp && finalUri.Scheme != Uri.UriSchemeHttps) ||
+                        string.IsNullOrEmpty(finalUri.Host))
+                    {
+                        return new(null, "Uri");
+                    }
+
+                    probeKey = $"ProbeInfo:{finalUri.GetLeftPart(UriPartial.Path)}";
+                }
 
                 var probeResult = await GetProbeInfo(probeKey, sourceUrl).ConfigureAwait(false);
                 if (probeResult.probe == null)
@@ -162,7 +175,11 @@ public static class GService
                 if (!supportedVideo)
                     return new(null, "not mp4");
 
-                long? contentLength = httpHeaders.Content.Headers.ContentLength;
+                // ResponseHeaders tra ve response DA dispose (using ben trong):
+                // doc ContentLength khi upstream khong gui header nay
+                // (chunked) se nem ObjectDisposed -> 500. Boc try/catch.
+                long? contentLength = null;
+                try { contentLength = httpHeaders.Content.Headers.ContentLength; } catch { }
                 bool videoTranscoded =
                     conf.hdr_to_sdr && probe.Video?.IsHdr == true ||
                     probe.IsH264 && conf.transcodeH264 ||
