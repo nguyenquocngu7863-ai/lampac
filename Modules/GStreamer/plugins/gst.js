@@ -171,11 +171,17 @@
             data.playlist.forEach(function (p) {
                 if (!p || typeof p.url !== 'string' || !p.url)
                     return;
-                playlist.push({
-                    title: p.title,
-                    url_orig: p.url,
-                    url: account('{localhost}/gst/start.m3u8?linkencode=' + encodeURIComponent(Lampa.Base64.encode(p.url))) + '&audio=' + audioIndex
-                })
+                // Copy giu season/episode/id: Lampa dinh vi trong playlist
+                // theo url roi episode/season, thieu la rot ve tap dau
+                // (port tu upstream). preload/stat/m3u -> play keo probe
+                // khoi 502. Tang timeout manifest cho ep lanh.
+                var item = Object.assign({}, p);
+                item.url_orig = p.url;
+                var src = (p.url + '').replace(/&(preload|stat|m3u)/g, '&play');
+                item.url = account('{localhost}/gst/start.m3u8?linkencode=' + encodeURIComponent(Lampa.Base64.encode(src))) + '&audio=' + (audioIndex || 0);
+                item.hls_type = 'hlsjs';
+                item.hls_manifest_timeout = 90000;
+                playlist.push(item)
             })
         }
 
