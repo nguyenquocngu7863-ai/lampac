@@ -1,0 +1,9 @@
+{
+  "name": "MissAV",
+  "description": "MissAV - JAV HD Vietsub",
+  "version": "1.0.0",
+  "author": "Lampac",
+  "site": "https://missav.live",
+  "enable": true,
+  "dynamic": true
+}
