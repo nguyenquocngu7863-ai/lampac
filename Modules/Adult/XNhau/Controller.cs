@@ -40,7 +40,7 @@ public class XNhauController : BaseSisiController
                 playlists = XNhauTo.Playlist("xnhau/vidosik", span);
             }, addheaders: HeadersModel.Init(
                 ("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"),
-                ("Referer", "https://xnhau.limo/")
+                ("Referer", init.host + "/")
             ));
 
             if (playlists == null || playlists.Count == 0)
@@ -94,7 +94,7 @@ public class XNhauController : BaseSisiController
                         url = url.Split("?uri=")[0]; // Lấy phần trước ?uri= để đảm bảo URL sạch
                         if (url.EndsWith("/")) url = url.TrimEnd('/');
                     } else if (url.StartsWith("/")) {
-                        url = $"https://xnhau.cab{url}";
+                        url = $"{init.host}{url}";
                     }
                 }
 
@@ -236,7 +236,7 @@ public class XNhauController : BaseSisiController
                     ("sec-fetch-dest", "document"),
                     ("sec-fetch-mode", "navigate"),
                     ("sec-fetch-site", "none"),
-                    ("referer", "https://xnhau.cab/")
+                    ("referer", init.host + "/")
                 ));
 
                 if (rch?.enable == true)
@@ -253,7 +253,7 @@ public class XNhauController : BaseSisiController
                 {
                     proxyManager?.Success();
                     var direct = httpHeaders(init, HeadersModel.Init(
-                        ("referer", "https://xnhau.cab/")
+                        ("referer", init.host + "/")
                     ));
                     hybridCache.Set(memKey, link, cacheTime(40));
                     return Redirect(HostStreamProxy(link, direct));

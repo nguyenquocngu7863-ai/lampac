@@ -15,6 +15,9 @@ namespace XNhau;
 
 public static class XNhauTo
 {
+    // host hien tai (ModInit.updateConf gan = conf.host moi lan reload)
+    public static string SiteHost = "https://xnhau.free";
+
     #region Uri
     public static string Uri(string host, string search, string sort, string c, string t, int pg)
     {
@@ -29,7 +32,7 @@ public static class XNhauTo
             // vao o tim kiem — lay thang trang member
             string murl = search.Trim();
             if (murl.StartsWith("/"))
-                murl = $"https://xnhau.limo{murl}";
+                murl = $"{SiteHost}{murl}";
             url.Clear();
             url.Append(murl.TrimEnd('/'));
             url.Append("/");
@@ -147,14 +150,14 @@ public static class XNhauTo
 
             string href = g[1].Value;
             if (href.StartsWith("/"))
-                href = $"https://xnhau.limo{href}";
+                href = $"{SiteHost}{href}";
 
             var img = row.Groups("data-original=\"([^\"]+)\"");
             string picture = img[1].Value;
             if (string.IsNullOrEmpty(picture))
                 picture = row.Match("data-webp=\"([^\"]+)\"");
             if (!string.IsNullOrEmpty(picture) && picture.StartsWith("/"))
-                picture = $"https://xnhau.limo{picture}";
+                picture = $"{SiteHost}{picture}";
 
             string time = row.Match("<span class=\"duration\"[^>]*>(.*?)</span>", trim: true);
             if (string.IsNullOrEmpty(time))
@@ -307,7 +310,7 @@ public static class XNhauTo
             return uri;
 
         if (uri.StartsWith("/"))
-            return $"https://xnhau.limo{uri}";
+            return $"{SiteHost}{uri}";
 
         return uri;
     }
