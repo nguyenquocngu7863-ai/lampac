@@ -31,7 +31,7 @@ public class MissAVController : BaseSisiController
                 {
                     ["User-Agent"] = MissAVTo.ChromeUA,
                     ["Referer"] = "https://missav.live/"
-                });
+                }, keepopen: false);
 
                 if (page == null)
                     return (null, null);
