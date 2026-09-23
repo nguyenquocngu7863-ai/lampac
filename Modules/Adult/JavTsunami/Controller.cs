@@ -29,13 +29,20 @@ public class JavTsunamiController : BaseSisiController
         {
             List<PlaylistItem> playlists = null;
 
-            await httpHydra.GetSpan(JavTsunamiTo.Uri(init.host, search, c, pg), span =>
+            for (int t = 0; t < 3 && (playlists == null || playlists.Count == 0); t++)
             {
-                playlists = JavTsunamiTo.Playlist("javtsunami/vidosik", span.ToString());
-            }, addheaders: HeadersModel.Init(
-                ("User-Agent", JavTsunamiTo.ChromeUA),
-                ("Referer", "https://javtsunami.com/")
-            ));
+                if (t > 0)
+                    await Task.Delay(1200);
+                await httpHydra.GetSpan(JavTsunamiTo.Uri(init.host, search, c, pg), span =>
+                {
+                    var pl = JavTsunamiTo.Playlist("javtsunami/vidosik", span.ToString());
+                    if (pl.Count > 0)
+                        playlists = pl;
+                }, addheaders: HeadersModel.Init(
+                    ("User-Agent", JavTsunamiTo.ChromeUA),
+                    ("Referer", "https://javtsunami.com/")
+                ));
+            }
 
             if (playlists == null || playlists.Count == 0)
                 return e.Fail("playlists", refresh_proxy: string.IsNullOrEmpty(search));
@@ -62,13 +69,21 @@ public class JavTsunamiController : BaseSisiController
         var links = new Dictionary<string, string>();
 
         string pageHtml = null;
-        await httpHydra.GetSpan(pageUrl, span =>
+        // javtsunami/turbovidhls hay timeout443/000 chập chờn -> retry
+        for (int t = 0; t < 3 && string.IsNullOrEmpty(pageHtml); t++)
         {
-            pageHtml = span.ToString();
-        }, addheaders: HeadersModel.Init(
-            ("User-Agent", JavTsunamiTo.ChromeUA),
-            ("Referer", "https://javtsunami.com/")
-        ));
+            if (t > 0)
+                await Task.Delay(1200);
+            await httpHydra.GetSpan(pageUrl, span =>
+            {
+                string s = span.ToString();
+                if (s.Contains("thumb-block") || s.Contains("video-player") || s.Contains("<article"))
+                    pageHtml = s;
+            }, addheaders: HeadersModel.Init(
+                ("User-Agent", JavTsunamiTo.ChromeUA),
+                ("Referer", "https://javtsunami.com/")
+            ));
+        }
 
         if (!string.IsNullOrEmpty(pageHtml))
         {
@@ -80,13 +95,20 @@ public class JavTsunamiController : BaseSisiController
                 if (embed.Contains("turbovidhls.com") || embed.Contains("turboviplay.com"))
                 {
                     string embHtml = null;
-                    await httpHydra.GetSpan(embed, span =>
+                    for (int t = 0; t < 3 && string.IsNullOrEmpty(embHtml); t++)
                     {
-                        embHtml = span.ToString();
-                    }, addheaders: HeadersModel.Init(
-                        ("User-Agent", JavTsunamiTo.ChromeUA),
-                        ("Referer", "https://javtsunami.com/")
-                    ));
+                        if (t > 0)
+                            await Task.Delay(1200);
+                        await httpHydra.GetSpan(embed, span =>
+                        {
+                            string s = span.ToString();
+                            if (s.Contains("data-hash"))
+                                embHtml = s;
+                        }, addheaders: HeadersModel.Init(
+                            ("User-Agent", JavTsunamiTo.ChromeUA),
+                            ("Referer", "https://javtsunami.com/")
+                        ));
+                    }
                     stream = JavTsunamiTo.TurboM3u8(embHtml);
                     label = "Turbo HLS";
                 }
@@ -94,12 +116,13 @@ public class JavTsunamiController : BaseSisiController
                 if (string.IsNullOrEmpty(stream))
                     continue;
 
-                string key = label;
-                int n = 2;
-                while (links.ContainsKey(key))
-                    key = label + " " + (n++);
-                if (!links.ContainsValue(stream))
-                    links.TryAdd(key, stream);
+                // segment nam tren googleusercontent (rate-limit IP server khi proxy)
+                // -> ban direct truoc (player tai bang IP nguoi dung), proxy lam du phong
+                if (!links.ContainsKey(label))
+                    links.TryAdd(label, stream);
+                string pkey = label + " (proxy)";
+                if (!links.ContainsKey(pkey))
+                    links.TryAdd(pkey, stream);
 
                 break;
             }
@@ -137,6 +160,10 @@ public class JavTsunamiController : BaseSisiController
         var links = await ResolveLinksAsync(uri);
         if (links == null || !links.TryGetValue(q, out string link) || string.IsNullOrEmpty(link))
             return OnError("stream_links", refresh_proxy: true);
+
+        // direct: master/variant khong can auth header -> player tai thang bang IP user
+        if (!q.Contains("(proxy)"))
+            return Redirect(link);
 
         var headers = httpHeaders(init, HeadersModel.Init(
             ("User-Agent", JavTsunamiTo.ChromeUA),
