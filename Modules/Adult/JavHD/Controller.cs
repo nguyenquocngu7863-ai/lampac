@@ -217,6 +217,20 @@ public class JavHDController : BaseSisiController
         return links;
     }
 
+    [HttpGet]
+    [Route("javhdepick.js")]
+    public ActionResult EpPick()
+    {
+        try
+        {
+            string path = System.IO.Path.Combine(ModInit.modpath, "javhdepick.js");
+            if (System.IO.File.Exists(path))
+                return Content(System.IO.File.ReadAllText(path), "application/javascript; charset=utf-8");
+        }
+        catch { }
+        return NotFound();
+    }
+
     [HttpGet, Staticache(manually: true)]
     [Route("javhd/vidosik")]
     async public Task<ActionResult> Vidosik(string uri)
