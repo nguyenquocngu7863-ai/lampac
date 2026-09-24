@@ -101,7 +101,7 @@ public static class JavHDTo
         {
             if (!string.IsNullOrEmpty(u) && u.StartsWith("http") && seen.Add(u))
             {
-                if (u.Contains("turbovid"))
+                if (u.Contains("cloudwish") || u.Contains("mycloudz"))
                     urls.Insert(0, u);
                 else
                     urls.Add(u);
@@ -138,6 +138,71 @@ public static class JavHDTo
             return "";
         var m = Regex.Match(html, "data-hash=\"(https?://[^\"]+\\.m3u8[^\"]*)\"");
         return m.Success ? m.Groups[1].Value : "";
+    }
+
+    // giai eval(p,a,c,k,e,d) kieu Dean Edwards (mycloudz/cloudwish) -> list m3u8
+    static readonly Regex EvalRx = new(
+        @"eval\(function\(p,a,c,k,e,d\)\{.*?\}\('((?:[^'\\]|\\.)*)',(\d+),(\d+),'((?:[^'\\]|\\.)*)'\.split\('\|'\)(?:,0,\{\})?\)",
+        RegexOptions.Singleline);
+
+    static string DecodePack(string p, int a, int c, string[] k)
+    {
+        string Unbase(int n)
+        {
+            const string chars = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ+/";
+            if (n < a)
+                return chars[n].ToString();
+            string s = "";
+            while (n > 0)
+            {
+                s = chars[n % a] + s;
+                n /= a;
+            }
+            return s;
+        }
+        while (c-- > 0)
+        {
+            string w = Unbase(c);
+            if (!string.IsNullOrEmpty(w) && c < k.Length && !string.IsNullOrEmpty(k[c]))
+                p = Regex.Replace(p, @"\b" + Regex.Escape(w) + @"\b", k[c]);
+        }
+        return p;
+    }
+
+    public static List<string> CloudHlsUrls(string html)
+    {
+        var urls = new List<string>();
+        if (string.IsNullOrEmpty(html))
+            return urls;
+
+        string decoded = html;
+        for (int i = 0; i < 3; i++)
+        {
+            var m = EvalRx.Match(decoded);
+            if (!m.Success)
+                break;
+            try
+            {
+                string p = m.Groups[1].Value.Replace("\\'", "'");
+                int a = int.Parse(m.Groups[2].Value);
+                int c = int.Parse(m.Groups[3].Value);
+                string[] k = m.Groups[4].Value.Split('|');
+                string one = DecodePack(p, a, c, k);
+                decoded = decoded.Substring(0, m.Index) + one + decoded.Substring(m.Index + m.Length);
+            }
+            catch { break; }
+        }
+
+        string flat = decoded.Replace("\\/", "/").Replace("\\u0026", "&");
+        var seen = new HashSet<string>();
+        foreach (Match m in Regex.Matches(flat, "\"hls\\d*\"\\s*:\\s*\"(https?://[^\"]+?\\.m3u8[^\"]*?)\""))
+        {
+            string u = m.Groups[1].Value;
+            if (seen.Add(u))
+                urls.Add(u);
+        }
+
+        return urls;
     }
 
     public static List<Shared.Models.SISI.Base.MenuItem> Menu(string host)

@@ -111,6 +111,16 @@ public class JavHDController : BaseSisiController
                     stream = JavHDTo.TurboM3u8(embHtml);
                     label = "Turbo HLS";
                 }
+                else if (embed.Contains("cloudwish") || embed.Contains("mycloudz"))
+                {
+                    string embHtml = await GetHtmlAsync(embed, pageUrl, 3, "eval(function");
+                    foreach (string hls in JavHDTo.CloudHlsUrls(embHtml))
+                    {
+                        stream = hls;
+                        label = "Cloud HLS";
+                        break;
+                    }
+                }
                 else
                 {
                     string embHtml = await GetHtmlAsync(embed, pageUrl, 2);
