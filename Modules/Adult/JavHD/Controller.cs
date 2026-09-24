@@ -81,6 +81,61 @@ public class JavHDController : BaseSisiController
         return html;
     }
 
+    static readonly string[] Servers = new[] { "Cloudwish", "Mycloudz", "Turbo" };
+
+    // eppicker: vidosik chi tra server list tuc thi, resolve server duoc chon o Video()
+    async Task<string> ResolveServerAsync(string uri, string server)
+    {
+        string memKey = ipkey($"javhd:play:{server}:{uri}");
+        if (hybridCache.TryGetValue(memKey, out string cached) && !string.IsNullOrEmpty(cached))
+            return cached;
+
+        string pageUrl = uri;
+        if (pageUrl.StartsWith("/"))
+            pageUrl = "https://javhd.today" + pageUrl;
+
+        string pageHtml = await GetHtmlAsync(pageUrl, "https://javhd.today/", 3, "data-embed");
+        if (string.IsNullOrEmpty(pageHtml))
+            return null;
+
+        int n = 0;
+        foreach (string embed in JavHDTo.EmbedUrls(pageHtml))
+        {
+            if (n++ >= 6)
+                break;
+
+            bool want = server == "Turbo" ? embed.Contains("turbovid")
+                : server == "Cloudwish" ? embed.Contains("cloudwish")
+                : server == "Mycloudz" ? embed.Contains("mycloudz") : false;
+            if (!want)
+                continue;
+
+            string stream = null;
+            if (embed.Contains("turbovid"))
+            {
+                string embHtml = await GetHtmlAsync(embed, pageUrl, 3, "data-hash");
+                stream = JavHDTo.TurboM3u8(embHtml);
+            }
+            else
+            {
+                string embHtml = await GetHtmlAsync(embed, pageUrl, 3, "eval(function");
+                foreach (string hls in JavHDTo.CloudHlsUrls(embHtml))
+                {
+                    stream = hls;
+                    break;
+                }
+            }
+
+            if (!string.IsNullOrEmpty(stream))
+            {
+                hybridCache.Set(memKey, stream, cacheTime(20));
+                return stream;
+            }
+        }
+
+        return null;
+    }
+
     async Task<Dictionary<string, string>> ResolveLinksAsync(string uri)
     {
         string memKey = ipkey($"javhd:view:{uri}");
@@ -169,12 +224,15 @@ public class JavHDController : BaseSisiController
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
 
-        var links = await ResolveLinksAsync(uri);
-        if (links == null || links.Count == 0)
-            return OnError("stream_links", refresh_proxy: true);
+        // popup tuc thi: khong resolve o day, resolve khi play
+        var links = new Dictionary<string, string>();
+        foreach (string s in Servers)
+        {
+            links.TryAdd(s, $"{host}/javhd/video?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(s)}");
+            links.TryAdd(s + " (proxy)", $"{host}/javhd/video?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(s + " (proxy)")}");
+        }
 
-        return Json(links.ToDictionary(k => k.Key, v =>
-            $"{host}/javhd/video?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(v.Key)}"));
+        return Json(links);
     }
 
     [HttpGet]
@@ -184,24 +242,42 @@ public class JavHDController : BaseSisiController
         if (await IsRequestBlocked(rch: true))
             return badInitMsg;
 
-        var links = await ResolveLinksAsync(uri);
-        if (links == null || !links.TryGetValue(q, out string link) || string.IsNullOrEmpty(link))
+        bool viaProxy = q != null && q.Contains("(proxy)");
+        string server = viaProxy ? q.Replace(" (proxy)", "") : q;
+        if (string.IsNullOrEmpty(server))
             return OnError("stream_links", refresh_proxy: true);
 
-        if (!q.Contains("(proxy)"))
+        // fallback kieu cu (q = label stream truc tiep)
+        var links = await ResolveLinksAsync(uri);
+        if (links != null && links.TryGetValue(q, out string oldlink) && !string.IsNullOrEmpty(oldlink))
+        {
+            if (!viaProxy)
+                return Redirect(oldlink);
+            return Redirect(HostStreamProxy(oldlink, ProxyHeaders(oldlink)));
+        }
+
+        string link = await ResolveServerAsync(uri, server);
+        if (string.IsNullOrEmpty(link))
+            return OnError("stream_links", refresh_proxy: true);
+
+        if (!viaProxy)
             return Redirect(link);
 
+        return Redirect(HostStreamProxy(link, ProxyHeaders(link)));
+    }
+
+    IReadOnlyList<HeadersModel> ProxyHeaders(string link)
+    {
         string referer = "https://turbovid.vip/";
-        if (link.Contains("cloudwish.xyz") || link.Contains("cdn-centaurus.com"))
+        if (link.Contains("cloudwish.xyz") || link.Contains("cdn-centaurus.com") || link.Contains("cloudscalability.space"))
             referer = "https://cloudwish.xyz/";
         else if (link.Contains("mycloudz.cc") || link.Contains("acek-cdn.com"))
             referer = "https://mycloudz.cc/";
 
-        var headers = httpHeaders(init, HeadersModel.Init(
+        return httpHeaders(init, HeadersModel.Init(
             ("User-Agent", JavHDTo.ChromeUA),
             ("Referer", referer),
             ("Origin", referer.TrimEnd('/'))
         ));
-        return Redirect(HostStreamProxy(link, headers));
     }
 }
