@@ -529,14 +529,14 @@ sync_latest_modules() {
         # VaPlayer (streamdata.vaplayer.ru, ENG): JSON thang, m3u8 da chat
         # luong 480p/720p/1080p, H.264+AAC, imdb-based, khong can Playwright.
         vaplayertarget=/root/lampac/module/OnlineENG/VaPlayer
-        mkdir -p \"$vaplayertarget\"
+        mkdir -p \"\$vaplayertarget\"
         for vaplayerfile in manifest.json Controller.cs ModInit.cs; do
-            if curl -fsSL --retry 3 \"$base/Modules/OnlineENG/VaPlayer/$vaplayerfile?cb=$stamp\" -o \"/tmp/vaplayer-$vaplayerfile\"; then
-                mv \"/tmp/vaplayer-$vaplayerfile\" \"$vaplayertarget/$vaplayerfile\"
-                echo \"  [sync] vaplayer/$vaplayerfile\"
+            if curl -fsSL --retry 3 \"\$base/Modules/OnlineENG/VaPlayer/\$vaplayerfile?cb=\$stamp\" -o \"/tmp/vaplayer-\$vaplayerfile\"; then
+                mv \"/tmp/vaplayer-\$vaplayerfile\" \"\$vaplayertarget/\$vaplayerfile\"
+                echo \"  [sync] vaplayer/\$vaplayerfile\"
             else
-                rm -f \"/tmp/vaplayer-$vaplayerfile\"
-                echo \"  [sync] vaplayer: bo qua $vaplayerfile (nguon khong co)\"
+                rm -f \"/tmp/vaplayer-\$vaplayerfile\"
+                echo \"  [sync] vaplayer: bo qua \$vaplayerfile (nguon khong co)\"
             fi
         done
 
@@ -598,14 +598,14 @@ sync_latest_modules() {
         # RusTrio (gop Mirage/Spectre/Phantom, RUS): hoi song song 3 nguon qua
         # localhost roi gop the, khong sua code 3 nguon goc.
         rustriotarget=/root/lampac/module/OnlineRUS/RusTrio
-        mkdir -p \"$rustriotarget\"
+        mkdir -p \"\$rustriotarget\"
         for rustriofile in manifest.json Controller.cs ModInit.cs; do
-            if curl -fsSL --retry 3 \"$base/Modules/OnlineRUS/RusTrio/$rustriofile?cb=$stamp\" -o \"/tmp/rustrio-$rustriofile\"; then
-                mv \"/tmp/rustrio-$rustriofile\" \"$rustriotarget/$rustriofile\"
-                echo \"  [sync] rustrio/$rustriofile\"
+            if curl -fsSL --retry 3 \"\$base/Modules/OnlineRUS/RusTrio/\$rustriofile?cb=\$stamp\" -o \"/tmp/rustrio-\$rustriofile\"; then
+                mv \"/tmp/rustrio-\$rustriofile\" \"\$rustriotarget/\$rustriofile\"
+                echo \"  [sync] rustrio/\$rustriofile\"
             else
-                rm -f \"/tmp/rustrio-$rustriofile\"
-                echo \"  [sync] rustrio: bo qua $rustriofile (nguon khong co)\"
+                rm -f \"/tmp/rustrio-\$rustriofile\"
+                echo \"  [sync] rustrio: bo qua \$rustriofile (nguon khong co)\"
             fi
         done
 
@@ -737,6 +737,21 @@ sync_latest_modules() {
             else
                 rm -f \"/tmp/vlxxsync-\$vlxxsyncfile\"
                 echo \"  [sync] vlxx: bo qua \$vlxxsyncfile (nguon khong co)\"
+            fi
+        done
+
+        # JavGuru (jav.guru, WordPress): list inside-article, play qua chuoi
+        # iframe_url base64 -> /searcho/ token dao nguoc -> 302 embed (Turbo/Vidara/
+        # JavClan/VOE/Dood). Khong co trong lampac-nextgen.zip nen mkdir + lay full file.
+        jgsynctarget=/root/lampac/module/Adult/JavGuru
+        mkdir -p \"\$jgsynctarget\"
+        for jgsyncfile in manifest.json Controller.cs ModInit.cs Service.cs README.md; do
+            if curl -fsSL --retry 3 \"\$base/Modules/Adult/JavGuru/\$jgsyncfile?cb=\$stamp\" -o \"/tmp/jgsync-\$jgsyncfile\"; then
+                mv \"/tmp/jgsync-\$jgsyncfile\" \"\$jgsynctarget/\$jgsyncfile\"
+                echo \"  [sync] javguru/\$jgsyncfile\"
+            else
+                rm -f \"/tmp/jgsync-\$jgsyncfile\"
+                echo \"  [sync] javguru: bo qua \$jgsyncfile (nguon khong co)\"
             fi
         done
 
@@ -889,7 +904,7 @@ install_custom_modules() {
         # vidosik ra link, strem proxy 206 video/mp4). Khong co trong
         # lampac-nextgen.zip nen mkdir + lay full file, bo qua tung file neu
         # nguon khong co (an toan duoi set -euo pipefail).
-        po85base=\"\${CUSTOM_SOURCE_BASE}/Modules/Adult/Po85\"
+        po85base=\"${CUSTOM_SOURCE_BASE}/Modules/Adult/Po85\"
         po85target=/root/lampac/module/Adult/Po85
         mkdir -p \"\$po85target\"
         for po85file in manifest.json Controller.cs ModInit.cs Service.cs; do
@@ -906,32 +921,32 @@ install_custom_modules() {
         # vidosik ra link, strem proxy 206 video/mp4). Khong co trong
         # lampac-nextgen.zip nen mkdir + lay full file, bo qua tung file neu
         # nguon khong co (an toan duoi set -euo pipefail).
-        xnhaubase=\"\${CUSTOM_SOURCE_BASE}/Modules/Adult/XNhau\"
+        xnhaubase=\"${CUSTOM_SOURCE_BASE}/Modules/Adult/XNhau\"
         xnhautarget=/root/lampac/module/Adult/XNhau
-        mkdir -p \"$xnhautarget\"
+        mkdir -p \"\$xnhautarget\"
         for xnhaufile in manifest.json Controller.cs ModInit.cs Service.cs; do
-            if curl -fsSL --retry 3 \"$xnhaubase/$xnhaufile?cb=$syncstamp\" -o \"/tmp/xnhau-$xnhaufile\"; then
-                mv \"/tmp/xnhau-$xnhaufile\" \"$xnhautarget/$xnhaufile\"
-                echo \"  [xnhau] $xnhaufile\"
+            if curl -fsSL --retry 3 \"\$xnhaubase/\$xnhaufile?cb=\$syncstamp\" -o \"/tmp/xnhau-\$xnhaufile\"; then
+                mv \"/tmp/xnhau-\$xnhaufile\" \"\$xnhautarget/\$xnhaufile\"
+                echo \"  [xnhau] \$xnhaufile\"
             else
-                rm -f \"/tmp/xnhau-$xnhaufile\"
-                echo \"  [xnhau] bo qua $xnhaufile - khong co tren nguon\"
+                rm -f \"/tmp/xnhau-\$xnhaufile\"
+                echo \"  [xnhau] bo qua \$xnhaufile - khong co tren nguon\"
             fi
         done
 
         # Viet69z (viet69z.to): WordPress (list, vidosik uuid -> emb API).
         # Khong co trong lampac-nextgen.zip nen mkdir + lay full file, bo qua
         # tung file neu nguon khong co (an toan duoi set -euo pipefail).
-        v69base=\"\${CUSTOM_SOURCE_BASE}/Modules/Adult/Viet69z\"
+        v69base=\"${CUSTOM_SOURCE_BASE}/Modules/Adult/Viet69z\"
         v69target=/root/lampac/module/Adult/Viet69z
-        mkdir -p \"$v69target\"
+        mkdir -p \"\$v69target\"
         for v69file in manifest.json Controller.cs ModInit.cs Service.cs; do
-            if curl -fsSL --retry 3 \"$v69base/$v69file?cb=$syncstamp\" -o \"/tmp/v69-$v69file\"; then
-                mv \"/tmp/v69-$v69file\" \"$v69target/$v69file\"
-                echo \"  [viet69z] $v69file\"
+            if curl -fsSL --retry 3 \"\$v69base/\$v69file?cb=\$syncstamp\" -o \"/tmp/v69-\$v69file\"; then
+                mv \"/tmp/v69-\$v69file\" \"\$v69target/\$v69file\"
+                echo \"  [viet69z] \$v69file\"
             else
-                rm -f \"/tmp/v69-$v69file\"
-                echo \"  [viet69z] bo qua $v69file - khong co tren nguon\"
+                rm -f \"/tmp/v69-\$v69file\"
+                echo \"  [viet69z] bo qua \$v69file - khong co tren nguon\"
             fi
         done
 
@@ -939,16 +954,16 @@ install_custom_modules() {
         # vidosik + proxy strip PNG-boc-TS). Khong co trong
         # lampac-nextgen.zip nen mkdir + lay full file, bo qua tung file neu
         # nguon khong co (an toan duoi set -euo pipefail).
-        vsbbase=\"\${CUSTOM_SOURCE_BASE}/Modules/Adult/VietSexBlog\"
+        vsbbase=\"${CUSTOM_SOURCE_BASE}/Modules/Adult/VietSexBlog\"
         vsbtarget=/root/lampac/module/Adult/VietSexBlog
-        mkdir -p \"$vsbtarget\"
+        mkdir -p \"\$vsbtarget\"
         for vsbfile in manifest.json Controller.cs ModInit.cs Service.cs README.md; do
-            if curl -fsSL --retry 3 \"$vsbbase/$vsbfile?cb=$syncstamp\" -o \"/tmp/vsb-$vsbfile\"; then
-                mv \"/tmp/vsb-$vsbfile\" \"$vsbtarget/$vsbfile\"
-                echo \"  [vietsexblog] $vsbfile\"
+            if curl -fsSL --retry 3 \"\$vsbbase/\$vsbfile?cb=\$syncstamp\" -o \"/tmp/vsb-\$vsbfile\"; then
+                mv \"/tmp/vsb-\$vsbfile\" \"\$vsbtarget/\$vsbfile\"
+                echo \"  [vietsexblog] \$vsbfile\"
             else
-                rm -f \"/tmp/vsb-$vsbfile\"
-                echo \"  [vietsexblog] bo qua $vsbfile - khong co tren nguon\"
+                rm -f \"/tmp/vsb-\$vsbfile\"
+                echo \"  [vietsexblog] bo qua \$vsbfile - khong co tren nguon\"
             fi
         done
 
@@ -956,16 +971,16 @@ install_custom_modules() {
         # vidosik slug-guess mp4, proxy 206). Khong co trong
         # lampac-nextgen.zip nen mkdir + lay full file, bo qua tung file neu
         # nguon khong co (an toan duoi set -euo pipefail).
-        phe69base=\"\${CUSTOM_SOURCE_BASE}/Modules/Adult/Phe69\"
+        phe69base=\"${CUSTOM_SOURCE_BASE}/Modules/Adult/Phe69\"
         phe69target=/root/lampac/module/Adult/Phe69
-        mkdir -p \"$phe69target\"
+        mkdir -p \"\$phe69target\"
         for phe69file in manifest.json Controller.cs ModInit.cs Service.cs README.md; do
-            if curl -fsSL --retry 3 \"$phe69base/$phe69file?cb=$syncstamp\" -o \"/tmp/phe69-$phe69file\"; then
-                mv \"/tmp/phe69-$phe69file\" \"$phe69target/$phe69file\"
-                echo \"  [phe69] $phe69file\"
+            if curl -fsSL --retry 3 \"\$phe69base/\$phe69file?cb=\$syncstamp\" -o \"/tmp/phe69-\$phe69file\"; then
+                mv \"/tmp/phe69-\$phe69file\" \"\$phe69target/\$phe69file\"
+                echo \"  [phe69] \$phe69file\"
             else
-                rm -f \"/tmp/phe69-$phe69file\"
-                echo \"  [phe69] bo qua $phe69file - khong co tren nguon\"
+                rm -f \"/tmp/phe69-\$phe69file\"
+                echo \"  [phe69] bo qua \$phe69file - khong co tren nguon\"
             fi
         done
 
@@ -973,16 +988,16 @@ install_custom_modules() {
         # data-link /storage/m3u8/{slug}/index.m3u8. Khong co trong
         # lampac-nextgen.zip nen mkdir + lay full file, bo qua tung file neu
         # nguon khong co (an toan duoi set -euo pipefail).
-        sexdepbase=\"\${CUSTOM_SOURCE_BASE}/Modules/Adult/SexDep\"
+        sexdepbase=\"${CUSTOM_SOURCE_BASE}/Modules/Adult/SexDep\"
         sexdeptarget=/root/lampac/module/Adult/SexDep
-        mkdir -p \"$sexdeptarget\"
+        mkdir -p \"\$sexdeptarget\"
         for sexdepfile in manifest.json Controller.cs ModInit.cs Service.cs README.md; do
-            if curl -fsSL --retry 3 \"$sexdepbase/$sexdepfile?cb=$syncstamp\" -o \"/tmp/sexdep-$sexdepfile\"; then
-                mv \"/tmp/sexdep-$sexdepfile\" \"$sexdeptarget/$sexdepfile\"
-                echo \"  [sexdep] $sexdepfile\"
+            if curl -fsSL --retry 3 \"\$sexdepbase/\$sexdepfile?cb=\$syncstamp\" -o \"/tmp/sexdep-\$sexdepfile\"; then
+                mv \"/tmp/sexdep-\$sexdepfile\" \"\$sexdeptarget/\$sexdepfile\"
+                echo \"  [sexdep] \$sexdepfile\"
             else
-                rm -f \"/tmp/sexdep-$sexdepfile\"
-                echo \"  [sexdep] bo qua $sexdepfile - khong co tren nguon\"
+                rm -f \"/tmp/sexdep-\$sexdepfile\"
+                echo \"  [sexdep] bo qua \$sexdepfile - khong co tren nguon\"
             fi
         done
 
@@ -990,16 +1005,16 @@ install_custom_modules() {
         # vcast POST /videos/{id}/config. Khong co trong
         # lampac-nextgen.zip nen mkdir + lay full file, bo qua tung file neu
         # nguon khong co (an toan duoi set -euo pipefail).
-        heovlbase=\"\${CUSTOM_SOURCE_BASE}/Modules/Adult/HeoVl\"
+        heovlbase=\"${CUSTOM_SOURCE_BASE}/Modules/Adult/HeoVl\"
         heovltarget=/root/lampac/module/Adult/HeoVl
-        mkdir -p \"$heovltarget\"
+        mkdir -p \"\$heovltarget\"
         for heovlfile in manifest.json Controller.cs ModInit.cs Service.cs README.md; do
-            if curl -fsSL --retry 3 \"$heovlbase/$heovlfile?cb=$syncstamp\" -o \"/tmp/heovl-$heovlfile\"; then
-                mv \"/tmp/heovl-$heovlfile\" \"$heovltarget/$heovlfile\"
-                echo \"  [heovl] $heovlfile\"
+            if curl -fsSL --retry 3 \"\$heovlbase/\$heovlfile?cb=\$syncstamp\" -o \"/tmp/heovl-\$heovlfile\"; then
+                mv \"/tmp/heovl-\$heovlfile\" \"\$heovltarget/\$heovlfile\"
+                echo \"  [heovl] \$heovlfile\"
             else
-                rm -f \"/tmp/heovl-$heovlfile\"
-                echo \"  [heovl] bo qua $heovlfile - khong co tren nguon\"
+                rm -f \"/tmp/heovl-\$heovlfile\"
+                echo \"  [heovl] bo qua \$heovlfile - khong co tren nguon\"
             fi
         done
 
@@ -1007,21 +1022,36 @@ install_custom_modules() {
         # lay iframe embed -> window.__SRC HLS. Khong co trong
         # lampac-nextgen.zip nen mkdir + lay full file, bo qua tung file neu
         # nguon khong co (an toan duoi set -euo pipefail).
-        vlxxbase=\"\${CUSTOM_SOURCE_BASE}/Modules/Adult/Vlxx\"
+        vlxxbase=\"${CUSTOM_SOURCE_BASE}/Modules/Adult/Vlxx\"
         vlxxtarget=/root/lampac/module/Adult/Vlxx
-        mkdir -p \"$vlxxtarget\"
+        mkdir -p \"\$vlxxtarget\"
         for vlxxfile in manifest.json Controller.cs ModInit.cs Service.cs README.md; do
-            if curl -fsSL --retry 3 \"$vlxxbase/$vlxxfile?cb=$syncstamp\" -o \"/tmp/vlxx-$vlxxfile\"; then
-                mv \"/tmp/vlxx-$vlxxfile\" \"$vlxxtarget/$vlxxfile\"
-                echo \"  [vlxx] $vlxxfile\"
+            if curl -fsSL --retry 3 \"\$vlxxbase/\$vlxxfile?cb=\$syncstamp\" -o \"/tmp/vlxx-\$vlxxfile\"; then
+                mv \"/tmp/vlxx-\$vlxxfile\" \"\$vlxxtarget/\$vlxxfile\"
+                echo \"  [vlxx] \$vlxxfile\"
             else
-                rm -f \"/tmp/vlxx-$vlxxfile\"
-                echo \"  [vlxx] bo qua $vlxxfile - khong co tren nguon\"
+                rm -f \"/tmp/vlxx-\$vlxxfile\"
+                echo \"  [vlxx] bo qua \$vlxxfile - khong co tren nguon\"
+            fi
+        done
+
+        # JavGuru (jav.guru): xem Modules/Adult/JavGuru/README.md. Base expand
+        # o host nhu VidCore; bien guest escape het de host khong expand duoi set -u.
+        jgbase=\"${CUSTOM_SOURCE_BASE}/Modules/Adult/JavGuru\"
+        jgtarget=/root/lampac/module/Adult/JavGuru
+        mkdir -p \"\$jgtarget\"
+        for jgfile in manifest.json Controller.cs ModInit.cs Service.cs README.md; do
+            if curl -fsSL --retry 3 \"\$jgbase/\$jgfile?cb=\$syncstamp\" -o \"/tmp/jg-\$jgfile\"; then
+                mv \"/tmp/jg-\$jgfile\" \"\$jgtarget/\$jgfile\"
+                echo \"  [javguru] \$jgfile\"
+            else
+                rm -f \"/tmp/jg-\$jgfile\"
+                echo \"  [javguru] bo qua \$jgfile - khong co tren nguon\"
             fi
         done
 
         # Stripchat (livecam): xac minh 2026-09-05 (list 90, potok ra proxy 206).
-        scbase=\"\${CUSTOM_SOURCE_BASE}/Modules/Adult/Stripchat\"
+        scbase=\"${CUSTOM_SOURCE_BASE}/Modules/Adult/Stripchat\"
         sctarget=/root/lampac/module/Adult/Stripchat
         mkdir -p \"\$sctarget\"
         for scfile in manifest.json Controller.cs ModInit.cs Service.cs; do
