@@ -191,10 +191,16 @@ public class JavHDController : BaseSisiController
         if (!q.Contains("(proxy)"))
             return Redirect(link);
 
+        string referer = "https://turbovid.vip/";
+        if (link.Contains("cloudwish.xyz") || link.Contains("cdn-centaurus.com"))
+            referer = "https://cloudwish.xyz/";
+        else if (link.Contains("mycloudz.cc") || link.Contains("acek-cdn.com"))
+            referer = "https://mycloudz.cc/";
+
         var headers = httpHeaders(init, HeadersModel.Init(
             ("User-Agent", JavHDTo.ChromeUA),
-            ("Referer", "https://turbovid.vip/"),
-            ("Origin", "https://turbovid.vip")
+            ("Referer", referer),
+            ("Origin", referer.TrimEnd('/'))
         ));
         return Redirect(HostStreamProxy(link, headers));
     }

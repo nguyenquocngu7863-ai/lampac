@@ -44,6 +44,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
             httpversion = 2,
             rch_access = "apk",
             stream_access = "apk",
+            rchstreamproxy = "web,cors",
             headers_stream = HeadersModel.Init(
                 ("User-Agent", JavHDTo.ChromeUA),
                 ("Referer", "https://turbovid.vip/"),
