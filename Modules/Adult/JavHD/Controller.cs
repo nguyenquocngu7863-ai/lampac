@@ -99,17 +99,17 @@ public class JavHDController : BaseSisiController
             int n = 0;
             foreach (string embed in JavHDTo.EmbedUrls(pageHtml))
             {
-                if (n++ >= 4 || links.Count >= 3)
+                if (n++ >= 5 || links.Count >= 6)
                     break;
 
                 string stream = null;
-                string label = "HLS";
+                string label = "Server";
 
                 if (embed.Contains("turbovid"))
                 {
                     string embHtml = await GetHtmlAsync(embed, pageUrl, 3, "data-hash");
                     stream = JavHDTo.TurboM3u8(embHtml);
-                    label = "Turbo HLS";
+                    label = "Turbo";
                 }
                 else if (embed.Contains("cloudwish") || embed.Contains("mycloudz"))
                 {
@@ -117,7 +117,7 @@ public class JavHDController : BaseSisiController
                     foreach (string hls in JavHDTo.CloudHlsUrls(embHtml))
                     {
                         stream = hls;
-                        label = "Cloud HLS";
+                        label = embed.Contains("cloudwish") ? "Cloudwish" : "Mycloudz";
                         break;
                     }
                 }
