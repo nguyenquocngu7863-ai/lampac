@@ -232,7 +232,7 @@ public class JavHDController : BaseSisiController
             links.TryAdd(s + " (proxy)", $"{host}/javhd/video?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(s + " (proxy)")}");
         }
 
-        return Json(links);
+        return Json(new Shared.Models.SISI.OnResult.StreamItem() { qualitys = links });
     }
 
     [HttpGet]
