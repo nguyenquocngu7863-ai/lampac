@@ -1,9 +1,0 @@
-{
-  "name": "DevFetch",
-  "description": "TEMP proxy cleanup cho agent (xoa truoc khi push)",
-  "version": "0.0.1",
-  "author": "Lampac",
-  "site": "https://example.com",
-  "enable": true,
-  "dynamic": true
-}
