@@ -98,7 +98,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
     {
         try
         {
-            var psi = new ProcessStartInfo("/usr/bin/curl", "")
+            var psi = new ProcessStartInfo(System.IO.File.Exists("/usr/bin/curl") ? "/usr/bin/curl" : "curl", "")
             {
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,

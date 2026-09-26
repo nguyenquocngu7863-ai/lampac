@@ -1,0 +1,9 @@
+{
+  "name": "JavEng",
+  "description": "JAV English Subtitle streaming from javeng.tv",
+  "version": "1.0.0",
+  "author": "Lampac",
+  "site": "https://javeng.tv",
+  "enable": true,
+  "dynamic": true
+}

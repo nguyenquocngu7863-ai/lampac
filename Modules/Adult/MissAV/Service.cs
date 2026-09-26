@@ -61,8 +61,16 @@ public static class MissAVTo
             return url + (pg > 1 ? (url.Contains("?") ? "&" : "?") + "page=" + pg : "");
         }
 
-        return host + "/vi" + page;
+        // Trang chu mac dinh KHONG lay feed "/vi": do la Recombee goi y, khong
+        // phan trang duoc, moi trang tra ve trung nhau. Thay bang row
+        // "Ban phat hanh moi" — co ?page=N that.
+        return ReleaseUrl + page;
     }
+
+    public static string ReleaseUrl = "https://missav.live/dm635/vi/release";
+
+    // Feed goi y (Recombee) — khong phan trang, chi dung lam 1 muc menu.
+    public static string RecommendUrl = "https://missav.live/vi";
 
     // tilesJson: [{u,t,p}] do Playwright EvaluateAsync tra ve sau khi Alpine render
     public static List<Shared.Models.SISI.Base.PlaylistItem> Playlist(string uri, string tilesJson)
@@ -216,17 +224,48 @@ public static class MissAVTo
 
     // surrit/fourhoi/missav API: curl --http2 + full Chrome UA + referer = 200
     // (.NET HttpClient stall/403 tren cac host nay)
+    // Lampac native set LD_PRELOAD troi sang libseccomp-shim.so (ELF glibc) va
+    // LD_LIBRARY_PATH troi sang thu muc glibc. Tien trinh curl cua Termux la
+    // bionic nen khong "noi" duoc: Android linker bao
+    //   CANNOT LINK EXECUTABLE "curl": .../glibc/lib/libc.so has bad ELF magic
+    // -> CurlGet tra null -> ProxyOverride roi ve pipeline mac dinh cua Lampac
+    // (HttpClient) -> Cloudflare 403 -> player bao loi manifest.
+    // Phai goi bang duong dan tuyet doi va bo LD_PRELOAD cho process con.
+    static void PrepCurlEnv(ProcessStartInfo psi)
+    {
+        psi.Environment.Remove("LD_PRELOAD");
+        psi.Environment.Remove("LD_LIBRARY_PATH");
+
+        string curl = "/data/data/com.termux/files/usr/bin/curl";
+        psi.FileName = System.IO.File.Exists(curl) ? curl : "curl";
+    }
+
+    // surrit.com Cloudflare chan lai xen ke; thu lai vai lan truoc khi bo cua.
+    public static async Task<string> CurlGetRetry(string url, string referer, int attempts = 3)
+    {
+        for (int i = 0; i < attempts; i++)
+        {
+            string body = await CurlGet(url, referer);
+            if (!string.IsNullOrWhiteSpace(body) && body.Contains("#EXTM3U"))
+                return body;
+            if (i < attempts - 1)
+                await Task.Delay(500 * (i + 1));
+        }
+        return null;
+    }
+
     public static async Task<string> CurlGet(string url, string referer)
     {
         try
         {
-            var psi = new ProcessStartInfo("/usr/bin/curl")
+            var psi = new ProcessStartInfo
             {
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true,
             };
+            PrepCurlEnv(psi);
             psi.ArgumentList.Add("-sL");
             psi.ArgumentList.Add("--http2");
             psi.ArgumentList.Add("--compressed");
@@ -253,20 +292,24 @@ public static class MissAVTo
                 return p.ExitCode == 0 ? stdout : null;
             }
         }
-        catch { return null; }
+        catch
+        {
+            return null;
+        }
     }
 
     public static async Task<byte[]> CurlGetBytes(string url, string referer)
     {
         try
         {
-            var psi = new ProcessStartInfo("/usr/bin/curl")
+            var psi = new ProcessStartInfo
             {
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true,
             };
+            PrepCurlEnv(psi);
             psi.ArgumentList.Add("-sL");
             psi.ArgumentList.Add("--http2");
             psi.ArgumentList.Add("--compressed");
@@ -356,6 +399,7 @@ public static class MissAVTo
                 submenu = new List<Shared.Models.SISI.Base.MenuItem>()
                 {
                     new("Mới nhất", host + "/missav"),
+                    new("Đề xuất cho bạn", cat(RecommendUrl)),
                     new("Recent update", cat(H + "/dm539/vi/new")),
                     new("Bản phát hành mới", cat(H + "/dm635/vi/release")),
                     new("Rò rỉ không kiểm duyệt", cat(H + "/dm817/vi/uncensored-leak")),

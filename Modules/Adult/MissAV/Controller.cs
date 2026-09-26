@@ -10,6 +10,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Web;
 
@@ -19,19 +20,30 @@ public class MissAVController : BaseSisiController
 {
     public MissAVController() : base(ModInit.conf) { }
 
-    // missav.live la AlpineJS CSR: ContentAsync ngay DOMContentLoaded chi co
-    // template (:href/:data-src). Cho Alpine hydrate roi EvaluateAsync lay tiles.
+    // missav.live la AlpineJS CSR: noi dung grid chi co sau khi Recombee
+    // tra ve. Khong the lay bang HTTP tho (HTML tho chi co <template x-for>).
+    // => van phai dung trinh duyet, nhung dung CHUNG mot context de tiet RAM:
+    //    keepopen:true giu cookie/session (cung user_uuid nen cung goi y),
+    //    moi request chi tao them 1 page va dong lai ngay khi lay xong.
+    // Serialize cac lan render trinh duyet trong cung 1 context.
+    // Neu nhieu request chay song song, chung se tao nhieu page -> RAM nhoe.
+    static SemaphoreSlim _pageFetchLock = new SemaphoreSlim(1, 1);
+
     async Task<(string content, string tilesJson)> PageFetchAsync(string url)
     {
+        IPage page = null;
+        var acquired = await _pageFetchLock.WaitAsync(TimeSpan.FromSeconds(30));
+        if (!acquired)
+            return (null, null);
         try
         {
             using (var browser = new Shared.PlaywrightCore.PlaywrightBrowser())
             {
-                var page = await browser.NewPageAsync("MissAV", new Dictionary<string, string>
+                page = await browser.NewPageAsync("MissAV", new Dictionary<string, string>
                 {
                     ["User-Agent"] = MissAVTo.ChromeUA,
                     ["Referer"] = "https://missav.live/"
-                }, keepopen: false);
+                }, keepopen: true);
 
                 if (page == null)
                     return (null, null);
@@ -48,11 +60,12 @@ public class MissAVController : BaseSisiController
                 string content = await page.ContentAsync();
 
                 // Alpine hydrate tung hang recommendItems rieng tung dot: duration len truoc, title len sau.
-                // Poll den khi ca tile-co-title lan tile-co-href-that deu on dinh 3 lan lien tiep, toi da ~30s.
+                // Poll nhanh (700ms) cho den khi ca tile-co-title lan tile-co-href-that
+                // deu on dinh 3 lan lien tiep, toi da ~10s.
                 try
                 {
                     int lastT = -1, lastL = -1, stable = 0;
-                    for (int i = 0; i < 15; i++)
+                    for (int i = 0; i < 16; i++)
                     {
                         int v = 0;
                         try
@@ -77,7 +90,7 @@ public class MissAVController : BaseSisiController
                         if (t != lastT || l != lastL)
                             stable = 0;
                         lastT = t; lastL = l;
-                        await Task.Delay(2000);
+                        await Task.Delay(700);
                     }
                 }
                 catch { }
@@ -107,6 +120,11 @@ public class MissAVController : BaseSisiController
         catch
         {
             return (null, null);
+        }
+        finally
+        {
+            try { await page?.CloseAsync(); } catch { }
+            _pageFetchLock.Release();
         }
     }
 

@@ -296,7 +296,9 @@ public sealed class AIOStreamsController : BaseOnlineController<ModuleConf>
             return OnError("No streams for the selected AIOStreams source", 404);
 
         // Bấm tập phim: single-play + moi FILE mot dong trong quality.
-        // Plugin client (aioeppick.js) chen hien popup chon trong so do.
+        // Cards HTML tra ve o day lam app bao "JSON parsing failed"
+        // (the tap dung method call doi JSON) — chon nguon bang plugin
+        // client aioeppick.js (hien popup tu json.quality).
         if (play)
         {
             var firstPlay = BuildVideoResponse(streams, title, original_title, season, episode);
@@ -1296,19 +1298,30 @@ public sealed class AIOStreamsController : BaseOnlineController<ModuleConf>
         if (string.IsNullOrWhiteSpace(value))
             return null;
 
-        // AIOStreams marks the size with 📦 or 💾 depending on the template;
-        // fall back to a plain GB/MB token when the emoji line is absent.
+        // 1. "Size: 55.76 GB" dang hien (vd Penguin) — chinh xac nhat.
         Match match = Regex.Match(
             value,
-            @"(?:📦|💾)\s*(?<size>\d+(?:[.,]\d+)?\s*(?:TB|GB|MB|KB))",
+            @"\bSize\s*:\s*(?<size>\d+(?:[.,]\d+)?\s*(?:TB|GB|MB|KB))(?![a-zA-Z])",
             RegexOptions.IgnoreCase
         );
 
+        // 2. AIOStreams danh dau size bang 📦 hoac 💾 tuy template.
         if (!match.Success)
         {
             match = Regex.Match(
                 value,
-                @"(?<![\d.,])(?<size>\d+(?:[.,]\d+)?\s?(?:TB|GB|MB))(?![\d.,])",
+                @"(?:📦|💾)\s*(?<size>\d+(?:[.,]\d+)?\s*(?:TB|GB|MB|KB))(?![a-zA-Z])",
+                RegexOptions.IgnoreCase
+            );
+        }
+
+        // 3. Token GB/MB tran — LOAI bitrate (68.2Mbps) va kbps: don vi
+        // phai dung truoc ky tu khong-phai-chu (khong khop "MB" trong "Mbps").
+        if (!match.Success)
+        {
+            match = Regex.Match(
+                value,
+                @"(?<![\d.,])(?<size>\d+(?:[.,]\d+)?\s?(?:TB|GB|MB))(?![\d.,a-zA-Z])",
                 RegexOptions.IgnoreCase
             );
         }

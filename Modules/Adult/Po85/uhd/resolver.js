@@ -11,7 +11,7 @@ let queue = Promise.resolve();
 async function getBrowser() {
   if (!browser) {
     browser = await chromium.launch({
-      executablePath: '/usr/bin/google-chrome',
+      executablePath: process.env.CHROME_BIN || '/usr/bin/google-chrome',
       headless: true,
       args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-blink-features=AutomationControlled']
     });

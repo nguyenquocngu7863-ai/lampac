@@ -61,37 +61,12 @@ public class VibixController : BaseOnlineController
 
             foreach (var movie in cache.Value)
             {
-                if (movie.voices == null)
-                {
-                    movie.voices = new Dictionary<string, List<StreamQualityDto>>();
+                var voices = BuildMovieVoices(movie.file);
 
-                    foreach (Match qualityMatch in Regex.Matches(movie.file, @"\[(?<q>480|720|1080)p\](?<items>.*?)(?=,\[(?:480|720|1080)p\]|$)", RegexOptions.Singleline))
-                    {
-                        string items = qualityMatch.Groups["items"].Value;
-
-                        foreach (Match voiceMatch in Regex.Matches(items, @"\{(?<voice>[^}]+)\}(?<file>https?://[^,\t\[\;{ ]+)", RegexOptions.Singleline))
-                        {
-                            string voice = voiceMatch.Groups["voice"].Value;
-                            string file = voiceMatch.Groups["file"].Value;
-
-                            if (!movie.voices.TryGetValue(voice, out var streams))
-                            {
-                                streams = new List<StreamQualityDto>();
-                                movie.voices[voice] = streams;
-                            }
-
-                            streams.Insert(0, new StreamQualityDto(
-                                $"{host}/lite/vibix/video.m3u8?id={EncryptQuery(file)}",
-                                qualityMatch.Groups["q"].Value + "p"
-                            ));
-                        }
-                    }
-                }
-
-                if (movie.voices.Count == 0)
+                if (voices.Count == 0)
                     continue;
 
-                foreach (var v in movie.voices)
+                foreach (var v in voices)
                 {
                     if (v.Value.Count > 0)
                     {
@@ -141,8 +116,14 @@ public class VibixController : BaseOnlineController
                     if (!season.title.EndsWith($" {s}"))
                         continue;
 
-                    foreach (var episode in season.folder)
+                    foreach (var cachedEpisode in season.folder ?? Array.Empty<Item>())
                     {
+                        var episode = new Item
+                        {
+                            title = cachedEpisode.title,
+                            folder = cachedEpisode.folder,
+                            file = cachedEpisode.file
+                        };
                         string name = episode.title;
                         string file = episode.folder?.First().file ?? episode.file;
 
@@ -239,6 +220,37 @@ public class VibixController : BaseOnlineController
         return Content(m3u8, "application/vnd.apple.mpegurl");
     }
     #endregion
+
+    Dictionary<string, List<StreamQualityDto>> BuildMovieVoices(string file)
+    {
+        var voices = new Dictionary<string, List<StreamQualityDto>>();
+
+        if (string.IsNullOrWhiteSpace(file))
+            return voices;
+
+        foreach (Match qualityMatch in Regex.Matches(file, @"\[(?<q>480|720|1080)p\](?<items>.*?)(?=,\[(?:480|720|1080)p\]|$)", RegexOptions.Singleline))
+        {
+            string items = qualityMatch.Groups["items"].Value;
+
+            foreach (Match voiceMatch in Regex.Matches(items, @"\{(?<voice>[^}]+)\}(?<file>https?://[^,\t\[\;{ ]+)", RegexOptions.Singleline))
+            {
+                string voice = voiceMatch.Groups["voice"].Value;
+
+                if (!voices.TryGetValue(voice, out var streams))
+                {
+                    streams = new List<StreamQualityDto>();
+                    voices[voice] = streams;
+                }
+
+                streams.Insert(0, new StreamQualityDto(
+                    $"{host}/lite/vibix/video.m3u8?id={EncryptQuery(voiceMatch.Groups["file"].Value)}",
+                    qualityMatch.Groups["q"].Value + "p"
+                ));
+            }
+        }
+
+        return voices;
+    }
 
     #region black_magic
     async Task<string> black_magic(string imdb_id, long kinopoisk_id)

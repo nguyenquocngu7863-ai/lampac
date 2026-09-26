@@ -76,9 +76,17 @@ public class ModInit : IModuleLoaded, IModuleSisi
 
             if (uri.Contains(".m3u8"))
             {
-                string m3u = await MissAVTo.CurlGet(uri, "https://missav.live/");
+                string m3u = await MissAVTo.CurlGetRetry(uri, "https://missav.live/");
                 if (string.IsNullOrWhiteSpace(m3u) || !m3u.Contains("#EXTM3U"))
-                    return true;
+                {
+                    // Het ca retries: KHONG cho fallthrough ve pipeline mac dinh
+                    // (HttpClient cua Lampac luon bi surrit.com Cloudflare chan 403).
+                    // Tra loi loi ro rang de player bao loi va cho client thu lai.
+                    e.httpContext.Response.StatusCode = (int)HttpStatusCode.BadGateway;
+                    e.httpContext.Response.ContentType = "text/plain; charset=utf-8";
+                    await e.httpContext.Response.WriteAsync("missav: master playlist fetch failed");
+                    return false;
+                }
 
                 // surrit master/variant dung path relative -> resolve ve absolute truoc
                 var baseUri = new Uri(uri);
@@ -106,7 +114,12 @@ public class ModInit : IModuleLoaded, IModuleSisi
             {
                 byte[] data = await MissAVTo.CurlGetBytes(uri, "https://missav.live/");
                 if (data == null || data.Length == 0)
-                    return true;
+                {
+                    e.httpContext.Response.StatusCode = (int)HttpStatusCode.BadGateway;
+                    e.httpContext.Response.ContentType = "text/plain; charset=utf-8";
+                    await e.httpContext.Response.WriteAsync("missav: segment fetch failed");
+                    return false;
+                }
 
                 e.httpContext.Response.ContentType =
                     uri.Contains(".jpeg") || uri.Contains(".jpg") ? "image/jpeg" :

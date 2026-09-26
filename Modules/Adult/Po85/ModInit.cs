@@ -60,7 +60,11 @@ public class ModInit : IModuleLoaded, IModuleSisi
                 string uhdDir = Path.Combine(modpath ?? "", "uhd");
                 string resolver = Path.Combine(uhdDir, "resolver.js");
 
-                if (!File.Exists(resolver) || !File.Exists("/usr/bin/node"))
+                string nodeBin = System.Environment.GetEnvironmentVariable("LAMPAC_NODE");
+                if (string.IsNullOrEmpty(nodeBin))
+                    nodeBin = "/usr/bin/node";
+
+                if (!File.Exists(resolver) || !File.Exists(nodeBin))
                     return;
 
                 // tu cai playwright-core neu thieu (lan dau)
@@ -89,7 +93,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
                         uhdprocess.StartInfo.UseShellExecute = false;
                         uhdprocess.StartInfo.RedirectStandardOutput = true;
                         uhdprocess.StartInfo.RedirectStandardError = true;
-                        uhdprocess.StartInfo.FileName = "/usr/bin/node";
+                        uhdprocess.StartInfo.FileName = nodeBin;
                         uhdprocess.StartInfo.Arguments = $"\"{resolver}\" --port 9196";
                         uhdprocess.StartInfo.WorkingDirectory = uhdDir;
                         uhdprocess.Start();
