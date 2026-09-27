@@ -1,6 +1,91 @@
 (function() {
   'use strict';
 
+  // === Cat tien to PNG trong segment HLS (LampaWeb) ===
+  //
+  // Mot so nguon (vi du CDN cua JavGuru) tra segment o dang
+  //   [PNG ~941 byte][MPEG-TS that]
+  // de chan tai cham bang trinh dich. `curl`/len(file) se bao "PNG image data"
+  // nen deo nhin lai rat de ket luan nham segment la rac. hls.js khong cat
+  // tien to nen bao "fragParsingError" / "Found no media in msn N" va app
+  // khong phat duoc, du playlist co du EXTINF va ENDLIST.
+  //
+  // Player that (JW Player) cat bang cach tim 5 byte 0x47 cach nhau 188 byte
+  // (goi 1 byte dong bo MPEG-TS). Patch o day: thay Hls.DefaultConfig.loader
+  // bang subclass cat tien to cho moi instance hls.js cua Lampa.
+  //
+  // An toan:
+  //  - offset = 0 (segment TS thuan) hoac -1 (khong tim thay TS) -> giu nguyen.
+  //  - chi doc toi da 16KB dau, phai khop 5 packet 188 byte moi chap nhan.
+  //  - playlist (m3u8) la string nen khong bi dong vao.
+  (function patchHlsPngStrip() {
+    var PACKET = 188;
+    var PACKETS = 5;
+    var SCAN_LIMIT = 16 * 1024;
+
+    function findTsOffset(bytes) {
+      if (!bytes || bytes.length < PACKET * PACKETS) return -1;
+      var limit = Math.min(bytes.length - PACKET * PACKETS, SCAN_LIMIT);
+      for (var offset = 0; offset <= limit; offset++) {
+        var aligned = true;
+        for (var p = 0; p < PACKETS; p++) {
+          if (bytes[offset + p * PACKET] !== 0x47) { aligned = false; break; }
+        }
+        if (aligned) return offset;
+      }
+      return -1;
+    }
+
+    function strip(response) {
+      try {
+        var data = response && response.data;
+        if (!data || typeof data === 'string') return;
+        var bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+        var offset = findTsOffset(bytes);
+        if (offset <= 0) return;
+        response.data = bytes.buffer.slice(bytes.byteOffset + offset, bytes.byteOffset + bytes.byteLength);
+      } catch (e) {}
+    }
+
+    function patch(Hls) {
+      if (!Hls || Hls.__lampacPngStrip) return;
+      var Base = Hls.DefaultConfig && Hls.DefaultConfig.loader;
+      if (!Base) return;
+
+      Hls.__lampacPngStrip = true;
+
+      var PngStripLoader = class extends Base {
+        load(context, config, callbacks) {
+          var onSuccess = callbacks.onSuccess;
+          callbacks.onSuccess = function (response, stats, loadedContext, details) {
+            strip(response);
+            onSuccess(response, stats, loadedContext, details);
+          };
+          return super.load(context, config, callbacks);
+        }
+      };
+
+      Hls.DefaultConfig.loader = PngStripLoader;
+      if (Hls.DefaultConfig.fLoader) Hls.DefaultConfig.fLoader = PngStripLoader;
+    }
+
+    // hls.js duoc Lampa nap dong o ./vender/hls/hls.js nen co the chua co
+    // luc lampainit chay. Hook ca hai duong: gia tri san co, va gia tri
+    // gan sau do.
+    var current = window.Hls;
+    try {
+      Object.defineProperty(window, 'Hls', {
+        configurable: true,
+        get: function () { return current; },
+        set: function (value) { current = value; patch(value); }
+      });
+    } catch (e) {
+      current = window.Hls;
+    }
+
+    patch(current);
+  })();
+
   window.lampac_version = { major: 0, minor: 0 };
 
   //localStorage.setItem('cub_mirrors', '["mirror-kurwa.men"]');
