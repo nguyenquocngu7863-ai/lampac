@@ -1,0 +1,9 @@
+{
+  "name": "JavTsunami",
+  "description": "JAV Tsunami (javtsunami.com) — phim có phụ đề, nhiều server",
+  "version": "1.0.0",
+  "author": "opencode",
+  "site": "https://javtsunami.com",
+  "enable": true,
+  "dynamic": true
+}
