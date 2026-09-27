@@ -39,24 +39,26 @@ public class ModInit : IModuleLoaded, IModuleSisi
         EventListener.ProxyApiCreateHttpRequest -= StripMaxstreamHeaders;
     }
 
-    // maxstream.org (STREAM JK) tra 403 nginx neu request khong "gia" nhu mot
-    // trinh duyet. Do lai 3 nguyen nhan:
-    //
-    //  1) accept-language: bo het header nao cung 403 (ru-RU/ru/uk-UA/en-US/vi-VN
-    //     deu 403, khong co moi 200).
-    //  2) UA Windows: Http.defaultFullHeaders (Windows Chrome 146) GHI DE UA
-    //     Android cua module — test that: Win UA + Referer = 403, Android UA +
-    //     Referer = 200. Phai ep lai UA Android o day.
-    //  3) client-hints mau thuan: ProxyAPI them san sec-ch-ua-platform:"Windows"
-    //     trong khi UA la Android mobile. Bo sec-ch-ua-* cho sach.
-    //
-    // Chi lo khi host la maxstream de khong anh huong module khac.
+    // maxstream.org (STREAM JK) va LuluStream (STREAM LU, host *.tnmr.org)
+    // tra 403 nginx neu request khong "gia" nhu mot trinh duyet. Da bisect
+    // that tren master.m3u8 cua lulu (2026-09-27):
+    //   UA android + khong header        = 200
+    //   UA android + Accept-Language     = 403 (en hay ru deu chet)
+    //   UA Windows (Chrome 146)          = 403
+    //   UA android + Cache-Control/DNT/
+    //     sec-ch-ua-platform:Windows     = 200 (vo hai)
+    // ProxyAPI luon merge Http.defaultFullHeaders (UA Windows + accept-language
+    // ru) nen phai strip o day. Chi lo cac host CDN cua JavGuru de khong anh
+    // huong module khac.
     static Task StripMaxstreamHeaders(EventProxyApiCreateHttpRequest em)
     {
         try
         {
-            string host = em.uri?.Host;
-            if (string.IsNullOrEmpty(host) || host.IndexOf("maxstream.org", StringComparison.OrdinalIgnoreCase) < 0)
+            string host = em.uri?.Host ?? "";
+            bool lulu = host.IndexOf("tnmr.org", StringComparison.OrdinalIgnoreCase) >= 0
+                || host.IndexOf("streamhihi", StringComparison.OrdinalIgnoreCase) >= 0
+                || host.IndexOf("lulu", StringComparison.OrdinalIgnoreCase) >= 0;
+            if (host.IndexOf("maxstream.org", StringComparison.OrdinalIgnoreCase) < 0 && !lulu)
                 return Task.CompletedTask;
 
             em.requestMessage.Headers.Remove("accept-language");

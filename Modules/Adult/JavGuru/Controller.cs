@@ -98,8 +98,8 @@ public class JavGuruController : BaseSisiController
         if (servers.Count == 0)
             return null;
 
-        // Thu tu uu tien: TV (turbo) da xac nhan chay duoc; JK (maxstream) la
-        // du phong. VO/LU/DD xep sau — chua kiem chung.
+        // Thu tu uu tien: TV (turbo) da xac nhan chay duoc; JK (maxstream) va
+        // LU (lulustream) du phong. SB/VO/DD xep sau — chua kiem chung.
         servers = servers
             .Select((s, i) => new { s, i })
             .OrderBy(x => Priority(x.s.Label))
@@ -117,7 +117,9 @@ public class JavGuruController : BaseSisiController
             return 0;
         if (label.IndexOf("JK", StringComparison.OrdinalIgnoreCase) >= 0)
             return 1;
-        return 2;
+        if (label.IndexOf("LU", StringComparison.OrdinalIgnoreCase) >= 0)
+            return 2;
+        return 3;
     }
 
     // KHONG resolve tai day. Truoc day thu 2-3 server lien tiep ton 20-30s, app
