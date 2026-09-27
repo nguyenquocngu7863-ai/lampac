@@ -292,17 +292,33 @@ public static class JavGuruTo
             return res;
 
         // Master chi 284 byte: cung timeout ngan + nhieu lan thu nhu buoc tren.
-        string html = await CurlGetRetry(master, referer, "#EXT-X-STREAM-INF", 3, 4, deadline);
+        // Them fallback http1.1 cho javclan /stream (treo voi http2).
+        string html = await CurlGetRetryBoth(master, referer, "#EXT-X-STREAM-INF", 2, 6, deadline);
         if (string.IsNullOrEmpty(html))
             return res;
 
         var found = new List<(int px, string url)>();
+
+        // Base de noi variant relative (StreamHG/SB viet index-f1-... khong
+        // domain): thu muc chua master.
+        string dir = null;
+        try
+        {
+            int at = master.LastIndexOf('/');
+            if (at > 8)
+                dir = master[..(at + 1)];
+        }
+        catch { }
+
         foreach (Match m in Regex.Matches(html, "#EXT-X-STREAM-INF:([^\\r\\n]*)\\r?\\n\\s*(\\S+)", RegexOptions.IgnoreCase))
         {
             // Nhan theo CHIEU CAO (1080p) chu khong phai chieu rong (1920p):
             // RESOLUTION=1920x1080 -> nhan "1080p" de hien thi quen thuoc.
             var px = Regex.Match(m.Groups[1].Value, @"RESOLUTION=\d+x(\d+)", RegexOptions.IgnoreCase);
-            found.Add((px.Success ? int.Parse(px.Groups[1].Value) : 0, m.Groups[2].Value.Trim()));
+            string u = m.Groups[2].Value.Trim();
+            if (!u.StartsWith("http", StringComparison.OrdinalIgnoreCase) && dir != null)
+                u = dir + u.TrimStart('/');
+            found.Add((px.Success ? int.Parse(px.Groups[1].Value) : 0, u));
         }
         if (found.Count == 0)
             return res;
@@ -396,6 +412,39 @@ public static class JavGuruTo
         return null;
     }
 
+    // StreamHG (STREAM SB, host javclan.com): player khong in file truc tiep
+    // ma dat link trong `var links={"hls4":"...","hls3":"...","hls2":"..."}`
+    // (ca packer + JSON deu base64/giai nen giong nhau). Thu tu uu tien giong
+    // player: hls4 > hls3 > hls2. hls4 la path relative (/stream/...) tro ve
+    // chinh host player — phai noi base. Upstream chon loc: phim thi hls2/3
+    // 502 chi hls4 song, phim thi nguoc lai, nen Streams() probe tung link.
+    public static List<string> SbLinks(string src, string playerHost)
+    {
+        var res = new List<string>();
+        if (string.IsNullOrEmpty(src))
+            return res;
+
+        var m = Regex.Match(src, "var\\s+links\\s*=\\s*\\{([^}]{0,2000})\\}", RegexOptions.IgnoreCase);
+        if (!m.Success)
+            return res;
+
+        var kv = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (Match x in Regex.Matches(m.Groups[1].Value, "\"(hls\\d)\"\\s*:\\s*\"([^\"]+)\"", RegexOptions.IgnoreCase))
+            kv[x.Groups[1].Value] = HttpUtility.HtmlDecode(x.Groups[2].Value.Trim());
+
+        foreach (string k in new[] { "hls4", "hls3", "hls2" })
+        {
+            if (!kv.TryGetValue(k, out string v) || string.IsNullOrEmpty(v))
+                continue;
+            if (v.StartsWith("/") && !string.IsNullOrEmpty(playerHost))
+                v = playerHost.TrimEnd('/') + v;
+            if (v.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                res.Add(v);
+        }
+
+        return res;
+    }
+
     public static async Task<List<(string url, string tag)>> Streams(string gateway, string referer, long deadline = 0, string serverReferer = null)
     {
         var res = new List<(string url, string tag)>();
@@ -410,7 +459,10 @@ public static class JavGuruTo
         // cong chi mat 1.1-1.7s, nen dung timeout NGAN va THU NHIEU hon la
         // dung timeout dai: 4 x 4s + 1.8s nghi = 17.8s, xac suat that bai
         // ~6% thay vi 50%.
-        string player = await CurlGetRetry(gateway, referer, null, 4, 4, deadline);
+        // SB (javclan) chon loc theo phim + IP: luc hls2/3 502, luc gateway
+        // /searcho treo 17s. Cho SB budget rong hon (6x6s) thay vi 4x4s.
+        bool isSbGw = IsSbGateway(gateway);
+        string player = await CurlGetRetry(gateway, referer, null, isSbGw ? 6 : 4, isSbGw ? 6 : 4, deadline);
         if (IsDeadPlayer(player))
             return res;
 
@@ -420,17 +472,52 @@ public static class JavGuruTo
         // de PlayerJsFile chay truoc se vot nham URL m3u8 dau tien trong
         // trang player thay vi data-hash (master).
         string packed = Unpack(player);
-        string jsFile = packed != null ? PlayerJsFile(packed) : null;
-        Console.WriteLine($"JavGuru: player len={player?.Length ?? 0} packed={packed != null} jsFile={(string.IsNullOrEmpty(jsFile) ? "null" : "ok")}");
+        bool isSb = isSbGw;
+        // SB (StreamHG): uu tien var links (hls4>hls3>hls2) truoc, vi
+        // PlayerJsFile vot bua URL .m3u8 absolute dau tien (hls2) trong khi
+        // upstream hay 502 hls2/3 chi con hls4 song. Server khac giu nguyen
+        // duong cu de khong vot nham master.
+        string jsFile = null;
+        List<string> sbLinks = null;
+        string sbHost = null;
+        if (isSb && packed != null)
+        {
+            sbHost = await SbResolveHost(gateway, referer, deadline);
+            sbLinks = SbLinks(packed, sbHost);
+        }
+        if (sbLinks == null || sbLinks.Count == 0)
+            jsFile = packed != null ? PlayerJsFile(packed) : null;
+        Console.WriteLine($"JavGuru: player len={player?.Length ?? 0} packed={packed != null} jsFile={(string.IsNullOrEmpty(jsFile) ? "null" : "ok")} sbLinks={sbLinks?.Count ?? 0}");
 
         if (!string.IsNullOrEmpty(jsFile))
         {
             res.Add((jsFile, ""));
         }
+        else if (sbLinks != null && sbLinks.Count > 0)
+        {
+            foreach (string u in sbLinks)
+                res.Add((u, ""));
+        }
         else
         {
-            foreach (string u in StreamUrls(player))
-                res.Add((u, ""));
+            if (res.Count == 0)
+            {
+                foreach (string u in StreamUrls(player))
+                    res.Add((u, ""));
+            }
+        }
+
+        // SB co nhieu link (hls4/3/2) ma upstream chon loc (phim thi hls2/3
+        // 502 chi hls4 song): probe tung link, lay link dau tien co variant.
+        if (res.Count > 1 && isSb)
+        {
+            foreach (var cand in res)
+            {
+                var variants = await MasterVariants(cand.url, deadline: deadline, referer: serverReferer);
+                if (variants.Count > 0)
+                    return variants;
+            }
+            return new List<(string url, string tag)>();
         }
 
         // Master 2 level -> tach o server, tra playlist media tung chat luong
@@ -443,6 +530,68 @@ public static class JavGuruTo
         }
 
         return res;
+    }
+
+    // SB di qua gateway /searcho (rtype x: ?xd= trong iframe_url, ?xr= sau khi
+    // dao). Nhan dien de bat probe multi-link; TV/JK/LU giu nguyen duong cu.
+    static bool IsSbGateway(string gateway)
+        => !string.IsNullOrEmpty(gateway)
+           && Regex.IsMatch(gateway, @"[?&]x[dr]=[0-9a-z]+", RegexOptions.IgnoreCase);
+
+    // Host that cua trang player SB (javclan.com/...): gateway /searcho chi
+    // 302 toi player, nen xin redirect URL (khong theo) roi lay host. 1
+    // request nhe ~0.4s, co deadline.
+    static async Task<string> SbResolveHost(string gateway, string referer, long deadline = 0)
+    {
+        try
+        {
+            if (deadline > 0 && deadline - Environment.TickCount64 < 4000)
+                return null;
+
+            var psi = new ProcessStartInfo
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            PrepCurlEnv(psi);
+            psi.ArgumentList.Add("-s");
+            psi.ArgumentList.Add("-o");
+            psi.ArgumentList.Add("/dev/null");
+            psi.ArgumentList.Add("-w");
+            psi.ArgumentList.Add("%{redirect_url}");
+            psi.ArgumentList.Add("--connect-timeout");
+            psi.ArgumentList.Add("5");
+            psi.ArgumentList.Add("--max-time");
+            psi.ArgumentList.Add("8");
+            psi.ArgumentList.Add("-A");
+            psi.ArgumentList.Add(ChromeUA);
+            if (!string.IsNullOrEmpty(referer))
+            {
+                psi.ArgumentList.Add("-e");
+                psi.ArgumentList.Add(referer);
+            }
+            psi.ArgumentList.Add("--");
+            psi.ArgumentList.Add(gateway);
+
+            using (var p = Process.Start(psi))
+            {
+                if (p == null)
+                    return null;
+                string redir = (await p.StandardOutput.ReadToEndAsync()).Trim();
+                await p.WaitForExitAsync();
+                if (p.ExitCode != 0 || string.IsNullOrEmpty(redir))
+                    return null;
+
+                var u = new Uri(redir.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? redir : "https:" + redir);
+                return u.GetLeftPart(UriPartial.Authority);
+            }
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     // Trang player bao video khong ton tai (1.8KB "Video Unavailable / This
@@ -509,7 +658,7 @@ public static class JavGuruTo
         psi.FileName = System.IO.File.Exists(curl) ? curl : "curl";
     }
 
-    public static async Task<string> CurlGet(string url, string referer, int maxTime = 25)
+    public static async Task<string> CurlGet(string url, string referer, int maxTime = 25, bool http2 = true)
     {
         try
         {
@@ -522,7 +671,7 @@ public static class JavGuruTo
             };
             PrepCurlEnv(psi);
             psi.ArgumentList.Add("-sL");
-            psi.ArgumentList.Add("--http2");
+            psi.ArgumentList.Add(http2 ? "--http2" : "--http1.1");
             psi.ArgumentList.Add("--compressed");
             psi.ArgumentList.Add("--connect-timeout");
             psi.ArgumentList.Add("10");
@@ -556,7 +705,7 @@ public static class JavGuruTo
     // deadline (ms epoch cua Environment.TickCount64): client Lampa bo sau 30s
     // nen moi lan fetch bi cat ngan theo thoi gian con lai, tranh tra loi 503
     // sau 24s khi server ngoai treo.
-    public static async Task<string> CurlGetRetry(string url, string referer, string marker, int attempts = 3, int maxTime = 25, long deadline = 0)
+    public static async Task<string> CurlGetRetry(string url, string referer, string marker, int attempts = 3, int maxTime = 25, long deadline = 0, bool http2 = true)
     {
         for (int i = 0; i < attempts; i++)
         {
@@ -572,11 +721,21 @@ public static class JavGuruTo
             if (i > 0)
                 await Task.Delay(300 * i);
 
-            string body = await CurlGet(url, referer, maxTime);
+            string body = await CurlGet(url, referer, maxTime, http2);
             if (!string.IsNullOrWhiteSpace(body) && (string.IsNullOrEmpty(marker) || body.Contains(marker)))
                 return body;
         }
         return null;
+    }
+
+    // javclan.com/stream/... (hls4 cua SB) treo voi --http2 (000) nhung
+    // http1.1 thi 200 ngay. Thu http2 truoc, rot thi http1.1.
+    public static async Task<string> CurlGetRetryBoth(string url, string referer, string marker, int attempts = 2, int maxTime = 10, long deadline = 0)
+    {
+        string body = await CurlGetRetry(url, referer, marker, attempts, maxTime, deadline, true);
+        if (!string.IsNullOrEmpty(body))
+            return body;
+        return await CurlGetRetry(url, referer, marker, attempts, maxTime, deadline, false);
     }
 
     public static List<Shared.Models.SISI.Base.MenuItem> Menu(string host)
