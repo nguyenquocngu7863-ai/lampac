@@ -40,13 +40,15 @@ public class ModInit : IModuleLoaded, IModuleSisi
     }
 
     // maxstream.org (STREAM JK) tra 403 nginx neu request khong "gia" nhu mot
-    // trinh duyet. Do lai 2 nguyen nhan, deu do bang cach bo header:
+    // trinh duyet. Do lai 3 nguyen nhan:
     //
     //  1) accept-language: bo het header nao cung 403 (ru-RU/ru/uk-UA/en-US/vi-VN
     //     deu 403, khong co moi 200).
-    //  2) client-hints mau thuan: ProxyAPI them san sec-ch-ua-platform:"Windows"
-    //     + UA Windows, trong khi module dat UA mobile Android → hai manh tinh
-    //     mau thuan nhau, maxstream cho 403. Bo sec-ch-ua-* de chi con UA Android.
+    //  2) UA Windows: Http.defaultFullHeaders (Windows Chrome 146) GHI DE UA
+    //     Android cua module — test that: Win UA + Referer = 403, Android UA +
+    //     Referer = 200. Phai ep lai UA Android o day.
+    //  3) client-hints mau thuan: ProxyAPI them san sec-ch-ua-platform:"Windows"
+    //     trong khi UA la Android mobile. Bo sec-ch-ua-* cho sach.
     //
     // Chi lo khi host la maxstream de khong anh huong module khac.
     static Task StripMaxstreamHeaders(EventProxyApiCreateHttpRequest em)
@@ -65,6 +67,9 @@ public class ModInit : IModuleLoaded, IModuleSisi
             em.requestMessage.Headers.Remove("sec-ch-ua-model");
             em.requestMessage.Headers.Remove("sec-ch-ua-full-version-list");
             em.requestMessage.Headers.Remove("sec-ch-ua-bitness");
+
+            em.requestMessage.Headers.Remove("user-agent");
+            em.requestMessage.Headers.TryAddWithoutValidation("User-Agent", JavGuruTo.ChromeUA);
         }
         catch { }
 
