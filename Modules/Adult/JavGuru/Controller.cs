@@ -140,14 +140,46 @@ public class JavGuruController : BaseSisiController
             return OnError("stream_links", refresh_proxy: true);
 
         // Route co duoi .m3u8: app chi bat hls.js khi URL item chua ".m3u8".
-        return Json(servers.ToDictionary(
+        // Warm-up: resolve nen truoc tung server de khi bam an lien (app cat
+        // manifest sau ~10s trong khi SB resolve 6-15s). Chi warm SB/LU cham;
+        // TV/JK nhanh nen bo qua.
+        var dict = servers.ToDictionary(
             s => s.Label,
-            s => $"{host}/javguru/video.m3u8?uri={HttpUtility.UrlEncode(uri)}&srv={HttpUtility.UrlEncode(s.Label)}"));
+            s => $"{host}/javguru/video.m3u8?uri={HttpUtility.UrlEncode(uri)}&srv={HttpUtility.UrlEncode(s.Label)}");
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                foreach (var s in servers.Where(x =>
+                    x.Label.IndexOf("SB", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    x.Label.IndexOf("LU", StringComparison.OrdinalIgnoreCase) >= 0))
+                {
+                    string key = ipkey($"javguru:stream:{uri}:{s.Label}");
+                    if (hybridCache.TryGetValue(key, out string _))
+                        continue;
+                    string gw = JavGuruTo.GatewayUrl(s.PageUrl);
+                    if (string.IsNullOrEmpty(gw))
+                        continue;
+                    var st = await JavGuruTo.Streams(gw, "https://jav.guru/", Ms() + 25000, JavGuruTo.ServerReferer(s.Label));
+                    if (st.Count > 0)
+                        hybridCache.Set(key, st.OrderByDescending(x => x.tag.Length).First().url, cacheTime(10));
+                }
+            }
+            catch { }
+        });
+
+        return Json(dict);
     }
 
     // Resolve DUNG MOT server theo `srv`, roi chuyen tiep sang link phat.
     // Khong thu server khac: mot server resolve het 2-13s la du, thu them se
     // vuot 30s cua client.
+    //
+    // NGOAI LE: app Lampa cho manifest ~10s (manifestLoadTimeout) trong khi SB
+    // resolve 6-15s (gateway /searcho cham) nen app cat truoc khi co 302. Giai
+    // phap: cache ket qua resolve 10 phut + warm-up nen sau khi mo popup
+    // /vidosik: lan bam dau tien co the timeout, nhung bam lai an cache (<1s).
     [HttpGet]
     [Route("javguru/video")]
     [Route("javguru/video.m3u8")]
@@ -159,6 +191,15 @@ public class JavGuruController : BaseSisiController
         // Cho phep q = ten server (tu cache cu) de URL da bookmark/da mo van chay
         if (string.IsNullOrEmpty(srv))
             srv = q;
+
+        // Cache resolve: an ngay neu da resolve trong 10 phut truoc.
+        string streamKey = ipkey($"javguru:stream:{uri}:{srv}");
+        if (hybridCache.TryGetValue(streamKey, out string cachedUrl) && !string.IsNullOrEmpty(cachedUrl))
+        {
+            var pick0 = (await DetailServersAsync(uri))?.FirstOrDefault(x => string.Equals(x.Label, srv, StringComparison.OrdinalIgnoreCase));
+            var headers0 = httpHeaders(init, JavGuruTo.StreamHeaders(pick0?.Label));
+            return Redirect(HostStreamProxy(cachedUrl, headers0));
+        }
 
         var servers = await DetailServersAsync(uri);
         if (servers == null || servers.Count == 0)
@@ -190,6 +231,11 @@ public class JavGuruController : BaseSisiController
         // Header theo server: JK (maxstream) can Referer cua no, turbo tra 429
         // neu thay Referer jav.guru.
         var headers = httpHeaders(init, JavGuruTo.StreamHeaders(pick.Label));
+
+        // Luu resolve 10 phut: token SB/LU ngan han nhung du cho bam lai, va
+        // quan trong la lan bam sau an cache <1s, qua duoi manifestLoadTimeout
+        // 10s cua app.
+        hybridCache.Set(streamKey, best.url, cacheTime(10));
 
         return Redirect(HostStreamProxy(best.url, headers));
     }
