@@ -493,6 +493,20 @@ public static class JavGuruTo
         // ~6% thay vi 50%.
         // SB (javclan) chon loc theo phim + IP: luc hls2/3 502, luc gateway
         // /searcho treo 17s. Cho SB budget rong hon (6x6s) thay vi 4x4s.
+        //
+        // VO (voe.sx) KHONG di duong curl o day: trang embed obfuscate nen
+        // curl khong ra link. Di that bang Chrome (VoSourceAsync), mac dinh
+        // o CUOI chuoi fallback nen hiem khi toi luot (VO la phao cuu sinh
+        // khi 5 server kia chet het).
+        if (IsVoGateway(gateway))
+        {
+            var vo = await VoSourceAsync(gateway, referer, deadline);
+            if (vo.Count == 0)
+                return res;
+
+            return vo.Select(x => (x.url, x.tag, (string)null)).ToList();
+        }
+
         bool isSbGw = IsSbGateway(gateway);
         string player = await CurlGetRetry(gateway, referer, null, isSbGw ? 6 : 4, isSbGw ? 6 : 4, deadline);
         if (IsDeadPlayer(player))
@@ -591,11 +605,19 @@ public static class JavGuruTo
     public const string KindHls = "hls";
 
     // Rtype cua gateway /searcho (sau khi dao token): ur=TV, or=JK, er=LU,
-    // xr=SB, hr=DD, tr=VO. Rong = chua biet (TV da dang, VO chua xu ly).
+    // xr=SB, hr=DD, tr=VO. Rong = chua biet (TV da dang).
+    //
+    // VO gan tam KindHls vi da so phim VOE tra HLS; sai dang thi `/video`
+    // Redirect thang ve upstream va app bao loi — nhung VO chi chay khi 5
+    // server kia chet het, nen gan tam tot hon de trong (de trong thi
+    // fallback loai het server cung dang HLS ra khoi chuoi).
     public static string ServerKind(string gateway)
     {
         if (string.IsNullOrEmpty(gateway))
             return "";
+
+        if (IsVoGateway(gateway))
+            return KindHls;   // tam dinh, se resolve that o /video
 
         if (IsDdGateway(gateway))
             return KindMp4;   // DoodStream chi phuc vu mp4
@@ -696,7 +718,139 @@ public static class JavGuruTo
                  + $"token={token}&expiry={expiry}", baseUrl);
     }
 
-    // Gioi hanh cho buoc 1: cần biết host API sau khi da follow redirect.
+// VO (voe.sx): gateway /searcho/?tr= 302 THANG sang trang embed
+// `https://<rand>.com/e/<id>` — giong DD (302 sang vide0.net/e/). Nhan dien
+// rieng vi khong co trang player de boc data-hash/urlPlay (xem IsDdGateway).
+//
+// Trang embed la JW Player + JS obfuscate (mang chuoi ma hoa o(), khong packer,
+// khong sources san): curl khong lay duoc link nen DUNG Chrome (Playwright)
+// mo that trang embed, cho JW Player hydrate (~3s), bat network request co
+// `.m3u8`/`.mp4` + doc `jwplayer('a').getPlaylist()[0].sources`.
+//
+// KHONG boc trong `/vidosik`: mo Chrome ton 4-8s moi server, vuot deadline 6s
+// do dang cua ca menu. VO o `/vidosik` chi duoc gan tam `.m3u8` (da so phim
+// VOE tra HLS); `/video` resolve that roi Redirect thang ve URL upstream, sai
+// dang thi app bao loi — nhung VO chi chay khi 5 server kia chet het nen sai
+// so it gap hon la cho 30s moi cua popup.
+public static bool IsVoGateway(string gateway)
+    => !string.IsNullOrEmpty(gateway)
+       && Regex.IsMatch(gateway, @"[?&]t[dr]=[0-9a-z]+",
+           RegexOptions.IgnoreCase);
+
+public static bool IsVoServer(string label)
+    => !string.IsNullOrEmpty(label)
+       && label.IndexOf("VO", StringComparison.OrdinalIgnoreCase) >= 0;
+
+    // ================= VO (voe.sx, qua Chrome) =================
+    //
+    // Xem comment o IsVoGateway: trang embed obfuscate, curl khong ra link.
+    // Mo that bang Playwright (mau TopGai): bat network `.m3u8`/`.mp4` truoc
+    // roi moi Goto, cho JW Player hydrate, doc `jwplayer('a').getPlaylist()`,
+    // fallback network da bat duoc.
+    //
+    // `pageUrl` la URL gateway /searcho/?tr= (CHUA dao nguoc gi ca): Chrome tu
+    // follow 302 sang trang embed nhu trinh duyet that. `sub` la deadline
+    // rieng cua server nay (12s): het gio thi tra rong de chuoi fallback thu
+    // server tiep theo, khong treo ca chuoi.
+    public static async Task<List<(string url, string tag)>> VoSourceAsync(
+        string pageUrl, string referer, long sub)
+    {
+        var res = new List<(string url, string tag)>();
+        if (string.IsNullOrEmpty(pageUrl))
+            return res;
+
+        try
+        {
+            using (var browser = new Shared.PlaywrightCore.PlaywrightBrowser())
+            {
+                var page = await browser.NewPageAsync("JavGuru",
+                    new Dictionary<string, string>
+                    {
+                        ["User-Agent"] = ChromeUA,
+                        ["Referer"] = referer ?? (SiteHost + "/")
+                    }, keepopen: false);
+
+                if (page == null)
+                    return res;
+
+                string got = null;
+                page.Request += (_, req) =>
+                {
+                    try
+                    {
+                        string u = req.Url;
+                        if (got != null)
+                            return;
+
+                        bool media = u.Contains(".m3u8") || u.Contains(".mp4");
+                        bool ad = u.IndexOf("ima3.js",
+                                StringComparison.OrdinalIgnoreCase) >= 0
+                            || u.IndexOf("ads",
+                                StringComparison.OrdinalIgnoreCase) >= 0;
+
+                        if (media && !ad)
+                            got = u;
+                    }
+                    catch { }
+                };
+
+                int ms = (int)Math.Max(3000,
+                    Math.Min(11000, sub - Environment.TickCount64));
+                await page.GotoAsync(pageUrl,
+                    new Microsoft.Playwright.PageGotoOptions
+                    {
+                        Timeout = ms,
+                        WaitUntil =
+                            Microsoft.Playwright.WaitUntilState.DOMContentLoaded
+                    });
+
+                // Cho JW Player hydrate: poll playlist, thay vi Sleep cung 5s.
+                string file = null;
+                for (int i = 0; i < 10; i++)
+                {
+                    try
+                    {
+                        file = await page.EvaluateAsync<string>(@"() => {
+                            try {
+                                var p = jwplayer('a');
+                                var pl = p && p.getPlaylist
+                                    ? p.getPlaylist() : null;
+                                var s = pl && pl[0] && pl[0].sources
+                                    ? pl[0].sources : null;
+                                return (s && s[0] && s[0].file)
+                                    ? s[0].file : null;
+                            } catch (e) { return null; }
+                        }");
+                    }
+                    catch { }
+
+                    if (!string.IsNullOrEmpty(file) || got != null)
+                        break;
+
+                    await Task.Delay(700);
+                }
+
+                try { await page.CloseAsync(); } catch { }
+
+                string best = !string.IsNullOrEmpty(file) ? file : got;
+                if (string.IsNullOrEmpty(best))
+                    return res;
+
+                // VOE tra HLS; mp4 thi tag de /video Redirect dung dang.
+                string tag = best.IndexOf(".mp4",
+                    StringComparison.OrdinalIgnoreCase) >= 0 ? "mp4" : "";
+
+                res.Add((best, tag));
+                return res;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"JavGuru: voe loi {ex.Message}");
+            return res;
+        }
+    }
+
     public static async Task<(string body, string finalUrl)> CurlGetUrl(
         string url, string referer, int maxTime = 25, bool http2 = true)
     {
