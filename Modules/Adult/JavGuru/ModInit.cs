@@ -82,7 +82,9 @@ public class ModInit : IModuleLoaded, IModuleSisi
     {
         conf = ModuleInvoke.Init("JavGuru", new SisiSettings("JavGuru", "https://jav.guru")
         {
-            displayindex = 33,
+            // 8-9 = ngay TRUOC nhom tu lam (VietSexBlog 10 -> Javtiful 19),
+            // khong phai giua cac tube quoc te (PornHub 20 -> HQporner 31) nua.
+            displayindex = 8,
             streamproxy = true,
             httpversion = 2,
             rch_access = "apk",
