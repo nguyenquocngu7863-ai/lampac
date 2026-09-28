@@ -222,7 +222,8 @@ public static class JavHDTo
 
     public static bool IsJavhdz(string embedUrl)
         => !string.IsNullOrEmpty(embedUrl)
-            && Has(embedUrl, "javhdz.today");
+            && (Has(embedUrl, "javhdz")
+                || Has(embedUrl, "savedvids"));
 
     public static string Label(string embedUrl)
     {
@@ -333,9 +334,10 @@ public static class JavHDTo
 
     // Turbo la DA DANG (phim thi data-hash HLS, phim thi chi
     // urlPlay mp4) nen phai mo player do moi phim. Dood=mp4,
-    // Cloud=HLS biet ngay tu host.
+    // Cloud/javhdz=HLS biet ngay tu host. Probe 2 lan x 3s,
+    // vua deadline 4s cua /vidosik.
     public static async Task<string> ServerKindAsync(
-        string pageUrl, int maxTime = 4, long deadline = 0)
+        string pageUrl, int maxTime = 3, long deadline = 0)
     {
         if (IsDood(pageUrl))
             return KindMp4;
@@ -344,7 +346,7 @@ public static class JavHDTo
             return KindHls;
 
         string player = await CurlGetRetry(
-            pageUrl, SiteHost + "/", null, 3, maxTime, deadline);
+            pageUrl, SiteHost + "/", null, 2, maxTime, deadline);
         if (string.IsNullOrEmpty(player))
             return "";
 

@@ -61,6 +61,44 @@ public class JavHDController : BaseSisiController
 
     static long Ms() => Environment.TickCount64;
 
+    // Detail javhd.today chan curl don (treo het --max-time neu sai
+    // http version/compress). Thu httpHydra truoc cho qua proxy
+    // nhu JavGuru, khong co marker thi lui ve curl.
+    async Task<string> FetchHtmlAsync(string url, string marker,
+        int attempts = 3, int maxTime = 3, long deadline = 0)
+    {
+        try
+        {
+            string html = null;
+            long tr = Ms();
+            await httpHydra.GetSpan(url, span =>
+            {
+                html = span.ToString();
+            }, addheaders: HeadersModel.Init(
+                ("User-Agent", JavHDTo.ChromeUA),
+                ("Referer", "https://javhd.today/")
+            ));
+
+            Console.WriteLine("JavHD: fetch hydra "
+                + $"{Ms() - tr}ms len={html?.Length ?? 0}");
+
+            if (!string.IsNullOrEmpty(html)
+                && (string.IsNullOrEmpty(marker)
+                    || html.Contains(marker)))
+                return html;
+        }
+        catch { }
+
+        long tr2 = Ms();
+        string body = await JavHDTo.CurlGetRetry(url,
+            JavHDTo.SiteHost + "/", marker,
+            attempts, maxTime, deadline);
+        Console.WriteLine("JavHD: fetch curl "
+            + $"{Ms() - tr2}ms len={body?.Length ?? 0}");
+
+        return body;
+    }
+
     // Trang detail: tach data-embed (base64 url don) + data-embeds
     // (base64 json array du phong). Cache 15 phut de bam server thu
     // hai khong tai lai trang detail.
@@ -78,9 +116,12 @@ public class JavHDController : BaseSisiController
         string pageUrl = uri.StartsWith("/")
             ? JavHDTo.SiteHost + uri : uri;
 
-        long deadline = Ms() + 20000;
-        string detail = await JavHDTo.CurlGetRetry(pageUrl,
-            JavHDTo.SiteHost + "/", "data-embed", 4, 4, deadline);
+        // Timeout ngan + it lan thu: lan thanh cong 0.4-0.6s,
+        // lan treo an het --max-time. Deadline 12s + probe
+        // Turbo 4s van duoi tran 18s cua app (nhu JavTsunami).
+        long deadline = Ms() + 12000;
+        string detail = await FetchHtmlAsync(pageUrl,
+            "data-embed", 2, 4, deadline);
         if (string.IsNullOrEmpty(detail))
             return null;
 
@@ -112,11 +153,12 @@ public class JavHDController : BaseSisiController
         if (servers.Count == 0)
             return OnError("stream_links", refresh_proxy: true);
 
-        // Kind biet ngay tu host (Dood=mp4, Cloud=HLS). Rieng Turbo
-        // DA DANG nen do song song, deadline 6s.
+        // Kind biet ngay tu host (Dood=mp4, Cloud/javhdz=HLS).
+        // Rieng Turbo DA DANG nen do song song, deadline 4s.
+        // Tong: detail toi da 12s + probe 4s < tran 18s cua app.
         int total = servers.Count;
         var kinds = new string[total];
-        long kindDl = Ms() + 6000;
+        long kindDl = Ms() + 4000;
 
         async Task Probe(int i)
         {
@@ -129,7 +171,7 @@ public class JavHDController : BaseSisiController
             }
 
             kinds[i] = await JavHDTo.ServerKindAsync(
-                u, 4, kindDl);
+                u, 3, kindDl);
         }
 
         await Task.WhenAll(
