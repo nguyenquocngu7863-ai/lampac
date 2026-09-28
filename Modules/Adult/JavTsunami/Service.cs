@@ -128,16 +128,20 @@ public static class JavTsunamiTo
 
     // ================= TRANG DANH MUC =================
     //
-    // Site co san trang day du `/categories` (4 trang x 28 muc). Menu cu chi
-    // so 10 muc hardcode nen thieu lon; gio lay danh sach tu trang that, trang
-    // 1, gioi `CatsLimit` muc cho nhe.
+    // Site co san trang day du `/categories` (4 trang x 28 muc, doc het ra 93
+    // muc unique). Menu cu chi so 10 muc hardcode nen thieu lon; gio lay het
+    // cac trang roi BOC NGAU 50 muc — lay 50 muc dau tien thi toan chu A-D,
+    // menu nghen mot goc. Muc chi la dong TEXT trong menu (cache 1 gio, 0.008s
+    // khong ton request) nen boc bao nhieu cung duoc; thoi gian nam o luc
+    // bam vao va tai danh sach phim ben trong category.
     public const string CatsPath = "/categories";
-    public const int CatsLimit = 30;
+    public const int CatsLimit = 50;
+    public const int CatsMaxPages = 10;
 
     // Muc la `<article ...><a href=".../category/anal" title="Anal">` — KHONG co
     // `data-video-id` (chi trang PHIM moi co). Tra ve (ten hien thi, duong dan
     // tuong doi) de Controller doi vao `?c=...`.
-    public static List<(string name, string path)> CatList(string html, int limit = CatsLimit)
+    public static List<(string name, string path)> CatList(string html, int limit = int.MaxValue)
     {
         var list = new List<(string, string)>();
         if (string.IsNullOrEmpty(html))
@@ -161,6 +165,86 @@ public static class JavTsunamiTo
 
             list.Add((name, path));
         }
+
+        return list;
+    }
+
+    // So trang tu block `pagination` cua trang 1 (`/categories/page/2..4`).
+    public static int CatPages(string html)
+    {
+        int max = 1;
+
+        if (!string.IsNullOrEmpty(html))
+        {
+            foreach (Match m in Regex.Matches(html, CatsPath + @"/page/(\d+)",
+                RegexOptions.IgnoreCase))
+            {
+                if (int.TryParse(m.Groups[1].Value, out int n) && n > max)
+                    max = n;
+            }
+        }
+
+        return Math.Min(max, CatsMaxPages);
+    }
+
+    // Het tat ca trang danh muc, cac trang 2..N fetch SONG SONG (deadline
+    // chung 12s o Controller). Trang 1 fetch truoc de biet bao nhieu trang.
+    public static async Task<List<(string name, string path)>> CatAll(int maxTime = 6, long deadline = 0)
+    {
+        var all = new List<(string, string)>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        void Add(List<(string name, string path)> rows)
+        {
+            foreach (var r in rows)
+            {
+                if (seen.Add(r.path))
+                    all.Add(r);
+            }
+        }
+
+        string first = await CurlGetRetry(SiteHost + CatsPath, SiteHost + "/",
+            "videos-list", 3, maxTime, deadline);
+
+        Add(CatList(first));
+
+        int pages = CatPages(first);
+        if (pages <= 1)
+            return all;
+
+        var tasks = new List<Task<List<(string name, string path)>>>();
+        for (int pg = 2; pg <= pages; pg++)
+            tasks.Add(CatPage(pg, maxTime, deadline));
+
+        foreach (var t in tasks)
+            Add(await t);
+
+        return all;
+    }
+
+    static async Task<List<(string name, string path)>> CatPage(int pg, int maxTime, long deadline)
+        => CatList(await CurlGetRetry($"{SiteHost}{CatsPath}/page/{pg}", SiteHost + "/",
+            "videos-list", 2, maxTime, deadline));
+
+    // Fisher-Yates roi cat con `limit` — trong 1 gio cache nen thu tu khong
+    // doi, het gio la bo lai ngau nhien muc khac.
+    public static List<(string name, string path)> CatPick(
+        List<(string name, string path)> pool, int limit = CatsLimit)
+    {
+        var list = new List<(string, string)>();
+        if (pool == null || pool.Count == 0)
+            return list;
+
+        list.AddRange(pool);
+
+        for (int i = list.Count - 1; i > 0; i--)
+        {
+            int j = Random.Shared.Next(i + 1);
+            (list[i], list[j]) = (list[j], list[i]);
+        }
+
+        if (list.Count > limit)
+            list.RemoveRange(limit, list.Count - limit);
 
         return list;
     }

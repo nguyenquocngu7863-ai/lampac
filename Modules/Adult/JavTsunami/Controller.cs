@@ -57,9 +57,10 @@ public class JavTsunamiController : BaseSisiController
         return PlaylistResult(cache, await MenuAsync());
     }
 
-    // Menu "Thể loại" lay tu trang `/categories` cua site thay vi so muc
-    // hardcode (site co ~112 muc, trang 1 lay 28). Cache 1 gio trong RAM —
-    // trang danh muc doi cuc hiem, fetch moi lan mo lau la quay ve Cloudflare.
+    // Menu "Thể loại" boc ngau 50 muc tu trang `/categories` cua site thay vi
+    // so muc hardcode (site co 4 trang x 28). Cache 1 gio trong RAM — trang 1
+    // fetch truoc de biet bao nhieu trang, cac trang sau fetch song song
+    // (deadline chung 12s nen 4 trang ton ~1-2s, chi co lan dau moi ton).
     async Task<List<MenuItem>> MenuAsync()
     {
         string key = ipkey("javtsunami:cats");
@@ -67,10 +68,11 @@ public class JavTsunamiController : BaseSisiController
         if (!hybridCache.TryGetValue(key, out List<(string name, string path)> cats)
             || cats == null || cats.Count == 0)
         {
-            string html = await FetchHtmlAsync(JavTsunamiTo.SiteHost + JavTsunamiTo.CatsPath,
-                "videos-list", 2, 10);
+            var pool = await JavTsunamiTo.CatAll(6, Ms() + 12000);
 
-            cats = JavTsunamiTo.CatList(html);
+            cats = JavTsunamiTo.CatPick(pool);
+            Console.WriteLine($"JavTsunami: cats pool={pool.Count} pick={cats.Count}");
+
             if (cats.Count > 0)
                 hybridCache.Set(key, cats, cacheTime(60));
         }
