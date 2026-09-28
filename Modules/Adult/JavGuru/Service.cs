@@ -29,7 +29,7 @@ public static class JavGuruTo
     //
     // NHUNG server JK (maxstream.org) lai can Referer cua chinh no. Chung mot
     // bong header cho moi link thi hoac 429 hoac 403 — phai chon theo server.
-    public static IReadOnlyList<HeadersModel> StreamHeaders(string label = null)
+    public static IReadOnlyList<HeadersModel> StreamHeaders(string label = null, string referer = null)
     {
         if (!string.IsNullOrEmpty(label) && label.IndexOf("JK", StringComparison.OrdinalIgnoreCase) >= 0)
         {
@@ -37,6 +37,18 @@ public static class JavGuruTo
                 ("Accept", "*/*"),
                 ("User-Agent", ChromeUA),
                 ("Referer", "https://maxstream.org/")
+            );
+        }
+
+        // DD (DoodStream): CDN chi phuc vu khi Referer khop host embed. Referer
+        // nay tra ve cung video (host API doi theo lan tai) nen phai truyen
+        // vao tu `DoodSourceAsync`, khong gan tinh trong StreamHeaders.
+        if (!string.IsNullOrEmpty(referer))
+        {
+            return HeadersModel.Init(
+                ("Accept", "*/*"),
+                ("User-Agent", ChromeUA),
+                ("Referer", referer)
             );
         }
 
@@ -445,11 +457,31 @@ public static class JavGuruTo
         return res;
     }
 
-    public static async Task<List<(string url, string tag)>> Streams(string gateway, string referer, long deadline = 0, string serverReferer = null)
+    // `referer` trong ket qua CHI dung cho DoodStream: app khong gui duoc
+    // Referer nen Controller phai gan no vao stream proxy (xem DoodSourceAsync).
+    public static async Task<List<(string url, string tag, string referer)>> Streams(string gateway, string referer, long deadline = 0, string serverReferer = null)
     {
-        var res = new List<(string url, string tag)>();
+        var res = new List<(string url, string tag, string referer)>();
         if (string.IsNullOrEmpty(gateway))
             return res;
+
+        // DD (DoodStream): gateway 302 thang sang embed `vide0.net/e/<id>`,
+        // khong co trang player de boc data-hash/urlPlay nen phai nhan dien
+        // rieng. `-w %{url_effective}` lay URL cuoi sau khi da follow hop 302.
+        if (IsDdGateway(gateway))
+        {
+            var hop = await CurlGetUrl(gateway, referer, 6);
+            if (string.IsNullOrEmpty(hop.finalUrl))
+                return res;
+
+            var (doodUrl, doodRef) = await DoodSourceAsync(hop.finalUrl, referer, 6, deadline);
+            if (string.IsNullOrEmpty(doodUrl))
+                return res;
+
+            // tag "mp4" de /vidosik gan duoi `.mp4` — app chi ep hls.js khi
+            // URL co `.m3u8`, mp4 di qua `.m3u8` se bao "no EXTM3U delimiter".
+            return new List<(string, string, string)> { (doodUrl, "mp4", doodRef) };
+        }
 
         // Video da bi upstream xoa tra trang "Video Unavailable" (1.8KB, khong
         // data-hash/m3u8/urlPlay): dung ngay, khong retry vo ich.
@@ -491,19 +523,19 @@ public static class JavGuruTo
 
         if (!string.IsNullOrEmpty(jsFile))
         {
-            res.Add((jsFile, ""));
+            res.Add((jsFile, "", null));
         }
         else if (sbLinks != null && sbLinks.Count > 0)
         {
             foreach (string u in sbLinks)
-                res.Add((u, ""));
+                res.Add((u, "", null));
         }
         else
         {
             if (res.Count == 0)
             {
                 foreach (string u in StreamUrls(player))
-                    res.Add((u, ""));
+                    res.Add((u, "", null));
             }
         }
 
@@ -515,9 +547,9 @@ public static class JavGuruTo
             {
                 var variants = await MasterVariants(cand.url, deadline: deadline, referer: serverReferer);
                 if (variants.Count > 0)
-                    return variants;
+                    return variants.Select(x => (x.url, x.tag, (string)null)).ToList();
             }
-            return new List<(string url, string tag)>();
+            return new List<(string url, string tag, string referer)>();
         }
 
         // Master 2 level -> tach o server, tra playlist media tung chat luong
@@ -526,7 +558,7 @@ public static class JavGuruTo
         {
             var variants = await MasterVariants(res[0].url, deadline: deadline, referer: serverReferer);
             if (variants.Count > 0)
-                return variants;
+                return variants.Select(x => (x.url, x.tag, (string)null)).ToList();
         }
 
         return res;
@@ -537,6 +569,189 @@ public static class JavGuruTo
     static bool IsSbGateway(string gateway)
         => !string.IsNullOrEmpty(gateway)
            && Regex.IsMatch(gateway, @"[?&]x[dr]=[0-9a-z]+", RegexOptions.IgnoreCase);
+
+    // DD (rtype h: ?hd= trong iframe_url, ?hr= sau khi dao) — gateway 302
+    // THANG sang embed DoodStream `https://vide0.net/e/<id>` nen KHONG co trang
+    // player de boc data-hash/urlPlay. Phai biet URL cuoi cua gateway roi chay
+    // cong thuc DoodStream (xem DoodSourceAsync).
+    public static bool IsDdGateway(string gateway)
+        => !string.IsNullOrEmpty(gateway)
+           && Regex.IsMatch(gateway, @"[?&]h[dr]=[0-9a-z]+", RegexOptions.IgnoreCase);
+
+    public static bool IsDdServer(string label)
+        => !string.IsNullOrEmpty(label)
+           && label.IndexOf("DD", StringComparison.OrdinalIgnoreCase) >= 0;
+
+    // ================= DANG PHAT (mp4 / hls) =================
+    //
+    // App Lampa CHI ep hls.js khi URL khop regex `\.m3u8?(?:$|[?#])`
+    // (SISI/plugins/sisi.js -> applyHlsType). Do lai route phai mang duoi
+    // `.m3u8`, mp4 di qua do se bao "no EXTM3U delimiter".
+    public const string KindMp4 = "mp4";
+    public const string KindHls = "hls";
+
+    // Rtype cua gateway /searcho (sau khi dao token): ur=TV, or=JK, er=LU,
+    // xr=SB, hr=DD, tr=VO. Rong = chua biet (TV da dang, VO chua xu ly).
+    public static string ServerKind(string gateway)
+    {
+        if (string.IsNullOrEmpty(gateway))
+            return "";
+
+        if (IsDdGateway(gateway))
+            return KindMp4;   // DoodStream chi phuc vu mp4
+
+        if (Regex.IsMatch(gateway, @"[?&][oex]r=[0-9a-z]+", RegexOptions.IgnoreCase))
+            return KindHls;   // JK (maxstream) / LU (lulustream) / SB (streamhg)
+
+        return "";
+    }
+
+    public static bool IsDirectMp4(string url)
+        => !string.IsNullOrEmpty(url)
+           && url.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase);
+
+    // Chi con TV (turbovid) la DA DANG: 2/3 phim co `data-hash` (master
+    // .m3u8), 1/3 phim chi co `var urlPlay` (mp4). Phai mo trang player de
+    // do. Cac server khai tra ve ngay tu ten nen chi ton mot request.
+    //
+    // Phai thu NHIEU lan nhu `Streams` (4) vi gateway /searcho hay tra 520
+    // rong (16 byte) — thu 2 lan thi thuong rong, do xong -> `.m3u8` trong
+    // khi resolve ra mp4, lai loi "no EXTM3U delimiter".
+    public static async Task<string> ServerKindAsync(string gateway, int maxTime = 4, long deadline = 0)
+    {
+        string known = ServerKind(gateway);
+        if (known != "")
+            return known;
+
+        string player = await CurlGetRetry(gateway, SiteHost + "/", null, 4, maxTime, deadline);
+        if (string.IsNullOrEmpty(player))
+        {
+            Console.WriteLine($"JavGuru: kind probe rong {gateway}");
+            return "";
+        }
+
+        // Soi dung thu tu chon cua `Streams`: packer truoc, StreamUrls sau,
+        // neu lech thi route ra duoi sai.
+        string packed = Unpack(player);
+        string jsFile = packed != null ? PlayerJsFile(packed) : null;
+        if (!string.IsNullOrEmpty(jsFile))
+            return IsDirectMp4(jsFile) ? KindMp4 : KindHls;
+
+        foreach (string u in StreamUrls(player))
+            return IsDirectMp4(u) ? KindMp4 : KindHls;
+
+        return "";
+    }
+
+    // ================= DD (DoodStream) =================
+    //
+    // Cong thuc (dung chung moi site, xem skill `lampac-adult-module` muc 15):
+    //   1. GET embed `vide0.net/e/<id>` (-L) -> HTML chua
+    //      `pass_md5/<hash>/<token>`; host API = url_effective CAT TAI "/e/"
+    //   2. GET https://<hostAPI>/pass_md5/<hash>/<token>?referer=jav.guru
+    //      -> TEXT THUAN: https://<rand>.cloudatacdn.com/<path>/<file>
+    //   3. Nhan mp4 do query `?token=<token>&expiry=<unix_ms>` va bat buoc co
+    //      header Referer khop host API.
+    //
+    // Buoc 3 la mau chot: thieu query HOAC thieu Referer thi CDN 302 sang
+    // `*.dood.video`, host do tro 127.0.0.1 o ca public DNS (Cloudflare/Google
+    // DoH deu vay) nen chet tuyet doi. Gia tri token/expiry khong quan trong —
+    // token sai van 206 — chi can URL *co* query string.
+    public static async Task<(string url, string referer)> DoodSourceAsync(
+        string embedUrl, string referer, int maxTime = 6, long deadline = 0)
+    {
+        if (string.IsNullOrEmpty(embedUrl))
+            return (null, null);
+
+        var got = await CurlGetUrl(embedUrl, referer ?? (SiteHost + "/"), maxTime);
+        var m = Regex.Match(got.body ?? "", @"(pass_md5/[A-Za-z0-9_\-]+/[A-Za-z0-9]+)");
+        if (!m.Success)
+            return (null, null);
+
+        string baseUrl = null;
+        if (!string.IsNullOrEmpty(got.finalUrl))
+        {
+            int at = got.finalUrl.IndexOf("/e/", StringComparison.OrdinalIgnoreCase);
+            if (at > 8)
+                baseUrl = got.finalUrl[..at];
+        }
+
+        if (string.IsNullOrEmpty(baseUrl))
+            return (null, null);
+
+        string src = await CurlGetRetry(
+            $"{baseUrl}/{m.Groups[1].Value}?referer=jav.guru",
+            referer ?? (SiteHost + "/"), null, 4, maxTime, deadline);
+        src = (src ?? "").Trim();
+
+        // API co the tra chuoi "RELOAD" (thi phai tai lai embed roi thu lai) —
+        // check StartsWith("http") loai ca truong hop do.
+        if (!src.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            return (null, null);
+
+        string token = m.Groups[1].Value.Split('/')[^1];
+        long expiry = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+        return (src + (src.Contains('?') ? "&" : "?")
+                 + $"token={token}&expiry={expiry}", baseUrl);
+    }
+
+    // Gioi hanh cho buoc 1: cần biết host API sau khi da follow redirect.
+    public static async Task<(string body, string finalUrl)> CurlGetUrl(
+        string url, string referer, int maxTime = 25, bool http2 = true)
+    {
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            PrepCurlEnv(psi);
+            psi.ArgumentList.Add("-sL");
+            psi.ArgumentList.Add(http2 ? "--http2" : "--http1.1");
+            psi.ArgumentList.Add("--compressed");
+            psi.ArgumentList.Add("--connect-timeout");
+            psi.ArgumentList.Add("10");
+            psi.ArgumentList.Add("--max-time");
+            psi.ArgumentList.Add(maxTime.ToString());
+            psi.ArgumentList.Add("-A");
+            psi.ArgumentList.Add(ChromeUA);
+            if (!string.IsNullOrEmpty(referer))
+            {
+                psi.ArgumentList.Add("-e");
+                psi.ArgumentList.Add(referer);
+            }
+            psi.ArgumentList.Add("-w");
+            psi.ArgumentList.Add("\n@@FINAL@@%{url_effective}");
+            psi.ArgumentList.Add("--");
+            psi.ArgumentList.Add(url);
+
+            using (var p = Process.Start(psi))
+            {
+                if (p == null)
+                    return (null, null);
+
+                string stdout = await p.StandardOutput.ReadToEndAsync();
+                await p.WaitForExitAsync();
+                if (p.ExitCode != 0)
+                    return (null, null);
+
+                const string sep = "\n@@FINAL@@";
+                int at = stdout.LastIndexOf(sep, StringComparison.Ordinal);
+                if (at < 0)
+                    return (stdout, null);
+
+                return (stdout[..at], stdout[(at + sep.Length)..].Trim());
+            }
+        }
+        catch
+        {
+            return (null, null);
+        }
+    }
 
     // Host that cua trang player SB (javclan.com/...): gateway /searcho chi
     // 302 toi player, nen xin redirect URL (khong theo) roi lay host. 1

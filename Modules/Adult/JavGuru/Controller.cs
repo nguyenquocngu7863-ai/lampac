@@ -99,7 +99,8 @@ public class JavGuruController : BaseSisiController
             return null;
 
         // Thu tu uu tien: TV (turbo) da xac nhan chay duoc; JK (maxstream),
-        // LU (lulustream) va SB (streamhg) du phong. VO/DD xep sau.
+        // LU (lulustream) va SB (streamhg) du phong. DD (DoodStream) da xac
+        // nhan chay duoc va ben nhung nhat nen xep truoc VO (chua xu ly).
         servers = servers
             .Select((s, i) => new { s, i })
             .OrderBy(x => Priority(x.s.Label))
@@ -121,7 +122,9 @@ public class JavGuruController : BaseSisiController
             return 2;
         if (label.IndexOf("SB", StringComparison.OrdinalIgnoreCase) >= 0)
             return 3;
-        return 4;
+        if (JavGuruTo.IsDdServer(label))
+            return 4;
+        return 5;
     }
 
     // KHONG resolve tai day. Truoc day thu 2-3 server lien tiep ton 20-30s, app
@@ -139,13 +142,41 @@ public class JavGuruController : BaseSisiController
         if (servers == null || servers.Count == 0)
             return OnError("stream_links", refresh_proxy: true);
 
-        // Route co duoi .m3u8: app chi bat hls.js khi URL item chua ".m3u8".
+        // DUOI cua route phai khop dang thuc that cua nguon: app Lampa chi bat
+        // hls.js khi URL co `.m3u8` (SISI/plugins/sisi.js applyHlsType), nen
+        // nguon mp4 (DD, va ~1/3 phim cua TV) phai di qua `video.mp4` — neu
+        // khong app bao "no EXTM3U delimiter".
+        // Do kieu cho MOI server song song, deadline 6s. Chi TV can fetch
+        // (DD=mp4, JK/LU/SB=HLS biet ngay tu ten gateway nen tra ve luon).
+        int total = servers.Count;
+        var kinds = new string[total];
+        var gateways = new string[total];
+        long kindDl = Ms() + 6000;
+
+        for (int i = 0; i < total; i++)
+            gateways[i] = JavGuruTo.GatewayUrl(servers[i].PageUrl);
+
+        async Task Probe(int i)
+        {
+            kinds[i] = await JavGuruTo.ServerKindAsync(gateways[i], 4, kindDl);
+        }
+
+        await Task.WhenAll(Enumerable.Range(0, total).Select(Probe));
+
+        var dict = new Dictionary<string, string>(StringComparer.Ordinal);
+        for (int i = 0; i < total; i++)
+        {
+            if (dict.ContainsKey(servers[i].Label))
+                continue;
+
+            dict[servers[i].Label] =
+                $"{host}/javguru/video{(kinds[i] == JavGuruTo.KindMp4 ? ".mp4" : ".m3u8")}"
+              + $"?uri={HttpUtility.UrlEncode(uri)}&srv={HttpUtility.UrlEncode(servers[i].Label)}";
+        }
+
         // Warm-up: resolve nen truoc tung server de khi bam an lien (app cat
         // manifest sau ~10s trong khi SB resolve 6-15s). Chi warm SB/LU cham;
-        // TV/JK nhanh nen bo qua.
-        var dict = servers.ToDictionary(
-            s => s.Label,
-            s => $"{host}/javguru/video.m3u8?uri={HttpUtility.UrlEncode(uri)}&srv={HttpUtility.UrlEncode(s.Label)}");
+        // TV/JK/DD nhanh nen bo qua.
 
         _ = Task.Run(async () =>
         {
@@ -163,7 +194,10 @@ public class JavGuruController : BaseSisiController
                         continue;
                     var st = await JavGuruTo.Streams(gw, "https://jav.guru/", Ms() + 25000, JavGuruTo.ServerReferer(s.Label));
                     if (st.Count > 0)
-                        hybridCache.Set(key, st.OrderByDescending(x => x.tag.Length).First().url, cacheTime(10));
+                    {
+                        var b = st.OrderByDescending(x => x.tag.Length).First();
+                        hybridCache.Set(key, b.url + "\n" + (b.referer ?? ""), cacheTime(10));
+                    }
                 }
             }
             catch { }
@@ -182,6 +216,7 @@ public class JavGuruController : BaseSisiController
     // /vidosik: lan bam dau tien co the timeout, nhung bam lai an cache (<1s).
     [HttpGet]
     [Route("javguru/video")]
+    [Route("javguru/video.mp4")]
     [Route("javguru/video.m3u8")]
     async public Task<ActionResult> Video(string uri, string srv, string q = null)
     {
@@ -192,13 +227,19 @@ public class JavGuruController : BaseSisiController
         if (string.IsNullOrEmpty(srv))
             srv = q;
 
-        // Cache resolve: an ngay neu da resolve trong 10 phut truoc.
+        // Cache resolve: an ngay neu da resolve trong 10 phut truoc. Giu ca
+        // REFERER cung URL — DoodStream bat buoc co Referer, cache rieng URL
+        // se lam lan phat thu hai trong 10 phut chet (proxy khong Referer ->
+        // CDN 302 sang host chet).
         string streamKey = ipkey($"javguru:stream:{uri}:{srv}");
-        if (hybridCache.TryGetValue(streamKey, out string cachedUrl) && !string.IsNullOrEmpty(cachedUrl))
+        if (hybridCache.TryGetValue(streamKey, out string cachedRaw) && !string.IsNullOrEmpty(cachedRaw))
         {
-            var pick0 = (await DetailServersAsync(uri))?.FirstOrDefault(x => string.Equals(x.Label, srv, StringComparison.OrdinalIgnoreCase));
-            var headers0 = httpHeaders(init, JavGuruTo.StreamHeaders(pick0?.Label));
-            return Redirect(HostStreamProxy(cachedUrl, headers0));
+            var c = SplitCached(cachedRaw);
+            if (!string.IsNullOrEmpty(c.url))
+            {
+                var pick0 = (await DetailServersAsync(uri))?.FirstOrDefault(x => string.Equals(x.Label, srv, StringComparison.OrdinalIgnoreCase));
+                return Redirect(HostStreamProxy(c.url, httpHeaders(init, JavGuruTo.StreamHeaders(pick0?.Label, c.referer))));
+            }
         }
 
         var servers = await DetailServersAsync(uri);
@@ -226,17 +267,29 @@ public class JavGuruController : BaseSisiController
 
         // Uu tien variant cao nhat (da duoc tach master o server).
         var best = streams.OrderByDescending(x => x.tag.Length).First();
-        Console.WriteLine($"JavGuru: chon srv={pick.Label} tag={best.tag} host={new Uri(best.url).Host}");
+        Console.WriteLine($"JavGuru: chon srv={pick.Label} tag={best.tag} ref={best.referer} host={new Uri(best.url).Host}");
 
         // Header theo server: JK (maxstream) can Referer cua no, turbo tra 429
-        // neu thay Referer jav.guru.
-        var headers = httpHeaders(init, JavGuruTo.StreamHeaders(pick.Label));
+        // neu thay Referer jav.guru, DD can Referer host embed cua tung video.
+        var headers = httpHeaders(init, JavGuruTo.StreamHeaders(pick.Label, best.referer));
 
         // Luu resolve 10 phut: token SB/LU ngan han nhung du cho bam lai, va
         // quan trong la lan bam sau an cache <1s, qua duoi manifestLoadTimeout
         // 10s cua app.
-        hybridCache.Set(streamKey, best.url, cacheTime(10));
+        hybridCache.Set(streamKey, best.url + "\n" + (best.referer ?? ""), cacheTime(10));
 
         return Redirect(HostStreamProxy(best.url, headers));
+    }
+
+    // Cache luu "url\nreferer" — URL khong bao gio chua '\n'.
+    static (string url, string referer) SplitCached(string raw)
+    {
+        if (string.IsNullOrEmpty(raw))
+            return (null, null);
+
+        int at = raw.IndexOf('\n');
+        return at < 0
+            ? (raw, null)
+            : (raw[..at], raw[(at + 1)..]);
     }
 }
