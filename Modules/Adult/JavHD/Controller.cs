@@ -69,12 +69,14 @@ public class JavHDController : BaseSisiController
     }
 
     // "The loai" boc tu /categories/ (99 card, loc tube, top 50
-    // theo so phim). Cache 1 gio trong RAM.
+    // theo so phim); "Hang phim" boc tu dropdown nav trang chu.
+    // Cache 1 gio trong RAM.
     async Task<List<MenuItem>> MenuAsync()
     {
-        string key = ipkey("javhd:cats");
+        string gkey = ipkey("javhd:cats");
+        string skey = ipkey("javhd:studios");
 
-        if (!hybridCache.TryGetValue(key,
+        if (!hybridCache.TryGetValue(gkey,
             out List<(string name, string path)> genres)
             || genres == null || genres.Count == 0)
         {
@@ -82,14 +84,30 @@ public class JavHDController : BaseSisiController
             string html = await FetchHtmlAsync(
                 JavHDTo.SiteHost + "/categories/",
                 "category-", 2, 4, dl);
-            genres = JavHDTo.CatTop(JavHDTo.CatList(html));
-            Console.WriteLine($"JavHD: cats genres={genres.Count}");
+            genres = JavHDTo.CatTop(
+                JavHDTo.CatList(html));
 
             if (genres.Count > 0)
-                hybridCache.Set(key, genres, cacheTime(60));
+                hybridCache.Set(gkey, genres, cacheTime(60));
         }
 
-        return JavHDTo.Menu(host, genres);
+        if (!hybridCache.TryGetValue(skey,
+            out List<(string name, string query)> studios)
+            || studios == null || studios.Count == 0)
+        {
+            long dl = Ms() + 12000;
+            string home = await FetchHtmlAsync(
+                JavHDTo.SiteHost + "/", "Studios", 2, 4, dl);
+            studios = JavHDTo.StudioList(home);
+
+            if (studios.Count > 0)
+                hybridCache.Set(skey, studios, cacheTime(60));
+        }
+
+        Console.WriteLine("JavHD: cats genres="
+            + genres.Count + " studios=" + studios.Count);
+
+        return JavHDTo.Menu(host, genres, studios);
     }
 
     static long Ms() => Environment.TickCount64;

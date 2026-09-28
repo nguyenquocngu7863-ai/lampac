@@ -750,7 +750,8 @@ public static class JavHDTo
     }
 
     public static List<Shared.Models.SISI.Base.MenuItem> Menu(
-        string host, List<(string name, string path)> genres)
+        string host, List<(string name, string path)> genres,
+        List<(string name, string query)> studios)
     {
         var cats = new List<Shared.Models.SISI.Base.MenuItem>()
         {
@@ -783,7 +784,8 @@ public static class JavHDTo
         };
 
         // Site khong co index studio (/channels/ la trang
-        // stub) — hang phim tra bang search (?s=madonna).
+        // stub) — hang phim nam trong dropdown nav, link dang
+        // search (?s=<ten hang>).
         if (genres != null && genres.Count > 0)
             menu.Add(new Shared.Models.SISI.Base.MenuItem()
             {
@@ -794,6 +796,20 @@ public static class JavHDTo
                     {
                         title = x.name,
                         playlist_url = host + "/javhd?c=" + x.path
+                    }).ToList()
+            });
+
+        if (studios != null && studios.Count > 0)
+            menu.Add(new Shared.Models.SISI.Base.MenuItem()
+            {
+                title = "Hãng phim",
+                playlist_url = "submenu",
+                submenu = studios.Select(x =>
+                    new Shared.Models.SISI.Base.MenuItem()
+                    {
+                        title = x.name,
+                        playlist_url = host + "/javhd?search="
+                            + HttpUtility.UrlEncode(x.query)
                     }).ToList()
             });
 
@@ -843,6 +859,45 @@ public static class JavHDTo
         int max = 50)
         => cats.OrderByDescending(x => x.count).Take(max)
             .Select(x => (x.name, x.path)).ToList();
+
+    // Hang phim tu dropdown "Studios" tren nav (moi trang deu
+    // co): link /search/video/?s=<ten hang>. Query tra theo
+    // TEN HIEN (site moc nham vai query, vd Glory Quest).
+    public static List<(string name, string query)> StudioList(
+        string html)
+    {
+        var res = new List<(string, string)>();
+        if (string.IsNullOrEmpty(html))
+            return res;
+
+        int at = html.IndexOf("> Studios<",
+            StringComparison.Ordinal);
+        if (at < 0)
+            return res;
+
+        string blk = html.Substring(at,
+            Math.Min(6000, html.Length - at));
+        var seen = new HashSet<string>(
+            StringComparer.OrdinalIgnoreCase);
+
+        foreach (Match m in Regex.Matches(blk,
+            "<a href=\"https?://javhd\\.today/search/video/"
+            + "\\?s=([^\"]+)\">(?:<i[^>]*></i>\\s*)?([^<]+)</a>"))
+        {
+            string name = HttpUtility.HtmlDecode(
+                m.Groups[2].Value.Trim());
+            if (name.Length == 0 || !seen.Add(name))
+                continue;
+
+            if (name.IndexOf("All Studios",
+                StringComparison.OrdinalIgnoreCase) >= 0)
+                continue;
+
+            res.Add((name, name));
+        }
+
+        return res;
+    }
 
     static bool TubeSlug(string slug)
     {
