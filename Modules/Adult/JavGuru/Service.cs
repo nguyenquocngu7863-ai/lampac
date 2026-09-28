@@ -953,7 +953,119 @@ public static class JavGuruTo
         return await CurlGetRetry(url, referer, marker, attempts, maxTime, deadline, false);
     }
 
-    public static List<Shared.Models.SISI.Base.MenuItem> Menu(string host)
+    // AV MAKER + TAGS — lay tu cac trang list san cua site (giong JavTsunami
+    // boc category tu /categories). Chi la dong TEXT trong submenu (cache 1
+    // gio, 0.008s khong ton request) nen boc bao nhieu cung duoc; thoi gian
+    // nam o luc bam vao va tai phim ben trong.
+    //
+    //   makers : 1 trang x 992 hang (fetch 1 lan, boc ngau 40)
+    //   studios: 1 trang x 4663 hang (fetch 1 lan, boc ngau 40)
+    //   tags   : 1 trang x 553 hang (co so phim, boc TOP 40 theo so phim)
+    public const string MakerPath = "/jav-makers-list";
+    public const string StudioPath = "/jav-studio-list";
+    public const string TagsPath = "/tags";
+    public const int DirLimit = 40;
+
+    // Muc la `<a href=".../maker/moodyz/">MOODYZ</a>`. Tra ve (ten, duong dan
+    // doi) de Controller doi vao `?c=...`.
+    public static List<(string name, string path)> DirList(
+        string html, string kind, int limit = int.MaxValue)
+    {
+        var list = new List<(string, string)>();
+        if (string.IsNullOrEmpty(html) || string.IsNullOrEmpty(kind))
+            return list;
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        string rx = "<a href=\"https://jav\\.guru/" + kind
+            + "/([^\"]+/)\">([^<]{2,50})</a>";
+
+        foreach (Match m in Regex.Matches(html, rx, RegexOptions.IgnoreCase))
+        {
+            if (list.Count >= limit)
+                break;
+
+            string path = (kind + "/" + m.Groups[1].Value).Trim('/');
+            string name = HttpUtility.HtmlDecode(m.Groups[2].Value.Trim());
+
+            if (name.Length == 0 || !seen.Add(path))
+                continue;
+
+            list.Add((name, path));
+        }
+
+        return list;
+    }
+
+    // Hang TAG co so phim trong ngoac: `<a ...>3P <span>(16627)</span></a>`.
+    // Boc TOP theo so phim thay vi ngau nhien — tag la the loai, lay top la
+    // dung nhu menu The loai cu (FC2, 4K...). Dung so trong `/tags` vi trang
+    // nay ghi ca tag 0 phim.
+    public static List<(string name, string path)> TagList(
+        string html, int limit = DirLimit)
+    {
+        var rows = new List<(string name, string path, int n)>();
+        if (string.IsNullOrEmpty(html))
+            return rows.Select(x => (x.name, x.path)).ToList();
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (Match m in Regex.Matches(html,
+            "<li><a href=\"https://jav\\.guru/tag/([^\"]+/)\".*?>"
+                + "(.*?)</a></li>",
+            RegexOptions.IgnoreCase | RegexOptions.Singleline))
+        {
+            string raw = m.Groups[2].Value;
+            raw = Regex.Replace(raw, "<[^>]+>", " ").Trim();
+            raw = HttpUtility.HtmlDecode(raw);
+            raw = Regex.Replace(raw, @"\s+", " ").Trim();
+
+            var mc = Regex.Match(raw, @"^(.*?)\s*\((\d+)\)\s*$");
+            string name = mc.Success ? mc.Groups[1].Value.Trim() : raw;
+            int n = 0;
+            if (mc.Success)
+                int.TryParse(mc.Groups[2].Value, out n);
+
+            string path = ("tag/" + m.Groups[1].Value).Trim('/');
+            if (name.Length == 0 || n <= 0 || !seen.Add(path))
+                continue;
+
+            rows.Add((name, path, n));
+        }
+
+        return rows.OrderByDescending(x => x.n)
+            .Take(limit)
+            .Select(x => (x.name, x.path))
+            .ToList();
+    }
+
+    // Fisher-Yates roi cat con `limit` — giong JavTsunami.CatPick: trong 1
+    // gio cache thu tu khong doi, het gio bo lai bo khac.
+    public static List<(string name, string path)> DirPick(
+        List<(string name, string path)> pool, int limit = DirLimit)
+    {
+        var list = new List<(string, string)>();
+        if (pool == null || pool.Count == 0)
+            return list;
+
+        list.AddRange(pool);
+
+        for (int i = list.Count - 1; i > 0; i--)
+        {
+            int j = Random.Shared.Next(i + 1);
+            (list[i], list[j]) = (list[j], list[i]);
+        }
+
+        if (list.Count > limit)
+            list.RemoveRange(limit, list.Count - limit);
+
+        return list;
+    }
+
+    public static List<Shared.Models.SISI.Base.MenuItem> Menu(
+        string host,
+        List<(string name, string path)> makers = null,
+        List<(string name, string path)> studios = null,
+        List<(string name, string path)> tags = null)
     {
         var genres = new List<Shared.Models.SISI.Base.MenuItem>()
         {
@@ -966,7 +1078,7 @@ public static class JavGuruTo
             new("4K", host + "/javguru?c=category/4k"),
         };
 
-        return new List<Shared.Models.SISI.Base.MenuItem>()
+        var menu = new List<Shared.Models.SISI.Base.MenuItem>()
         {
             new Shared.Models.SISI.Base.MenuItem()
             {
@@ -989,5 +1101,47 @@ public static class JavGuruTo
                 submenu = genres
             }
         };
+
+        // submenu trong thi bo qua — trang dir fetch loi thi menu cu van du.
+        if (makers != null && makers.Count > 0)
+            menu.Add(new Shared.Models.SISI.Base.MenuItem()
+            {
+                title = "Hãng phim",
+                playlist_url = "submenu",
+                submenu = makers.Select(x =>
+                    new Shared.Models.SISI.Base.MenuItem()
+                    {
+                        title = x.name,
+                        playlist_url = host + "/javguru?c=" + x.path
+                    }).ToList()
+            });
+
+        if (studios != null && studios.Count > 0)
+            menu.Add(new Shared.Models.SISI.Base.MenuItem()
+            {
+                title = "Studio",
+                playlist_url = "submenu",
+                submenu = studios.Select(x =>
+                    new Shared.Models.SISI.Base.MenuItem()
+                    {
+                        title = x.name,
+                        playlist_url = host + "/javguru?c=" + x.path
+                    }).ToList()
+            });
+
+        if (tags != null && tags.Count > 0)
+            menu.Add(new Shared.Models.SISI.Base.MenuItem()
+            {
+                title = "Tags",
+                playlist_url = "submenu",
+                submenu = tags.Select(x =>
+                    new Shared.Models.SISI.Base.MenuItem()
+                    {
+                        title = x.name,
+                        playlist_url = host + "/javguru?c=" + x.path
+                    }).ToList()
+            });
+
+        return menu;
     }
 }

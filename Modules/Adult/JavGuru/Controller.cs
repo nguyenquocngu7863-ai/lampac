@@ -73,7 +73,60 @@ public class JavGuruController : BaseSisiController
         if (rch?.enable == true)
             StatiCacheDisabled = true;
 
-        return PlaylistResult(cache, JavGuruTo.Menu(host));
+        return PlaylistResult(cache, await MenuAsync());
+    }
+
+    // "Hãng phim" (992) + "Studio" (4663) + "Tags" (553, co so phim) lay tu
+    // 3 trang list san cua site — giong JavTsunami boc category tu /categories.
+    // Moi trang 1 request (khong phan trang), cache 1 gio trong RAM; makers +
+    // studios boc NGAU (lay dau thi toan chu A-C), tags boc TOP theo so phim.
+    async Task<List<MenuItem>> MenuAsync()
+    {
+        List<(string name, string path)> makers = null;
+        List<(string name, string path)> studios = null;
+        List<(string name, string path)> tags = null;
+
+        string key = ipkey("javguru:dirs");
+        if (hybridCache.TryGetValue(key,
+                out List<(string name, string path)>[] cached)
+            && cached != null && cached.Length == 3)
+        {
+            makers = cached[0];
+            studios = cached[1];
+            tags = cached[2];
+        }
+        else
+        {
+            long dl = Ms() + 25000;
+            var t1 = JavGuruTo.CurlGetRetry(
+                JavGuruTo.SiteHost + JavGuruTo.MakerPath,
+                JavGuruTo.SiteHost + "/", "jav.guru/maker/", 2, 20, dl);
+            var t2 = JavGuruTo.CurlGetRetry(
+                JavGuruTo.SiteHost + JavGuruTo.StudioPath,
+                JavGuruTo.SiteHost + "/", "jav.guru/studio/", 2, 20, dl);
+            var t3 = JavGuruTo.CurlGetRetry(
+                JavGuruTo.SiteHost + JavGuruTo.TagsPath,
+                JavGuruTo.SiteHost + "/", "jav.guru/tag/", 2, 20, dl);
+
+            await Task.WhenAll(t1, t2, t3);
+
+            makers = JavGuruTo.DirPick(JavGuruTo.DirList(await t1, "maker"));
+            studios = JavGuruTo.DirPick(
+                JavGuruTo.DirList(await t2, "studio"));
+            tags = JavGuruTo.TagList(await t3);
+
+            Console.WriteLine(
+                $"JavGuru: dirs makers={makers.Count}"
+                + $" studios={studios.Count} tags={tags.Count}");
+
+            if (makers.Count + studios.Count + tags.Count > 0)
+                hybridCache.Set(key,
+                    new List<(string name, string path)>[]
+                        { makers, studios, tags },
+                    cacheTime(60));
+        }
+
+        return JavGuruTo.Menu(host, makers, studios, tags);
     }
 
     // Danh sach server cua video, doc tu trang detail. Cache 15 phut de khi
