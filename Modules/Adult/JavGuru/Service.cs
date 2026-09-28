@@ -960,11 +960,12 @@ public static class JavGuruTo
     //
     //   makers : 1 trang x 992 hang (fetch 1 lan, boc ngau 40)
     //   studios: 1 trang x 4663 hang (fetch 1 lan, boc ngau 40)
-    //   tags   : 1 trang x 553 hang (co so phim, boc TOP 40 theo so phim)
+    //   tags   : 1 trang x 553 hang (co so phim, boc TOP 100 theo so phim)
     public const string MakerPath = "/jav-makers-list";
     public const string StudioPath = "/jav-studio-list";
     public const string TagsPath = "/tags";
     public const int DirLimit = 40;
+    public const int TagsLimit = 100;
 
     // Muc la `<a href=".../maker/moodyz/">MOODYZ</a>`. Tra ve (ten, duong dan
     // doi) de Controller doi vao `?c=...`.
@@ -1001,7 +1002,7 @@ public static class JavGuruTo
     // dung nhu menu The loai cu (FC2, 4K...). Dung so trong `/tags` vi trang
     // nay ghi ca tag 0 phim.
     public static List<(string name, string path)> TagList(
-        string html, int limit = DirLimit)
+        string html, int limit = TagsLimit)
     {
         var rows = new List<(string name, string path, int n)>();
         if (string.IsNullOrEmpty(html))
