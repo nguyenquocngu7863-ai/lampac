@@ -169,6 +169,14 @@ public static class JavHDTo
             return 2;
         if (Has(label, "Mycloudz"))
             return 3;
+        if (Has(label, "Myserver"))
+            return 4;
+        if (Has(label, "Topserver"))
+            return 5;
+        if (Has(label, "Maxcloud"))
+            return 6;
+        if (Has(label, "Bpserver"))
+            return 7;
 
         return 8;
     }
@@ -182,7 +190,19 @@ public static class JavHDTo
             return false;
 
         return Has(label, "Dood") || Has(label, "Turbo")
-            || Has(label, "Cloudwish") || Has(label, "Mycloudz");
+            || Has(label, "Cloudwish") || Has(label, "Mycloudz")
+            || IsJavhdzButton(label);
+    }
+
+    // 4 nut javhdz tren trang detail (data-name tren <button>).
+    // Upnshare (streambeast `#...`) khong resolve duoc nen loai.
+    public static bool IsJavhdzButton(string label)
+    {
+        if (string.IsNullOrEmpty(label))
+            return false;
+
+        return Has(label, "Myserver") || Has(label, "Topserver")
+            || Has(label, "Maxcloud") || Has(label, "Bpserver");
     }
 
     static bool Has(string s, string v)
@@ -199,6 +219,10 @@ public static class JavHDTo
                     StringComparison.OrdinalIgnoreCase) >= 0
                 || embedUrl.IndexOf("mycloudz",
                     StringComparison.OrdinalIgnoreCase) >= 0);
+
+    public static bool IsJavhdz(string embedUrl)
+        => !string.IsNullOrEmpty(embedUrl)
+            && Has(embedUrl, "javhdz.today");
 
     public static string Label(string embedUrl)
     {
@@ -228,12 +252,13 @@ public static class JavHDTo
 
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        void Add(string u)
+        void Add(string u, string name = null)
         {
             if (string.IsNullOrEmpty(u) || !seen.Add(u))
                 return;
 
-            string label = Label(u);
+            string label = string.IsNullOrEmpty(name)
+                ? Label(u) : name;
             if (string.IsNullOrEmpty(label) || !IsSupported(label))
                 return;
 
@@ -251,7 +276,36 @@ public static class JavHDTo
             {
                 string u = Encoding.UTF8.GetString(
                     Convert.FromBase64String(m.Groups[1].Value)).Trim();
-                Add(u);
+                Add(u, null);
+            }
+            catch { }
+        }
+
+        // 4 nut javhdz (Myserver/Topserver/Maxcloud/Bpserver): moi nut
+        // giu mot array mirror (embed.php, embed_server7/2/5.php) —
+        // lay URL dau tien, nhan theo data-name tren nut.
+        foreach (Match b in Regex.Matches(html,
+            "<button[^>]+class=\"button_choice_server\"[^>]*>",
+            RegexOptions.IgnoreCase))
+        {
+            string tag = b.Value;
+            var nm = Regex.Match(tag, "data-name=\"([^\"]+)\"",
+                RegexOptions.IgnoreCase);
+            var em = Regex.Match(tag, "data-embeds=\"([^\"]+)\"");
+            if (!nm.Success || !em.Success)
+                continue;
+
+            string name = nm.Groups[1].Value.Trim();
+            if (!IsJavhdzButton(name))
+                continue;
+
+            try
+            {
+                string arr = Encoding.UTF8.GetString(
+                    Convert.FromBase64String(em.Groups[1].Value));
+                var u = Regex.Match(arr, "\"(https?://[^\"\\\\]+)\"");
+                if (u.Success)
+                    Add(u.Groups[1].Value.Replace("\\/", "/"), name);
             }
             catch { }
         }
@@ -286,7 +340,7 @@ public static class JavHDTo
         if (IsDood(pageUrl))
             return KindMp4;
 
-        if (IsCloud(pageUrl))
+        if (IsCloud(pageUrl) || IsJavhdz(pageUrl))
             return KindHls;
 
         string player = await CurlGetRetry(
@@ -300,7 +354,7 @@ public static class JavHDTo
         return "";
     }
 
-    // Biet ngay tu host, khong can fetch. DoodStream=mp4, 3 con lai=HLS.
+    // Biet ngay tu host, khong can fetch. DoodStream=mp4, con lai=HLS.
     // Turbo thuc ra DA DANG nen chi dung tam o Servers(); /vidosik do
     // lai bang ServerKindAsync o tren.
     public static string ServerKind(string label)
@@ -312,12 +366,40 @@ public static class JavHDTo
             return KindMp4;
 
         if (Has(label, "Turbo") || Has(label, "Cloudwish")
-            || Has(label, "Mycloudz"))
+            || Has(label, "Mycloudz") || IsJavhdzButton(label))
             return KindHls;
 
         return "";
     }
 
+    // Embed javhdz (Myserver/Topserver/Maxcloud/Bpserver): trang
+    // Plyr co `var FIRST = {"playlist":"/tb_playlist.php?t=..."}`.
+    // Ghep voi host embed -> playlist media (1 level, segment
+    // absolute tren googleusercontent, tien to PNG do hls.js cat).
+    public static string JavhdzPlaylist(string html, string embedUrl)
+    {
+        if (string.IsNullOrEmpty(html))
+            return null;
+
+        var m = Regex.Match(html,
+            "\"playlist\"\\s*:\\s*\"([^\"]+)\"");
+        if (!m.Success)
+            return null;
+
+        string p = m.Groups[1].Value.Trim();
+        if (p.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            return p;
+
+        try
+        {
+            var u = new Uri(embedUrl);
+            return u.GetLeftPart(UriPartial.Authority) + p;
+        }
+        catch
+        {
+            return null;
+        }
+    }
     // Cloudwish / Mycloudz: player nap code bang PACKER base36 (giong
     // StreamHG cua JavTsunami/JavGuru-SB). Giai xong moi thay
     //   var links={"hls4":"...","hls3":"...","hls2":"..."}

@@ -121,7 +121,8 @@ public class JavHDController : BaseSisiController
         async Task Probe(int i)
         {
             string u = servers[i].PageUrl;
-            if (JavHDTo.IsDood(u) || JavHDTo.IsCloud(u))
+            if (JavHDTo.IsDood(u) || JavHDTo.IsCloud(u)
+                || JavHDTo.IsJavhdz(u))
             {
                 kinds[i] = servers[i].Kind;
                 return;
@@ -215,6 +216,19 @@ public class JavHDController : BaseSisiController
                     { (masters[0], "1080p", pHost) };
 
             return empty;
+        }
+
+        // --- Javhdz (Myserver/Topserver/Maxcloud/Bpserver):
+        // embed Plyr -> FIRST.playlist (media 1 level, segment
+        // absolute, tien to PNG do hls.js cat o client) ---
+        if (JavHDTo.IsJavhdz(pick.PageUrl))
+        {
+            string pl = JavHDTo.JavhdzPlaylist(player, pick.PageUrl);
+            if (string.IsNullOrEmpty(pl))
+                return empty;
+
+            return new List<(string, string, string)>
+                { (pl, "", null) };
         }
 
         // --- Turbo: data-hash (m3u8) truoc, urlPlay (mp4) sau ---
