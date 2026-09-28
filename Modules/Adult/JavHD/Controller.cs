@@ -22,22 +22,30 @@ public class JavHDController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("javhd")]
-    async public Task<ActionResult> Index(string c, int pg = 1)
+    async public Task<ActionResult> Index(
+        string search, string c, int pg = 1)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
 
-        var cache = await InvokeCacheResult(ipkey($"javhd:{c}:{pg}"), 10, jsonContext.ListPlaylistItem, async e =>
+        var cache = await InvokeCacheResult(
+            ipkey($"javhd:{search}:{c}:{pg}"),
+            10, jsonContext.ListPlaylistItem, async e =>
         {
             List<PlaylistItem> playlists = null;
 
-            for (int t = 0; t < 3 && (playlists == null || playlists.Count == 0); t++)
+            for (int t = 0; t < 3
+                && (playlists == null || playlists.Count == 0);
+                t++)
             {
                 if (t > 0)
                     await Task.Delay(1200);
-                await httpHydra.GetSpan(JavHDTo.Uri(init.host, c, pg), span =>
+                await httpHydra.GetSpan(
+                    JavHDTo.Uri(init.host, search, c, pg),
+                    span =>
                 {
-                    var pl = JavHDTo.Playlist("javhd/vidosik", span.ToString());
+                    var pl = JavHDTo.Playlist(
+                        "javhd/vidosik", span.ToString());
                     if (pl.Count > 0)
                         playlists = pl;
                 }, addheaders: HeadersModel.Init(
@@ -48,7 +56,8 @@ public class JavHDController : BaseSisiController
             }
 
             if (playlists == null || playlists.Count == 0)
-                return e.Fail("playlists", refresh_proxy: true);
+                return e.Fail("playlists",
+                    refresh_proxy: string.IsNullOrEmpty(search));
 
             return e.Success(playlists);
         });
@@ -56,7 +65,31 @@ public class JavHDController : BaseSisiController
         if (rch?.enable == true)
             StatiCacheDisabled = true;
 
-        return PlaylistResult(cache, JavHDTo.Menu(host));
+        return PlaylistResult(cache, await MenuAsync());
+    }
+
+    // "The loai" boc tu /categories/ (99 card, loc tube, top 50
+    // theo so phim). Cache 1 gio trong RAM.
+    async Task<List<MenuItem>> MenuAsync()
+    {
+        string key = ipkey("javhd:cats");
+
+        if (!hybridCache.TryGetValue(key,
+            out List<(string name, string path)> genres)
+            || genres == null || genres.Count == 0)
+        {
+            long dl = Ms() + 12000;
+            string html = await FetchHtmlAsync(
+                JavHDTo.SiteHost + "/categories/",
+                "category-", 2, 4, dl);
+            genres = JavHDTo.CatTop(JavHDTo.CatList(html));
+            Console.WriteLine($"JavHD: cats genres={genres.Count}");
+
+            if (genres.Count > 0)
+                hybridCache.Set(key, genres, cacheTime(60));
+        }
+
+        return JavHDTo.Menu(host, genres);
     }
 
     static long Ms() => Environment.TickCount64;

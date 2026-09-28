@@ -23,23 +23,64 @@ public static class JavHDTo
 
     public static string ChromeUA = "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36";
 
-    public static string Uri(string host, string c, int pg)
+    public static string Uri(
+        string host, string search, string c, int pg)
     {
         if (string.IsNullOrEmpty(host))
             host = SiteHost;
         host = host.TrimEnd('/');
 
+        // Tim kiem theo ID/dien vien/hang:
+        // /search/video/?s=<q>&ajax=1[&page=N]
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            string u = host + "/search/video/?s="
+                + HttpUtility.UrlEncode(search.Trim())
+                + "&ajax=1";
+            return pg > 1 ? u + "&page=" + pg : u;
+        }
+
         string path = "recent/";
         if (!string.IsNullOrEmpty(c))
         {
             c = c.Trim('/');
-            path = c.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? c : c;
-            if (!path.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            path = c.StartsWith("http",
+                StringComparison.OrdinalIgnoreCase)
+                ? c : c;
+            if (!path.StartsWith("http",
+                StringComparison.OrdinalIgnoreCase))
                 path = path.Trim('/') + "/";
         }
 
-        string url = path.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? path.TrimEnd('/') + "/" : host + "/" + path;
-        return url + "?ajax=browse_videos&page=" + Math.Max(1, pg);
+        // 5 trang list goc dung ?ajax=browse_videos; the loai
+        // dung ?ajax=1, trang 2+ theo /<path>/recent/<N>/?ajax=1.
+        if (!path.StartsWith("http",
+                StringComparison.OrdinalIgnoreCase)
+            && !IsBrowsePath(path))
+        {
+            if (pg > 1)
+                return host + "/" + path
+                    + "recent/" + pg + "/?ajax=1";
+
+            return host + "/" + path + "?ajax=1";
+        }
+
+        string url = path.StartsWith("http",
+            StringComparison.OrdinalIgnoreCase)
+            ? path.TrimEnd('/') + "/"
+            : host + "/" + path;
+        return url + "?ajax=browse_videos&page="
+            + Math.Max(1, pg);
+    }
+
+    // 5 trang list goc (recent/popular/releaseday) chay
+    // ?ajax=browse_videos; con lai (the loai, kenh) chay ?ajax=1.
+    static bool IsBrowsePath(string path)
+    {
+        string p = path.Trim('/').ToLowerInvariant();
+        return p == "recent" || p == "releaseday"
+            || p == "popular/today" || p == "popular/week"
+            || p == "popular/month";
     }
 
     public static List<Shared.Models.SISI.Base.PlaylistItem> Playlist(string uri, string json)
@@ -708,7 +749,8 @@ public static class JavHDTo
         return null;
     }
 
-    public static List<Shared.Models.SISI.Base.MenuItem> Menu(string host)
+    public static List<Shared.Models.SISI.Base.MenuItem> Menu(
+        string host, List<(string name, string path)> genres)
     {
         var cats = new List<Shared.Models.SISI.Base.MenuItem>()
         {
@@ -719,8 +761,14 @@ public static class JavHDTo
             new("Ngày phát hành", host + "/javhd?c=releaseday/"),
         };
 
-        return new List<Shared.Models.SISI.Base.MenuItem>()
+        var menu = new List<Shared.Models.SISI.Base.MenuItem>()
         {
+            new Shared.Models.SISI.Base.MenuItem()
+            {
+                title = "Tìm kiếm",
+                search_on = "search_on",
+                playlist_url = host + "/javhd"
+            },
             new Shared.Models.SISI.Base.MenuItem()
             {
                 title = "Mới nhất",
@@ -733,5 +781,100 @@ public static class JavHDTo
                 submenu = cats
             }
         };
+
+        // Site khong co index studio (/channels/ la trang
+        // stub) — hang phim tra bang search (?s=madonna).
+        if (genres != null && genres.Count > 0)
+            menu.Add(new Shared.Models.SISI.Base.MenuItem()
+            {
+                title = "Thể loại",
+                playlist_url = "submenu",
+                submenu = genres.Select(x =>
+                    new Shared.Models.SISI.Base.MenuItem()
+                    {
+                        title = x.name,
+                        playlist_url = host + "/javhd?c=" + x.path
+                    }).ToList()
+            });
+
+        return menu;
+    }
+
+    // The loai tu /categories/: card <li id="category-N"> co ten
+    // + so phim. Loc slug tube lien ket (partner site), giu
+    // the loai that.
+    public static List<(int count, string name, string path)> CatList(
+        string html)
+    {
+        var res = new List<(int, string, string)>();
+        if (string.IsNullOrEmpty(html))
+            return res;
+
+        foreach (Match m in Regex.Matches(html,
+            "<li id=\"category-\\d+\">(.*?)</li>",
+            RegexOptions.Singleline))
+        {
+            string b = m.Groups[1].Value;
+            var hm = Regex.Match(b, "<a href=\"/([a-z0-9\\-]+)/\"");
+            var nm = Regex.Match(b, "category-title\">([^<]+)<");
+            if (!hm.Success || !nm.Success)
+                continue;
+
+            string slug = hm.Groups[1].Value;
+            if (TubeSlug(slug))
+                continue;
+
+            int cnt = 0;
+            var cm = Regex.Match(b, "([\\d,]+)\\s*</div>\\s*</a>");
+            if (cm.Success)
+                int.TryParse(cm.Groups[1].Value.Replace(",", ""),
+                    out cnt);
+
+            res.Add((cnt, HttpUtility.HtmlDecode(
+                nm.Groups[1].Value.Trim()), slug + "/"));
+        }
+
+        return res;
+    }
+
+    // Top the loai theo so phim (nhu Tags cua JavGuru).
+    public static List<(string name, string path)> CatTop(
+        List<(int count, string name, string path)> cats,
+        int max = 50)
+        => cats.OrderByDescending(x => x.count).Take(max)
+            .Select(x => (x.name, x.path)).ToList();
+
+    static bool TubeSlug(string slug)
+    {
+        switch (slug)
+        {
+            case "categories":
+            case "7mmtv":
+            case "avgle":
+            case "bestjav":
+            case "jable":
+            case "javbangers":
+            case "javct":
+            case "javfinder":
+            case "javgg":
+            case "javhub":
+            case "javlibrary":
+            case "javmost":
+            case "javtiful":
+            case "javtrailers":
+            case "javtube":
+            case "jav-guru":
+            case "jav-porn":
+            case "missav":
+            case "njav":
+            case "pornhub":
+            case "sextb":
+            case "xnxx":
+            case "xvideos":
+            case "xhamster":
+                return true;
+            default:
+                return false;
+        }
     }
 }
