@@ -39,16 +39,19 @@ public class ModInit : IModuleLoaded, IModuleSisi
     {
         conf = ModuleInvoke.Init("JavHD", new SisiSettings("JavHD", "https://javhd.today")
         {
-            displayindex = 20,
+            // 7 = ngay truoc JavGuru (8), dau nhom tu lam.
+            // 20 cu trung PornHub nen doi.
+            displayindex = 7,
             streamproxy = true,
             httpversion = 2,
             rch_access = "apk",
             stream_access = "apk",
             rchstreamproxy = "web,cors",
+            // KHONG dat Referer o headers_stream: CDN Turbo
+            // 429 khi thay Referer (giong JavGuru/JavTsunami).
+            // DoodStream gan rieng Referer o StreamLink.
             headers_stream = HeadersModel.Init(
-                ("User-Agent", JavHDTo.ChromeUA),
-                ("Referer", "https://turbovid.vip/"),
-                ("Origin", "https://turbovid.vip")
+                ("User-Agent", JavHDTo.ChromeUA)
             ).ToDictionary(),
             headers_image = HeadersModel.Init(
                 ("User-Agent", JavHDTo.ChromeUA),

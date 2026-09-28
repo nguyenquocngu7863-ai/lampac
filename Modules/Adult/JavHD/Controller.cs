@@ -4,6 +4,7 @@ using Shared.Attributes;
 using Shared.Models.Base;
 using Shared.Models.SISI.Base;
 using Shared.Services;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
@@ -14,7 +15,8 @@ namespace JavHD;
 
 public class JavHDController : BaseSisiController
 {
-    static readonly HttpClient httpClient = FriendlyHttp.CreateHttpClient();
+    static readonly HttpClient httpClient =
+        FriendlyHttp.CreateHttpClient();
 
     public JavHDController() : base(ModInit.conf) { }
 
@@ -57,164 +59,143 @@ public class JavHDController : BaseSisiController
         return PlaylistResult(cache, JavHDTo.Menu(host));
     }
 
-    async Task<string> GetHtmlAsync(string url, string referer, int tries = 3, string mustContain = null)
-    {
-        string html = null;
-        for (int t = 0; t < tries && string.IsNullOrEmpty(html); t++)
-        {
-            if (t > 0)
-                await Task.Delay(1500);
-            try
-            {
-                await httpHydra.GetSpan(url, span =>
-                {
-                    string s = span.ToString();
-                    if (s.Length > 2000 && (mustContain == null || s.Contains(mustContain)))
-                        html = s;
-                }, addheaders: HeadersModel.Init(
-                    ("User-Agent", JavHDTo.ChromeUA),
-                    ("Referer", referer)
-                ));
-            }
-            catch { }
-        }
-        return html;
-    }
+    static long Ms() => Environment.TickCount64;
 
-    static readonly string[] Servers = new[] { "Cloudwish", "Mycloudz", "Turbo" };
-
-    // eppicker: vidosik chi tra server list tuc thi, resolve server duoc chon o Video()
-    async Task<string> ResolveServerAsync(string uri, string server)
+    // Trang detail: tach data-embed (base64 url don) + data-embeds
+    // (base64 json array du phong). Cache 15 phut de bam server thu
+    // hai khong tai lai trang detail.
+    async Task<List<JavHDServer>> DetailServersAsync(string uri)
     {
-        string memKey = ipkey($"javhd:play:{server}:{uri}");
-        if (hybridCache.TryGetValue(memKey, out string cached) && !string.IsNullOrEmpty(cached))
+        if (string.IsNullOrWhiteSpace(uri))
+            return null;
+
+        string memKey = ipkey($"javhd:servers:{uri}");
+        if (hybridCache.TryGetValue(memKey,
+            out List<JavHDServer> cached)
+            && cached != null && cached.Count > 0)
             return cached;
 
-        string pageUrl = uri;
-        if (pageUrl.StartsWith("/"))
-            pageUrl = "https://javhd.today" + pageUrl;
+        string pageUrl = uri.StartsWith("/")
+            ? JavHDTo.SiteHost + uri : uri;
 
-        string pageHtml = await GetHtmlAsync(pageUrl, "https://javhd.today/", 3, "data-embed");
-        if (string.IsNullOrEmpty(pageHtml))
+        long deadline = Ms() + 20000;
+        string detail = await JavHDTo.CurlGetRetry(pageUrl,
+            JavHDTo.SiteHost + "/", "data-embed", 4, 4, deadline);
+        if (string.IsNullOrEmpty(detail))
             return null;
 
-        int n = 0;
-        foreach (string embed in JavHDTo.EmbedUrls(pageHtml))
-        {
-            if (n++ >= 6)
-                break;
+        var servers = JavHDTo.Servers(detail);
+        if (servers.Count == 0)
+            return null;
 
-            bool want = server == "Turbo" ? embed.Contains("turbovid")
-                : server == "Cloudwish" ? embed.Contains("cloudwish")
-                : server == "Mycloudz" ? embed.Contains("mycloudz") : false;
-            if (!want)
-                continue;
-
-            string stream = null;
-            if (embed.Contains("turbovid"))
-            {
-                string embHtml = await GetHtmlAsync(embed, pageUrl, 3, "data-hash");
-                stream = JavHDTo.TurboM3u8(embHtml);
-            }
-            else
-            {
-                string embHtml = await GetHtmlAsync(embed, pageUrl, 3, "eval(function");
-                foreach (string hls in JavHDTo.CloudHlsUrls(embHtml))
-                {
-                    stream = hls;
-                    break;
-                }
-            }
-
-            if (!string.IsNullOrEmpty(stream))
-            {
-                hybridCache.Set(memKey, stream, cacheTime(20));
-                return stream;
-            }
-        }
-
-        return null;
+        hybridCache.Set(memKey, servers, cacheTime(15));
+        return servers;
     }
 
-    async Task<Dictionary<string, string>> ResolveLinksAsync(string uri)
+    // KHONG resolve tai day. /vidosik chi tra danh sach server de app
+    // hien ra, server nao nguoi dung BAM moi resolve — chi mot server
+    // nen 2-13s, luon duoi tran 30s cua client.
+    [HttpGet, Staticache(manually: true)]
+    [Route("javhd/vidosik")]
+    async public Task<ActionResult> Vidosik(string uri)
     {
-        string memKey = ipkey($"javhd:view:{uri}");
-        if (hybridCache.TryGetValue(memKey, out Dictionary<string, string> cache))
-            return cache;
+        if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
+            return badInitMsg;
 
-        string pageUrl = uri;
-        if (pageUrl.StartsWith("/"))
-            pageUrl = "https://javhd.today" + pageUrl;
+        var all = await DetailServersAsync(uri);
+        if (all == null || all.Count == 0)
+            return OnError("stream_links", refresh_proxy: true);
 
-        var links = new Dictionary<string, string>();
+        // Lay het server ma trang detail co, chi bo server chua xu ly.
+        var servers = all.Where(x =>
+            JavHDTo.IsSupported(x.Label)).ToList();
+        if (servers.Count == 0)
+            return OnError("stream_links", refresh_proxy: true);
 
-        string pageHtml = await GetHtmlAsync(pageUrl, "https://javhd.today/", 3, "data-embed");
-        if (!string.IsNullOrEmpty(pageHtml))
+        // Kind biet ngay tu host (Dood=mp4, 3 con lai=HLS) nen khong
+        // can probe — tra ve luon.
+        var dict = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var s in servers)
         {
-            int n = 0;
-            foreach (string embed in JavHDTo.EmbedUrls(pageHtml))
-            {
-                if (n++ >= 5 || links.Count >= 6)
-                    break;
+            if (dict.ContainsKey(s.Label))
+                continue;
 
-                string stream = null;
-                string label = "Server";
-
-                if (embed.Contains("turbovid"))
-                {
-                    string embHtml = await GetHtmlAsync(embed, pageUrl, 3, "data-hash");
-                    stream = JavHDTo.TurboM3u8(embHtml);
-                    label = "Turbo";
-                }
-                else if (embed.Contains("cloudwish") || embed.Contains("mycloudz"))
-                {
-                    string embHtml = await GetHtmlAsync(embed, pageUrl, 3, "eval(function");
-                    foreach (string hls in JavHDTo.CloudHlsUrls(embHtml))
-                    {
-                        stream = hls;
-                        label = embed.Contains("cloudwish") ? "Cloudwish" : "Mycloudz";
-                        break;
-                    }
-                }
-                else
-                {
-                    string embHtml = await GetHtmlAsync(embed, pageUrl, 2);
-                    if (!string.IsNullOrEmpty(embHtml))
-                    {
-                        var m = System.Text.RegularExpressions.Regex.Match(embHtml, "(https?://[^\\s\"']+\\.m3u8[^\\s\"']*)");
-                        if (m.Success)
-                        {
-                            stream = m.Groups[1].Value;
-                            label = "Server HLS";
-                        }
-                        else
-                        {
-                            var mp = System.Text.RegularExpressions.Regex.Match(embHtml, "(https?://[^\\s\"']+\\.mp4[^\\s\"']*)");
-                            if (mp.Success)
-                            {
-                                stream = mp.Groups[1].Value;
-                                label = "Server MP4";
-                            }
-                        }
-                    }
-                }
-
-                if (string.IsNullOrEmpty(stream))
-                    continue;
-
-                if (!links.ContainsKey(label))
-                    links.TryAdd(label, stream);
-                string pkey = label + " (proxy)";
-                if (!links.ContainsKey(pkey))
-                    links.TryAdd(pkey, stream);
-            }
+            string tail = s.Kind == JavHDTo.KindMp4
+                ? ".mp4" : ".m3u8";
+            dict[s.Label] = $"{host}/javhd/video{tail}"
+              + $"?uri={HttpUtility.UrlEncode(uri)}"
+              + $"&srv={HttpUtility.UrlEncode(s.Label)}";
         }
 
-        if (links.Count == 0)
-            return null;
+        return Json(dict);
+    }
 
-        hybridCache.Set(memKey, links, cacheTime(20));
-        return links;
+    // Resolve DUNG MOT server theo `srv`, roi chuyen tiep sang link.
+    async Task<List<(string url, string tag, string referer)>> ResolveAsync(
+        JavHDServer pick, long deadline)
+    {
+        var empty = new List<(string, string, string)>();
+
+        // --- DoodStream: 301 sang host doi -> API pass_md5 -> mp4 ---
+        if (JavHDTo.IsDood(pick.PageUrl))
+        {
+            var (src, refDood) = await JavHDTo.DoodSourceAsync(
+                pick.PageUrl, 6, deadline);
+            if (string.IsNullOrEmpty(src))
+                return empty;
+
+            return new List<(string, string, string)> { (src, "mp4", refDood) };
+        }
+
+        string player = await JavHDTo.CurlGetRetry(pick.PageUrl,
+            JavHDTo.SiteHost + "/", null, 4, 5, deadline);
+        if (string.IsNullOrEmpty(player))
+            return empty;
+
+        // --- Cloudwish / Mycloudz: packer -> var links hls4>hls3>hls2 ---
+        if (JavHDTo.IsCloud(pick.PageUrl))
+        {
+            string pHost = null;
+            try
+            {
+                var u = new Uri(pick.PageUrl);
+                pHost = u.GetLeftPart(UriPartial.Authority);
+            }
+            catch { }
+
+            foreach (string master in JavHDTo.CloudMasters(player, pHost))
+            {
+                var variants = await JavHDTo.MasterVariants(
+                    master, 3, 7, deadline);
+                if (variants.Count > 0)
+                    return variants.Select(x =>
+                        (x.url, x.tag, (string)null)).ToList();
+
+                // Master khong tach duoc -> tra luon master.
+                return new List<(string, string, string)>
+                    { (master, "1080p", null) };
+            }
+
+            return empty;
+        }
+
+        // --- Turbo: data-hash (m3u8) truoc, urlPlay (mp4) sau ---
+        foreach (string media in JavHDTo.StreamUrls(player))
+        {
+            if (JavHDTo.IsDirectMp4(media))
+                return new List<(string, string, string)>
+                    { (media, "mp4", null) };
+
+            var variants = await JavHDTo.MasterVariants(media, 3, 7, deadline);
+            if (variants.Count > 0)
+                return variants.Select(x =>
+                    (x.url, x.tag, (string)null)).ToList();
+
+            return new List<(string, string, string)>
+                { (media, "1080p", null) };
+        }
+
+        return empty;
     }
 
     [HttpGet]
@@ -223,75 +204,134 @@ public class JavHDController : BaseSisiController
     {
         try
         {
-            string path = System.IO.Path.Combine(ModInit.modpath, "javhdepick.js");
+            string path = System.IO.Path.Combine(
+                ModInit.modpath, "javhdepick.js");
             if (System.IO.File.Exists(path))
-                return Content(System.IO.File.ReadAllText(path), "application/javascript; charset=utf-8");
+                return Content(System.IO.File.ReadAllText(path),
+                    "application/javascript; charset=utf-8");
         }
         catch { }
         return NotFound();
     }
 
-    [HttpGet, Staticache(manually: true)]
-    [Route("javhd/vidosik")]
-    async public Task<ActionResult> Vidosik(string uri)
-    {
-        if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
-            return badInitMsg;
-
-        // popup tuc thi: khong resolve o day, resolve khi play
-        var links = new Dictionary<string, string>();
-        foreach (string s in Servers)
-        {
-            links.TryAdd(s, $"{host}/javhd/video?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(s)}");
-            links.TryAdd(s + " (proxy)", $"{host}/javhd/video?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(s + " (proxy)")}");
-        }
-
-        return Json(new Shared.Models.SISI.OnResult.StreamItem() { qualitys = links });
-    }
-
+    // Resolve server theo `srv` roi chuyen tiep sang link phat; server
+    // do chet thi TU THU cac server con lai theo Rank (DoodStream ->
+    // Turbo -> Cloudwish -> Mycloudz). Moi server mot sub-deadline nen
+    // ca chuoi van duoi tran 30s cua client.
     [HttpGet]
     [Route("javhd/video")]
-    async public Task<ActionResult> Video(string uri, string q)
+    [Route("javhd/video.mp4")]
+    [Route("javhd/video.m3u8")]
+    async public Task<ActionResult> Video(
+        string uri, string srv, string q = null)
     {
         if (await IsRequestBlocked(rch: true))
             return badInitMsg;
 
-        bool viaProxy = q != null && q.Contains("(proxy)");
-        string server = viaProxy ? q.Replace(" (proxy)", "") : q;
-        if (string.IsNullOrEmpty(server))
-            return OnError("stream_links", refresh_proxy: true);
+        if (string.IsNullOrEmpty(srv))
+            srv = q;
 
-        // fallback kieu cu (q = label stream truc tiep)
-        var links = await ResolveLinksAsync(uri);
-        if (links != null && links.TryGetValue(q, out string oldlink) && !string.IsNullOrEmpty(oldlink))
+        // Cache resolve: an ngay neu da resolve trong 1 phut truoc.
+        string streamKey = ipkey($"javhd:stream:{uri}:{srv}");
+        if (hybridCache.TryGetValue(streamKey, out string cachedRaw)
+            && !string.IsNullOrEmpty(cachedRaw))
         {
-            if (!viaProxy)
-                return Redirect(oldlink);
-            return Redirect(HostStreamProxy(oldlink, ProxyHeaders(oldlink)));
+            var c = SplitCached(cachedRaw);
+            if (!string.IsNullOrEmpty(c.url))
+                return Redirect(StreamLink(c.url, c.referer));
         }
 
-        string link = await ResolveServerAsync(uri, server);
-        if (string.IsNullOrEmpty(link))
+        var servers = await DetailServersAsync(uri);
+        if (servers == null || servers.Count == 0)
             return OnError("stream_links", refresh_proxy: true);
 
-        if (!viaProxy)
-            return Redirect(link);
+        var pick = servers.FirstOrDefault(x =>
+            string.Equals(x.Label, srv, StringComparison.OrdinalIgnoreCase)
+            && JavHDTo.IsSupported(x.Label));
 
-        return Redirect(HostStreamProxy(link, ProxyHeaders(link)));
+        var order = new List<JavHDServer>();
+        if (pick != null)
+            order.Add(pick);
+
+        // App da chon player theo DUOI cua URL /vidosik. Tra ve nguon
+        // KHAC dang thi ton player va app bao "no EXTM3U delimiter" —
+        // fallback chi sang server CUNG dang.
+        string wantKind = pick != null ? pick.Kind ?? "" : "";
+        foreach (var s in servers)
+        {
+            if (pick != null && s.Label == pick.Label)
+                continue;
+
+            string k = s.Kind ?? "";
+            if (wantKind.Length == 0 || k.Length == 0 || k == wantKind)
+                order.Add(s);
+        }
+
+        if (order.Count == 0)
+            return OnError("stream_links", refresh_proxy: true);
+
+        // Deadline 20s cho ca chuoi, 12s cho tung server.
+        long deadline = Ms() + 20000;
+
+        foreach (var s in order)
+        {
+            long sub = Math.Min(deadline, Ms() + 12000);
+            var streams = await ResolveAsync(s, sub);
+            Console.WriteLine(
+                $"JavHD: srv={s.Label} n={streams.Count}");
+
+            if (streams.Count == 0)
+                continue;
+
+            var best = streams.FirstOrDefault(
+                x => !string.IsNullOrEmpty(x.tag));
+            if (best.url == null)
+                best = streams[0];
+
+            Console.WriteLine(
+                $"JavHD: chon srv={s.Label} tag={best.tag}");
+
+            string raw = best.url + "\n" + (best.referer ?? "");
+            hybridCache.Set(
+                ipkey($"javhd:stream:{uri}:{s.Label}"),
+                raw, cacheTime(1));
+            hybridCache.Set(streamKey, raw, cacheTime(1));
+
+            return Redirect(StreamLink(best.url, best.referer));
+        }
+
+        return OnError("stream_links", refresh_proxy: true);
     }
 
-    IReadOnlyList<HeadersModel> ProxyHeaders(string link)
+    // Cache luu "url\nreferer" — URL khong bao gio chua '\n'.
+    static (string url, string referer) SplitCached(string raw)
     {
-        string referer = "https://turbovid.vip/";
-        if (link.Contains("cloudwish.xyz") || link.Contains("cdn-centaurus.com") || link.Contains("cloudscalability.space"))
-            referer = "https://cloudwish.xyz/";
-        else if (link.Contains("mycloudz.cc") || link.Contains("acek-cdn.com"))
-            referer = "https://mycloudz.cc/";
+        if (string.IsNullOrEmpty(raw))
+            return (null, null);
 
-        return httpHeaders(init, HeadersModel.Init(
-            ("User-Agent", JavHDTo.ChromeUA),
-            ("Referer", referer),
-            ("Origin", referer.TrimEnd('/'))
-        ));
+        int at = raw.IndexOf('\n');
+        return at < 0
+            ? (raw, null)
+            : (raw[..at], raw[(at + 1)..]);
+    }
+
+    // DoodStream chi phuc vu khi URL co query VA request co Referer
+    // khop host embed; thieu mot thi CDN 302 sang `*.dood.video`
+    // (sinkhole 127.0.0.1 ca public DNS). Gan rieng Referer o day vi
+    // headers_stream khong co Referer (CDN Turbo 429 khi thay Referer).
+    string StreamLink(string url, string referer)
+    {
+        if (string.IsNullOrEmpty(referer))
+            return HostStreamProxy(url, httpHeaders(init));
+
+        var baseHeaders = HeadersModel.InitOrNull(init.headers_stream);
+        var hs = new List<HeadersModel>(baseHeaders?.Count + 1 ?? 1);
+
+        if (baseHeaders != null)
+            hs.AddRange(baseHeaders);
+
+        hs.Add(new("Referer", referer + "/"));
+
+        return HostStreamProxy(url, hs);
     }
 }
