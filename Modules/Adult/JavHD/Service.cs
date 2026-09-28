@@ -277,7 +277,32 @@ public static class JavHDTo
     public const string KindMp4 = "mp4";
     public const string KindHls = "hls";
 
+    // Turbo la DA DANG (phim thi data-hash HLS, phim thi chi
+    // urlPlay mp4) nen phai mo player do moi phim. Dood=mp4,
+    // Cloud=HLS biet ngay tu host.
+    public static async Task<string> ServerKindAsync(
+        string pageUrl, int maxTime = 4, long deadline = 0)
+    {
+        if (IsDood(pageUrl))
+            return KindMp4;
+
+        if (IsCloud(pageUrl))
+            return KindHls;
+
+        string player = await CurlGetRetry(
+            pageUrl, SiteHost + "/", null, 3, maxTime, deadline);
+        if (string.IsNullOrEmpty(player))
+            return "";
+
+        foreach (string media in StreamUrls(player))
+            return IsDirectMp4(media) ? KindMp4 : KindHls;
+
+        return "";
+    }
+
     // Biet ngay tu host, khong can fetch. DoodStream=mp4, 3 con lai=HLS.
+    // Turbo thuc ra DA DANG nen chi dung tam o Servers(); /vidosik do
+    // lai bang ServerKindAsync o tren.
     public static string ServerKind(string label)
     {
         if (string.IsNullOrEmpty(label))
@@ -447,13 +472,14 @@ public static class JavHDTo
     // tach o server, tra playlist media cua variant cao nhat de app
     // khong phai doi level (hls.js bao "Found no media in msn N").
     public static async Task<List<(string url, string tag)>> MasterVariants(
-        string master, int max = 3, int maxTime = 7, long deadline = 0)
+        string master, int max = 3, int maxTime = 7, long deadline = 0,
+        string referer = null)
     {
         var res = new List<(string url, string tag)>();
         if (string.IsNullOrEmpty(master))
             return res;
 
-        string body = await CurlGetRetry(master, null,
+        string body = await CurlGetRetry(master, referer,
             "#EXTM3U", 3, maxTime, deadline);
         if (string.IsNullOrEmpty(body))
             return res;

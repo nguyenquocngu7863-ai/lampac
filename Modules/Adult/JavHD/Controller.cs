@@ -112,20 +112,52 @@ public class JavHDController : BaseSisiController
         if (servers.Count == 0)
             return OnError("stream_links", refresh_proxy: true);
 
-        // Kind biet ngay tu host (Dood=mp4, 3 con lai=HLS) nen khong
-        // can probe — tra ve luon.
-        var dict = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var s in servers)
+        // Kind biet ngay tu host (Dood=mp4, Cloud=HLS). Rieng Turbo
+        // DA DANG nen do song song, deadline 6s.
+        int total = servers.Count;
+        var kinds = new string[total];
+        long kindDl = Ms() + 6000;
+
+        async Task Probe(int i)
         {
-            if (dict.ContainsKey(s.Label))
+            string u = servers[i].PageUrl;
+            if (JavHDTo.IsDood(u) || JavHDTo.IsCloud(u))
+            {
+                kinds[i] = servers[i].Kind;
+                return;
+            }
+
+            kinds[i] = await JavHDTo.ServerKindAsync(
+                u, 4, kindDl);
+        }
+
+        await Task.WhenAll(
+            Enumerable.Range(0, total).Select(Probe));
+
+        var dict = new Dictionary<string, string>(StringComparer.Ordinal);
+        for (int i = 0; i < total; i++)
+        {
+            if (kinds[i].Length > 0)
+                servers[i].Kind = kinds[i];
+
+            // Nho dang da do de /video fallback khong do lai.
+            hybridCache.Set(
+                ipkey($"javhd:kind:{uri}:{servers[i].Label}"),
+                servers[i].Kind ?? "",
+                cacheTime(15));
+
+            if (dict.ContainsKey(servers[i].Label))
                 continue;
 
-            string tail = s.Kind == JavHDTo.KindMp4
+            string tail = servers[i].Kind == JavHDTo.KindMp4
                 ? ".mp4" : ".m3u8";
-            dict[s.Label] = $"{host}/javhd/video{tail}"
+            dict[servers[i].Label] = $"{host}/javhd/video{tail}"
               + $"?uri={HttpUtility.UrlEncode(uri)}"
-              + $"&srv={HttpUtility.UrlEncode(s.Label)}";
+              + $"&srv={HttpUtility.UrlEncode(servers[i].Label)}";
         }
+
+        hybridCache.Set(
+            ipkey($"javhd:servers:{uri}"), servers, cacheTime(15));
 
         return Json(dict);
     }
@@ -163,18 +195,24 @@ public class JavHDController : BaseSisiController
             }
             catch { }
 
-            foreach (string master in JavHDTo.CloudMasters(player, pHost))
+            string pref = string.IsNullOrEmpty(pHost)
+                ? null : pHost + "/";
+            var masters = JavHDTo.CloudMasters(player, pHost);
+
+            foreach (string master in masters)
             {
                 var variants = await JavHDTo.MasterVariants(
-                    master, 3, 7, deadline);
+                    master, 3, 7, deadline, pref);
                 if (variants.Count > 0)
                     return variants.Select(x =>
-                        (x.url, x.tag, (string)null)).ToList();
-
-                // Master khong tach duoc -> tra luon master.
-                return new List<(string, string, string)>
-                    { (master, "1080p", null) };
+                        (x.url, x.tag, pHost)).ToList();
             }
+
+            // Het master ma khong tach duoc variant nao -> tra
+            // master dau, app tu xu ly.
+            if (masters.Count > 0)
+                return new List<(string, string, string)>
+                    { (masters[0], "1080p", pHost) };
 
             return empty;
         }
@@ -256,13 +294,13 @@ public class JavHDController : BaseSisiController
         // App da chon player theo DUOI cua URL /vidosik. Tra ve nguon
         // KHAC dang thi ton player va app bao "no EXTM3U delimiter" —
         // fallback chi sang server CUNG dang.
-        string wantKind = pick != null ? pick.Kind ?? "" : "";
+        string wantKind = KindOf(uri, pick);
         foreach (var s in servers)
         {
             if (pick != null && s.Label == pick.Label)
                 continue;
 
-            string k = s.Kind ?? "";
+            string k = KindOf(uri, s);
             if (wantKind.Length == 0 || k.Length == 0 || k == wantKind)
                 order.Add(s);
         }
@@ -301,6 +339,21 @@ public class JavHDController : BaseSisiController
         }
 
         return OnError("stream_links", refresh_proxy: true);
+    }
+
+    // Dang phat cua mot server: uu tien ket qua /vidosik da do
+    // (cache 15 phut), khong thi dung dang tinh theo host.
+    string KindOf(string uri, JavHDServer s)
+    {
+        if (s == null)
+            return "";
+
+        string key = ipkey($"javhd:kind:{uri}:{s.Label}");
+        if (hybridCache.TryGetValue(key, out string k)
+            && !string.IsNullOrEmpty(k))
+            return k;
+
+        return s.Kind ?? "";
     }
 
     // Cache luu "url\nreferer" — URL khong bao gio chua '\n'.
