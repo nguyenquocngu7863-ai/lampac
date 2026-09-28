@@ -481,33 +481,6 @@ public static class Po85To
         return stream_links.OrderByDescending(kv => StreamQualityRank(kv.Key + " " + kv.Value))
             .ToDictionary(k => k.Key, v => v.Value);
     }
-
-        // Fallback 1: data-preview attribute (signed URL, no cookie needed)
-        if (stream_links.Count == 0)
-        {
-            var previewMatch = System.Text.RegularExpressions.Regex.Match(html.ToString(), @"data-preview=""(https://www\.85po\.com/get_file/[^""]+)""");
-            if (previewMatch.Success)
-                stream_links.TryAdd("MP4", previewMatch.Groups[1].Value);
-        }
-
-        // Fallback 2: add &download=true to video_url/video_alt_url
-        if (stream_links.Count == 0)
-        {
-            var videoUrl = System.Text.RegularExpressions.Regex.Match(html.ToString(), @"video_url:\s*'([^']+)'");
-            if (videoUrl.Success)
-            {
-                string url = videoUrl.Groups[1].Value.Replace("\\/", "/");
-                if (url.StartsWith("http") && url.Contains("/get_file/"))
-                {
-                    url += (url.Contains("?") ? "&" : "?") + "download=true";
-                    stream_links.TryAdd("MP4", url);
-                }
-            }
-        }
-
-        return stream_links.OrderByDescending(kv => StreamQualityRank(kv.Key + " " + kv.Value))
-            .ToDictionary(k => k.Key, v => v.Value);
-    }
     #endregion
 
     #region StreamQualityRank
