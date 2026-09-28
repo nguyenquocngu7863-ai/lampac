@@ -126,6 +126,45 @@ public static class JavTsunamiTo
             : host + path;
     }
 
+    // ================= TRANG DANH MUC =================
+    //
+    // Site co san trang day du `/categories` (4 trang x 28 muc). Menu cu chi
+    // so 10 muc hardcode nen thieu lon; gio lay danh sach tu trang that, trang
+    // 1, gioi `CatsLimit` muc cho nhe.
+    public const string CatsPath = "/categories";
+    public const int CatsLimit = 30;
+
+    // Muc la `<article ...><a href=".../category/anal" title="Anal">` — KHONG co
+    // `data-video-id` (chi trang PHIM moi co). Tra ve (ten hien thi, duong dan
+    // tuong doi) de Controller doi vao `?c=...`.
+    public static List<(string name, string path)> CatList(string html, int limit = CatsLimit)
+    {
+        var list = new List<(string, string)>();
+        if (string.IsNullOrEmpty(html))
+            return list;
+
+        html = ListHtml(html);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (Match m in Regex.Matches(html,
+            "<article[^>]*>\\s*<a href=\"https://javtsunami\\.com/(category/[^\"]+)\" title=\"([^\"]{1,200})\"",
+            RegexOptions.IgnoreCase))
+        {
+            if (list.Count >= limit)
+                break;
+
+            string path = m.Groups[1].Value.Trim('/');
+            string name = HttpUtility.HtmlDecode(m.Groups[2].Value.Trim());
+
+            if (path.Length == 0 || name.Length == 0 || !seen.Add(path))
+                continue;
+
+            list.Add((name, path));
+        }
+
+        return list;
+    }
+
     public static string NormalizePageUrl(string url)
     {
         if (string.IsNullOrWhiteSpace(url))
@@ -883,21 +922,18 @@ public static class JavTsunamiTo
         return null;
     }
 
-    public static List<Shared.Models.SISI.Base.MenuItem> Menu(string host)
+    // `cats` = danh sach tu trang `/categories` cua site (30 muc). Khong so
+    // muc hardcode o day nua. `Lọc` giu nguyen — do la query filter cua trang
+    // chu, khong co trang rieng.
+    public static List<Shared.Models.SISI.Base.MenuItem> Menu(
+        string host, IReadOnlyList<(string name, string path)> cats = null)
     {
-        var genres = new List<Shared.Models.SISI.Base.MenuItem>()
+        var genres = new List<Shared.Models.SISI.Base.MenuItem>();
+        if (cats != null)
         {
-            new("JAV Censored", host + "/javtsunami?c=category/jav-censored"),
-            new("JAV Uncensored", host + "/javtsunami?c=category/jav-uncensored"),
-            new("Chinese AV", host + "/javtsunami?c=category/chinese"),
-            new("Phụ đề", host + "/javtsunami?c=tag/jav-eng-sub"),
-            new("Mới phát hành", host + "/javtsunami?c=category/new-release"),
-            new("Trending", host + "/javtsunami?c=category/trending"),
-            new("Nổi bật", host + "/javtsunami?c=category/featured"),
-            new("Hot", host + "/javtsunami?c=category/hot-jav"),
-            new("Sắp ra mắt", host + "/javtsunami?c=category/upcoming"),
-            new("Cosplay", host + "/javtsunami?c=category/cosplay"),
-        };
+            foreach (var c in cats)
+                genres.Add(new(c.name, host + "/javtsunami?c=" + c.path));
+        }
 
         var views = new List<Shared.Models.SISI.Base.MenuItem>()
         {
@@ -921,15 +957,15 @@ public static class JavTsunamiTo
             },
             new Shared.Models.SISI.Base.MenuItem()
             {
-                title = "Lọc",
-                playlist_url = "submenu",
-                submenu = views
-            },
-            new Shared.Models.SISI.Base.MenuItem()
-            {
                 title = "Thể loại",
                 playlist_url = "submenu",
                 submenu = genres
+            },
+            new Shared.Models.SISI.Base.MenuItem()
+            {
+                title = "Lọc",
+                playlist_url = "submenu",
+                submenu = views
             }
         };
     }

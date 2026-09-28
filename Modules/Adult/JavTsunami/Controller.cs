@@ -54,7 +54,28 @@ public class JavTsunamiController : BaseSisiController
         if (rch?.enable == true)
             StatiCacheDisabled = true;
 
-        return PlaylistResult(cache, JavTsunamiTo.Menu(host));
+        return PlaylistResult(cache, await MenuAsync());
+    }
+
+    // Menu "Thể loại" lay tu trang `/categories` cua site thay vi so muc
+    // hardcode (site co ~112 muc, trang 1 lay 28). Cache 1 gio trong RAM —
+    // trang danh muc doi cuc hiem, fetch moi lan mo lau la quay ve Cloudflare.
+    async Task<List<MenuItem>> MenuAsync()
+    {
+        string key = ipkey("javtsunami:cats");
+
+        if (!hybridCache.TryGetValue(key, out List<(string name, string path)> cats)
+            || cats == null || cats.Count == 0)
+        {
+            string html = await FetchHtmlAsync(JavTsunamiTo.SiteHost + JavTsunamiTo.CatsPath,
+                "videos-list", 2, 10);
+
+            cats = JavTsunamiTo.CatList(html);
+            if (cats.Count > 0)
+                hybridCache.Set(key, cats, cacheTime(60));
+        }
+
+        return JavTsunamiTo.Menu(host, cats);
     }
 
     // Trang detail: tach iframe trong <div class="video-player">. Cache 15
