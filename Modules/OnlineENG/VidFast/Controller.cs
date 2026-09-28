@@ -10,6 +10,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace VidFast;
@@ -78,11 +79,32 @@ public class VidFastController : BaseENGController
     }
 
 
+    // Mot luc chi mot trinh duyet: moi /video mot Chromium
+    // (~500MB) se OOM dien thoai. Khoa nhu JavGuru (skill muc 7).
+    static SemaphoreSlim _browserLock = new(1, 1);
+
     async Task<(string m3u8, List<HeadersModel> headers)> black_magic(
         long id, string uri)
     {
         if (string.IsNullOrEmpty(uri))
             return default;
+
+        if (!await _browserLock.WaitAsync(TimeSpan.FromSeconds(30)))
+            return default;
+
+        try
+        {
+            return await black_magicInner(id, uri);
+        }
+        finally
+        {
+            _browserLock.Release();
+        }
+    }
+
+    async Task<(string m3u8, List<HeadersModel> headers)> black_magicInner(
+        long id, string uri)
+    {
 
         try
         {
