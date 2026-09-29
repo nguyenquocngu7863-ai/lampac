@@ -10,7 +10,7 @@ namespace Viet69kz;
 
 public static class Viet69kzTo
 {
-    public static readonly string SiteHost = "https://viet69kz.com";
+    public static readonly string SiteHost = "https://viet69link.net";
     public const string ChromeUA = "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
 
     public static string PlayerApi => SiteHost + "/api/player";
@@ -101,8 +101,8 @@ public static class Viet69kzTo
         if (!System.Uri.TryCreate(value, UriKind.Absolute, out var parsed))
             return null;
 
-        if (!parsed.Host.Equals("viet69kz.com", StringComparison.OrdinalIgnoreCase) &&
-            !parsed.Host.EndsWith(".viet69kz.com", StringComparison.OrdinalIgnoreCase))
+        if (!parsed.Host.Equals("viet69link.net", StringComparison.OrdinalIgnoreCase) &&
+            !parsed.Host.EndsWith(".viet69link.net", StringComparison.OrdinalIgnoreCase))
             return null;
 
         return value;
