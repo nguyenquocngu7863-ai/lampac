@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.RegularExpressions;
 using System.Web;
 
@@ -155,7 +156,60 @@ public static class JavtifulTo
         return p;
     }
 
-    public static List<Shared.Models.SISI.Base.MenuItem> Menu(string host)
+    // /vn/channels: card kenh (hieu) 24/ trang, 13 trang = 312 kenh.
+    // Card: <a class="front-collection-card-link" href="/vn/channel/<slug>">
+    //        ... <strong class="front-collection-title">NAME</strong>
+    public static List<(string name, string slug)> ChannelList(string html)
+    {
+        var list = new List<(string, string)>();
+        if (string.IsNullOrEmpty(html))
+            return list;
+
+        foreach (Match m in Regex.Matches(html,
+            "<a class=\"front-collection-card-link\" "
+            + "href=\"/vn/channel/([a-z0-9\\-]+)\">(.*?)</a>",
+            RegexOptions.Singleline))
+        {
+            string slug = m.Groups[1].Value;
+            if (string.IsNullOrEmpty(slug))
+                continue;
+
+            var tm = Regex.Match(m.Groups[2].Value,
+                "<strong class=\"front-collection-title\">"
+                + "([^<]{1,80})</strong>");
+            string name = tm.Success
+                ? HttpUtility.HtmlDecode(tm.Groups[1].Value.Trim())
+                : slug;
+            if (string.IsNullOrEmpty(name))
+                name = slug;
+
+            list.Add((name, slug));
+        }
+
+        return list;
+    }
+
+    // So trang cua /vn/channels: <a ... href="/vn/channels?page=13">13</a>
+    public static int ChannelPages(string html)
+    {
+        if (string.IsNullOrEmpty(html))
+            return 1;
+
+        int max = 1;
+        foreach (Match m in Regex.Matches(html,
+            "/vn/channels\\?page=(\\d+)"))
+        {
+            if (int.TryParse(m.Groups[1].Value, out int p)
+                && p > max)
+                max = p;
+        }
+
+        return max > 20 ? 20 : max;
+    }
+
+    public static List<Shared.Models.SISI.Base.MenuItem> Menu(
+        string host,
+        List<(string name, string slug)> channels = null)
     {
         var genres = new List<Shared.Models.SISI.Base.MenuItem>()
         {
@@ -182,7 +236,7 @@ public static class JavtifulTo
             new("MILF", host + "/javtiful?c=category/milf"),
         };
 
-        return new List<Shared.Models.SISI.Base.MenuItem>()
+        var menu = new List<Shared.Models.SISI.Base.MenuItem>()
         {
             new Shared.Models.SISI.Base.MenuItem()
             {
@@ -217,5 +271,21 @@ public static class JavtifulTo
                 submenu = genres
             }
         };
+
+        if (channels != null && channels.Count > 0)
+        {
+            menu.Add(new Shared.Models.SISI.Base.MenuItem()
+            {
+                title = "Kênh",
+                playlist_url = "submenu",
+                submenu = channels.Select(ch =>
+                    new Shared.Models.SISI.Base.MenuItem(
+                        ch.name,
+                        host + "/javtiful?c=channel/" + ch.slug
+                    )).ToList()
+            });
+        }
+
+        return menu;
     }
 }

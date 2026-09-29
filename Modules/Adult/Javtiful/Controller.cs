@@ -4,9 +4,9 @@ using Shared.Attributes;
 using Shared.Models.Base;
 using Shared.Models.SISI.Base;
 using Shared.Services;
+using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net.Http;
 using System.Threading.Tasks;
 using System.Web;
 
@@ -14,8 +14,6 @@ namespace Javtiful;
 
 public class JavtifulController : BaseSisiController
 {
-    static readonly HttpClient httpClient = FriendlyHttp.CreateHttpClient();
-
     public JavtifulController() : base(ModInit.conf) { }
 
     [HttpGet, Staticache(manually: true)]
@@ -27,15 +25,11 @@ public class JavtifulController : BaseSisiController
 
         var cache = await InvokeCacheResult(ipkey($"javtiful:{search}:{c}:{pg}"), 10, jsonContext.ListPlaylistItem, async e =>
         {
-            List<PlaylistItem> playlists = null;
+            string html = await FetchHtmlAsync(
+                JavtifulTo.Uri(init.host, search, c, pg));
 
-            await httpHydra.GetSpan(JavtifulTo.Uri(init.host, search, c, pg), span =>
-            {
-                playlists = JavtifulTo.Playlist("javtiful/vidosik", span.ToString());
-            }, addheaders: HeadersModel.Init(
-                ("User-Agent", JavtifulTo.ChromeUA),
-                ("Referer", "https://javtiful.com/")
-            ));
+            var playlists = JavtifulTo.Playlist(
+                "javtiful/vidosik", html ?? "");
 
             if (playlists == null || playlists.Count == 0)
                 return e.Fail("playlists", refresh_proxy: string.IsNullOrEmpty(search));
@@ -46,7 +40,81 @@ public class JavtifulController : BaseSisiController
         if (rch?.enable == true)
             StatiCacheDisabled = true;
 
-        return PlaylistResult(cache, JavtifulTo.Menu(host));
+        return PlaylistResult(cache, await MenuAsync());
+    }
+
+    // httpHydra.GetSpan re-entrant (bien cuc bo moi lan goi) nen goi
+    // song song cho cac trang /vn/channels duoc.
+    async Task<string> FetchHtmlAsync(string url)
+    {
+        try
+        {
+            string html = null;
+            await httpHydra.GetSpan(url, span =>
+            {
+                html = span.ToString();
+            }, addheaders: HeadersModel.Init(
+                ("User-Agent", JavtifulTo.ChromeUA),
+                ("Referer", JavtifulTo.SiteHost + "/")
+            ));
+
+            return html;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    // Menu "Kenh" boc tu /vn/channels (24 kenh/trang, 13 trang).
+    // Fetch cac trang con SONG SONG roi gom trung ten, cache 6 gio RAM.
+    async Task<List<MenuItem>> MenuAsync()
+    {
+        string key = ipkey("javtiful:channels");
+
+        if (!hybridCache.TryGetValue(key,
+            out List<(string name, string slug)> chans)
+            || chans == null || chans.Count == 0)
+        {
+            string first = await FetchHtmlAsync(
+                JavtifulTo.SiteHost + "/vn/channels");
+
+            var seen = new HashSet<string>(
+                StringComparer.OrdinalIgnoreCase);
+            var pool = new List<(string, string)>();
+
+            void Add(string html)
+            {
+                if (string.IsNullOrEmpty(html))
+                    return;
+                foreach (var c in JavtifulTo.ChannelList(html))
+                    if (seen.Add(c.slug))
+                        pool.Add(c);
+            }
+
+            Add(first);
+
+            int pages = JavtifulTo.ChannelPages(first);
+            if (pool.Count > 0 && pages > 1)
+            {
+                var tasks = new List<Task<string>>();
+                for (int p = 2; p <= pages; p++)
+                    tasks.Add(FetchHtmlAsync(JavtifulTo.SiteHost
+                        + "/vn/channels?page=" + p));
+
+                foreach (var html in await Task.WhenAll(tasks))
+                    Add(html);
+            }
+
+            chans = pool;
+            if (chans.Count > 0)
+                hybridCache.Set(key, chans, cacheTime(360));
+
+            Console.WriteLine("Javtiful: channels pages="
+                + pages + " n=" + chans.Count);
+        }
+
+        return JavtifulTo.Menu(host, chans);
     }
 
     async Task<Dictionary<string, string>> ResolveLinksAsync(string uri)
