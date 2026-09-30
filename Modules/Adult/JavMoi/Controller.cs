@@ -73,7 +73,8 @@ public class JavMoiController : BaseSisiController
     // Nen dung "timeout ngan + retry nhieu" chu KHONG dung
     // "timeout dai + mot lan": rut thoi gian che tu 40s xuong ~10s.
     // KHONG probe rồi chặn link — chặn nhầm sẽ giết phim dang chay.
-    async Task<string> FetchHtmlAsync(string url, int attempts = 2)
+    // 3 lan: do 5 lan chi 1 lan 200, 2 lan la 2/5 kha nhat — hay treo.
+    async Task<string> FetchHtmlAsync(string url, int attempts = 3)
     {
         var headers = HeadersModel.Init(
             ("User-Agent", JavMoiTo.ChromeUA),

@@ -35,17 +35,41 @@ public class SexDepController : BaseSisiController
         {
             List<PlaylistItem> playlists = null;
 
-            // Try HTTP first
-            await httpHydra.GetSpan(SexDepTo.Uri(init.host, search, c, pg), span =>
-            {
-                string h = span.ToString();
-                if (homeFirst)
-                    h = SexDepTo.FirstSectionOnly(h);
-                playlists = SexDepTo.Playlist("sexdep/vidosik", h);
-            }, addheaders: HeadersModel.Init(
+            // Site LANG: do 5 lan thi chi 1-2 lan tra 200, con lai treo
+            // het 15s (dung bo dem timeout) va tra 0 byte. Dung "timeout
+            // ngan + retry nhieu" chu KHONG dung "mot lan" — khong retry thi
+            // 2/3 so lan mo manh hinh trong.
+            var fetchHeaders = HeadersModel.Init(
                 ("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"),
                 ("Referer", "https://x.sexdep.co.uk/")
-            ));
+            );
+
+            for (int attempt = 0; attempt < SexDepTo.FetchAttempts; attempt++)
+            {
+                if (attempt > 0)
+                    await Task.Delay(400);
+
+                try
+                {
+                    await httpHydra.GetSpan(SexDepTo.Uri(init.host, search, c, pg), span =>
+                    {
+                        string h = span.ToString();
+                        if (string.IsNullOrEmpty(h))
+                            return;
+
+                        if (homeFirst)
+                            h = SexDepTo.FirstSectionOnly(h);
+
+                        var got = SexDepTo.Playlist("sexdep/vidosik", h);
+                        if (got != null && got.Count > 0)
+                            playlists = got;
+                    }, addheaders: fetchHeaders);
+                }
+                catch { }
+
+                if (playlists != null && playlists.Count > 0)
+                    break;
+            }
 
             // Fallback to Playwright if HTTP returns empty
             if (playlists == null || playlists.Count == 0)

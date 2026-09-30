@@ -34,7 +34,9 @@ public class ModInit : IModuleLoaded, IModuleSisi
 
     void updateConf()
     {
-        conf = ModuleInvoke.Init("Tizam", new SisiSettings("Tizam", "https://tv4.tizam.org")
+        // `tv4.tizam.org` da 301 sang `amu.tizam.org`; cau truc HTML
+        // giong het, chi doi host la chay.
+        conf = ModuleInvoke.Init("Tizam", new SisiSettings("Tizam", "https://amu.tizam.org")
         {
             displayindex = 29,
             rch_access = "apk,cors",

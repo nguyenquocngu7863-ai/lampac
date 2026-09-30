@@ -43,7 +43,9 @@ public static class TizamTo
                 continue;
 
             string title = row.Match("-name=\"name\">([^<]+)<");
-            string href = row.Match("href=\"/([^\"]+)\" itemprop=\"url\"");
+            // Trang moi them `class="item__cover"` GIUA href va itemprop,
+            // nen cho phep bat ky thuoc tinh nao xen vao: `[^>]*`.
+            string href = row.Match("href=\"/([^\"]+)\"[^>]*itemprop=\"url\"");
 
             if (string.IsNullOrEmpty(href) || string.IsNullOrWhiteSpace(title))
                 continue;

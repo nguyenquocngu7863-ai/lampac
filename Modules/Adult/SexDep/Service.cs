@@ -12,6 +12,10 @@ public static class SexDepTo
 {
     public static string SiteHost = "https://x.sexdep.co.uk";
 
+    // Do 5 lan thi chi 1-2 lan tra 200, con lai treo het 15s. Can 4 lan
+    // thu moi chac co phim. Mot lan la khong du — 2/3 so lan manh hinh trong.
+    public const int FetchAttempts = 4;
+
     public static string Slugify(string s)
     {
         if (string.IsNullOrWhiteSpace(s))
@@ -38,7 +42,9 @@ public static class SexDepTo
 
         if (!string.IsNullOrEmpty(c))
         {
-            string url = host + "/" + c.Trim('/');
+            // Phai co dau `/` CUOI: site tra 404/redirect neu thieu.
+            // `the-loai/jav-hd` -> `/the-loai/jav-hd/`
+            string url = host + "/" + c.Trim('/') + "/";
             if (pg > 1)
                 url += "?page=" + pg;
             return url;
@@ -75,22 +81,47 @@ public static class SexDepTo
 
         // Chi card chinh (m-block movie-item) - BO sidebar top-film (list-top-movie-link)
         // vi sidebar lap lai tren moi trang gay trung noi dung khi phan trang
-        foreach (Match m in Regex.Matches(html, @"<a\s+[^>]*class=""[^""]*movie-item[^""]*""[^>]*href=""(https://x\.sexdep\.co\.uk/phim/[^""]+)""[^>]*title=""([^""]+)""", RegexOptions.Singleline))
+        // KHONG hardcode `x.sexdep.co.uk` va KHONG dua thuoc tinh vao dung
+        // thu tu class -> href -> title. Site render 2 template khac nhau:
+        // trang chu hop, trang the-loai /danh-sach thi doi thu tu hoac them
+        // `data-*` o giua => regex cu tra 0 phim, manh hinh trong.
+        // Quay tung the <a> roi doc tung thuoc tinh, khong phu thuoc thu tu.
+        var tagRe = new Regex(@"<a\s[^>]*>", RegexOptions.Singleline);
+        var hrefRe = new Regex(@"href\s*=\s*""([^""]+)""", RegexOptions.IgnoreCase);
+        var classRe = new Regex(@"class\s*=\s*""([^""]*)""", RegexOptions.IgnoreCase);
+        var titleRe = new Regex(@"title\s*=\s*""([^""]+)""", RegexOptions.IgnoreCase);
+
+        foreach (Match tag in tagRe.Matches(html))
         {
-            string slug = m.Groups[1].Value;
-            string href = slug;
-            if (href.StartsWith("https://x.sexdep.co.uk"))
-                href = href.Substring("https://x.sexdep.co.uk".Length);
-            
-            if (!seen.Add(href))
+            string tagHtml = tag.Value;
+
+            var cm = classRe.Match(tagHtml);
+            if (!cm.Success || cm.Groups[1].Value.IndexOf("movie-item", StringComparison.OrdinalIgnoreCase) < 0)
                 continue;
 
-            string name = HttpUtility.HtmlDecode(m.Groups[2].Value.Trim());
+            var hm = hrefRe.Match(tagHtml);
+            if (!hm.Success)
+                continue;
+
+            // `/phim/...` la duong dan phim. Cho phep domain bat ky (site doi
+            // `x.`/`z.` giua cac luc) va ca duong dan tuyet doi.
+            string href = hm.Groups[1].Value;
+            int slash = href.IndexOf("/phim/", StringComparison.OrdinalIgnoreCase);
+            if (slash < 0)
+                continue;
+
+            Match tm = titleRe.Match(tagHtml);
+            if (!tm.Success)
+                continue;
+            string name = HttpUtility.HtmlDecode(tm.Groups[1].Value.Trim());
             if (string.IsNullOrEmpty(name))
                 continue;
 
+            if (!seen.Add(href))
+                continue;
+
             string poster = "";
-            int start = m.Index;
+            int start = tag.Index;
             int len = Math.Min(3000, html.Length - start);
             if (len > 0)
             {

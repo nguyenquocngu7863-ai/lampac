@@ -62,7 +62,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
 
                 head = await Http.Download(
                     uri,
-                    referer: "https://x.javmoi.blog/",
+                    referer: "https://z.javmoi.blog/",
                     timeoutSeconds: 8,
                     MaxResponseContentBufferSize: 4096,
                     headers: HeadersModel.Init(("Range", "bytes=0-376")),
@@ -91,7 +91,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
 
                 data = await Http.Download(
                     uri,
-                    referer: "https://x.javmoi.blog/",
+                    referer: "https://z.javmoi.blog/",
                     timeoutSeconds: 8);
 
                 if (data != null && data.Length >= 376)
@@ -133,7 +133,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
     void updateConf()
     {
         conf = ModuleInvoke.Init("JavMoi",
-            new SisiSettings("JavMoi", "https://x.javmoi.blog")
+            new SisiSettings("JavMoi", "https://z.javmoi.blog")
         {
             displayindex = 21,
             streamproxy = true,
@@ -146,11 +146,11 @@ public class ModInit : IModuleLoaded, IModuleSisi
             stream_access = "apk",
             headers_stream = HeadersModel.Init(
                 ("User-Agent", JavMoiTo.ChromeUA),
-                ("Referer", "https://x.javmoi.blog/")
+                ("Referer", "https://z.javmoi.blog/")
             ).ToDictionary(),
             headers_image = HeadersModel.Init(
                 ("User-Agent", JavMoiTo.ChromeUA),
-                ("Referer", "https://x.javmoi.blog/")
+                ("Referer", "https://z.javmoi.blog/")
             ).ToDictionary()
         });
     }

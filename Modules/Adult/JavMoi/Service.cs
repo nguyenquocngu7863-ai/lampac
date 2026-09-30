@@ -10,7 +10,9 @@ namespace JavMoi;
 
 public static class JavMoiTo
 {
-    public static string SiteHost = "https://x.javmoi.blog";
+    // `x.javmoi.blog` da chet (tra 000), `z.javmoi.blog` moi la host song.
+    // Site doi subdomain nen regex ben duoi KHONG hardcode `x.`/`z.`.
+    public static string SiteHost = "https://z.javmoi.blog";
 
     public static string ChromeUA = "Mozilla/5.0 (Linux; "
         + "Android 13) AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -44,9 +46,12 @@ public static class JavMoiTo
     //   <div data-original="/storage/images/<slug>/thumb.webp">
     //   fallback <div style="background-image:url('/storage/images/...')">
     // => KHONG duoc regex <img src=...>, nho do ma khong co poster.
+    // KHONG hardcode `x.` hay `z.` — site doi subdomain giua `x.javmoi.blog`
+    // va `z.javmoi.blog`, hardcode se tra 0 phim ngay. Chi khop duong dan
+    // `/phim/` la duoc, domain lay tu chinh href.
     static readonly Regex _itemRe = new Regex(
         "<a class=\"m-block movie-item\" "
-        + "href=\"(https://x\\.javmoi\\.blog/phim/[^\"]+)\" "
+        + "href=\"(https?://[a-z0-9.-]*javmoi\\.[a-z]+/phim/[^\"]+)\" "
         + "title=\"([^\"]*)\"",
         RegexOptions.IgnoreCase);
 
