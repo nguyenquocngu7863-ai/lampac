@@ -11,9 +11,9 @@ namespace Tazzly;
 
 public static class TazzlyTo
 {
-    public static readonly string SiteHost = "https://tazzly.com";
-    public static readonly string EmbedHost = "https://embed.tazzly.com";
-    public static readonly string StaticHost = "https://static.tazzly.com";
+    public static readonly string SiteHost = "https://phimsexmoi1.com";
+    public static readonly string EmbedHost = "https://embed.phimsexmoi1.com";
+    public static readonly string StaticHost = "https://static.phimsexmoi1.com";
 
     public const string ChromeUA = "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
     public const int PerPage = 32;
@@ -93,14 +93,24 @@ public static class TazzlyTo
         if (!System.Uri.TryCreate(value, UriKind.Absolute, out var parsed))
             return null;
 
-        if (!parsed.Host.Equals("tazzly.com", StringComparison.OrdinalIgnoreCase) &&
-            !parsed.Host.EndsWith(".tazzly.com", StringComparison.OrdinalIgnoreCase))
+        // Site doi host: tazzly.com 301 sang phimsexmoi1.com. Chap nhan ca
+        // hai (URI cu tu cache/API van ve host cu), neu khong BuildItem tra
+        // null het va category trang trong.
+        if (!IsSiteHost(parsed.Host))
             return null;
 
         if (parsed.AbsolutePath.IndexOf("/phim-sex/", StringComparison.OrdinalIgnoreCase) < 0)
             return null;
 
         return value;
+    }
+
+    static bool IsSiteHost(string host)
+    {
+        return host.Equals("tazzly.com", StringComparison.OrdinalIgnoreCase)
+            || host.EndsWith(".tazzly.com", StringComparison.OrdinalIgnoreCase)
+            || host.Equals("phimsexmoi1.com", StringComparison.OrdinalIgnoreCase)
+            || host.EndsWith(".phimsexmoi1.com", StringComparison.OrdinalIgnoreCase);
     }
 
     public static string NormalizeCover(string value)

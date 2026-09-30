@@ -39,8 +39,17 @@ public class TazzlyController : BaseSisiController
 
             if (api)
             {
-                string json = await GetJsonAsync(url);
-                playlists = TazzlyTo.PlaylistFromJson("tazzly/vidosik", json, out total_pages);
+                // Chay song song API + HTML, duong nao ra phim thi lay.
+                // Noi tiep (API treo 14s roi HTML 12s = 26s) vuot timeout app.
+                // Song song thi tran = duong cham nhat (~14s), thuong ~2s.
+                var jsonTask = GetJsonAsync(url);
+                var htmlTask = GetPageAsync(TazzlyTo.Uri(init.host, null, null, pg));
+                await Task.WhenAll(jsonTask, htmlTask);
+
+                playlists = TazzlyTo.PlaylistFromJson("tazzly/vidosik", await jsonTask, out total_pages);
+
+                if (playlists.Count == 0)
+                    playlists = TazzlyTo.PlaylistFromHtml("tazzly/vidosik", await htmlTask, out total_pages);
             }
             else
             {
@@ -75,38 +84,95 @@ public class TazzlyController : BaseSisiController
 
     async Task<string> GetPageAsync(string url)
     {
-        string page = null;
-        await httpHydra.GetSpan(url, span => page = span.ToString(), addheaders: PageHeaders());
-
-        if (string.IsNullOrEmpty(page))
+        // Site treo that thuong o ket noi dau. httpHydra KHONG follow
+        // redirect: trang 301 (162 byte) khong trong nen roi dung vao nhanh
+        // nay, parse ra 0 card. Trang that ~50-70KB, nen chi giu ket qua
+        // dai hon 1KB; chay song song 2 duong theo vong 4s trong tran 14s.
+        var deadline = DateTime.UtcNow.AddSeconds(14);
+        while (DateTime.UtcNow < deadline)
         {
-            page = await Http.Get(
-                url,
-                timeoutSeconds: Math.Max(20, init.httptimeout),
-                httpversion: init.httpversion,
-                proxy: proxy,
-                headers: PageHeaders());
+            double left = (deadline - DateTime.UtcNow).TotalSeconds;
+            if (left < 1)
+                break;
+
+            string page = await RaceGetAsync(url, PageHeaders(),
+                (int)Math.Ceiling(Math.Min(4, left)));
+
+            if (!string.IsNullOrEmpty(page) && page.Length >= 1000)
+                return page;
         }
 
-        return page;
+        return null;
+    }
+
+    async Task<string> RaceGetAsync(string url,
+        IReadOnlyList<HeadersModel> headers, int seconds)
+    {
+        string a = null, b = null;
+
+        var t1 = Task.Run(async () =>
+        {
+            try
+            {
+                await httpHydra.GetSpan(url, span =>
+                {
+                    a = span.ToString();
+                }, addheaders: headers);
+            }
+            catch { }
+        });
+
+        var t2 = Task.Run(async () =>
+        {
+            try
+            {
+                b = await Http.Get(
+                    url,
+                    timeoutSeconds: Math.Max(6, seconds),
+                    httpversion: init.httpversion,
+                    proxy: proxy,
+                    headers: headers);
+            }
+            catch { }
+        });
+
+        var deadline = DateTime.UtcNow.AddSeconds(seconds);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (!string.IsNullOrEmpty(a))
+                return a;
+
+            if (!string.IsNullOrEmpty(b))
+                return b;
+
+            if (t1.IsCompleted && t2.IsCompleted)
+                break;
+
+            await Task.Delay(200);
+        }
+
+        return !string.IsNullOrEmpty(a) ? a : b;
     }
 
     async Task<string> GetJsonAsync(string url)
     {
-        string json = null;
-        await httpHydra.GetSpan(url, span => json = span.ToString(), addheaders: ApiHeaders());
-
-        if (string.IsNullOrEmpty(json) || !json.TrimStart().StartsWith("{"))
+        // Giong GetPageAsync nhung chi nhan JSON that (bat dau bang `{`).
+        // Trang 301 cua httpHydra (khong follow redirect) bi loai ngay.
+        var deadline = DateTime.UtcNow.AddSeconds(14);
+        while (DateTime.UtcNow < deadline)
         {
-            json = await Http.Get(
-                url,
-                timeoutSeconds: Math.Max(20, init.httptimeout),
-                httpversion: init.httpversion,
-                proxy: proxy,
-                headers: ApiHeaders());
+            double left = (deadline - DateTime.UtcNow).TotalSeconds;
+            if (left < 1)
+                break;
+
+            string json = await RaceGetAsync(url, ApiHeaders(),
+                (int)Math.Ceiling(Math.Min(4, left)));
+
+            if (!string.IsNullOrEmpty(json) && json.TrimStart().StartsWith("{"))
+                return json;
         }
 
-        return json;
+        return null;
     }
 
     async Task<(string m3u8, bool userch)> ResolveLinksAsync(string uri)
