@@ -57,27 +57,41 @@ public class JavTsunamiController : BaseSisiController
         return PlaylistResult(cache, await MenuAsync());
     }
 
-    // Menu "Thể loại" boc ngau 50 muc tu trang `/categories` cua site thay vi
-    // so muc hardcode (site co 4 trang x 28). Cache 1 gio trong RAM — trang 1
-    // fetch truoc de biet bao nhieu trang, cac trang sau fetch song song
-    // (deadline chung 12s nen 4 trang ton ~1-2s, chi co lan dau moi ton).
+    // Menu "Thể loại" FULL tu trang `/categories` (4 trang) + "Tags" FULL tu
+    // `/tags` (1 trang, ~1000 tag). Fetch song song o background, tra menu
+    // rut gon ngay de khong chan response home. Cache 12h inmemory
+    // (ValueTuple qua file cache doc lai khong duoc).
     async Task<List<MenuItem>> MenuAsync()
     {
-        string key = ipkey("javtsunami:cats");
+        string key = ipkey("javtsunami:menu");
 
-        if (!hybridCache.TryGetValue(key, out List<(string name, string path)> cats)
-            || cats == null || cats.Count == 0)
+        if (hybridCache.TryGetValue(key, out List<MenuItem> hit) &&
+            hit != null && hit.Count > 0)
+            return hit;
+
+        string hostLocal = host;
+
+        _ = Task.Run(async () =>
         {
-            var pool = await JavTsunamiTo.CatAll(6, Ms() + 12000);
+            try
+            {
+                var catsTask = JavTsunamiTo.CatAll(6, Ms() + 15000);
+                var tagsTask = JavTsunamiTo.TagAll(6, Ms() + 15000);
+                await Task.WhenAll(catsTask, tagsTask);
 
-            cats = JavTsunamiTo.CatPick(pool);
-            Console.WriteLine($"JavTsunami: cats pool={pool.Count} pick={cats.Count}");
+                var cats = await catsTask;
+                var tags = await tagsTask;
+                Console.WriteLine($"JavTsunami: menu cats={cats.Count} tags={tags.Count}");
 
-            if (cats.Count > 0)
-                hybridCache.Set(key, cats, cacheTime(60));
-        }
+                if (cats.Count > 0 || tags.Count > 0)
+                    hybridCache.Set(key,
+                        JavTsunamiTo.Menu(hostLocal, cats, tags), cacheTime(720), true);
+            }
+            catch { }
+        });
 
-        return JavTsunamiTo.Menu(host, cats);
+        return JavTsunamiTo.Menu(hostLocal,
+            new List<(string, string)>(), new List<(string, string)>());
     }
 
     // Trang detail: tach iframe trong <div class="video-player">. Cache 15

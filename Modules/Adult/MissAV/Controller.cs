@@ -170,7 +170,97 @@ public class MissAVController : BaseSisiController
         if (rch?.enable == true)
             StatiCacheDisabled = true;
 
-        return PlaylistResult(cache, MissAVTo.Menu(host));
+        return PlaylistResult(cache, await MenuAsync());
+    }
+
+    // Menu dong: genres HET cac trang + makers 4 trang dau (~150 hang lon).
+    // Trang taxonomy la HTML tinh (khong can Playwright) nen dung Http
+    // thuong. Tra fallback ngay, warm that o background; giu inmemory vi
+    // ValueTuple qua file cache doc lai khong duoc.
+    async Task<List<MenuItem>> MenuAsync()
+    {
+        string memKey = ipkey("missav:menu");
+
+        if (hybridCache.TryGetValue(memKey, out List<MenuItem> hit) &&
+            hit != null && hit.Count > 0)
+            return hit;
+
+        string hostLocal = host;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var g = await TaxonomiesAsync("/vi/genres", 0);
+                var s = await TaxonomiesAsync("/vi/makers", 4);
+
+                if (g.Count > 0 || s.Count > 0)
+                    hybridCache.Set(memKey,
+                        MissAVTo.Menu(hostLocal, g, s), cacheTime(720), true);
+            }
+            catch { }
+        });
+
+        return MissAVTo.Menu(hostLocal, null, null);
+    }
+
+    // maxPages = 0 nghia la het (doc so trang tu p1). Trang 2..N fetch song
+    // song. Moi trang ~36 muc, timeout rieng de trang treo khong giu ca lot.
+    async Task<List<(string name, string url)>> TaxonomiesAsync(
+        string page, int maxPages)
+    {
+        var all = new List<(string, string)>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        void Add(List<(string name, string url)> rows)
+        {
+            foreach (var r in rows)
+            {
+                if (seen.Add(r.url))
+                    all.Add(r);
+            }
+        }
+
+        string first = await TaxPageAsync(page, 1);
+        Add(MissAVTo.Taxonomies(first));
+
+        int pages = MissAVTo.TaxPages(first, page);
+        if (maxPages > 0 && pages > maxPages)
+            pages = maxPages;
+
+        if (pages <= 1)
+            return all;
+
+        var tasks = new List<Task<string>>();
+        for (int p = 2; p <= pages; p++)
+            tasks.Add(TaxPageAsync(page, p));
+
+        foreach (var t in tasks)
+            Add(MissAVTo.Taxonomies(await t));
+
+        return all;
+    }
+
+    async Task<string> TaxPageAsync(string page, int pg)
+    {
+        string url = MissAVTo.SiteHost + page + (pg > 1 ? "?page=" + pg : "");
+
+        try
+        {
+            return await Http.Get(
+                url,
+                timeoutSeconds: 12,
+                httpversion: init.httpversion,
+                proxy: proxy,
+                headers: HeadersModel.Init(
+                    ("User-Agent", MissAVTo.ChromeUA),
+                    ("Referer", MissAVTo.SiteHost + "/"),
+                    ("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")));
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     async Task<Dictionary<string, string>> ResolveLinksAsync(string uri)

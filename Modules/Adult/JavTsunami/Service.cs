@@ -226,8 +226,51 @@ public static class JavTsunamiTo
         => CatList(await CurlGetRetry($"{SiteHost}{CatsPath}/page/{pg}", SiteHost + "/",
             "videos-list", 2, maxTime, deadline));
 
-    // Fisher-Yates roi cat con `limit` — trong 1 gio cache nen thu tu khong
-    // doi, het gio la bo lai ngau nhien muc khac.
+    // Het tag cloud trang `/tags` (1 trang, ~1000 tag). Neo vao class
+    // `tag-cloud-link` — lan dau xuat hien la trong `<style>` nen phai bo
+    // style truoc, neu khong dem du 1038 ma sai. Ten lay tu text hien thi,
+    // fallback giai ma slug khi text rong.
+    public static List<(string name, string path)> TagList(string html)
+    {
+        var list = new List<(string, string)>();
+        if (string.IsNullOrEmpty(html))
+            return list;
+
+        html = Regex.Replace(html, @"<style[\s\S]*?</style>",
+            "", RegexOptions.IgnoreCase);
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (Match m in Regex.Matches(html,
+            "<a\\s[^>]*href=\"https://javtsunami\\.com/(tag/[^\"]+)\"[^>]*"
+            + "class=\"[^\"]*tag-cloud-link[^\"]*\"[^>]*>([^<]{1,60})</a\\s*>",
+            RegexOptions.IgnoreCase))
+        {
+            string path = m.Groups[1].Value.Trim('/');
+            string name = HttpUtility.HtmlDecode(m.Groups[2].Value.Trim());
+
+            if (string.IsNullOrEmpty(name))
+            {
+                try { name = System.Uri.UnescapeDataString(path.Split('/').Last()); }
+                catch { name = ""; }
+            }
+
+            if (path.Length == 0 || name.Length == 0 || !seen.Add(path))
+                continue;
+
+            list.Add((name, path));
+        }
+
+        return list;
+    }
+
+    public static async Task<List<(string name, string path)>> TagAll(
+        int maxTime = 6, long deadline = 0)
+    {
+        string html = await CurlGetRetry(SiteHost + "/tags", SiteHost + "/",
+            "tag-cloud-link", 3, maxTime, deadline);
+        return TagList(html);
+    }
     public static List<(string name, string path)> CatPick(
         List<(string name, string path)> pool, int limit = CatsLimit)
     {
@@ -1010,13 +1053,21 @@ public static class JavTsunamiTo
     // muc hardcode o day nua. `Lọc` giu nguyen — do la query filter cua trang
     // chu, khong co trang rieng.
     public static List<Shared.Models.SISI.Base.MenuItem> Menu(
-        string host, IReadOnlyList<(string name, string path)> cats = null)
+        string host, IReadOnlyList<(string name, string path)> cats = null,
+        IReadOnlyList<(string name, string path)> tags = null)
     {
         var genres = new List<Shared.Models.SISI.Base.MenuItem>();
         if (cats != null)
         {
             foreach (var c in cats)
                 genres.Add(new(c.name, host + "/javtsunami?c=" + c.path));
+        }
+
+        var tagMenu = new List<Shared.Models.SISI.Base.MenuItem>();
+        if (tags != null)
+        {
+            foreach (var t in tags)
+                tagMenu.Add(new(t.name, host + "/javtsunami?c=" + t.path));
         }
 
         var views = new List<Shared.Models.SISI.Base.MenuItem>()
@@ -1044,6 +1095,12 @@ public static class JavTsunamiTo
                 title = "Thể loại",
                 playlist_url = "submenu",
                 submenu = genres
+            },
+            new Shared.Models.SISI.Base.MenuItem()
+            {
+                title = "Tags",
+                playlist_url = "submenu",
+                submenu = tagMenu
             },
             new Shared.Models.SISI.Base.MenuItem()
             {

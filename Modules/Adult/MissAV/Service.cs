@@ -341,48 +341,128 @@ public static class MissAVTo
     }
 
     public static List<Shared.Models.SISI.Base.MenuItem> Menu(string host)
+        => Menu(host, null, null);
+
+    static readonly char[] TaxHidden =
+        { '\uFEFF', '\u200B', '\u200C', '\u200D', '\u200E', '\u200F' };
+
+    static string CleanTax(string s)
+    {
+        if (string.IsNullOrEmpty(s))
+            return "";
+        return s.Trim(TaxHidden).Trim();
+    }
+
+    /// <summary>
+    /// Parse card taxonomy MissAV: anchor co class `text-nord13` VA href chua
+    /// `/vi/genres/` hoac `/vi/makers/`. Class nay con dung cho link login
+    /// nen bat buoc loc theo href. GiU NGUYEN full dm-URL (dm-ID la nhom
+    /// noi dung, bo di la sai trang).
+    /// </summary>
+    public static List<(string name, string url)> Taxonomies(string html)
+    {
+        var res = new List<(string, string)>();
+        if (string.IsNullOrEmpty(html))
+            return res;
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (Match m in Regex.Matches(html, @"<a\b[^>]*>",
+            RegexOptions.IgnoreCase | RegexOptions.Singleline))
+        {
+            string tag = m.Value;
+            if (tag.IndexOf("text-nord13", StringComparison.OrdinalIgnoreCase) < 0)
+                continue;
+
+            var href = Regex.Match(tag, @"href\s*=\s*""([^""]+)""",
+                RegexOptions.IgnoreCase);
+            if (!href.Success)
+                continue;
+
+            string url = System.Net.WebUtility.HtmlDecode(href.Groups[1].Value.Trim());
+            if (url.IndexOf("/vi/genres/", StringComparison.OrdinalIgnoreCase) < 0
+                && url.IndexOf("/vi/makers/", StringComparison.OrdinalIgnoreCase) < 0)
+                continue;
+
+            int end = html.IndexOf("</a>", m.Index, StringComparison.OrdinalIgnoreCase);
+            if (end < 0)
+                continue;
+
+            string name = CleanTax(System.Net.WebUtility.HtmlDecode(
+                Regex.Replace(html.Substring(m.Index + tag.Length, end - m.Index - tag.Length),
+                    "<[^>]+>", " ")));
+            name = Regex.Replace(name, @"\s+", " ").Trim();
+            if (string.IsNullOrEmpty(name) || name.Length > 60)
+                continue;
+
+            // Client SISI cat title bang `:` — ten co dau do bi cut.
+            name = name.Replace(':', '-').Replace('|', '-');
+
+            if (!seen.Add(url))
+                continue;
+
+            res.Add((name, url));
+        }
+
+        return res;
+    }
+
+    public static int TaxPages(string html, string page)
+    {
+        if (string.IsNullOrEmpty(html))
+            return 1;
+
+        int max = 1;
+        foreach (Match m in Regex.Matches(html,
+            Regex.Escape(page) + @"\?page=(\d+)", RegexOptions.IgnoreCase))
+        {
+            if (int.TryParse(m.Groups[1].Value, out int p) && p > max)
+                max = p;
+        }
+
+        return max;
+    }
+
+    public static List<Shared.Models.SISI.Base.MenuItem> Menu(
+        string host, List<(string name, string url)> genres,
+        List<(string name, string url)> makers)
     {
         string cat(string missavUrl) => host + "/missav?c=" + HttpUtility.UrlEncode(missavUrl);
-        const string H = "https://missav.live";
 
-        var genres = new List<Shared.Models.SISI.Base.MenuItem>()
+        List<Shared.Models.SISI.Base.MenuItem> genreMenu;
+        if (genres != null && genres.Count > 0)
         {
-            new("VR", cat(H + "/vi/genres/VR")),
-            new("Nghiệp dư", cat(H + "/vi/genres/nghi%E1%BB%87p%20d%C6%B0")),
-            new("Nữ sinh", cat(H + "/vi/genres/n%E1%BB%AF%20sinh")),
-            new("Phụ nữ trưởng thành", cat(H + "/vi/genres/ph%E1%BB%A5%20n%E1%BB%AF%20tr%C6%B0%E1%BB%9Fng%20th%C3%A0nh")),
-            new("Ngực to", cat(H + "/vi/genres/ng%E1%BB%B1c%20to")),
-            new("Ngực đẹp", cat(H + "/vi/genres/ng%E1%BB%B1c%20%C4%91%E1%BA%B9p")),
-            new("Loạn luân", cat(H + "/vi/genres/lo%E1%BA%A1n%20lu%C3%A2n")),
-            new("Bắn tinh", cat(H + "/vi/genres/b%E1%BA%AFn%20tinh")),
-            new("Thổi kèn", cat(H + "/vi/genres/th%E1%BB%95i%20k%C3%A8n")),
-            new("Thủ dâm", cat(H + "/vi/genres/th%E1%BB%A7%20d%C3%A2m")),
-            new("Mảnh khảnh", cat(H + "/vi/genres/m%E1%BA%A3nh%20kh%E1%BA%A3nh")),
-            new("Cô gái xinh đẹp", cat(H + "/vi/genres/c%C3%B4%20g%C3%A1i%20xinh%20%C4%91%E1%BA%B9p")),
-            new("Phim tài liệu", cat(H + "/vi/genres/phim%20t%C3%A0i%20li%E1%BB%87u")),
-            new("Nampa", cat(H + "/vi/genres/Nampa")),
-            new("Gonzo", cat(H + "/vi/genres/Gonzo")),
-            new("4K", cat(H + "/vi/genres/4K")),
-            new("Hi-vision", cat(H + "/vi/genres/hi-vision")),
-            new("Paizuri", cat(H + "/vi/genres/paizuri")),
-            new("Không kiểm duyệt", cat(H + "/vi/genres/Lo%E1%BA%A1i%20tr%E1%BB%AB")),
-        };
+            genreMenu = new List<Shared.Models.SISI.Base.MenuItem>(genres.Count);
+            foreach (var (name, url) in genres)
+                genreMenu.Add(new(name, cat(url)));
+        }
+        else
+        {
+            genreMenu = new List<Shared.Models.SISI.Base.MenuItem>()
+            {
+                new("VR", cat("https://missav.live/vi/genres/VR")),
+                new("Nghiệp dư", cat("https://missav.live/vi/genres/nghi%E1%BB%87p%20d%C6%B0")),
+                new("Nữ sinh", cat("https://missav.live/vi/genres/n%E1%BB%AF%20sinh")),
+                new("Gonzo", cat("https://missav.live/vi/genres/Gonzo")),
+                new("4K", cat("https://missav.live/vi/genres/4K")),
+            };
+        }
 
-        var makers = new List<Shared.Models.SISI.Base.MenuItem>()
+        List<Shared.Models.SISI.Base.MenuItem> makerMenu;
+        if (makers != null && makers.Count > 0)
         {
-            new("SIRO", cat(H + "/dm36/vi/siro")),
-            new("LUXU", cat(H + "/dm34/vi/luxu")),
-            new("GANA", cat(H + "/dm34/vi/gana")),
-            new("ARA", cat(H + "/dm34/vi/ara")),
-            new("FC2", cat(H + "/dm597/vi/fc2")),
-            new("HEYZO", cat(H + "/dm2208642/vi/heyzo")),
-            new("Tokyo Hot", cat(H + "/dm42/vi/tokyohot")),
-            new("1pondo", cat(H + "/dm5199603/vi/1pondo")),
-            new("Caribbeancom", cat(H + "/dm7704788/vi/caribbeancom")),
-            new("10musume", cat(H + "/dm7208981/vi/10musume")),
-            new("Madou", cat(H + "/dm63/vi/madou")),
-            new("Gachinco", cat(H + "/dm150/vi/gachinco")),
-        };
+            makerMenu = new List<Shared.Models.SISI.Base.MenuItem>(makers.Count);
+            foreach (var (name, url) in makers)
+                makerMenu.Add(new(name, cat(url)));
+        }
+        else
+        {
+            makerMenu = new List<Shared.Models.SISI.Base.MenuItem>()
+            {
+                new("S1", cat("https://missav.live/dm191/vi/makers/S1")),
+                new("Madonna", cat("https://missav.live/dm350/vi/makers/Madonna")),
+            };
+        }
 
         return new List<Shared.Models.SISI.Base.MenuItem>()
         {
@@ -399,27 +479,27 @@ public static class MissAVTo
                 submenu = new List<Shared.Models.SISI.Base.MenuItem>()
                 {
                     new("Mới nhất", host + "/missav"),
-                    new("Đề xuất cho bạn", cat(RecommendUrl)),
-                    new("Recent update", cat(H + "/dm539/vi/new")),
-                    new("Bản phát hành mới", cat(H + "/dm635/vi/release")),
-                    new("Rò rỉ không kiểm duyệt", cat(H + "/dm817/vi/uncensored-leak")),
-                    new("Xem nhiều hôm nay", cat(H + "/dm301/vi/today-hot")),
-                    new("Xem nhiều tuần này", cat(H + "/dm170/vi/weekly-hot")),
-                    new("Xem nhiều tháng này", cat(H + "/dm273/vi/monthly-hot")),
-                    new("Phụ đề tiếng Anh", cat(H + "/dm23/vi/english-subtitle")),
+                    new("Đề xuất cho bạn", cat("https://missav.live/vi")),
+                    new("Recent update", cat("https://missav.live/dm539/vi/new")),
+                    new("Bản phát hành mới", cat("https://missav.live/dm635/vi/release")),
+                    new("Rò rỉ không kiểm duyệt", cat("https://missav.live/dm817/vi/uncensored-leak")),
+                    new("Xem nhiều hôm nay", cat("https://missav.live/dm301/vi/today-hot")),
+                    new("Xem nhiều tuần này", cat("https://missav.live/dm170/vi/weekly-hot")),
+                    new("Xem nhiều tháng này", cat("https://missav.live/dm273/vi/monthly-hot")),
+                    new("Phụ đề tiếng Anh", cat("https://missav.live/dm23/vi/english-subtitle")),
                 }
             },
             new Shared.Models.SISI.Base.MenuItem()
             {
                 title = "Thể loại",
                 playlist_url = "submenu",
-                submenu = genres
+                submenu = genreMenu
             },
             new Shared.Models.SISI.Base.MenuItem()
             {
                 title = "Hãng phim",
                 playlist_url = "submenu",
-                submenu = makers
+                submenu = makerMenu
             }
         };
     }
