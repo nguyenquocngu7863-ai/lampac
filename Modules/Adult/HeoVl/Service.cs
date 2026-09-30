@@ -138,6 +138,26 @@ public static class HeoVlTo
         }
     }
 
+    /// <summary>
+    /// Chuẩn hoá URL lấy ra từ JSON của player.
+    /// <para>
+    /// `JsonSerializer.Serialize` mặc định escape ký tự HTML nhạy cảm, nên `&`
+    /// thành `\u0026`. Regex `"file": "(https?...)"` lấy đúng chuỗi đã escape,
+    /// chỉ `Replace("\\/", "/")` thì URL còn sót dạng
+    /// `master.m3u8?d=heovl.im\u0026e=...` — CDN đọc sai hết tham số truy vấn
+    /// và trả 401, app báo link chết.
+    /// </para>
+    /// </summary>
+    public static string NormalizeStreamUrl(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return value;
+
+        var url = value.Replace("\\/", "/");
+        return Regex.Replace(url, @"\\u([0-9a-fA-F]{4})",
+            m => ((char)Convert.ToInt32(m.Groups[1].Value, 16)).ToString());
+    }
+
     public static Dictionary<string, string> StreamLinksFromConfig(string configJson)
     {
         var links = new Dictionary<string, string>();
@@ -146,21 +166,40 @@ public static class HeoVlTo
 
         foreach (Match m in Regex.Matches(configJson, @"""file""\s*:\s*""(https?[^""]+)"""))
         {
-            string file = m.Groups[1].Value.Replace("\\/", "/");
-            if (file.Contains(".m3u8") || file.Contains(".mp4"))
+            string file = NormalizeStreamUrl(m.Groups[1].Value);
+
+            // Xet duoi duong dan, khong xet Contains: mot so URL analytics cua
+            // JW Player mang `.m3u8` trong query string, Contains se nhan nham
+            // va dua pixel 1x1 vao danh sach link.
+            bool isMedia;
+            try
             {
-                string label = file.Contains(".m3u8") ? "HLS" : "MP4";
-                string key = label + (links.Count == 0 ? "" : " " + (links.Count + 1));
-                if (!links.ContainsValue(file))
-                    links.TryAdd(key, file);
+                var path = new Uri(file).AbsolutePath;
+                isMedia = path.EndsWith(".m3u8", StringComparison.OrdinalIgnoreCase)
+                    || path.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase);
             }
+            catch { isMedia = false; }
+
+            if (!isMedia)
+                continue;
+
+            if (links.ContainsValue(file))
+                continue;
+
+            // So chay tu 1 cho het, khong bo qua link dau tien. Truoc day
+            // `links.Count == 0 ? ""` bo trong so o link 1, nen app hien
+            // "StreamQQ Plan VIP HLS" roi den "... HLS 2" den "... HLS 7" -
+            // nhan ra dau moi la so 1. So sanh bo truoc `Continue` nen khong
+            // bao gio bi skip va khong bao gio trung key.
+            string label = file.Contains(".m3u8") ? "HLS" : "MP4";
+            links.TryAdd(label + " " + (links.Count + 1), file);
         }
 
         if (links.Count == 0)
         {
             var m = Regex.Match(configJson, @"(https?[^""\\\s]+\.m3u8[^""\\\s]*)");
             if (m.Success)
-                links.TryAdd("HLS", m.Groups[1].Value.Replace("\\/", "/"));
+                links.TryAdd("HLS 1", m.Groups[1].Value.Replace("\\/", "/"));
         }
 
         return links;

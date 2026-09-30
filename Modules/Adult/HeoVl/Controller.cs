@@ -97,7 +97,13 @@ public class HeoVlController : BaseSisiController
 
                 foreach (var (label, embed) in embeds)
                 {
-                    var streamLinks = await GetStreamFromPlaywrightAsync(embed, pageUrl);
+                    // `vid` la id cua chinh video nay. Bat buoc phai loc theo no:
+                    // trang player nap quang cao chay song song va cac request
+                    // m3u8 cua quang cao cung di qua trinh bat network, nen
+                    // khong loc thi app nhan nham phim voi quang cao.
+                    var (_, vid) = HeoVlTo.ParseEmbed(embed);
+
+                    var streamLinks = await GetStreamFromPlaywrightAsync(embed, pageUrl, vid);
                     if (streamLinks != null)
                     {
                         foreach (var kv in streamLinks)
@@ -130,7 +136,7 @@ public class HeoVlController : BaseSisiController
         }
     }
 
-    async Task<Dictionary<string, string>> GetStreamFromPlaywrightAsync(string embedUrl, string referer)
+    async Task<Dictionary<string, string>> GetStreamFromPlaywrightAsync(string embedUrl, string referer, string vid)
     {
         try
         {
@@ -147,17 +153,46 @@ public class HeoVlController : BaseSisiController
 
                 var links = new Dictionary<string, string>();
 
+                // PHẢI xét đuôi đường dẫn, không xét `Contains(".m3u8")`. JW
+                // Player bắn ping analytics dạng
+                // `prd.jwpltx.com/.../ping.gif?...&mu=<...master.m3u8...>`,
+                // chuỗi `.m3u8` nằm trong query nen Contains nhận nhầm, app
+                // nhận 1 pixel 204 No Content làm link chết.
+                bool IsMedia(string url)
+                {
+                    try
+                    {
+                        var path = new Uri(url).AbsolutePath;
+                        return path.EndsWith(".m3u8", StringComparison.OrdinalIgnoreCase)
+                            || path.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase);
+                    }
+                    catch { return false; }
+                }
+
+                // Chi nhan m3u8 cua dung video nay. Khong co `vid` (URL embed
+                // doi hinh dang) thi bo qua chuc nhan, vi luc do khong phan biet
+                // duoc video nao voi quang cao nao.
+                bool Accept(string url)
+                {
+                    if (!IsMedia(url))
+                        return false;
+
+                    if (!string.IsNullOrEmpty(vid) && !url.Contains(vid))
+                        return false;
+
+                    if (links.ContainsValue(url))
+                        return false;
+
+                    // So chay tu 1 cho het, khong bo qua link dau tien.
+                    links.TryAdd((url.Contains(".m3u8") ? "HLS" : "MP4") + " " + (links.Count + 1), url);
+                    return true;
+                }
+
                 // Intercept network requests to find m3u8/mp4
                 page.Request += (_, request) =>
                 {
                     var url = request.Url;
-                    if (url.Contains(".m3u8") || url.Contains(".mp4"))
-                    {
-                        string label = url.Contains(".m3u8") ? "HLS" : "MP4";
-                        string key = label + (links.Count == 0 ? "" : " " + (links.Count + 1));
-                        if (!links.ContainsValue(url))
-                            links.TryAdd(key, url);
-                    }
+                    Accept(url);
                 };
 
                 // Also intercept API config response
@@ -221,14 +256,8 @@ public class HeoVlController : BaseSisiController
                         var matches = Regex.Matches(json, @"""file""\s*:\s*""(https?[^""]+)""");
                         foreach (Match m in matches)
                         {
-                            string file = m.Groups[1].Value.Replace("\\/", "/");
-                            if (file.Contains(".m3u8") || file.Contains(".mp4"))
-                            {
-                                string label = file.Contains(".m3u8") ? "HLS" : "MP4";
-                                string key = label + (links.Count == 0 ? "" : " " + (links.Count + 1));
-                                if (!links.ContainsValue(file))
-                                    links.TryAdd(key, file);
-                            }
+                            string file = HeoVlTo.NormalizeStreamUrl(m.Groups[1].Value);
+                            Accept(file);
                         }
                     }
                 }
@@ -240,8 +269,10 @@ public class HeoVlController : BaseSisiController
                     var parsed = HeoVlTo.StreamLinksFromConfig(configJson);
                     foreach (var kv in parsed)
                     {
-                        if (!links.ContainsValue(kv.Value))
-                            links.TryAdd(kv.Key, kv.Value);
+                        if (!string.IsNullOrEmpty(vid) && !kv.Value.Contains(vid))
+                            continue;
+
+                        Accept(kv.Value);
                     }
                 }
 
