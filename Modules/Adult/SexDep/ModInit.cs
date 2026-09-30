@@ -36,17 +36,17 @@ public class ModInit : IModuleLoaded, IModuleSisi
 
     void updateConf()
     {
-        conf = ModuleInvoke.Init("SexDep", new SisiSettings("SexDep", "https://x.sexdep.co.uk")
+        conf = ModuleInvoke.Init("SexDep", new SisiSettings("SexDep", "https://z.sexdep.co.uk")
         {
             displayindex = 15,
             streamproxy = true,
             rch_access = "apk",
             stream_access = "apk",
             headers_stream = HeadersModel.Init(
-                ("referer", "https://x.sexdep.co.uk/")
+                ("referer", "https://z.sexdep.co.uk/")
             ).ToDictionary(),
             headers_image = HeadersModel.Init(
-                ("referer", "https://x.sexdep.co.uk/")
+                ("referer", "https://z.sexdep.co.uk/")
             ).ToDictionary()
         });
     }

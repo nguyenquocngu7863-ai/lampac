@@ -10,7 +10,7 @@ namespace SexDep;
 
 public static class SexDepTo
 {
-    public static string SiteHost = "https://x.sexdep.co.uk";
+    public static string SiteHost = "https://z.sexdep.co.uk";
 
     // Do 5 lan thi chi 1-2 lan tra 200, con lai treo het 15s. Can 4 lan
     // thu moi chac co phim. Mot lan la khong du — 2/3 so lan manh hinh trong.
@@ -81,7 +81,7 @@ public static class SexDepTo
 
         // Chi card chinh (m-block movie-item) - BO sidebar top-film (list-top-movie-link)
         // vi sidebar lap lai tren moi trang gay trung noi dung khi phan trang
-        // KHONG hardcode `x.sexdep.co.uk` va KHONG dua thuoc tinh vao dung
+        // KHONG hardcode host va KHONG dua thuoc tinh vao dung
         // thu tu class -> href -> title. Site render 2 template khac nhau:
         // trang chu hop, trang the-loai /danh-sach thi doi thu tu hoac them
         // `data-*` o giua => regex cu tra 0 phim, manh hinh trong.

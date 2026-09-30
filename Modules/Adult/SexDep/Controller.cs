@@ -41,7 +41,7 @@ public class SexDepController : BaseSisiController
             // 2/3 so lan mo manh hinh trong.
             var fetchHeaders = HeadersModel.Init(
                 ("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"),
-                ("Referer", "https://x.sexdep.co.uk/")
+                ("Referer", "https://z.sexdep.co.uk/")
             );
 
             for (int attempt = 0; attempt < SexDepTo.FetchAttempts; attempt++)
@@ -101,7 +101,7 @@ public class SexDepController : BaseSisiController
                 var page = await browser.NewPageAsync(init.plugin, new Dictionary<string, string>
                 {
                     ["User-Agent"] = "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
-                    ["Referer"] = "https://x.sexdep.co.uk/"
+                    ["Referer"] = "https://z.sexdep.co.uk/"
                 });
 
                 if (page == null)
@@ -150,9 +150,9 @@ public class SexDepController : BaseSisiController
 
                 string pageUrl = uri;
                 if (uri.StartsWith("/"))
-                    pageUrl = "https://x.sexdep.co.uk" + uri;
+                    pageUrl = "https://z.sexdep.co.uk" + uri;
                 else if (!uri.StartsWith("http"))
-                    pageUrl = "https://x.sexdep.co.uk/phim/" + uri.Trim('/');
+                    pageUrl = "https://z.sexdep.co.uk/phim/" + uri.Trim('/');
 
                 string pageHtml = null;
                 await httpHydra.GetSpan(pageUrl, span =>
@@ -160,7 +160,7 @@ public class SexDepController : BaseSisiController
                     pageHtml = span.ToString();
                 }, addheaders: HeadersModel.Init(
                     ("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"),
-                    ("Referer", "https://x.sexdep.co.uk/")
+                    ("Referer", "https://z.sexdep.co.uk/")
                 ));
 
                 // Fallback to Playwright if HTTP empty
@@ -200,7 +200,7 @@ public class SexDepController : BaseSisiController
                 var page = await browser.NewPageAsync(init.plugin, new Dictionary<string, string>
                 {
                     ["User-Agent"] = "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
-                    ["Referer"] = "https://x.sexdep.co.uk/"
+                    ["Referer"] = "https://z.sexdep.co.uk/"
                 });
 
                 if (page == null)
@@ -255,7 +255,7 @@ public class SexDepController : BaseSisiController
             return OnError("stream_links", refresh_proxy: true);
 
         var direct = httpHeaders(init, HeadersModel.Init(
-            ("referer", "https://x.sexdep.co.uk/")
+            ("referer", "https://z.sexdep.co.uk/")
         ));
         return Redirect(HostStreamProxy(link, direct));
     }
@@ -278,7 +278,7 @@ public class SexDepController : BaseSisiController
             return OnError("link");
 
         var direct = httpHeaders(init, HeadersModel.Init(
-            ("referer", "https://x.sexdep.co.uk/")
+            ("referer", "https://z.sexdep.co.uk/")
         ));
         return Redirect(HostStreamProxy(link, direct));
     }

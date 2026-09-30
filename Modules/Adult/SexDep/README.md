@@ -1,12 +1,12 @@
-# SexDep (x.sexdep.co.uk, motchill)
+# SexDep (z.sexdep.co.uk, motchill)
 
 Module Adult route `sexdep`, displayindex 15.
 
 ## URLs
-- List home: `https://x.sexdep.co.uk/` (parse `a.m-block.movie-item[href=/phim/][title]` + `div.lazyload[data-original]`)
-- Category: `https://x.sexdep.co.uk/{the-loai/...|quoc-gia/...}?page=N`
-- Search: `https://x.sexdep.co.uk/?search={kw}&page=N` (form GET `name=search`, KHONG phai `/search/slug`)
-- Video: `https://x.sexdep.co.uk/phim/{slug}`
+- List home: `https://z.sexdep.co.uk/` (parse `a.m-block.movie-item[href=/phim/][title]` + `div.lazyload[data-original]`)
+- Category: `https://z.sexdep.co.uk/{the-loai/...|quoc-gia/...}?page=N`
+- Search: `https://z.sexdep.co.uk/?search={kw}&page=N` (form GET `name=search`, KHONG phai `/search/slug`)
+- Video: `https://z.sexdep.co.uk/phim/{slug}`
 
 ## Player
 - Trang video chua `a.server[data-link="/storage/m3u8/{slug}/index.m3u8"]` (relative, phai kem host).
