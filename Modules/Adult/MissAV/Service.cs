@@ -355,9 +355,10 @@ public static class MissAVTo
 
     /// <summary>
     /// Parse card taxonomy MissAV: anchor co class `text-nord13` VA href chua
-    /// `/vi/genres/` hoac `/vi/makers/`. Class nay con dung cho link login
-    /// nen bat buoc loc theo href. GiU NGUYEN full dm-URL (dm-ID la nhom
-    /// noi dung, bo di la sai trang).
+    /// `/vi/genres|makers|actors|actresses/`. Class nay con dung cho link
+    /// login nen bat buoc loc theo href. GiU NGUYEN full dm-URL (dm-ID la
+    /// nhom noi dung, bo di la sai trang). Card dien vien de ten trong
+    /// `img alt` chu khong phai text nen phai fallback alt.
     /// </summary>
     public static List<(string name, string url)> Taxonomies(string html)
     {
@@ -381,17 +382,30 @@ public static class MissAVTo
 
             string url = System.Net.WebUtility.HtmlDecode(href.Groups[1].Value.Trim());
             if (url.IndexOf("/vi/genres/", StringComparison.OrdinalIgnoreCase) < 0
-                && url.IndexOf("/vi/makers/", StringComparison.OrdinalIgnoreCase) < 0)
+                && url.IndexOf("/vi/makers/", StringComparison.OrdinalIgnoreCase) < 0
+                && url.IndexOf("/vi/actors/", StringComparison.OrdinalIgnoreCase) < 0
+                && url.IndexOf("/vi/actresses/", StringComparison.OrdinalIgnoreCase) < 0)
                 continue;
 
             int end = html.IndexOf("</a>", m.Index, StringComparison.OrdinalIgnoreCase);
             if (end < 0)
                 continue;
 
+            string inner = html.Substring(m.Index + tag.Length, end - m.Index - tag.Length);
+
             string name = CleanTax(System.Net.WebUtility.HtmlDecode(
-                Regex.Replace(html.Substring(m.Index + tag.Length, end - m.Index - tag.Length),
-                    "<[^>]+>", " ")));
+                Regex.Replace(inner, "<[^>]+>", " ")));
             name = Regex.Replace(name, @"\s+", " ").Trim();
+
+            // Card dien vien: ten nam trong img alt.
+            if (string.IsNullOrEmpty(name))
+            {
+                var alt = Regex.Match(inner, @"alt\s*=\s*""([^""]{1,60})""",
+                    RegexOptions.IgnoreCase);
+                if (alt.Success)
+                    name = CleanTax(System.Net.WebUtility.HtmlDecode(alt.Groups[1].Value));
+            }
+
             if (string.IsNullOrEmpty(name) || name.Length > 60)
                 continue;
 
@@ -464,7 +478,22 @@ public static class MissAVTo
             };
         }
 
-        return new List<Shared.Models.SISI.Base.MenuItem>()
+        // Nav goc cua site (mobile Alpine `showCollapse`, lay 2026-09-30).
+        // Ten giu nguyen tieng Viet cua site. Bo 2 muc index `/genres` va
+        // `/makers` (da co full list rieng), bo nhom login (vip/saved/
+        // playlists/history) vi can tai khoan.
+        const string H = "https://missav.live";
+
+        List<Shared.Models.SISI.Base.MenuItem> G(
+            params (string name, string url)[] items)
+        {
+            var list = new List<Shared.Models.SISI.Base.MenuItem>(items.Length);
+            foreach (var (name, url) in items)
+                list.Add(new(name, cat(url)));
+            return list;
+        }
+
+        var root = new List<Shared.Models.SISI.Base.MenuItem>()
         {
             new Shared.Models.SISI.Base.MenuItem()
             {
@@ -474,20 +503,61 @@ public static class MissAVTo
             },
             new Shared.Models.SISI.Base.MenuItem()
             {
-                title = "Mới / Hot",
+                title = "JAV",
                 playlist_url = "submenu",
-                submenu = new List<Shared.Models.SISI.Base.MenuItem>()
-                {
-                    new("Mới nhất", host + "/missav"),
-                    new("Đề xuất cho bạn", cat("https://missav.live/vi")),
-                    new("Recent update", cat("https://missav.live/dm539/vi/new")),
-                    new("Bản phát hành mới", cat("https://missav.live/dm635/vi/release")),
-                    new("Rò rỉ không kiểm duyệt", cat("https://missav.live/dm817/vi/uncensored-leak")),
-                    new("Xem nhiều hôm nay", cat("https://missav.live/dm301/vi/today-hot")),
-                    new("Xem nhiều tuần này", cat("https://missav.live/dm170/vi/weekly-hot")),
-                    new("Xem nhiều tháng này", cat("https://missav.live/dm273/vi/monthly-hot")),
-                    new("Phụ đề tiếng Anh", cat("https://missav.live/dm23/vi/english-subtitle")),
-                }
+                submenu = G(
+                    ("Recent update", H + "/dm539/vi/new"),
+                    ("Bản phát hành mới", H + "/dm635/vi/release"),
+                    ("Rò rỉ không kiểm duyệt", H + "/dm817/vi/uncensored-leak"),
+                    ("Danh sách nữ diễn viên", H + "/vi/actresses"),
+                    ("BXH nữ diễn viên", H + "/vi/actresses/ranking"),
+                    ("VR", H + "/vi/genres/VR"),
+                    ("Xem nhiều hôm nay", H + "/dm301/vi/today-hot"),
+                    ("Xem nhiều tuần này", H + "/dm170/vi/weekly-hot"),
+                    ("Xem nhiều tháng này", H + "/dm273/vi/monthly-hot"))
+            },
+            new Shared.Models.SISI.Base.MenuItem()
+            {
+                title = "Nghiệp dư",
+                playlist_url = "submenu",
+                submenu = G(
+                    ("SIRO", H + "/dm36/vi/siro"),
+                    ("LUXU", H + "/dm34/vi/luxu"),
+                    ("GANA", H + "/dm34/vi/gana"),
+                    ("MAAN", H + "/dm1004/vi/maan"),
+                    ("S-CUTE", H + "/dm38/vi/scute"),
+                    ("ARA", H + "/dm34/vi/ara"))
+            },
+            new Shared.Models.SISI.Base.MenuItem()
+            {
+                title = "Không kiểm duyệt",
+                playlist_url = "submenu",
+                submenu = G(
+                    ("Rò rỉ không kiểm duyệt", H + "/dm817/vi/uncensored-leak"),
+                    ("FC2", H + "/dm597/vi/fc2"),
+                    ("HEYZO", H + "/dm2208642/vi/heyzo"),
+                    ("Tokyo Hot", H + "/dm42/vi/tokyohot"),
+                    ("1pondo", H + "/dm5199603/vi/1pondo"),
+                    ("Caribbeancom", H + "/dm7704788/vi/caribbeancom"),
+                    ("Caribbeancompr", H + "/dm91887/vi/caribbeancompr"),
+                    ("10musume", H + "/dm7208981/vi/10musume"),
+                    ("Pacopacomama", H + "/dm3600557/vi/pacopacomama"),
+                    ("Gachinco", H + "/dm150/vi/gachinco"),
+                    ("XXX-AV", H + "/dm42/vi/xxxav"),
+                    ("Marriedslash", H + "/dm37/vi/marriedslash"),
+                    ("Naughty 4610", H + "/dm33/vi/naughty4610"),
+                    ("Naughty 0930", H + "/dm37/vi/naughty0930"))
+            },
+            new Shared.Models.SISI.Base.MenuItem()
+            {
+                title = "Châu Á AV",
+                playlist_url = "submenu",
+                submenu = G(
+                    ("Madou", H + "/dm63/vi/madou"),
+                    ("TWAV", H + "/dm31/vi/twav"),
+                    ("Furuke", H + "/dm15/vi/furuke"),
+                    ("Hàn Quốc trực tiếp", H + "/vi/klive"),
+                    ("Trung Quốc trực tiếp", H + "/vi/clive"))
             },
             new Shared.Models.SISI.Base.MenuItem()
             {
@@ -502,5 +572,7 @@ public static class MissAVTo
                 submenu = makerMenu
             }
         };
+
+        return root;
     }
 }

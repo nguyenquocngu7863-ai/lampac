@@ -1063,12 +1063,10 @@ public static class JavTsunamiTo
                 genres.Add(new(c.name, host + "/javtsunami?c=" + c.path));
         }
 
+        // Tags tam nghi (it phim, submenu dai): nhan param de sau bat lai
+        // chi can xoa 2 dong duoi, khong phai sua chu ky.
+        _ = tags;
         var tagMenu = new List<Shared.Models.SISI.Base.MenuItem>();
-        if (tags != null)
-        {
-            foreach (var t in tags)
-                tagMenu.Add(new(t.name, host + "/javtsunami?c=" + t.path));
-        }
 
         var views = new List<Shared.Models.SISI.Base.MenuItem>()
         {
@@ -1077,7 +1075,7 @@ public static class JavTsunamiTo
             new("Ngẫu nhiên", host + "/javtsunami?c=filter/random"),
         };
 
-        return new List<Shared.Models.SISI.Base.MenuItem>()
+        var root = new List<Shared.Models.SISI.Base.MenuItem>()
         {
             new Shared.Models.SISI.Base.MenuItem()
             {
@@ -1096,18 +1094,24 @@ public static class JavTsunamiTo
                 playlist_url = "submenu",
                 submenu = genres
             },
-            new Shared.Models.SISI.Base.MenuItem()
+        };
+
+        // Chi them submenu khi co muc — submenu rong bam vao man hinh trong.
+        if (tagMenu.Count > 0)
+            root.Add(new Shared.Models.SISI.Base.MenuItem()
             {
                 title = "Tags",
                 playlist_url = "submenu",
                 submenu = tagMenu
-            },
-            new Shared.Models.SISI.Base.MenuItem()
-            {
-                title = "Lọc",
-                playlist_url = "submenu",
-                submenu = views
-            }
-        };
+            });
+
+        root.Add(new Shared.Models.SISI.Base.MenuItem()
+        {
+            title = "Lọc",
+            playlist_url = "submenu",
+            submenu = views
+        });
+
+        return root;
     }
 }

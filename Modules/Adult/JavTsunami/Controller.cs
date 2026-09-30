@@ -57,10 +57,11 @@ public class JavTsunamiController : BaseSisiController
         return PlaylistResult(cache, await MenuAsync());
     }
 
-    // Menu "Thể loại" FULL tu trang `/categories` (4 trang) + "Tags" FULL tu
-    // `/tags` (1 trang, ~1000 tag). Fetch song song o background, tra menu
-    // rut gon ngay de khong chan response home. Cache 12h inmemory
-    // (ValueTuple qua file cache doc lai khong duoc).
+    // Menu "Thể loại" FULL tu trang `/categories` (4 trang, 93 muc).
+    // Tags (~1000 muc) TAM NGHI: nhieu tag it phim, submenu dai kho dung.
+    // Code lay tag (TagList/TagAll) giu lai, can thi bat lai.
+    // Fetch o background, tra menu rut gon ngay de khong chan response
+    // home. Cache 12h inmemory (ValueTuple qua file cache doc lai ko duoc).
     async Task<List<MenuItem>> MenuAsync()
     {
         string key = ipkey("javtsunami:menu");
@@ -75,23 +76,27 @@ public class JavTsunamiController : BaseSisiController
         {
             try
             {
-                var catsTask = JavTsunamiTo.CatAll(6, Ms() + 15000);
-                var tagsTask = JavTsunamiTo.TagAll(6, Ms() + 15000);
-                await Task.WhenAll(catsTask, tagsTask);
+                var cats = await JavTsunamiTo.CatAll(6, Ms() + 15000);
 
-                var cats = await catsTask;
-                var tags = await tagsTask;
-                Console.WriteLine($"JavTsunami: menu cats={cats.Count} tags={tags.Count}");
+                // Site treo giua chung: lan 1 chi duoc 56/93. Thu lai 1 lan
+                // truoc khi chot, neu khong partial bi dong bang 12h.
+                if (cats.Count < 70)
+                    cats = await JavTsunamiTo.CatAll(6, Ms() + 15000);
 
-                if (cats.Count > 0 || tags.Count > 0)
-                    hybridCache.Set(key,
-                        JavTsunamiTo.Menu(hostLocal, cats, tags), cacheTime(720), true);
+                Console.WriteLine($"JavTsunami: menu cats={cats.Count}");
+
+                if (cats.Count <= 0)
+                    return;
+
+                // Du (>=70/93 do duoc) thi 12h; thieu thi 5 phut de warm sau
+                // thu lai, khong dong bang ban thieu ca ngay.
+                var exp = cats.Count >= 70 ? cacheTime(720) : cacheTime(5);
+                hybridCache.Set(key, JavTsunamiTo.Menu(hostLocal, cats), exp, true);
             }
             catch { }
         });
 
-        return JavTsunamiTo.Menu(hostLocal,
-            new List<(string, string)>(), new List<(string, string)>());
+        return JavTsunamiTo.Menu(hostLocal, new List<(string, string)>());
     }
 
     // Trang detail: tach iframe trong <div class="video-player">. Cache 15
