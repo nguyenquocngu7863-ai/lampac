@@ -382,6 +382,130 @@ public class Chromium : PlaywrightBase, IDisposable
 
     bool deferredDispose { get; set; }
 
+    #region TryDisposeStale
+    // Bo handle Playwright cu da chet. Khong await vi browser da chet thi
+    // CloseAsync/DisposeAsync deu treo hoac nem, ma ta dang o duong mo
+    // trang thai chet nen bo qua ket qua cung duoc. Chi can drop tham chieu
+    // de GC dong socket va giai phong RAM.
+    static void TryDisposeStale()
+    {
+        try
+        {
+            keepopen_context = null;
+
+            if (pages_keepopen != null)
+                pages_keepopen.Clear();
+
+            var b = browser;
+            browser = null;
+            try { b?.DisposeAsync(); } catch { }
+
+            var p = playwright;
+            playwright = null;
+            try { p?.Dispose(); } catch { }
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "CatchId={CatchId}", "id_stale_01");
+        }
+    }
+    #endregion
+
+
+    #region IsBrowserAlive
+    // Process Chrome co the bi OOM killer giet trong khi bien C# `browser` van
+    // con tro toi object Playwright da chet. Luc do `browser == null` ra false,
+    // nen code cu bo qua qua trang thai chet va moi request lai nhan loi
+    // "Target page, context or browser has been closed". Phai them `IsConnected`.
+    static bool IsBrowserAlive()
+    {
+        if (browser == null)
+            return false;
+
+        try
+        {
+            return browser.IsConnected;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+    #endregion
+
+
+    #region TryRelaunchAsync
+    // Han giua 2 lan launch. Khi RAM khan, launch lap lai lien khong chi
+    // ton them RAM ma moi lan cung that bai.
+    const int RelaunchCooldownSec = 8;
+
+    // Thoi diem lan relaunch gan nhat (Utc ticks). 0 = chua relaunch bao gio.
+    static long _lastRelaunchUtcTicks = 0;
+
+    static async Task<bool> TryRelaunchAsync()
+    {
+        if (!CoreInit.conf.chromium.enable)
+            return false;
+
+        bool gotLock = false;
+        for (int i = 0; i < 30 && !gotLock; i++)
+        {
+            if (Interlocked.Exchange(ref _cronBrowserDisconnectedWork, 1) == 0)
+            {
+                gotLock = true;
+            }
+            else
+            {
+                if (IsBrowserAlive())
+                    return true;
+
+                await Task.Delay(500);
+            }
+        }
+
+        if (!gotLock)
+            return IsBrowserAlive();
+
+        try
+        {
+            long lastTicks = Interlocked.Read(ref _lastRelaunchUtcTicks);
+            if (lastTicks > 0)
+            {
+                long passed = (long)(DateTime.UtcNow - new DateTime(lastTicks, DateTimeKind.Utc)).TotalMilliseconds;
+                long waitMs = RelaunchCooldownSec * 1000L - passed;
+
+                if (waitMs > 0)
+                    await Task.Delay((int)Math.Min(waitMs, 10000L));
+            }
+
+            if (IsBrowserAlive())
+                return true;
+
+            Interlocked.Exchange(ref _lastRelaunchUtcTicks, DateTime.UtcNow.Ticks);
+
+            Console.WriteLine("Chromium: TryRelaunchAsync");
+
+            TryDisposeStale();
+
+            await CreateAsync();
+
+            bool ok = IsBrowserAlive();
+            Console.WriteLine("Chromium: TryRelaunchAsync -> " + ok);
+            return ok;
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "CatchId={CatchId}", "id_relaunch_01");
+            return IsBrowserAlive();
+        }
+        finally
+        {
+            Volatile.Write(ref _cronBrowserDisconnectedWork, 0);
+        }
+    }
+    #endregion
+
+
     public string failedUrl { get; set; }
 
     IPage page { get; set; }
@@ -395,8 +519,16 @@ public class Chromium : PlaywrightBase, IDisposable
     {
         try
         {
-            if (browser == null)
-                return null;
+            if (!IsBrowserAlive())
+            {
+                // KHONG chi check `browser == null`: khi process Chrome bi OOM
+                // killer giet, bien `browser` trong C# van con tro toi object
+                // Playwright da chet, nen `== null` ra false va code bo qua.
+                // Moi loi chi la "Target page, context or browser has been closed".
+                // Phai kiem `IsConnected` roi thu launch lai 1 lan o duoi.
+                if (!await TryRelaunchAsync())
+                    return null;
+            }
 
             this.imitationHuman = imitationHuman;
             this.deferredDispose = deferredDispose;
