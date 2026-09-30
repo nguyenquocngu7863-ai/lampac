@@ -40,7 +40,11 @@ public class ModInit : IModuleLoaded, IModuleSisi
         {
             displayindex = 6,
             streamproxy = true,
-            httpversion = 2,
+            // httpversion = 1 BAT BUOC. Do truc tiep: IPv4+HTTP/1.1 ve 200
+            // ca 2 lan (1.4s, 3.1s); IPv4+HTTP/2 treo o TLS handshake
+            // (time_appconnect=0, ttfb=15s -> 000); IPv6 chet han (000/3ms).
+            // De httpversion = 2 thi home treo that thuong ngay lan dau.
+            httpversion = 1,
             httptimeout = 20,
             rch_access = "apk",
             stream_access = "apk",

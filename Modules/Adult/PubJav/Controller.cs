@@ -54,36 +54,27 @@ public class PubJavController : BaseSisiController
             hit != null && hit.Count > 0)
             return hit;
 
-        var warm = Task.WhenAll(
-            TaxonomiesAsync("genres", "genre/"),
-            TaxonomiesAsync("studios", "studio/"));
+        // LAN DAU: tra menu rut gon ngay, warm taxonomy that o background.
+        // Ban cu `await warm.WaitAsync(7s)` chan response home; cong voi fetch
+        // trang home khi site treo (15-20s) thi tong >25s, app timeout ~15s
+        // nen bao "khong load duoc home" ngay lan dau. `host` va key duoc
+        // capture truoc vi HttpContext co the da xong khi task background chay.
+        string hostLocal = host;
 
-        try
+        _ = Task.Run(async () =>
         {
-            await warm.WaitAsync(TimeSpan.FromSeconds(7));
-        }
-        catch
-        {
-            // Het deadline / loi mang -> tra menu rut gon, lan sau fetch lai.
-        }
+            try
+            {
+                var g = await TaxonomiesAsync("genres", "genre/");
+                var s = await TaxonomiesAsync("studios", "studio/");
 
-        List<(string slug, string name)> genres = null;
-        List<(string slug, string name)> studios = null;
+                if (g.Count > 0 || s.Count > 0)
+                    hybridCache.Set(memKey, PubJavTo.Menu(hostLocal, g, s), cacheTime(720), true);
+            }
+            catch { }
+        });
 
-        if (warm.IsCompletedSuccessfully)
-        {
-            genres = warm.Result[0];
-            studios = warm.Result[1];
-        }
-
-        var menu = PubJavTo.Menu(host, genres, studios);
-
-        // Chi cache khi co it nhat mot danh sach that — menu fallback 16 dong
-        // se lam mat 315/312 muc o cac lan sau.
-        if (genres?.Count > 0 || studios?.Count > 0)
-            hybridCache.Set(memKey, menu, cacheTime(720));
-
-        return menu;
+        return PubJavTo.Menu(hostLocal, null, null);
     }
 
     async Task<List<(string slug, string name)>> TaxonomiesAsync(string page, string prefix)
@@ -99,7 +90,9 @@ public class PubJavController : BaseSisiController
         if (res.Count == 0)
             return res;
 
-        hybridCache.Set(memKey, res, cacheTime(720));
+        // inmemory: List<ValueTuple> qua file cache co the doc lai khong duoc
+        // (giong menu), giu object song trong memory la chac nhat.
+        hybridCache.Set(memKey, res, cacheTime(720), true);
         return res;
     }
 
@@ -367,20 +360,70 @@ public class PubJavController : BaseSisiController
 
     async Task<string> GetPageAsync(string url)
     {
-        string page = null;
-        await httpHydra.GetSpan(url, span => page = span.ToString(), addheaders: PageHeaders());
-
-        if (string.IsNullOrEmpty(page))
+        // Site treo that thuong o ket noi dau, nhung goi lai ngay sau thuong
+        // thong (do truc tiep: 000, 200, 000 xen ke). Vong 6s+8s van thua khi
+        // ca 2 vong deu roi vao luc treo. Nay chia nho thanh nhieu vong 4s
+        // trong cung tran 14s: moi vong la 2 ket noi moi (httpHydra + Http),
+        // vong nao ve truoc ma co noi dung thi lay ngay.
+        var deadline = DateTime.UtcNow.AddSeconds(14);
+        while (DateTime.UtcNow < deadline)
         {
-            page = await Http.Get(
-                url,
-                timeoutSeconds: Math.Max(20, init.httptimeout),
-                httpversion: init.httpversion,
-                proxy: proxy,
-                headers: PageHeaders());
+            double left = (deadline - DateTime.UtcNow).TotalSeconds;
+            if (left < 1)
+                break;
+
+            string page = await RacePageAsync(url, (int)Math.Ceiling(Math.Min(4, left)));
+            if (!string.IsNullOrEmpty(page))
+                return page;
         }
 
-        return page;
+        return null;
+    }
+
+    async Task<string> RacePageAsync(string url, int seconds)
+    {
+        // Chay song song 2 duong httpHydra + Http.Get thang nao ve truoc ma
+        // co noi dung thi lay ngay, tran tong `seconds` giay. Ban cu goi noi
+        // tiep (hydra treo het 20s roi Http.Get them 20s) nen trang home lan
+        // dau >25s, app timeout ~15s va bao "khong load duoc home".
+        string hydraPage = null, directPage = null;
+
+        var t1 = Task.Run(async () =>
+        {
+            try { await httpHydra.GetSpan(url, span => hydraPage = span.ToString(), addheaders: PageHeaders()); }
+            catch { }
+        });
+
+        var t2 = Task.Run(async () =>
+        {
+            try
+            {
+                directPage = await Http.Get(
+                    url,
+                    timeoutSeconds: Math.Max(6, seconds),
+                    httpversion: init.httpversion,
+                    proxy: proxy,
+                    headers: PageHeaders());
+            }
+            catch { }
+        });
+
+        var deadline = DateTime.UtcNow.AddSeconds(seconds);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (!string.IsNullOrEmpty(hydraPage))
+                return hydraPage;
+
+            if (!string.IsNullOrEmpty(directPage))
+                return directPage;
+
+            if (t1.IsCompleted && t2.IsCompleted)
+                break;
+
+            await Task.Delay(200);
+        }
+
+        return !string.IsNullOrEmpty(hydraPage) ? hydraPage : directPage;
     }
 
     async Task<string> PostPlayerAsync(string pageUrl, string filmId,
