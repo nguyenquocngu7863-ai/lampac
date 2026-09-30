@@ -53,53 +53,106 @@ public class JavMoiController : BaseSisiController
     {
         string key = ipkey("javmoi:nav");
 
-        if (!hybridCache.TryGetValue(key,
+        if (hybridCache.TryGetValue(key,
             out List<(string name, string path)> nav)
-            || nav == null || nav.Count == 0)
+            && nav != null && nav.Count > 0)
+            return JavMoiTo.Menu(host, nav);
+
+        // LAN DAU: tra menu rut gon ngay, warm nav that o background.
+        // Ban cu fetch nav (3 attempt noi tiep) CHAN response home.
+        // `host` capture truoc vi HttpContext co the da xong khi task
+        // background chay. Nav la List<ValueTuple> nen giu inmemory.
+        string hostLocal = host;
+
+        _ = Task.Run(async () =>
         {
-            string html = await FetchHtmlAsync(
-                JavMoiTo.SiteHost + "/danh-sach/phim-moi");
+            try
+            {
+                string html = await FetchHtmlAsync(
+                    JavMoiTo.SiteHost + "/danh-sach/phim-moi");
 
-            nav = JavMoiTo.NavList(html);
-            if (nav.Count > 0)
-                hybridCache.Set(key, nav, cacheTime(360));
-        }
+                var list = JavMoiTo.NavList(html);
+                if (list.Count > 0)
+                    hybridCache.Set(key, list, cacheTime(360), true);
+            }
+            catch { }
+        });
 
-        return JavMoiTo.Menu(host, nav);
+        return JavMoiTo.Menu(hostLocal, new List<(string, string)>());
     }
 
-    // Site khong cham, no TREO: do duoc 15 lan thi 7 lan code 200
-    // (0.7-1.6s) va 8 lan code 000 (15.2s = dung bo dem timeout).
-    // Nen dung "timeout ngan + retry nhieu" chu KHONG dung
-    // "timeout dai + mot lan": rut thoi gian che tu 40s xuong ~10s.
-    // KHONG probe rồi chặn link — chặn nhầm sẽ giết phim dang chay.
-    // 3 lan: do 5 lan chi 1 lan 200, 2 lan la 2/5 kha nhat — hay treo.
+    // Site khong cham, no TREO that thuong o ket noi dau (do truc tiep van
+    // 200/1s trong khi module mat 14.5s). Ban cu goi noi tiep 3 attempt,
+    // attempt 1 treo het timeout thi mat trang 8s+ vo ich. Nay chay song
+    // song 2 duong, nhieu vong 4s trong tran 12s, vong nao ve truoc ma co
+    // noi dung thi lay ngay.
     async Task<string> FetchHtmlAsync(string url, int attempts = 3)
     {
         var headers = HeadersModel.Init(
             ("User-Agent", JavMoiTo.ChromeUA),
             ("Referer", JavMoiTo.SiteHost + "/"));
 
-        for (int i = 0; i < attempts; i++)
+        var deadline = DateTime.UtcNow.AddSeconds(12);
+        while (DateTime.UtcNow < deadline)
         {
-            if (i > 0)
-                await Task.Delay(300);
+            double left = (deadline - DateTime.UtcNow).TotalSeconds;
+            if (left < 1)
+                break;
 
-            try
-            {
-                string html = null;
-                await httpHydra.GetSpan(url, span =>
-                {
-                    html = span.ToString();
-                }, addheaders: headers);
-
-                if (!string.IsNullOrEmpty(html))
-                    return html;
-            }
-            catch { }
+            int cap = (int)Math.Ceiling(Math.Min(4, left));
+            string html = await RaceFetchAsync(url, headers, cap);
+            if (!string.IsNullOrEmpty(html))
+                return html;
         }
 
         return null;
+    }
+
+    async Task<string> RaceFetchAsync(string url,
+        IReadOnlyList<HeadersModel> headers, int seconds)
+    {
+        string a = null, b = null;
+
+        var t1 = Task.Run(async () =>
+        {
+            try
+            {
+                await httpHydra.GetSpan(url, span =>
+                {
+                    a = span.ToString();
+                }, addheaders: headers);
+            }
+            catch { }
+        });
+
+        var t2 = Task.Run(async () =>
+        {
+            try
+            {
+                await httpHydra.GetSpan(url, span =>
+                {
+                    b = span.ToString();
+                }, addheaders: headers);
+            }
+            catch { }
+        });
+
+        var deadline = DateTime.UtcNow.AddSeconds(seconds);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (!string.IsNullOrEmpty(a))
+                return a;
+
+            if (!string.IsNullOrEmpty(b))
+                return b;
+
+            if (t1.IsCompleted && t2.IsCompleted)
+                break;
+
+            await Task.Delay(200);
+        }
+
+        return !string.IsNullOrEmpty(a) ? a : b;
     }
 
     // /phim/<slug> -> /storage/m3u8/<slug>/{main|master|index}.m3u8
