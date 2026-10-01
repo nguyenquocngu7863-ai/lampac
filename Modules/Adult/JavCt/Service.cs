@@ -64,7 +64,8 @@ public static class JavCtTo
 
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (Match card in Regex.Matches(html, @"card__cover(.*?)card__content",
+        // Block card keo dai toi het span card__category (chua code vang).
+        foreach (Match card in Regex.Matches(html, @"card__cover([\s\S]*?card__category[\s\S]*?</span\s*>)",
             RegexOptions.IgnoreCase | RegexOptions.Singleline))
         {
             string block = card.Groups[1].Value;
@@ -101,6 +102,18 @@ public static class JavCtTo
             if (string.IsNullOrEmpty(name))
                 continue;
 
+            // Code vang duoi tieu de (card__category): "FC2PPV-4981624".
+            // De code TRUOC tieu de: app cat cuoi khi dai, code sau se mat.
+            var code = Regex.Match(block,
+                @"card__category[^>]*>\s*<a\b[^>]*>([^<]{2,40})</a\s*>",
+                RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            if (code.Success)
+            {
+                string c = Clean(HttpUtility.HtmlDecode(code.Groups[1].Value));
+                if (c.Length > 0 && name.IndexOf(c, StringComparison.OrdinalIgnoreCase) < 0)
+                    name = "[" + c + "] " + name;
+            }
+
             string poster = "";
             var img = Regex.Match(block,
                 @"<img\b[^>]*\bdata-src\s*=\s*[""']([^""']+)[""']",
@@ -136,11 +149,15 @@ public static class JavCtTo
     }
 
     // /categories: <a href=".../category/slug">. /studios: /studio/slug.
-    public static List<(string name, string path)> Taxonomies(string html, string kind)
+    // Moi muc studio co <span>(so phim)</span> ke sau — sap theo so phim
+    // giam dan (1479 hang, menu chi lay top). Category khong co so thi giu
+    // nguyen thu tu trang.
+    public static List<(string name, string path)> Taxonomies(
+        string html, string kind, int top = int.MaxValue)
     {
-        var res = new List<(string, string)>();
+        var res = new List<(string name, string path, int count)>();
         if (string.IsNullOrEmpty(html))
-            return res;
+            return new List<(string, string)>();
 
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         string prefix = kind == "studio" ? "/studio/" : "/category/";
@@ -154,10 +171,27 @@ public static class JavCtTo
             if (slug.Length == 0 || name.Length == 0 || !seen.Add(slug))
                 continue;
 
-            res.Add((name.Replace(':', '-'), (kind == "studio" ? "studio/" : "category/") + slug));
+            int count = 0;
+            string tail = html.Substring(m.Index + m.Length,
+                Math.Min(200, html.Length - m.Index - m.Length));
+            var cm = Regex.Match(tail, @"\(\s*(\d+)\s*\)");
+            if (cm.Success)
+                int.TryParse(cm.Groups[1].Value, out count);
+
+            res.Add((name.Replace(':', '-'), (kind == "studio" ? "studio/" : "category/") + slug, count));
         }
 
-        return res;
+        if (res.Exists(r => r.count > 0))
+            res.Sort((x, y) => y.count.CompareTo(x.count));
+
+        if (res.Count > top)
+            res.RemoveRange(top, res.Count - top);
+
+        var out_ = new List<(string, string)>(res.Count);
+        foreach (var r in res)
+            out_.Add((r.name, r.path));
+
+        return out_;
     }
 
     // POST /ajax/player {episode, filmId, pt} -> {player_enc xor __pk | player}.
@@ -434,6 +468,63 @@ public static class JavCtTo
         catch { }
 
         return (null, null);
+    }
+
+    // Playmate (F4 skill lampac-deobfuscate): iframe `playmate.to/embed/id`
+    // -> POST /api/s {"c":id,"d":"desktop"} -> field "sx" = master .txt.
+    public static async Task<string> PlaymateSourceAsync(
+        string embedUrl, int timeoutSeconds = 10)
+    {
+        if (string.IsNullOrEmpty(embedUrl))
+            return null;
+
+        string id;
+        try
+        {
+            id = new System.Uri(embedUrl).AbsolutePath.Trim('/').Split('/').Last();
+        }
+        catch
+        {
+            return null;
+        }
+
+        if (string.IsNullOrEmpty(id))
+            return null;
+
+        string host;
+        try
+        {
+            host = new System.Uri(embedUrl).GetLeftPart(System.UriPartial.Authority);
+        }
+        catch
+        {
+            return null;
+        }
+
+        try
+        {
+            string json = await Http.Post(
+                host + "/api/s",
+                new System.Net.Http.StringContent(
+                    "{\"c\":\"" + id + "\",\"d\":\"desktop\"}",
+                    System.Text.Encoding.UTF8, "application/json"),
+                timeoutSeconds: timeoutSeconds,
+                headers: HeadersModel.Init(
+                    ("User-Agent", ChromeUA),
+                    ("Referer", host + "/")));
+
+            var m = Regex.Match(json ?? "", "\"sx\"\\s*:\\s*\"([^\"]+)\"",
+                RegexOptions.IgnoreCase);
+            if (!m.Success)
+                return null;
+
+            string src = m.Groups[1].Value.Replace("\\/", "/");
+            return src.StartsWith("http") ? src : null;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     public static List<Shared.Models.SISI.Base.MenuItem> Menu(

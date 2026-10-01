@@ -62,7 +62,7 @@ public class JavCtController : BaseSisiController
             try
             {
                 var catsTask = TaxonomiesAsync("/categories", "category");
-                var studiosTask = TaxonomiesAsync("/studios", "studio");
+                var studiosTask = TaxonomiesAsync("/studios", "studio", 100);
                 await Task.WhenAll(catsTask, studiosTask);
 
                 var cats = await catsTask;
@@ -78,7 +78,7 @@ public class JavCtController : BaseSisiController
         return JavCtTo.Menu(hostLocal, null, null);
     }
 
-    async Task<List<(string name, string path)>> TaxonomiesAsync(string page, string kind)
+    async Task<List<(string name, string path)>> TaxonomiesAsync(string page, string kind, int top = int.MaxValue)
     {
         string memKey = ipkey($"javct:tax:{kind}");
 
@@ -87,7 +87,7 @@ public class JavCtController : BaseSisiController
             return hit;
 
         string html = await GetPageAsync($"{JavCtTo.SiteHost}{page}");
-        var res = JavCtTo.Taxonomies(html, kind);
+        var res = JavCtTo.Taxonomies(html, kind, top);
         if (res.Count == 0)
             return res;
 
@@ -181,8 +181,11 @@ public class JavCtController : BaseSisiController
         return Json(links.ToDictionary(k => k.Key, k =>
         {
             // HLS di route .m3u8, mp4 di route .mp4 (lan lon la app bao
-            // "no EXTM3U delimiter").
-            string route = k.Value.Contains(".m3u8") ? "video.m3u8" : "video.mp4";
+            // "no EXTM3U delimiter"). Playmate tra master .txt (HLS) nen
+            // phai bat ca "/hls/" + "master.txt".
+            string v = k.Value;
+            string route = v.Contains(".m3u8") || v.Contains("/hls/") || v.Contains("master.txt")
+                ? "video.m3u8" : "video.mp4";
             return $"{host}/javct/{route}?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(k.Key)}";
         }));
     }
@@ -233,11 +236,14 @@ public class JavCtController : BaseSisiController
             if (string.IsNullOrEmpty(label))
                 label = "S" + (servers.Count + 1);
 
-            // Nhieu nut trung nhan (FL x2, US x2 chi khac episode): giu
-            // episode DAU TIEN moi nhan. Resolve ca 2 vua phi request vua
-            // lam lech chuoi pt/pk (moi POST xoay 1 vong).
-            if (!servers.Exists(s => s.label == label))
-                servers.Add((label, b.Groups[1].Value));
+            // Giu CA 2 nhanh a/b: nhan trung thi danh so (FL, FL 2...).
+            // Moi POST xoay pt 1 vong nen resolve TUAN TU theo thu tu nut.
+            string key = label;
+            int dup = 2;
+            while (servers.Exists(s => s.label == key))
+                key = label + " " + (dup++);
+
+            servers.Add((key, b.Groups[1].Value));
         }
 
         // Khong thay nut (template khac) thi giu cach cu episode=0.
@@ -388,6 +394,14 @@ public class JavCtController : BaseSisiController
             var (upn, upnRef) = await JavCtTo.UpnSourceAsync(embed);
             if (!string.IsNullOrEmpty(upn))
                 return (upn + "\n" + upnRef, nextPt, nextPk);
+        }
+
+        // Playmate (playmate.to/embed/id): POST /api/s -> sx (F4).
+        if (embed.IndexOf("playmate.to", StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            string pm = await JavCtTo.PlaymateSourceAsync(embed);
+            if (!string.IsNullOrEmpty(pm))
+                return (pm + "\n" + embed, nextPt, nextPk);
         }
 
         return (null, nextPt, nextPk);
