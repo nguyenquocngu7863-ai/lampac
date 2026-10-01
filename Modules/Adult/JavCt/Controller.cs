@@ -179,7 +179,12 @@ public class JavCtController : BaseSisiController
             return OnError("stream_links", refresh_proxy: true);
 
         return Json(links.ToDictionary(k => k.Key, k =>
-            $"{host}/javct/video.mp4?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(k.Key)}"));
+        {
+            // HLS di route .m3u8, mp4 di route .mp4 (lan lon la app bao
+            // "no EXTM3U delimiter").
+            string route = k.Value.Contains(".m3u8") ? "video.m3u8" : "video.mp4";
+            return $"{host}/javct/{route}?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(k.Key)}";
+        }));
     }
 
     // POST /ajax/player {episode=0, filmId=data-source, pt=__pt} ->
@@ -213,14 +218,62 @@ public class JavCtController : BaseSisiController
             return null;
         }
 
+        string pkVal = pk.Success ? pk.Groups[1].Value : "";
+
+        // 3 nut server FL/US/PM: cung filmId (data-source), khac episode
+        // (data-id). Resolve song song tung server, nhan theo ten nut.
+        var servers = new List<(string label, string episode)>();
+        foreach (Match b in Regex.Matches(page,
+            @"<button\b[^>]*\bdata-id\s*=\s*[""']([^""']+)[""'][^>]*>(.*?)</button\s*>",
+            RegexOptions.IgnoreCase | RegexOptions.Singleline))
+        {
+            string label = Regex.Replace(b.Groups[2].Value, "<[^>]+>", " ").Trim();
+            if (label.Length > 12)
+                label = label.Substring(0, 12);
+            if (string.IsNullOrEmpty(label))
+                label = "S" + (servers.Count + 1);
+
+            if (!servers.Exists(s => s.episode == b.Groups[1].Value))
+                servers.Add((label, b.Groups[1].Value));
+        }
+
+        // Khong thay nut (template khac) thi giu cach cu episode=0.
+        if (servers.Count == 0)
+            servers.Add(("MP4", "0"));
+
+
+        var tasks = new List<Task<(string label, string packed)>>();
+        foreach (var (label, episode) in servers)
+            tasks.Add(ResolveServerAsync(pageUrl, ds.Groups[1].Value, episode, pt.Groups[1].Value, pkVal, label));
+
+        var links = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var t in tasks)
+        {
+            var (label, packed) = await t;
+            if (!string.IsNullOrEmpty(packed) && !links.ContainsKey(label))
+                links.TryAdd(label, packed);
+        }
+
+        if (links.Count == 0)
+            return null;
+
+        hybridCache.Set(memKey, links, cacheTime(10));
+        return links;
+    }
+
+    // 1 server: POST episode -> player_enc xor -> embed -> dood mp4.
+    // Tra "url\nreferer" (F5). Token dung 1 lan nen chay lien trong ham.
+    async Task<(string label, string packed)> ResolveServerAsync(
+        string pageUrl, string filmId, string episode, string pt, string pk, string label)
+    {
         string api;
         try
         {
             using var content = new FormUrlEncodedContent(new Dictionary<string, string>()
             {
-                ["episode"] = "0",
-                ["filmId"] = ds.Groups[1].Value,
-                ["pt"] = pt.Groups[1].Value
+                ["episode"] = episode,
+                ["filmId"] = filmId,
+                ["pt"] = pt
             });
 
             api = await Http.Post(
@@ -239,12 +292,12 @@ public class JavCtController : BaseSisiController
         }
         catch
         {
-            return null;
+            return (label, null);
         }
 
         if (string.IsNullOrEmpty(api))
         {
-            return null;
+            return (label, null);
         }
 
 
@@ -257,16 +310,15 @@ public class JavCtController : BaseSisiController
             if (root.TryGetProperty("error", out var err) &&
                 err.ValueKind != System.Text.Json.JsonValueKind.Null &&
                 err.ToString().Length > 0)
-                return null;
+                return (label, null);
 
             if (root.TryGetProperty("player_enc", out var enc) &&
                 enc.ValueKind == System.Text.Json.JsonValueKind.String &&
                 enc.GetString().Length > 0)
             {
-                // Giong JS: xor bang __pk CUA TRANG (pk.Success), khong phai
-                // next_pk (khoa cho request KE TIEP).
-                string key = pk.Success ? pk.Groups[1].Value : "";
-                playerHtml = JavCtTo.XorDecrypt(enc.GetString(), key);
+                // Giong JS: xor bang __pk CUA TRANG, khong phai next_pk
+                // (khoa cho request KE TIEP).
+                playerHtml = JavCtTo.XorDecrypt(enc.GetString(), pk);
             }
             else if (root.TryGetProperty("player", out var pl))
             {
@@ -275,27 +327,39 @@ public class JavCtController : BaseSisiController
         }
         catch
         {
-            return null;
+            return (label, null);
         }
 
         string embed = JavCtTo.EmbedUrl(playerHtml);
         if (string.IsNullOrEmpty(embed))
-            return null;
+            return (label, null);
 
         // DoodStream: embed -> mp4 + referer per-video (F5). Link mp4 phai
         // di route video.mp4 (tra qua .m3u8 la "no EXTM3U delimiter").
-        // Token dung 1 lan nen cache ngan (10 phut theo chuan module).
         var (mp4, referer) = await JavCtTo.DoodSourceAsync(embed);
-        if (string.IsNullOrEmpty(mp4))
-            return null;
+        if (!string.IsNullOrEmpty(mp4))
+            return (label, mp4 + "\n" + referer);
 
-        var links = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        // Khong phai dood (ryderjet...): packer base36 -> hls (F1).
+        // DoodSourceAsync da fetch embed 1 lan; fetch lai de giai packer.
+        try
         {
-            ["MP4"] = mp4 + "\n" + referer
-        };
+            string embedHtml = await Http.Get(
+                embed,
+                timeoutSeconds: 12,
+                headers: HeadersModel.Init(
+                    ("User-Agent", JavCtTo.ChromeUA),
+                    ("Referer", pageUrl)),
+                proxy: proxy,
+                httpversion: init.httpversion);
 
-        hybridCache.Set(memKey, links, cacheTime(10));
-        return links;
+            string master = JavCtTo.StreamHgMaster(embedHtml, pageUrl);
+            if (!string.IsNullOrEmpty(master))
+                return (label + " HLS", master + "\n" + embed);
+        }
+        catch { }
+
+        return (label, null);
     }
 
     [HttpGet]

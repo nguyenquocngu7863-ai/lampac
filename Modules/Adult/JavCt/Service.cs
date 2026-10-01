@@ -268,6 +268,73 @@ public static class JavCtTo
             + $"token={token}&expiry={expiry}", apiHost + "/");
     }
 
+    // StreamHG clone (ryderjet...): packer base36 giai ra
+    // `links={"hls4"|"hls3"|"hls2"}`, uu tien hls4>hls3>hls2 (F1).
+    public static string Unpack(string html)
+    {
+        if (string.IsNullOrEmpty(html))
+            return null;
+
+        var m = Regex.Match(html,
+            @"eval\(function\(p,a,c,k,e,d\)\{[^}]*\}\('([\s\S]*?)',(\d+),(\d+),'([\s\S]*?)'\.split\('\|'\)\)",
+            RegexOptions.IgnoreCase);
+        if (!m.Success)
+            return null;
+
+        string p = m.Groups[1].Value;
+        if (!int.TryParse(m.Groups[2].Value, out int a) ||
+            !int.TryParse(m.Groups[3].Value, out int c))
+            return null;
+
+        var k = m.Groups[4].Value.Split('|');
+
+        for (int i = c - 1; i >= 0; i--)
+        {
+            if (i >= k.Length || string.IsNullOrEmpty(k[i]))
+                continue;
+            p = Regex.Replace(p, @"\b" + ToBase(i, a) + @"\b", _ => k[i]);
+        }
+
+        return p;
+    }
+
+    static string ToBase(int value, int b)
+    {
+        if (value == 0)
+            return "0";
+        var sb = new System.Text.StringBuilder();
+        while (value > 0)
+        {
+            int d = value % b;
+            sb.Insert(0, (char)(d < 10 ? '0' + d : 'a' + d - 10));
+            value /= b;
+        }
+        return sb.ToString();
+    }
+
+    public static string StreamHgMaster(string embedHtml, string referer)
+    {
+        string plain = Unpack(embedHtml);
+        if (string.IsNullOrEmpty(plain))
+            return null;
+
+        foreach (var key in new[] { "hls4", "hls3", "hls2" })
+        {
+            var m = Regex.Match(plain, "\"" + key + "\"\\s*:\\s*\"([^\"]+)\"",
+                RegexOptions.IgnoreCase);
+            if (!m.Success)
+                continue;
+
+            string url = m.Groups[1].Value.Replace("\\/", "/");
+            if (url.StartsWith("//"))
+                url = "https:" + url;
+            if (url.StartsWith("http"))
+                return url;
+        }
+
+        return null;
+    }
+
     public static List<Shared.Models.SISI.Base.MenuItem> Menu(
         string host, IReadOnlyList<(string name, string path)> cats = null,
         IReadOnlyList<(string name, string path)> studios = null)
