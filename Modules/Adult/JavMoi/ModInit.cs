@@ -137,7 +137,10 @@ public class ModInit : IModuleLoaded, IModuleSisi
         {
             displayindex = 21,
             streamproxy = true,
-            httpversion = 2,
+            // httpversion = 1 BAT BUOC (giong PubJav): h2 cua .NET tra ve
+            // rong (0 byte, khong exception) trong khi curl h2 van 200.
+            // Do truc tiep xac nhan.
+            httpversion = 1,
             // Site treo het bo dem roi drop TLS, khong cham that.
             // Timeout 20s la 3 lan thu cho mot lan that su, xem ghi chu
             // o FetchHtmlAsync.
