@@ -1,0 +1,9 @@
+{
+  "name": "JavCt",
+  "description": "JavCt - JAV streaming",
+  "version": "1.0.0",
+  "author": "Lampac",
+  "site": "https://javct.net",
+  "enable": true,
+  "dynamic": true
+}
