@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Playwright;
 using Shared;
 using Shared.Attributes;
 using Shared.Models.Base;
@@ -9,6 +10,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Web;
 
@@ -304,20 +306,19 @@ public class SexTbController : BaseSisiController
         }
 
 
-        // pt/pk DUNG 1 LAN: response tra next_pt/next_pk cho request KE
-        // TIEP. POST song song cung pt thi chi cai dau song (403
-        // E_TOK_MISS). Nen resolve TUAN TU, chuyen pt/pk qua tung server.
-        var links = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        // PHA 1 (tuan tu, nhanh): POST tung episode lay embed + noi
+        // next_pt/next_pk. PHA 2 (song song): resolve tung embed -> link.
+        // Tach ra vi Playwright 1 server cham (20-40s) se chan ca chuoi.
+        var embeds = new List<(string label, string embed)>();
         string curPt = pt.Groups[1].Value, curPk = pkVal;
 
         foreach (var (label, episode) in servers)
         {
-            var (packed, nextPt, nextPk) = await ResolveServerAsync(
-                pageUrl, ds.Groups[1].Value, episode, curPt, curPk, label);
+            var (embed, nextPt, nextPk) = await PostEpisodeAsync(
+                pageUrl, ds.Groups[1].Value, episode, curPt, curPk);
 
-
-            if (!string.IsNullOrEmpty(packed) && !links.ContainsKey(label))
-                links.TryAdd(label, packed);
+            if (!string.IsNullOrEmpty(embed) && !embeds.Exists(x => x.label == label))
+                embeds.Add((label, embed));
 
             if (!string.IsNullOrEmpty(nextPt))
                 curPt = nextPt;
@@ -325,17 +326,60 @@ public class SexTbController : BaseSisiController
                 curPk = nextPk;
         }
 
+        var tasks = new List<Task<(string label, string packed, bool slow)>>();
+        foreach (var (label, embed) in embeds)
+            tasks.Add(ResolveEmbedAsync(embed, pageUrl, label));
+
+        var links = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var pending = new List<(string label, string embed)>();
+        foreach (var t in tasks)
+        {
+            var (label, packed, slow) = await t;
+            if (!string.IsNullOrEmpty(packed) && !links.ContainsKey(label))
+                links.TryAdd(label, packed);
+            else if (slow)
+                pending.Add((label, embeds.Find(x => x.label == label).embed));
+        }
+
+        // Server nhanh ve truoc de app khong timeout; server cham
+        // (Playwright loader) warm nen, lan mo sau co du.
+        if (links.Count > 0)
+            hybridCache.Set(memKey, links, cacheTime(10));
+
+        if (pending.Count > 0)
+        {
+            string mk = memKey;
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    foreach (var (label, embed) in pending)
+                    {
+                        var (_, packed, _) = await ResolveEmbedAsync(embed, pageUrl, label, true);
+                        if (string.IsNullOrEmpty(packed))
+                            continue;
+
+                        if (hybridCache.TryGetValue(mk, out Dictionary<string, string> cur) && cur != null)
+                        {
+                            if (!cur.ContainsKey(label))
+                                cur.TryAdd(label, packed);
+                            hybridCache.Set(mk, cur, cacheTime(10), true);
+                        }
+                    }
+                }
+                catch { }
+            });
+        }
+
         if (links.Count == 0)
             return null;
 
-        hybridCache.Set(memKey, links, cacheTime(10));
         return links;
     }
 
-    // 1 server: POST episode -> player_enc xor -> embed -> dood mp4.
-    // Tra (packed, nextPt, nextPk) de noi pt/pk cho server ke tiep.
-    async Task<(string packed, string nextPt, string nextPk)> ResolveServerAsync(
-        string pageUrl, string filmId, string episode, string pt, string pk, string label)
+    // POST episode -> player_enc xor -> embed + next tokens.
+    async Task<(string embed, string nextPt, string nextPk)> PostEpisodeAsync(
+        string pageUrl, string filmId, string episode, string pt, string pk)
     {
         string api;
         try
@@ -350,7 +394,7 @@ public class SexTbController : BaseSisiController
             api = await Http.Post(
                 SexTbTo.PlayerApi,
                 content,
-                timeoutSeconds: Math.Max(15, init.httptimeout),
+                timeoutSeconds: Math.Max(10, init.httptimeout),
                 headers: HeadersModel.Init(
                     ("User-Agent", SexTbTo.ChromeUA),
                     ("Referer", pageUrl),
@@ -367,12 +411,8 @@ public class SexTbController : BaseSisiController
         }
 
         if (string.IsNullOrEmpty(api))
-        {
             return (null, null, null);
-        }
 
-
-        string playerHtml = null, nextPt = null, nextPk = null;
         try
         {
             var doc = System.Text.Json.JsonDocument.Parse(api);
@@ -381,49 +421,48 @@ public class SexTbController : BaseSisiController
             if (root.TryGetProperty("error", out var err) &&
                 err.ValueKind != System.Text.Json.JsonValueKind.Null &&
                 err.ToString().Length > 0)
-            {
                 return (null, null, null);
-            }
 
+            string nextPt = null, nextPk = null;
             if (root.TryGetProperty("next_pt", out var npt) &&
                 npt.ValueKind == System.Text.Json.JsonValueKind.String)
                 nextPt = npt.GetString();
-
             if (root.TryGetProperty("next_pk", out var npk) &&
                 npk.ValueKind == System.Text.Json.JsonValueKind.String)
                 nextPk = npk.GetString();
 
+            string playerHtml = null;
             if (root.TryGetProperty("player_enc", out var enc) &&
                 enc.ValueKind == System.Text.Json.JsonValueKind.String &&
                 enc.GetString().Length > 0)
             {
-                // Giong JS: xor bang pk HIEN TAI (trang hoac next_pk cua
-                // server truoc), khong phai next_pk cua response nay.
                 playerHtml = SexTbTo.XorDecrypt(enc.GetString(), pk);
             }
             else if (root.TryGetProperty("player", out var pl))
             {
                 playerHtml = pl.ToString();
             }
+
+            return (SexTbTo.EmbedUrl(playerHtml), nextPt, nextPk);
         }
         catch
         {
             return (null, null, null);
         }
+    }
 
-        string embed = SexTbTo.EmbedUrl(playerHtml);
-        if (string.IsNullOrEmpty(embed))
-            return (null, nextPt, nextPk);
-
-        // Host chet (hglink.to 522) thi bo ngay, khoi dot 10-20s.
-        if (!await SexTbTo.EmbedHostAliveAsync(embed))
-            return (null, nextPt, nextPk);
-
-        // DoodStream: embed -> mp4 + referer per-video (F5). Link mp4 phai
-        // di route video.mp4 (tra qua .m3u8 la "no EXTM3U delimiter").
+    // Resolve 1 embed -> packed "url\nreferer": dood (F5) -> packer (F1) ->
+    // UPN (F2) -> Playmate (F4) -> Playwright loader. Goi song song.
+    // Resolve 1 embed. withBrowser=false (foreground): chi HTTP, gap
+    // loader thi danh dau slow de warm nen. withBrowser=true: them Playwright.
+    // Tra (label, packed, slow).
+    async Task<(string label, string packed, bool slow)> ResolveEmbedAsync(
+        string embed, string pageUrl, string label, bool withBrowser = false)
+    {
+        // DoodStream: embed -> mp4 + referer per-video (F5).
         var (mp4, referer) = await SexTbTo.DoodSourceAsync(embed);
         if (!string.IsNullOrEmpty(mp4))
-            return (mp4 + "\n" + referer, nextPt, nextPk);
+            return (label, mp4 + "\n" + referer, false);
 
         // Khong phai dood (ryderjet...): packer base36 -> hls (F1).
         // DoodSourceAsync da fetch embed 1 lan; fetch lai de giai packer.
@@ -440,7 +479,7 @@ public class SexTbController : BaseSisiController
 
             string master = SexTbTo.StreamHgMaster(embedHtml, pageUrl);
             if (!string.IsNullOrEmpty(master))
-                return (master + "\n" + embed, nextPt, nextPk);
+                return (label, master + "\n" + embed, false);
         }
         catch { }
 
@@ -450,7 +489,7 @@ public class SexTbController : BaseSisiController
         {
             var (upn, upnRef) = await SexTbTo.UpnSourceAsync(embed);
             if (!string.IsNullOrEmpty(upn))
-                return (upn + "\n" + upnRef, nextPt, nextPk);
+                return (label, upn + "\n" + upnRef, false);
         }
 
         // Playmate (playmate.to/embed/id): POST /api/s -> sx (F4).
@@ -458,10 +497,139 @@ public class SexTbController : BaseSisiController
         {
             string pm = await SexTbTo.PlaymateSourceAsync(embed);
             if (!string.IsNullOrEmpty(pm))
-                return (pm + "\n" + embed, nextPt, nextPk);
+                return (label, pm + "\n" + embed, false);
         }
 
-        return (null, nextPt, nextPk);
+        // Cuoi cung: trang loader JS (hglink.to...): URL stream sinh trong
+        // trinh duyet, HTTP khong thay. Dung Playwright doc video/src.
+        // Loader hglink: NEU gui Referer trang phim thi tra trang rong
+        // (title audinifer.com, khong video). Khong Referer thi tu chay
+        // sau ~4s. Nen Playwright KHONG gui referer.
+        string js = await PlaywrightEmbedAsync(embed, null);
+        if (!string.IsNullOrEmpty(js))
+            return (label, js + "\n" + embed, false);
+
+        // Trang loader JS (hglink.to...): foreground bo qua (slow=true) de
+        // app khong timeout; background warm se chay Playwright.
+        if (!withBrowser)
+            return (label, null, true);
+
+        return (label, null, false);
+    }
+
+    // Embed loader JS: mo trang, doi 15s, doc video/src hoac m3u8/mp4 dau
+    // tien trong DOM. Dung chung 1 context (keepopen) + khoa render de do
+    // RAM, dong page ngay sau khi xong.
+    static SemaphoreSlim _embedLock = new SemaphoreSlim(1, 1);
+
+    async Task<string> PlaywrightEmbedAsync(string embedUrl, string referer)
+    {
+        IPage page = null;
+        if (!await _embedLock.WaitAsync(TimeSpan.FromSeconds(30)))
+            return null;
+
+        try
+        {
+            using var browser = new Shared.PlaywrightCore.PlaywrightBrowser();
+            var hdrs = new Dictionary<string, string>
+            {
+                ["User-Agent"] = SexTbTo.ChromeUA
+            };
+            if (!string.IsNullOrEmpty(referer))
+                hdrs["Referer"] = referer;
+            page = await browser.NewPageAsync(init.plugin, hdrs, keepopen: true);
+
+            if (page == null)
+                return null;
+
+            string netHit = null;
+            page.Request += (_, request) =>
+            {
+                try
+                {
+                    var u = request.Url;
+                    if (netHit == null && (u.Contains(".m3u8") || u.Contains(".mp4")) &&
+                        !u.Contains("ping.") && !u.Contains("jwpltx"))
+                    {
+                        netHit = u;
+                        Console.WriteLine($"SXDBG nethit {u.Substring(0, Math.Min(80, u.Length))}");
+                    }
+                }
+                catch { }
+            };
+
+            try
+            {
+                await page.GotoAsync(embedUrl, new PageGotoOptions
+                {
+                    Timeout = 20000,
+                    WaitUntil = WaitUntilState.DOMContentLoaded
+                });
+                Console.WriteLine("SXDBG goto ok");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"SXDBG goto {ex.GetType().Name}");
+            }
+
+            // Loader co Referer thi doi click moi chay video (khong Referer
+            // tu chay sau 4s). Bam thu cac nut play pho bien truoc khi poll.
+            try
+            {
+                foreach (var sel in new[] {
+                    "#play-btn", ".fakeplayer", ".play-button", ".playbox",
+                    ".playbtm", "video", ".jwplayer", "#player" })
+                {
+                    try
+                    {
+                        var el = await page.QuerySelectorAsync(sel);
+                        if (el != null)
+                        {
+                            await el.ClickAsync();
+                            break;
+                        }
+                    }
+                    catch { }
+                }
+            }
+            catch { }
+
+            for (int i = 0; i < 20; i++)
+            {
+                if (!string.IsNullOrEmpty(netHit))
+                    return netHit;
+
+                await Task.Delay(1000);
+
+                string found = null;
+                try
+                {
+                    found = await page.EvaluateAsync<string>(@"() => {
+                        const v = document.querySelector('video');
+                        if (v && (v.currentSrc || v.src)) return v.currentSrc || v.src;
+                        const h = document.documentElement.innerHTML;
+                        const m = h.match(/https?:[^'""\s<>]+\.m3u8[^'""\s<>]*/i)
+                            || h.match(/https?:[^'""\s<>]+\.mp4[^'""\s<>]*/i);
+                        return m ? m[0] : null;
+                    }");
+                }
+                catch { }
+
+                if (!string.IsNullOrEmpty(found))
+                    return found;
+            }
+
+            return netHit;
+        }
+        catch
+        {
+            return null;
+        }
+        finally
+        {
+            try { await page?.CloseAsync(); } catch { }
+            _embedLock.Release();
+        }
     }
 
     [HttpGet]

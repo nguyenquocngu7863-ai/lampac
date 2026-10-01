@@ -146,9 +146,36 @@ public static class SexTbTo
     // Moi muc studio co <span>(so phim)</span> ke sau — sap theo so phim
     // giam dan (1479 hang, menu chi lay top). Category khong co so thi giu
     // nguyen thu tu trang.
-    // Taxonomy: genre tu nav home (/genre/x), studio tu /list-studios
-    // (168, 1 trang), label tu /list-labels (150, 1 trang). Prefix rieng
-    // tung loai; ten label/studio lay tu text, genre suy tu slug.
+    // Trang /list-studios/X: <a href="/studio/slug">ten</a>
+    // <span class="total">N</span>. Lay het 27 trang (goc + a-z), sap theo
+    // so phim giam dan — lay dau list la sai vi chu cai chu khong phai
+    // xep hang (user phat hien: lay top 100 theo so phim).
+    public static List<(string name, string path, int count)> StudioList(string html)
+    {
+        var res = new List<(string, string, int)>();
+        if (string.IsNullOrEmpty(html))
+            return res;
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (Match m in Regex.Matches(html,
+            "<a\\s[^>]*href=\"(/studio/[^\"?#]+)\"[^>]*>([\\s\\S]{1,80}?)</a\\s*>\\s*<span[^>]*>(\\d+)</span\\s*>",
+            RegexOptions.IgnoreCase | RegexOptions.Singleline))
+        {
+            string slug = Clean(m.Groups[1].Value);
+            string name = Clean(HttpUtility.HtmlDecode(
+                Regex.Replace(m.Groups[2].Value, "<[^>]+>", " ")));
+            name = Regex.Replace(name, @"\s+", " ").Trim();
+
+            if (slug.Length == 0 || name.Length == 0 || !seen.Add(slug))
+                continue;
+
+            int.TryParse(m.Groups[3].Value, out int count);
+            res.Add((name.Replace(':', '-'), slug.Trim('/'), count));
+        }
+
+        return res;
+    }
     public static List<(string name, string path)> Taxonomies(
         string html, string kind, int top = int.MaxValue)
     {
@@ -530,6 +557,43 @@ public static class SexTbTo
         }
     }
 
+    // Host embed chet theo cum (hglink.to 522 toan bo): resolve day du
+    // mat 10-20s roi van 503. Probe nhanh host 1 lan, cache ket qua —
+    // host chet thi bo qua ngay de roi xuong server khac / tra loi nhanh.
+    static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (bool alive, DateTime exp)> _hostCache =
+        new System.Collections.Concurrent.ConcurrentDictionary<string, (bool, DateTime)>();
+
+    public static async Task<bool> EmbedHostAliveAsync(string embedUrl)
+    {
+        string host;
+        try
+        {
+            host = new System.Uri(embedUrl).GetLeftPart(System.UriPartial.Authority).ToLowerInvariant();
+        }
+        catch
+        {
+            return false;
+        }
+
+        if (_hostCache.TryGetValue(host, out var hit) && hit.exp > DateTime.UtcNow)
+            return hit.alive;
+
+        bool alive = false;
+        try
+        {
+            string res = await Http.Get(
+                host + "/",
+                timeoutSeconds: 5,
+                headers: HeadersModel.Init(("User-Agent", ChromeUA)));
+            // 522/523/524 (Cloudflare origin chet), 403 block, rong = chet.
+            alive = !string.IsNullOrEmpty(res) && res.Length > 1000;
+        }
+        catch { }
+
+        _hostCache[host] = (alive, DateTime.UtcNow.AddMinutes(alive ? 30 : 10));
+        return alive;
+    }
+
     public static List<Shared.Models.SISI.Base.MenuItem> Menu(
         string host, IReadOnlyList<(string name, string path)> cats = null,
         IReadOnlyList<(string name, string path)> studios = null,
@@ -542,12 +606,8 @@ public static class SexTbTo
                 genreMenu.Add(new(c.name, host + "/sextb?c=" + c.path));
         }
 
-        var labelMenu = new List<Shared.Models.SISI.Base.MenuItem>();
-        if (labels != null)
-        {
-            foreach (var l in labels.Take(300))
-                labelMenu.Add(new(l.name, host + "/sextb?c=" + l.path));
-        }
+        // Nhan 4000 muc — KHONG lay (user quyet). Giu param de sau can.
+        _ = labels;
 
         var studioMenu = new List<Shared.Models.SISI.Base.MenuItem>();
         if (studios != null)
@@ -577,14 +637,6 @@ public static class SexTbTo
                 title = "Thể loại",
                 playlist_url = "submenu",
                 submenu = genreMenu
-            });
-
-        if (labelMenu.Count > 0)
-            root.Add(new Shared.Models.SISI.Base.MenuItem()
-            {
-                title = "Nhãn",
-                playlist_url = "submenu",
-                submenu = labelMenu
             });
 
         if (studioMenu.Count > 0)
