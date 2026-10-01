@@ -235,7 +235,7 @@ public static class JavCtTo
         string apiHost = SiteHost;
         try
         {
-            var u = new Uri(embedUrl);
+            var u = new System.Uri(embedUrl);
             int at = u.AbsoluteUri.IndexOf("/e/", StringComparison.OrdinalIgnoreCase);
             if (at > 8)
                 apiHost = u.AbsoluteUri.Substring(0, at);
@@ -333,6 +333,107 @@ public static class JavCtTo
         }
 
         return null;
+    }
+
+    // UPN/PP (F2 skill lampac-deobfuscate): iframe `player.upn.one/#id`
+    // -> GET /api/v1/video?id= -> hex -> AES-128-CBC -> JSON 17 khoa,
+    // lay cfNative (master signed, 200 khong can cookie).
+    public const string UpnKey = "kiemtienmua911ca";
+    public const string UpnIv = "1234567890oiuytr";
+
+    public static string UpnDecrypt(string hex)
+    {
+        if (string.IsNullOrWhiteSpace(hex))
+            return null;
+        hex = hex.Trim().Trim('"');
+        if (hex.Length % 2 != 0)
+            return null;
+
+        var data = new byte[hex.Length / 2];
+        for (int i = 0; i < data.Length; i++)
+        {
+            if (!System.Uri.IsHexDigit(hex[i * 2]) || !System.Uri.IsHexDigit(hex[i * 2 + 1]))
+                return null;
+            data[i] = Convert.ToByte(hex.Substring(i * 2, 2), 16);
+        }
+
+        try
+        {
+            using var aes = System.Security.Cryptography.Aes.Create();
+            aes.KeySize = 128;
+            aes.Mode = System.Security.Cryptography.CipherMode.CBC;
+            aes.Padding = System.Security.Cryptography.PaddingMode.PKCS7;
+            aes.Key = System.Text.Encoding.UTF8.GetBytes(UpnKey);
+            aes.IV = System.Text.Encoding.UTF8.GetBytes(UpnIv);
+            using var tr = aes.CreateDecryptor();
+            return System.Text.Encoding.UTF8.GetString(
+                tr.TransformFinalBlock(data, 0, data.Length));
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public static async Task<(string url, string referer)> UpnSourceAsync(
+        string embedUrl, int timeoutSeconds = 10)
+    {
+        if (string.IsNullOrEmpty(embedUrl))
+            return (null, null);
+
+        int hash = embedUrl.IndexOf('#');
+        if (hash < 0)
+            return (null, null);
+
+        string id = embedUrl.Substring(hash + 1).Trim().Trim('/');
+        int amp = id.IndexOf('&');
+        if (amp >= 0)
+            id = id.Substring(0, amp);
+        if (id.Length < 2)
+            return (null, null);
+
+        string host;
+        try
+        {
+            host = new System.Uri(embedUrl).GetLeftPart(System.UriPartial.Authority);
+        }
+        catch
+        {
+            return (null, null);
+        }
+
+        string hex;
+        try
+        {
+            hex = await Http.Get(
+                host + "/api/v1/video?id=" + System.Uri.EscapeDataString(id),
+                timeoutSeconds: timeoutSeconds,
+                headers: HeadersModel.Init(
+                    ("User-Agent", ChromeUA),
+                    ("Referer", host + "/")));
+        }
+        catch
+        {
+            return (null, null);
+        }
+
+        string json = UpnDecrypt(hex);
+        if (string.IsNullOrEmpty(json))
+            return (null, null);
+
+        try
+        {
+            var doc = System.Text.Json.JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            if (root.TryGetProperty("cfNative", out var cf) &&
+                cf.ValueKind == System.Text.Json.JsonValueKind.String &&
+                cf.GetString().StartsWith("http"))
+                return (cf.GetString(), host + "/");
+        }
+        catch { }
+
+        return (null, null);
     }
 
     public static List<Shared.Models.SISI.Base.MenuItem> Menu(

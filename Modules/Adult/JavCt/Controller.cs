@@ -233,7 +233,10 @@ public class JavCtController : BaseSisiController
             if (string.IsNullOrEmpty(label))
                 label = "S" + (servers.Count + 1);
 
-            if (!servers.Exists(s => s.episode == b.Groups[1].Value))
+            // Nhieu nut trung nhan (FL x2, US x2 chi khac episode): giu
+            // episode DAU TIEN moi nhan. Resolve ca 2 vua phi request vua
+            // lam lech chuoi pt/pk (moi POST xoay 1 vong).
+            if (!servers.Exists(s => s.label == label))
                 servers.Add((label, b.Groups[1].Value));
         }
 
@@ -242,16 +245,25 @@ public class JavCtController : BaseSisiController
             servers.Add(("MP4", "0"));
 
 
-        var tasks = new List<Task<(string label, string packed)>>();
-        foreach (var (label, episode) in servers)
-            tasks.Add(ResolveServerAsync(pageUrl, ds.Groups[1].Value, episode, pt.Groups[1].Value, pkVal, label));
-
+        // pt/pk DUNG 1 LAN: response tra next_pt/next_pk cho request KE
+        // TIEP. POST song song cung pt thi chi cai dau song (403
+        // E_TOK_MISS). Nen resolve TUAN TU, chuyen pt/pk qua tung server.
         var links = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var t in tasks)
+        string curPt = pt.Groups[1].Value, curPk = pkVal;
+
+        foreach (var (label, episode) in servers)
         {
-            var (label, packed) = await t;
+            var (packed, nextPt, nextPk) = await ResolveServerAsync(
+                pageUrl, ds.Groups[1].Value, episode, curPt, curPk, label);
+
+
             if (!string.IsNullOrEmpty(packed) && !links.ContainsKey(label))
                 links.TryAdd(label, packed);
+
+            if (!string.IsNullOrEmpty(nextPt))
+                curPt = nextPt;
+            if (!string.IsNullOrEmpty(nextPk))
+                curPk = nextPk;
         }
 
         if (links.Count == 0)
@@ -262,8 +274,8 @@ public class JavCtController : BaseSisiController
     }
 
     // 1 server: POST episode -> player_enc xor -> embed -> dood mp4.
-    // Tra "url\nreferer" (F5). Token dung 1 lan nen chay lien trong ham.
-    async Task<(string label, string packed)> ResolveServerAsync(
+    // Tra (packed, nextPt, nextPk) de noi pt/pk cho server ke tiep.
+    async Task<(string packed, string nextPt, string nextPk)> ResolveServerAsync(
         string pageUrl, string filmId, string episode, string pt, string pk, string label)
     {
         string api;
@@ -292,16 +304,16 @@ public class JavCtController : BaseSisiController
         }
         catch
         {
-            return (label, null);
+            return (null, null, null);
         }
 
         if (string.IsNullOrEmpty(api))
         {
-            return (label, null);
+            return (null, null, null);
         }
 
 
-        string playerHtml = null;
+        string playerHtml = null, nextPt = null, nextPk = null;
         try
         {
             var doc = System.Text.Json.JsonDocument.Parse(api);
@@ -310,14 +322,24 @@ public class JavCtController : BaseSisiController
             if (root.TryGetProperty("error", out var err) &&
                 err.ValueKind != System.Text.Json.JsonValueKind.Null &&
                 err.ToString().Length > 0)
-                return (label, null);
+            {
+                return (null, null, null);
+            }
+
+            if (root.TryGetProperty("next_pt", out var npt) &&
+                npt.ValueKind == System.Text.Json.JsonValueKind.String)
+                nextPt = npt.GetString();
+
+            if (root.TryGetProperty("next_pk", out var npk) &&
+                npk.ValueKind == System.Text.Json.JsonValueKind.String)
+                nextPk = npk.GetString();
 
             if (root.TryGetProperty("player_enc", out var enc) &&
                 enc.ValueKind == System.Text.Json.JsonValueKind.String &&
                 enc.GetString().Length > 0)
             {
-                // Giong JS: xor bang __pk CUA TRANG, khong phai next_pk
-                // (khoa cho request KE TIEP).
+                // Giong JS: xor bang pk HIEN TAI (trang hoac next_pk cua
+                // server truoc), khong phai next_pk cua response nay.
                 playerHtml = JavCtTo.XorDecrypt(enc.GetString(), pk);
             }
             else if (root.TryGetProperty("player", out var pl))
@@ -327,18 +349,18 @@ public class JavCtController : BaseSisiController
         }
         catch
         {
-            return (label, null);
+            return (null, null, null);
         }
 
         string embed = JavCtTo.EmbedUrl(playerHtml);
         if (string.IsNullOrEmpty(embed))
-            return (label, null);
+            return (null, nextPt, nextPk);
 
         // DoodStream: embed -> mp4 + referer per-video (F5). Link mp4 phai
         // di route video.mp4 (tra qua .m3u8 la "no EXTM3U delimiter").
         var (mp4, referer) = await JavCtTo.DoodSourceAsync(embed);
         if (!string.IsNullOrEmpty(mp4))
-            return (label, mp4 + "\n" + referer);
+            return (mp4 + "\n" + referer, nextPt, nextPk);
 
         // Khong phai dood (ryderjet...): packer base36 -> hls (F1).
         // DoodSourceAsync da fetch embed 1 lan; fetch lai de giai packer.
@@ -355,11 +377,20 @@ public class JavCtController : BaseSisiController
 
             string master = JavCtTo.StreamHgMaster(embedHtml, pageUrl);
             if (!string.IsNullOrEmpty(master))
-                return (label + " HLS", master + "\n" + embed);
+                return (master + "\n" + embed, nextPt, nextPk);
         }
         catch { }
 
-        return (label, null);
+        // UPN/PP (player.upn.one/#id): API hex + AES (F2).
+        if (embed.IndexOf("upn.one", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            embed.IndexOf("strp2p.com", StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            var (upn, upnRef) = await JavCtTo.UpnSourceAsync(embed);
+            if (!string.IsNullOrEmpty(upn))
+                return (upn + "\n" + upnRef, nextPt, nextPk);
+        }
+
+        return (null, nextPt, nextPk);
     }
 
     [HttpGet]
