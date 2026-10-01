@@ -57,23 +57,29 @@ public class SexTbController : BaseSisiController
 
         string hostLocal = host;
 
-        // Taxonomy nam tren nav trang chu (1 fetch duy nhat).
+        // Taxonomy: genres tu nav home; studios/labels tu trang list
+        // day du (/list-studios 168, /list-labels 150). Fetch song song.
         _ = Task.Run(async () =>
         {
             try
             {
-                string home = await GetPageAsync(SexTbTo.SiteHost + "/");
-                var cats = SexTbTo.Taxonomies(home, "genre");
-                var studios = SexTbTo.Taxonomies(home, "studio", 100);
+                var homeTask = GetPageAsync(SexTbTo.SiteHost + "/");
+                var studiosTask = GetPageAsync(SexTbTo.SiteHost + "/list-studios");
+                var labelsTask = GetPageAsync(SexTbTo.SiteHost + "/list-labels");
+                await Task.WhenAll(homeTask, studiosTask, labelsTask);
 
-                if (cats.Count > 0 || studios.Count > 0)
+                var cats = SexTbTo.Taxonomies(await homeTask, "genre");
+                var studios = SexTbTo.Taxonomies(await studiosTask, "studio");
+                var labels = SexTbTo.Taxonomies(await labelsTask, "label");
+
+                if (cats.Count > 0 || studios.Count > 0 || labels.Count > 0)
                     hybridCache.Set(memKey,
-                        SexTbTo.Menu(hostLocal, cats, studios), cacheTime(720), true);
+                        SexTbTo.Menu(hostLocal, cats, studios, labels), cacheTime(720), true);
             }
             catch { }
         });
 
-        return SexTbTo.Menu(hostLocal, null, null);
+        return SexTbTo.Menu(hostLocal, null, null, null);
     }
 
     async Task<List<(string name, string path)>> TaxonomiesAsync(string page, string kind, int top = int.MaxValue)
@@ -255,9 +261,14 @@ public class SexTbController : BaseSisiController
                 servers.Add((label, b.Groups[1].Value));
         }
 
-        // Khong thay nut thi episode=0.
+        // Khong thay nut episode: episode = filmId (data-source).
+        // episode=0 tra E_TOK_MISS o template nay (do tay xac nhan).
         if (servers.Count == 0)
-            servers.Add(("MP4", "0"));
+        {
+            var dsm = Regex.Match(page, @"data-source\s*=\s*[""']([^""']+)[""']",
+                RegexOptions.IgnoreCase);
+            servers.Add(("MP4", dsm.Success ? dsm.Groups[1].Value : "0"));
+        }
 
 
         // pt/pk DUNG 1 LAN: response tra next_pt/next_pk cho request KE

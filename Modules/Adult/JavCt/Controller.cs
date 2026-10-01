@@ -246,9 +246,14 @@ public class JavCtController : BaseSisiController
             servers.Add((key, b.Groups[1].Value));
         }
 
-        // Khong thay nut (template khac) thi giu cach cu episode=0.
+        // Khong thay nut episode: episode = filmId (data-source).
+        // episode=0 tra E_TOK_MISS (SexTb do tay xac nhan cung ho API).
         if (servers.Count == 0)
-            servers.Add(("MP4", "0"));
+        {
+            var dsm = Regex.Match(page, @"data-source\s*=\s*[""']([^""']+)[""']",
+                RegexOptions.IgnoreCase);
+            servers.Add(("MP4", dsm.Success ? dsm.Groups[1].Value : "0"));
+        }
 
 
         // pt/pk DUNG 1 LAN: response tra next_pt/next_pk cho request KE

@@ -146,9 +146,9 @@ public static class SexTbTo
     // Moi muc studio co <span>(so phim)</span> ke sau — sap theo so phim
     // giam dan (1479 hang, menu chi lay top). Category khong co so thi giu
     // nguyen thu tu trang.
-    // Taxonomy nam trong navbar submenu: <a class="navbar-menu-ditem"
-    // href="/studio/slug"> + ten. Genre (/genre/x) cung mau.
-    // Ten genre suy tu slug (bo duoi -hash): amateur-9yvovjqr -> Amateur.
+    // Taxonomy: genre tu nav home (/genre/x), studio tu /list-studios
+    // (168, 1 trang), label tu /list-labels (150, 1 trang). Prefix rieng
+    // tung loai; ten label/studio lay tu text, genre suy tu slug.
     public static List<(string name, string path)> Taxonomies(
         string html, string kind, int top = int.MaxValue)
     {
@@ -157,7 +157,8 @@ public static class SexTbTo
             return res;
 
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        string prefix = kind == "studio" ? "/studio/" : "/genre/";
+        string prefix = kind == "studio" ? "/studio/"
+            : kind == "label" ? "/label/" : "/genre/";
 
         foreach (Match m in Regex.Matches(html,
             "<a\\s[^>]*href=\"(" + Regex.Escape(prefix) + "[^\"?#]+)\"[^>]*>([\\s\\S]{1,120}?)</a\\s*>",
@@ -531,7 +532,8 @@ public static class SexTbTo
 
     public static List<Shared.Models.SISI.Base.MenuItem> Menu(
         string host, IReadOnlyList<(string name, string path)> cats = null,
-        IReadOnlyList<(string name, string path)> studios = null)
+        IReadOnlyList<(string name, string path)> studios = null,
+        IReadOnlyList<(string name, string path)> labels = null)
     {
         var genreMenu = new List<Shared.Models.SISI.Base.MenuItem>();
         if (cats != null)
@@ -540,11 +542,17 @@ public static class SexTbTo
                 genreMenu.Add(new(c.name, host + "/sextb?c=" + c.path));
         }
 
+        var labelMenu = new List<Shared.Models.SISI.Base.MenuItem>();
+        if (labels != null)
+        {
+            foreach (var l in labels.Take(300))
+                labelMenu.Add(new(l.name, host + "/sextb?c=" + l.path));
+        }
+
         var studioMenu = new List<Shared.Models.SISI.Base.MenuItem>();
         if (studios != null)
         {
-            // 1479 studio 1 trang — chi lay 100 dau, hoi user neu muon full.
-            foreach (var s in studios.Take(100))
+            foreach (var s in studios)
                 studioMenu.Add(new(s.name, host + "/sextb?c=" + s.path));
         }
 
@@ -569,6 +577,14 @@ public static class SexTbTo
                 title = "Thể loại",
                 playlist_url = "submenu",
                 submenu = genreMenu
+            });
+
+        if (labelMenu.Count > 0)
+            root.Add(new Shared.Models.SISI.Base.MenuItem()
+            {
+                title = "Nhãn",
+                playlist_url = "submenu",
+                submenu = labelMenu
             });
 
         if (studioMenu.Count > 0)
