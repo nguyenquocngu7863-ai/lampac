@@ -57,24 +57,50 @@ public class SexTbController : BaseSisiController
 
         string hostLocal = host;
 
-        // Taxonomy: genres tu nav home; studios/labels tu trang list
-        // day du (/list-studios 168, /list-labels 150). Fetch song song.
+        // Taxonomy: genres tu nav home; studios HET 27 trang
+        // (/list-studios + /a..z, ~2000 hang) sap theo so phim roi top 100.
+        // Nhan 4000 muc — khong lay. Fetch song song.
         _ = Task.Run(async () =>
         {
             try
             {
                 var homeTask = GetPageAsync(SexTbTo.SiteHost + "/");
-                var studiosTask = GetPageAsync(SexTbTo.SiteHost + "/list-studios");
-                var labelsTask = GetPageAsync(SexTbTo.SiteHost + "/list-labels");
-                await Task.WhenAll(homeTask, studiosTask, labelsTask);
+
+                var studioTasks = new List<Task<string>>
+                {
+                    GetPageAsync(SexTbTo.SiteHost + "/list-studios")
+                };
+                for (char ch = 'a'; ch <= 'z'; ch++)
+                    studioTasks.Add(GetPageAsync(SexTbTo.SiteHost + "/list-studios/" + ch));
+
+                await Task.WhenAll(studioTasks.Prepend(homeTask));
 
                 var cats = SexTbTo.Taxonomies(await homeTask, "genre");
-                var studios = SexTbTo.Taxonomies(await studiosTask, "studio");
-                var labels = SexTbTo.Taxonomies(await labelsTask, "label");
 
-                if (cats.Count > 0 || studios.Count > 0 || labels.Count > 0)
+                var pool = new List<(string name, string path, int count)>();
+                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var t in studioTasks)
+                {
+                    foreach (var r in SexTbTo.StudioList(await t))
+                    {
+                        if (seen.Add(r.path))
+                            pool.Add(r);
+                    }
+                }
+
+                pool.Sort((x, y) => y.count.CompareTo(x.count));
+
+                var studios = new List<(string name, string path)>();
+                foreach (var r in pool)
+                {
+                    if (studios.Count >= 100)
+                        break;
+                    studios.Add((r.name + " (" + r.count + ")", r.path));
+                }
+
+                if (cats.Count > 0 || studios.Count > 0)
                     hybridCache.Set(memKey,
-                        SexTbTo.Menu(hostLocal, cats, studios, labels), cacheTime(720), true);
+                        SexTbTo.Menu(hostLocal, cats, studios), cacheTime(720), true);
             }
             catch { }
         });
@@ -242,9 +268,16 @@ public class SexTbController : BaseSisiController
         // dau tien sau nut cuoi de khong lan sang favorite/VIP o footer.
         // Don gian hon: chi match class episode-group-item / episode-part.
         foreach (Match b in Regex.Matches(scope,
-            @"<button\b(?=[^>]*\bepisode-(?:group-item|part)\b)[^>]*\bdata-id\s*=\s*[""']([0-9]+)[""'][^>]*>(.*?)</button\s*>",
+            @"<button\b(?=[^>]*\bepisode\b)[^>]*\bdata-id\s*=\s*[""']([0-9]+)[""'][^>]*>(.*?)</button\s*>",
             RegexOptions.IgnoreCase | RegexOptions.Singleline))
         {
+            // Bo nut download/vip/favorite: data-id la filmId hoac an
+            // khong phai episode, POST vo nghia. episode that la so id
+            // rieng (vd 4220574), khac filmId (vd 16943661).
+            if (b.Value.IndexOf("btn-download", StringComparison.OrdinalIgnoreCase) >= 0
+                || b.Value.IndexOf("vip", StringComparison.OrdinalIgnoreCase) >= 0
+                || b.Value.IndexOf("favorite", StringComparison.OrdinalIgnoreCase) >= 0)
+                continue;
             // Bo nut download (btn-download-vip): data-id la filmId,
             // POST episode=filmId tra loi vo nghia.
             if (b.Value.IndexOf("btn-download", StringComparison.OrdinalIgnoreCase) >= 0)
@@ -380,6 +413,10 @@ public class SexTbController : BaseSisiController
 
         string embed = SexTbTo.EmbedUrl(playerHtml);
         if (string.IsNullOrEmpty(embed))
+            return (null, nextPt, nextPk);
+
+        // Host chet (hglink.to 522) thi bo ngay, khoi dot 10-20s.
+        if (!await SexTbTo.EmbedHostAliveAsync(embed))
             return (null, nextPt, nextPk);
 
         // DoodStream: embed -> mp4 + referer per-video (F5). Link mp4 phai
