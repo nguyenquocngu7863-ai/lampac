@@ -1,8 +1,6 @@
-using Microsoft.Extensions.Caching.Memory;
-using Shared;
 using Shared.Models.SISI.Base;
+using System.Net;
 using Shared.Services;
-using Shared.Services.Hybrid;
 using Shared.Services.Pools;
 using Shared.Services.RxEnumerate;
 using System;
@@ -193,109 +191,190 @@ public static class XNhauTo
     #endregion
 
     #region Menu
-    public static List<MenuItem> Menu(string host, string search, string sort, string c, string t)
+    // ================= MENU =================
+    //
+    // Cong thuc SISI 3 dong:
+    //   dong 1  Tìm kiếm  (search_on)
+    //   dong 2  Sắp xếp   (submenu chua moi kieu sort)
+    //   dong 3+ taxonomy   (the loai)
+    //
+    // Client SISI chi hien MOT TANG submenu, nen moi nhom taxonomy la
+    // 1 muc tang 1. `/tags/` co 14634 tag nen KHONG dua vao menu (ke ca
+    // khi fetch duoc thi app se treo); chi lay `/the-loai/`.
+    //
+    // `groups` = 3 nhom tren trang `/the-loai/`:
+    //   "Sex Châu Á" 9 | "Thể loại cụ thể" 59 | "Phim Sex" 4
+    public static List<MenuItem> Menu(string host,
+        List<(string name, List<(string slug, string name)> items)> groups = null)
     {
         string url = $"{host}/xnhau";
 
-        #region search menu
-        if (!string.IsNullOrEmpty(search))
+        string cat(string slug) => $"{url}?c={HttpUtility.UrlEncode(slug)}";
+
+        var menu = new List<MenuItem>(5)
         {
-            string encodesearch = HttpUtility.UrlEncode(search);
-
-            return new List<MenuItem>()
-            {
-                new MenuItem()
-                {
-                    title = "Tìm kiếm (dán link member để xem feed người đăng)",
-                    search_on = "search_on",
-                    playlist_url = url,
-                },
-                new MenuItem()
-                {
-                    title = $"Sắp xếp: {(string.IsNullOrEmpty(sort) ? "Mới nhất" : sort)}",
-                    playlist_url = "submenu",
-                    submenu = new List<MenuItem>()
-                    {
-                        new MenuItem()
-                        {
-                            title = "Mới nhất",
-                            playlist_url = $"{url}?c={c}&search={encodesearch}"
-                        },
-                    }
-                }
-            };
-        }
-        #endregion
-
-        var memoryCache = HybridCache.GetMemory();
-        string menuKey = $"XNhau_menu_{host}_{sort}_{c}_{t}";
-
-        if (memoryCache.TryGetValue(menuKey, out List<MenuItem> menu))
-            return menu;
-
-        var tagmenu = new List<MenuItem>(26)
-        {
-            new("Việt Nam", $"{url}?c=vietnam"),
-            new("Gái xinh", $"{url}?c=gai-xinh"),
-            new("Gái teen", $"{url}?c=gai-teen"),
-            new("Học sinh", $"{url}?c=hoc-sinh"),
-            new("Sinh viên", $"{url}?c=sinh-vien"),
-            new("Máy bay MBG", $"{url}?c=may-bay-mbbg"),
-            new("Vợ chồng", $"{url}?c=vo-chong"),
-            new("Ngoại tình vụng trộm", $"{url}?c=ngoai-tinh-vung-trom"),
-            new("Gái gọi", $"{url}?c=gai-goi"),
-            new("Rau FWB", $"{url}?c=rau-fwb"),
-            new("Loạn luân", $"{url}?c=loan-luan"),
-            new("Doggy", $"{url}?c=doggy"),
-            new("Blowjob bú cu", $"{url}?c=blowjob-bu-cu"),
-            new("Bú lồn vét máng", $"{url}?c=bu-lon-vet-mang"),
-            new("Vú bự", $"{url}?c=vu-bu"),
-            new("Thủ dâm", $"{url}?c=thu-dam"),
-            new("Tự quay", $"{url}?c=tu-quay"),
-            new("Quay lén", $"{url}?c=quay-len"),
-            new("Xuất trong", $"{url}?c=xuat-trong"),
-            new("Nhân trần", $"{url}?c=nhan-tran"),
-            new("Trung Quốc", $"{url}?c=trung-quoc"),
-            new("Âu Mỹ", $"{url}?c=sex-au-my"),
-            new("JAV Nhật Bản", $"{url}?c=phim-sex-nhat-ban-jav"),
-            new("Hàn Quốc", $"{url}?c=phim-sex-han-quoc"),
-            new("Anime", $"{url}?c=anime"),
-            new("Phim sex", $"{url}?c=phim-sex"),
-        };
-
-        menu = new List<MenuItem>(3)
-        {
+            // Dong 1
             new MenuItem()
             {
                 title = "Tìm kiếm",
                 search_on = "search_on",
                 playlist_url = url,
             },
+            // Dong 2 — moi kieu sort cua site deu la path rieng
+            // (`clip-sex-moi|hot|hay`), khong phai query.
             new MenuItem()
             {
-                title = $"Sắp xếp: {(string.IsNullOrEmpty(sort) ? "Trang chủ" : sort)}",
+                title = "Sắp xếp",
                 playlist_url = "submenu",
                 submenu = new List<MenuItem>(4)
                 {
-                    new("Trang chủ", $"{url}?c={c}&t={t}"),
-                    new("Mới nhất", $"{url}?c={c}&t={t}&sort=clip-sex-moi"),
-                    new("Hot", $"{url}?c={c}&t={t}&sort=clip-sex-hot"),
-                    new("Hay", $"{url}?c={c}&t={t}&sort=clip-sex-hay")
+                    new("Mới nhất", $"{url}?sort=clip-sex-moi"),
+                    new("Xem nhiều nhất", $"{url}?sort=clip-sex-hot"),
+                    new("Hay nhất", $"{url}?sort=clip-sex-hay"),
+                    new("Trang chủ", url)
                 }
-            },
-            new MenuItem()
-            {
-                title = "Thể loại",
-                playlist_url = "submenu",
-                submenu = tagmenu
             }
         };
 
-        if (CoreInit.conf.lowMemoryMode == false)
-            memoryCache.Set(menuKey, menu, TimeSpan.FromDays(1));
+        // Dong 3+ — taxonomy. Client chi 1 tang nen moi nhom 1 muc.
+        foreach (var (name, items) in groups ?? FallbackGroups)
+        {
+            if (items == null || items.Count == 0)
+                continue;
+
+            var sub = new List<MenuItem>(items.Count);
+            foreach (var (slug, title) in items)
+            {
+                if (string.IsNullOrEmpty(slug))
+                    continue;
+
+                // Client tach subtitle bang dau `:` — ten co dau se bi cat.
+                sub.Add(new MenuItem(
+                    string.IsNullOrEmpty(title) ? slug : title.Replace(':', '-'),
+                    cat(slug)));
+            }
+
+            if (sub.Count > 0)
+                menu.Add(new MenuItem()
+                {
+                    title = name,
+                    playlist_url = "submenu",
+                    submenu = sub
+                });
+        }
 
         return menu;
     }
+
+    // Trang `/the-loai/`: 3 nhom trong sidebar,
+    //   <div class="headline"><h2><a href=".../?group=clip-sex">Sex Châu Á</a>
+    //   </h2></div><ul class="list">
+    //     <li><a href=".../the-loai/vietnam/">Việt Nam<span class="rating">127952</span></a></li>
+    // Dung `group=` de tach tung nhom (regex phai khong `.*?` lam non-greedy
+    // lan sang nhom sau).
+    public static List<(string name, List<(string slug, string name)> items)> Taxonomies(string html)
+    {
+        var groups = new List<(string, List<(string, string)>)>();
+
+        if (string.IsNullOrEmpty(html))
+            return groups;
+
+        int start = html.IndexOf("<div class=\"main-content\">", StringComparison.Ordinal);
+        if (start < 0)
+            return groups;
+
+        string box = html[start..];
+
+        var seenGroup = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var rx = System.Text.RegularExpressions.Regex.Matches(box,
+            "<div class=\"headline\">\\s*<h2><a[^>]*>([^<]+)</a>\\s*</h2>\\s*</div>\\s*"
+            + "<ul class=\"list\">(.*?)</ul>",
+            System.Text.RegularExpressions.RegexOptions.Singleline
+            | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        foreach (System.Text.RegularExpressions.Match m in rx)
+        {
+            string name = WebUtility.HtmlDecode(m.Groups[1].Value.Trim());
+            if (string.IsNullOrEmpty(name) || !seenGroup.Add(name))
+                continue;
+
+            var items = new List<(string, string)>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (System.Text.RegularExpressions.Match c in
+                System.Text.RegularExpressions.Regex.Matches(m.Groups[2].Value,
+                    "href=\"[^\"]*?/the-loai/(?<slug>[a-z0-9\\-]+)/\"[^>]*>"
+                    + "(?<name>[^<]*?)\\s*<span class=\"rating\">",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+            {
+                string slug = WebUtility.HtmlDecode(c.Groups["slug"].Value).Trim();
+                if (string.IsNullOrEmpty(slug) || !seen.Add(slug))
+                    continue;
+
+                items.Add((slug, WebUtility.HtmlDecode(
+                    c.Groups["name"].Value).Trim()));
+            }
+
+            if (items.Count > 0)
+                groups.Add((name, items));
+        }
+
+        return groups;
+    }
+
+    // Fetch `/the-loai/` that bai (mang loi) — 3 nhom, 72 muc.
+    public static readonly List<(string name, List<(string slug, string name)> items)> FallbackGroups =
+        new List<(string, List<(string, string)>)>
+        {
+            ("Sex Châu Á", new List<(string, string)>()
+            {
+                ("vietnam", "Việt Nam"), ("han-quoc", "Hàn Quốc"),
+                ("trung-quoc", "Trung quốc"), ("thai-lan", "Thái lan"),
+                ("indonesia", "Indonesia"), ("malaysia", "Malaysia"),
+                ("philippines", "Philippines"), ("nhat-ban", "Nhật Bản"),
+                ("an-do", "Ả Rập"),
+            }),
+            ("Thể loại cụ thể", new List<(string, string)>()
+            {
+                ("gai-xinh", "Gái Xinh"), ("gai-teen", "Gái Teen"),
+                ("thu-dam", "Thủ dâm"), ("hoc-sinh", "Học sinh"),
+                ("sinh-vien", "Sinh viên"), ("tu-quay", "Tự quay"),
+                ("quay-len", "Quay lén"), ("xuat-trong", "Xuất trong"),
+                ("nhan-tran", "Nhân trần"), ("loan-luan", "Loạn luân"),
+                ("doggy", "Doggy"), ("vu-bu", "Vú bự"),
+                ("blowjob-bu-cu", "Bú cu"), ("bu-lon-vet-mang", "Bú Lồn"),
+                ("dit-bu-mong-to", "Đít bự"), ("anal-lo-dit", "Anal"),
+                ("deepthroat-bu-cu-lut-can", "Deepthroat"),
+                ("footjob-thu-dam-bang-chan", "Footjob"),
+                ("handjob-hj-quay-tay", "Handjob"),
+                ("kissing", "Hôn"),
+                ("bdsm-bao-dam", "BDSM"), ("phim-cap-3", "Phim cap 3"),
+                ("rau-fwb", "FWB"), ("may-bay-mbbg", "Máy bay"),
+                ("vo-chong", "Vợ chồng"), ("cap-doi-nguoi-yeu", "Cặp đôi"),
+                ("ngoai-tinh-vung-trom", "Ngoại tình"),
+                ("khong-long", "Không lông"),
+                ("ram-long-lon-nhieu-long", "Rậm lông"),
+                ("cu-bu-cac-to", "Cu bự"),
+                ("chubby-mum-mim", "Chubby"),
+                ("loli-minh-day", "Loli/Mình dây"),
+                ("gai-goi", "Gái gọi"),
+                ("sugar-baby-sgbb", "Sugar baby"),
+                ("sex-au-my", "Âu Mỹ"),
+                ("lezzie-lesbian", "Lesbian"),
+                ("sexy-thu-dong-vat", "Thú đồng vật"),
+                ("lesbian-dong-tinh-nu", "Lesbian"),
+                ("bisexual-song-tinh", "Bisexual"),
+                ("gay-dong-tinh-nam", "Gay"),
+                ("ladyboy-chuyen-gioi", "Ladyboy"),
+                ("phim-sex", "Phim Sex"),
+            }),
+            ("Phim Sex", new List<(string, string)>()
+            {
+                ("phim-sex-nhat-ban-jav", "JAV Nhật Bản"),
+                ("phim-sex-han-quoc", "Phim sex Hàn Quốc"),
+                ("sex-ai", "AI"), ("hentai", "Hentai"),
+            }),
+        };
     #endregion
 
     #region StreamLinks
