@@ -7,7 +7,7 @@ using Shared.Models.SISI.Base;
 using Shared.Services;
 using System.Collections.Generic;
 
-namespace SexTb;
+namespace Jable;
 
 public class ModInit : IModuleLoaded, IModuleSisi
 {
@@ -18,7 +18,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
     {
         return new List<SisiModuleItem>()
         {
-            new("SexTb", conf, "sextb")
+            new("Jable", conf, "jable")
         };
     }
 
@@ -36,21 +36,23 @@ public class ModInit : IModuleLoaded, IModuleSisi
 
     void updateConf()
     {
-        conf = ModuleInvoke.Init("SexTb", new SisiSettings("SexTb", SexTbTo.SiteHost)
+        conf = ModuleInvoke.Init("Jable", new SisiSettings("Jable", JableTo.SiteHost)
         {
-            displayindex = 21,
+            // 30 da trung voi "Beeg" -> app co the an/overlap. 38 la so trong,
+            // nam ngay sau khoi Adult (36) truoc block 44.
+            displayindex = 38,
             streamproxy = true,
             httpversion = 1,
             httptimeout = 20,
             rch_access = "apk",
             stream_access = "apk",
             headers_stream = HeadersModel.Init(
-                ("User-Agent", SexTbTo.ChromeUA),
-                ("Referer", SexTbTo.SiteHost + "/")
+                ("User-Agent", JableTo.ChromeUA),
+                ("Referer", JableTo.SiteHost + "/")
             ).ToDictionary(),
             headers_image = HeadersModel.Init(
-                ("User-Agent", SexTbTo.ChromeUA),
-                ("Referer", SexTbTo.SiteHost + "/")
+                ("User-Agent", JableTo.ChromeUA),
+                ("Referer", JableTo.SiteHost + "/")
             ).ToDictionary()
         });
     }

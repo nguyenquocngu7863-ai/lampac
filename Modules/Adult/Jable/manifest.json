@@ -1,0 +1,9 @@
+{
+  "name": "Jable",
+  "description": "Jable.TV - JAV streaming",
+  "version": "1.0.0",
+  "author": "Lampac",
+  "site": "https://en.jable.tv",
+  "enable": true,
+  "dynamic": true
+}
