@@ -60,8 +60,13 @@ public static class PubJavTo
         if (!string.IsNullOrWhiteSpace(search))
         {
             string slug = Slug(search);
+
+            // Ten Nhat/co ky tu dac bi `Slug` bo het -> slug rong. Giu
+            // nguyen term de site tra 404 (0 phim, app hien "khong co ket
+            // qua"); KHONG fallback `/movies` vi se do ra 12400 trang
+            // phim moi cho mot cum tim kiem khong co ket qua.
             if (string.IsNullOrEmpty(slug))
-                return host + "/movies";
+                slug = System.Uri.EscapeDataString(WebUtility.HtmlDecode(search).Trim().ToLowerInvariant());
 
             return host + "/search/" + slug + (pg > 1 ? $"/pg-{pg}" : "");
         }
@@ -196,6 +201,14 @@ public static class PubJavTo
             if (string.IsNullOrEmpty(name))
                 continue;
 
+            // `<span class="mli-code">SNOS-306-RM</span>` — ma phim. Ten
+            // phim tren site chi co tieng Nhat nen ghep `code` vao dau
+            // de app hien thi/ tim duoc (kieu `FNS-258 <ten>` cua MissAV).
+            string code = Code(block, href.Groups[1].Value);
+            if (!string.IsNullOrEmpty(code) &&
+                !name.StartsWith(code, StringComparison.OrdinalIgnoreCase))
+                name = code + " " + name;
+
             string poster = GetPoster(block);
 
             playlists.Add(new PlaylistItem()
@@ -214,6 +227,28 @@ public static class PubJavTo
         }
 
         return playlists;
+    }
+
+    // Ma phim: `<span class="mli-code">` chua `SNOS-306-RM`; `<a>` chi co
+    // slug `/play/snos-306-rm` nen fallback lay slug roi UPPER (site cung
+    // hien thi `SNOS-306-RM`).
+    static string Code(string block, string href)
+    {
+        var match = Regex.Match(block,
+            @"class\s*=\s*[""'][^""']*\bmli-code\b[^""']*[""'][^>]*>\s*([^<]+)<",
+            RegexOptions.IgnoreCase);
+
+        if (match.Success)
+        {
+            string value = WebUtility.HtmlDecode(match.Groups[1].Value).Trim();
+            if (!string.IsNullOrEmpty(value))
+                return value;
+        }
+
+        var slug = Regex.Match(href ?? "",
+            @"/play/(?<code>[a-z0-9._-]+)", RegexOptions.IgnoreCase);
+
+        return slug.Success ? slug.Groups["code"].Value.ToUpperInvariant() : null;
     }
 
     static string GetPoster(string block)
@@ -1216,30 +1251,66 @@ public static class PubJavTo
         return res;
     }
 
+    // Sort cua site lay tu `<select name="sort">` cua form `/movies`:
+    //   desc | asc | release | viewed | liked | favorite
+    //
+    // QUAN TRONG: form do gui DAY DU 4 tham so (`genre`, `quality`,
+    // `year`, `sort`). Chi gui `?sort=viewed` thi server BO QUA sort va
+    // tra ve thu tu mac dinh (da doThat tren site: `?sort=viewed` ra
+    // y hang `?sort=desc`). Nen moi duong filter/sort deu phai day du.
+    public const string FilterQuery = "genre=all&quality=all&year=all&sort=";
+
+    // Danh muc year lay tu `<select name="year">` cua form.
+    public static readonly string[] Years =
+    {
+        "2026", "2025", "2024", "2023", "2022", "2021", "2020", "2019",
+        "2018", "2017", "2016"
+    };
+
     public static List<MenuItem> Menu(string host,
         List<(string slug, string name)> genres,
         List<(string slug, string name)> studios)
     {
         host = host.TrimEnd('/');
 
-        var root = new List<MenuItem>(4)
+        // `c` = path (+ query) cua site; module `Uri()` tach `?` roi
+        // them `&pg=N` — dung cach phan trang cua chinh site.
+        string url(string c) => host + "/pubjav?c=" + HttpUtility.UrlEncode(c);
+
+        var root = new List<MenuItem>(6)
         {
+            // Dong 1: tim kiem
             new MenuItem()
             {
                 title = "Tìm kiếm",
                 search_on = "search_on",
                 playlist_url = host + "/pubjav"
-            },
-            new("Mới nhất", host + "/pubjav")
+            }
         };
 
-        // `Censored`/`Uncensored` khong co trong `/genres` (site chi co
-        // `jav-uncensored`, `uncensored`, `uncensored-leaked`) nen phai tu
-        // them vao dau danh sach the loai.
+        // Dong 2: sap xep
+        root.Add(new MenuItem()
+        {
+            title = "Sắp xếp",
+            playlist_url = "submenu",
+            submenu = new List<MenuItem>()
+            {
+                new("Mới nhất", url("movies?" + FilterQuery + "desc")),
+                new("Lâu nhất", url("movies?" + FilterQuery + "asc")),
+                new("Ngày phát hành", url("movies?" + FilterQuery + "release")),
+                new("Xem nhiều", url("movies?" + FilterQuery + "viewed")),
+                new("Nhiều like", url("movies?" + FilterQuery + "liked")),
+                new("Nhiều yêu thích", url("movies?" + FilterQuery + "favorite"))
+            }
+        });
+
+        // Dong 3: the loai. `/genres` co `uncensored`/`amateur` nhung
+        // THIEU `censored` (form dropdown moi co) nen them `Censored` vao
+        // dau. `Uncensored`/`Amateur` da co san trong danh sach nen khong
+        // them lai de tranh trung.
         var genreMenu = new List<MenuItem>()
         {
-            new("Censored", host + "/pubjav?c=movies%3Fgenre=censored"),
-            new("Uncensored", host + "/pubjav?c=movies%3Fgenre=uncensored")
+            new("Censored", url("movies?genre=censored&quality=all&year=all&sort=desc"))
         };
 
         var fetched = TaxonomyMenu(host, "genre/", genres);
@@ -1258,14 +1329,40 @@ public static class PubJavTo
             submenu = genreMenu
         });
 
+        // Dong 4: hang phim
         var studioMenu = TaxonomyMenu(host, "studio/", studios);
         if (studioMenu.Count > 0)
             root.Add(new MenuItem()
             {
-                title = "Studio",
+                title = "Hãng phim",
                 playlist_url = "submenu",
                 submenu = studioMenu
             });
+
+        // Dong 5: chat luong
+        root.Add(new MenuItem()
+        {
+            title = "Chất lượng",
+            playlist_url = "submenu",
+            submenu = new List<MenuItem>()
+            {
+                new("HD", url("movies?genre=all&quality=hd&year=all&sort=desc")),
+                new("SD", url("movies?genre=all&quality=sd&year=all&sort=desc"))
+            }
+        });
+
+        // Dong 6: nam phat hanh
+        var yearMenu = new List<MenuItem>(Years.Length);
+        foreach (string year in Years)
+            yearMenu.Add(new MenuItem(year,
+                url($"movies?genre=all&quality=all&year={year}&sort=desc")));
+
+        root.Add(new MenuItem()
+        {
+            title = "Năm",
+            playlist_url = "submenu",
+            submenu = yearMenu
+        });
 
         return root;
     }

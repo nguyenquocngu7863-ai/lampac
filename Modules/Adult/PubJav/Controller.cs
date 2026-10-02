@@ -29,6 +29,12 @@ public class PubJavController : BaseSisiController
             string page = await GetPageAsync(PubJavTo.Uri(init.host, search, c, pg));
             var playlists = PubJavTo.Playlist("pubjav/vidosik", page);
 
+            // Search ma khong co ket qua (site chi index slug tieng Anh,
+            // ten Nhap dien se ra 0 phim) -> `success` + list rong de app
+            // hien "khong co ket qua", khong phai loi.
+            if (playlists.Count == 0 && !string.IsNullOrWhiteSpace(search))
+                return e.Success(new List<PlaylistItem>());
+
             if (playlists.Count == 0)
                 return e.Fail("playlists", refresh_proxy: string.IsNullOrEmpty(search));
 
@@ -44,8 +50,7 @@ public class PubJavController : BaseSisiController
     // ================= MENU (danh muc) =================
 
     // Menu mang 627 muc (315 genre + 312 studio) nen dung `hybridCache` 12h
-    // va chi tao lai 1 lan; neu khong cache thi phai FETCH, nen bo deadline
-    // 7s de khong lam treo `/pubjav` khi site cham.
+    // va chi tao lai 1 lan; neu khong cache thi phai FETCH.
     async Task<List<MenuItem>> MenuAsync()
     {
         string memKey = ipkey("pubjav:menu");
@@ -54,25 +59,29 @@ public class PubJavController : BaseSisiController
             hit != null && hit.Count > 0)
             return hit;
 
-        // LAN DAU: tra menu rut gon ngay, warm taxonomy that o background.
-        // Ban cu `await warm.WaitAsync(7s)` chan response home; cong voi fetch
-        // trang home khi site treo (15-20s) thi tong >25s, app timeout ~15s
-        // nen bao "khong load duoc home" ngay lan dau. `host` va key duoc
-        // capture truoc vi HttpContext co the da xong khi task background chay.
         string hostLocal = host;
 
-        _ = Task.Run(async () =>
+        // KHONG chay nen roi tra menu rut gon ngay: app cache response dau
+        // cho ca phien -> the loai/han phim khong bao gio hien (JavCt,
+        // MissAV da gap). `/genres` + `/studios` la 2 trang tinh 140KB,
+        // fetch song song ~1-3s nen cho lay xong roi tra menu that.
+        try
         {
-            try
-            {
-                var g = await TaxonomiesAsync("genres", "genre/");
-                var s = await TaxonomiesAsync("studios", "studio/");
+            var genresTask = TaxonomiesAsync("genres", "genre/");
+            var studiosTask = TaxonomiesAsync("studios", "studio/");
+            await Task.WhenAll(genresTask, studiosTask);
 
-                if (g.Count > 0 || s.Count > 0)
-                    hybridCache.Set(memKey, PubJavTo.Menu(hostLocal, g, s), cacheTime(720), true);
+            var g = await genresTask;
+            var s = await studiosTask;
+
+            if (g.Count > 0 || s.Count > 0)
+            {
+                var menu = PubJavTo.Menu(hostLocal, g, s);
+                hybridCache.Set(memKey, menu, cacheTime(720), true);
+                return menu;
             }
-            catch { }
-        });
+        }
+        catch { }
 
         return PubJavTo.Menu(hostLocal, null, null);
     }
