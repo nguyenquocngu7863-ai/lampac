@@ -38,7 +38,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
     {
         conf = ModuleInvoke.Init("Phe69", new SisiSettings("Phe69", "https://phe69.shop")
         {
-            displayindex = 13,
+            displayindex = 14,
             streamproxy = true,
             httpversion = 2,
             rch_access = "apk",

@@ -133,7 +133,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
     {
         conf = ModuleInvoke.Init("TopGai", new SisiSettings("TopGai", "https://topgai.net")
         {
-            displayindex = 17,
+            displayindex = 18,
             streamproxy = true,
             httpversion = 2,
             rch_access = "apk",

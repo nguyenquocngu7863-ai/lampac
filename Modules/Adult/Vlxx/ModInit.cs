@@ -38,7 +38,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
     {
         conf = ModuleInvoke.Init("Vlxx", new SisiSettings("Vlxx", "https://vlxx.phd")
         {
-            displayindex = 16,
+            displayindex = 17,
             streamproxy = true,
             httpversion = 2,
             rch_access = "apk",

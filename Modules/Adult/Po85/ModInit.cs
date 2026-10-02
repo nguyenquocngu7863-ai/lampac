@@ -115,7 +115,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
     {
         conf = ModuleInvoke.Init("Po85", new SisiSettings("Po85", "https://www.85po.com")
         {
-            displayindex = 12,
+            displayindex = 11,
             streamproxy = true,
             rch_access = "apk",
             stream_access = "apk",

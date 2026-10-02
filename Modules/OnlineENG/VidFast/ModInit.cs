@@ -60,7 +60,7 @@ public class ModInit : IModuleLoaded, IModuleOnline
         conf = ModuleInvoke.Init("VidFast",
             new OnlinesSettings("VidFast", "https://vidfast.vc")
         {
-            displayindex = 1010,
+            displayindex = 1077,
             kit = false,
             rhub = false,
             streamproxy = true

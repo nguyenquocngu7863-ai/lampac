@@ -46,7 +46,7 @@ public class ModInit : IModuleLoaded, IModuleOnline
     {
         conf = ModuleInvoke.Init("VaPlayer", new OnlinesSettings("VaPlayer", "https://streamdata.vaplayer.ru")
         {
-            displayindex = 1022,
+            displayindex = 1080,
             kit = false,
             rhub = false,
             httptimeout = 20,

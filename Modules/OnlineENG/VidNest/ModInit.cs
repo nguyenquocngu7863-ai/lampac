@@ -105,7 +105,7 @@ public class ModInit : IModuleLoaded, IModuleOnline
     {
         conf = ModuleInvoke.Init("VidNest", new OnlinesSettings("VidNest", "https://new.vidnest.fun")
         {
-            displayindex = 1023,
+            displayindex = 1078,
             kit = false,
             rhub = false,
             httptimeout = 20,

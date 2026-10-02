@@ -57,7 +57,7 @@ public class ModInit : IModuleLoaded, IModuleOnline
     {
         conf = ModuleInvoke.Init("VidCore", new OnlinesSettings("VidCore", "https://vidcore.io", "https://enc-dec.app/api")
         {
-            displayindex = 1016,
+            displayindex = 1076,
             kit = false,
             rhub = false,
             httptimeout = 25,

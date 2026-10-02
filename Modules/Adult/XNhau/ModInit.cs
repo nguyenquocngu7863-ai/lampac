@@ -39,7 +39,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
     {
         conf = ModuleInvoke.Init("XNhau", new SisiSettings("XNhau", "https://xnhau.free")
         {
-            displayindex = 11,
+            displayindex = 10,
             streamproxy = true,
             httpversion = 2,
             rch_access = "apk",

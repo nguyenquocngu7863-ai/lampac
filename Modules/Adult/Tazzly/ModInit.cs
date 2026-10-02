@@ -100,7 +100,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
     {
         conf = ModuleInvoke.Init("Tazzly", new SisiSettings("Tazzly", TazzlyTo.SiteHost)
         {
-            displayindex = 17,
+            displayindex = 19,
             streamproxy = true,
             httpversion = 2,
             httptimeout = 20,

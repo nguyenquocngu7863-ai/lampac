@@ -48,7 +48,7 @@ public class ModInit : IModuleLoaded, IModuleOnline
     {
         conf = ModuleInvoke.Init("VixSrc", new OnlinesSettings("VixSrc", "https://vixsrc.to")
         {
-            displayindex = 1022,
+            displayindex = 1081,
             kit = false,
             rhub = false,
             httptimeout = 20,

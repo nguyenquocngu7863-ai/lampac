@@ -88,7 +88,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
     {
         conf = ModuleInvoke.Init("VietSexBlog", new SisiSettings("VietSexBlog", "https://x.vietsex.blog")
         {
-            displayindex = 10,
+            displayindex = 9,
             streamproxy = true,
             rch_access = "apk",
             stream_access = "apk",

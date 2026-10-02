@@ -38,7 +38,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
     {
         conf = ModuleInvoke.Init("Viet69kz", new SisiSettings("Viet69kz", Viet69kzTo.SiteHost)
         {
-            displayindex = 14,
+            displayindex = 13,
             streamproxy = true,
             httpversion = 2,
             httptimeout = 20,

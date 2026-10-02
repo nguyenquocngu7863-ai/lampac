@@ -46,7 +46,7 @@ public class ModInit : IModuleLoaded, IModuleOnline
     {
         conf = ModuleInvoke.Init("Vidrock", new OnlinesSettings("Vidrock", "https://vidrock.ru")
         {
-            displayindex = 1021,
+            displayindex = 1079,
             kit = false,
             rhub = false,
             httptimeout = 20,

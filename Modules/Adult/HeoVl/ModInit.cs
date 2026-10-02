@@ -38,7 +38,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
     {
         conf = ModuleInvoke.Init("HeoVl", new SisiSettings("HeoVl", "https://heovl.im")
         {
-            displayindex = 14,
+            displayindex = 15,
             streamproxy = true,
             httpversion = 2,
             rch_access = "apk",
