@@ -7,6 +7,7 @@ using Shared.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Web;
 
@@ -57,6 +58,11 @@ public class JavGuruController : BaseSisiController
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
 
+        // Bat dau fetch taxonomy NGAY, song song voi trang danh sach, va
+        // await o cuoi. Truoc day await playlist xong moi den menu -> tong
+        // thoi gian la TONG; gio la MAX nen app mo nhanh hon.
+        var menuTask = MenuAsync();
+
         var cache = await InvokeCacheResult(ipkey($"javguru:{search}:{c}:{sort}:{pg}"), 10, jsonContext.ListPlaylistItem, async e =>
         {
             string html = await FetchHtmlAsync(JavGuruTo.Uri(init.host, search, c, pg, sort), "<div class=\"inside-article\">");
@@ -73,58 +79,91 @@ public class JavGuruController : BaseSisiController
         if (rch?.enable == true)
             StatiCacheDisabled = true;
 
-        return PlaylistResult(cache, await MenuAsync());
+        return PlaylistResult(cache, await menuTask);
     }
 
     // "Hãng phim" (992) + "Studio" (4663) + "Tags" (553, co so phim) lay tu
     // 3 trang list san cua site — giong JavTsunami boc category tu /categories.
     // Moi trang 1 request (khong phan trang), cache 1 gio trong RAM; makers +
     // studios boc NGAU (lay dau thi toan chu A-C), tags boc TOP theo so phim.
+    // Taxonomy fetch phai NHANH — app cache response dau ca phien nen request
+    // dau tien chua xong la user thay app treo.
+    //
+    // Truoc day `MenuAsync` goi THANG `CurlGetRetry` (shell curl, deadline
+    // 25s): log ghi `JavGuru: curl (21316ms)` — mot lan treo het 21s, va
+    // chi 1/3 trang ra duoc nen `studios=0 tags=0` (mat 2 dong menu).
+    // Chuyen sang `FetchHtmlAsync` = hydra truoc (log: `hydra (288ms)`),
+    // curl chi la fallback. 3 trang fetch SONG SONG ~1s.
+    static readonly SemaphoreSlim menuLock = new(1, 1);
+    const int MenuFetchBudget = 8000;
+
     async Task<List<MenuItem>> MenuAsync()
     {
-        List<(string name, string path)> makers = null;
-        List<(string name, string path)> studios = null;
-        List<(string name, string path)> tags = null;
-
         string key = ipkey("javguru:dirs");
-        if (hybridCache.TryGetValue(key,
-                out List<(string name, string path)>[] cached)
+
+        if (hybridCache.TryGetValue<List<(string name, string path)>[]>(key,
+                out var cached)
             && cached != null && cached.Length == 3)
+            return JavGuruTo.Menu(host, cached[0], cached[1], cached[2]);
+
+        // Request khac dang giu lock: tra menu ngay. `Menu` luon co san
+        // dong "The loai" (7 muc hardcode) nen menu khong bao gio rut gon.
+        if (!await menuLock.WaitAsync(2000))
+            return JavGuruTo.Menu(host, null, null, null);
+
+        try
         {
-            makers = cached[0];
-            studios = cached[1];
-            tags = cached[2];
+            // Request truoc do da nap xong cache trong luc ta cho lock.
+            if (hybridCache.TryGetValue<List<(string name, string path)>[]>(key,
+                    out var hit)
+                && hit != null && hit.Length == 3)
+                return JavGuruTo.Menu(host, hit[0], hit[1], hit[2]);
+
+            var fetch = FetchDirsAsync(key);
+
+            // Het ngan sach -> tra menu toi thieu, fetch chay tiep nen
+            // request sau (va lan sau) co du 3 nhom.
+            if (fetch != await Task.WhenAny(fetch, Task.Delay(MenuFetchBudget)))
+                return JavGuruTo.Menu(host, null, null, null);
+
+            return await fetch;
         }
-        else
+        finally
         {
-            long dl = Ms() + 25000;
-            var t1 = JavGuruTo.CurlGetRetry(
-                JavGuruTo.SiteHost + JavGuruTo.MakerPath,
-                JavGuruTo.SiteHost + "/", "jav.guru/maker/", 2, 20, dl);
-            var t2 = JavGuruTo.CurlGetRetry(
-                JavGuruTo.SiteHost + JavGuruTo.StudioPath,
-                JavGuruTo.SiteHost + "/", "jav.guru/studio/", 2, 20, dl);
-            var t3 = JavGuruTo.CurlGetRetry(
-                JavGuruTo.SiteHost + JavGuruTo.TagsPath,
-                JavGuruTo.SiteHost + "/", "jav.guru/tag/", 2, 20, dl);
-
-            await Task.WhenAll(t1, t2, t3);
-
-            makers = JavGuruTo.DirPick(JavGuruTo.DirList(await t1, "maker"));
-            studios = JavGuruTo.DirPick(
-                JavGuruTo.DirList(await t2, "studio"));
-            tags = JavGuruTo.TagList(await t3);
-
-            Console.WriteLine(
-                $"JavGuru: dirs makers={makers.Count}"
-                + $" studios={studios.Count} tags={tags.Count}");
-
-            if (makers.Count + studios.Count + tags.Count > 0)
-                hybridCache.Set(key,
-                    new List<(string name, string path)>[]
-                        { makers, studios, tags },
-                    cacheTime(60));
+            menuLock.Release();
         }
+    }
+
+    async Task<List<MenuItem>> FetchDirsAsync(string key)
+    {
+        long dl = Ms() + 12000;
+
+        // Marker = chuoi `jav.guru/<kind>/` chi co trong chinh trang do nen
+        // lo duoc HTML sai (trang chu, trang 404) ngay.
+        var t1 = FetchHtmlAsync(JavGuruTo.SiteHost + JavGuruTo.MakerPath,
+            "jav.guru/maker/", 2, 8, dl);
+        var t2 = FetchHtmlAsync(JavGuruTo.SiteHost + JavGuruTo.StudioPath,
+            "jav.guru/studio/", 2, 8, dl);
+        var t3 = FetchHtmlAsync(JavGuruTo.SiteHost + JavGuruTo.TagsPath,
+            "jav.guru/tag/", 2, 8, dl);
+
+        await Task.WhenAll(t1, t2, t3);
+
+        var makers = JavGuruTo.DirPick(JavGuruTo.DirList(await t1, "maker"));
+        var studios = JavGuruTo.DirPick(JavGuruTo.DirList(await t2, "studio"));
+        var tags = JavGuruTo.TagList(await t3);
+
+        Console.WriteLine(
+            $"JavGuru: dirs makers={makers.Count}"
+            + $" studios={studios.Count} tags={tags.Count}");
+
+        // 6h thay vi 1h: het cache thi user lai chiu ~8s, ma danh muc
+        // jav.guru doi theo ngay lau chứ khong doi theo gio.
+        if (makers.Count + studios.Count + tags.Count > 0)
+            hybridCache.Set(key,
+                new List<(string name, string path)>[]
+                    { makers, studios, tags },
+                cacheTime(360));
 
         return JavGuruTo.Menu(host, makers, studios, tags);
     }
