@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Web;
 
@@ -107,6 +108,15 @@ public class JableController : BaseSisiController
         return PlaylistResult(cache, await MenuAsync());
     }
 
+    // App CACHE response DAU CA PHIEN -> lan truy cap dau ma tra menu
+    // rut gon (chi Tìm kiếm + Sắp xếp) thi user restart app cung thay,
+    // phai xoa cache app. Nen:
+    //   1. await fetch trong gioi han ~10s de menu that co ngay;
+    //   2. tran han / fetch loi -> tra FALLBACK TINH (12 the loai +
+    //      114 tu khoa) — van day du, khong bao gio rut gon.
+    static readonly SemaphoreSlim menuLock = new(1, 1);
+    const int MenuFetchBudget = 10_000;
+
     async Task<List<MenuItem>> MenuAsync()
     {
         string memKey = ipkey("jable:menu");
@@ -117,29 +127,64 @@ public class JableController : BaseSisiController
 
         string hostLocal = host;
 
-        _ = Task.Run(async () =>
+        // Request khac dang giu lock: tra fallback ngay, khong cho app
+        // treo them.
+        if (!await menuLock.WaitAsync(3000))
+            return Fallback(hostLocal);
+
+        try
         {
-            try
-            {
-                // /categories/ = 12 muc, KHONG co phan trang (da kiem
-                // page-link rong) -> 12 la het site co.
-                var catsTask = TaxonomiesAsync("/categories/", "categories");
-                // /tags/ = trang index day du 115 tag. Nav trang chu chi
-                // lo 40 -> phai lay tu index, khong lay nav.
-                var tagsTask = TaxonomiesAsync("/tags/", "tags", 130);
-                await Task.WhenAll(catsTask, tagsTask);
+            // Request truoc do da nap xong cache trong luc ta cho lock.
+            if (hybridCache.TryGetValue(memKey, out List<MenuItem> hit2) &&
+                hit2 != null && hit2.Count > 0)
+                return hit2;
 
-                var cats = await catsTask;
-                var tags = await tagsTask;
+            var build = BuildMenuAsync(hostLocal, memKey);
 
-                if (cats.Count > 0 || tags.Count > 0)
-                    hybridCache.Set(memKey,
-                        JableTo.Menu(hostLocal, cats, tags), cacheTime(720), true);
-            }
-            catch { }
-        });
+            if (build != await Task.WhenAny(build, Task.Delay(MenuFetchBudget)))
+                return Fallback(hostLocal);   // fetch chay tiep nen lan sau co menu dong
 
-        return JableTo.Menu(hostLocal, null, null);
+            return await build;
+        }
+        finally
+        {
+            menuLock.Release();
+        }
+    }
+
+    List<MenuItem> Fallback(string hostLocal)
+        => JableTo.Menu(hostLocal, JableTo.FallbackCats, JableTo.FallbackTags);
+
+    // LUON tra menu day du: dynamic neu fetch duoc, nguoc lai fallback.
+    // Khong bao gio nem ra list rong.
+    async Task<List<MenuItem>> BuildMenuAsync(string hostLocal, string memKey)
+    {
+        IReadOnlyList<(string name, string path)> cats = JableTo.FallbackCats;
+        IReadOnlyList<(string name, string path)> tags = JableTo.FallbackTags;
+
+        try
+        {
+            // /categories/ = 12 muc, KHONG co phan trang (da kiem
+            // page-link rong) -> 12 la het site co.
+            var catsTask = TaxonomiesAsync("/categories/", "categories");
+            // /tags/ = trang index day du 115 tag. Nav trang chu chi
+            // lo 40 -> phai lay tu index, khong lay nav.
+            var tagsTask = TaxonomiesAsync("/tags/", "tags", 130);
+            await Task.WhenAll(catsTask, tagsTask);
+
+            var gotCats = await catsTask;
+            var gotTags = await tagsTask;
+
+            if (gotCats.Count > 0)
+                cats = gotCats;
+            if (gotTags.Count > 0)
+                tags = gotTags;
+        }
+        catch { }
+
+        var menu = JableTo.Menu(hostLocal, cats, tags);
+        hybridCache.Set(memKey, menu, cacheTime(720), true);
+        return menu;
     }
 
     async Task<List<(string name, string path)>> TaxonomiesAsync(
