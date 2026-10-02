@@ -8,7 +8,7 @@ using Shared.Models.SISI.Base;
 using Shared.Services;
 using System.Collections.Generic;
 
-namespace JavHD;
+namespace JavHDToday;
 
 public class ModInit : IModuleLoaded, IModuleSisi
 {
@@ -19,7 +19,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
     {
         return new List<SisiModuleItem>()
         {
-            new("JavHD", conf, "javhd")
+            new("JavHDToday", conf, "javhdtoday")
         };
     }
 
@@ -37,11 +37,11 @@ public class ModInit : IModuleLoaded, IModuleSisi
 
     void updateConf()
     {
-        conf = ModuleInvoke.Init("JavHD", new SisiSettings("JavHD", "https://javhd.today")
+        conf = ModuleInvoke.Init("JavHDToday", new SisiSettings("JavHDToday", "https://javhd.today")
         {
             // 7 = ngay truoc JavGuru (8), dau nhom tu lam.
             // 20 cu trung PornHub nen doi.
-            displayindex = 7,
+            displayindex = 2,
             streamproxy = true,
             httpversion = 2,
             rch_access = "apk",
@@ -51,10 +51,10 @@ public class ModInit : IModuleLoaded, IModuleSisi
             // 429 khi thay Referer (giong JavGuru/JavTsunami).
             // DoodStream gan rieng Referer o StreamLink.
             headers_stream = HeadersModel.Init(
-                ("User-Agent", JavHDTo.ChromeUA)
+                ("User-Agent", JavHDTodayTo.ChromeUA)
             ).ToDictionary(),
             headers_image = HeadersModel.Init(
-                ("User-Agent", JavHDTo.ChromeUA),
+                ("User-Agent", JavHDTodayTo.ChromeUA),
                 ("Referer", "https://javhd.today/")
             ).ToDictionary()
         });

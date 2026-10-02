@@ -8,16 +8,16 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Web;
 
-namespace JavHD;
+namespace JavHDToday;
 
-public sealed class JavHDServer
+public sealed class JavHDTodayServer
 {
     public string Label { get; set; } = "";
     public string PageUrl { get; set; } = "";
     public string Kind { get; set; } = "";
 }
 
-public static class JavHDTo
+public static class JavHDTodayTo
 {
     public static string SiteHost = "https://javhd.today";
 
@@ -131,7 +131,7 @@ public static class JavHDTo
                 json = true,
                 bookmark = new Shared.Models.SISI.Base.Bookmark()
                 {
-                    site = "javhd",
+                    site = "javhdtoday",
                     href = href,
                     image = poster
                 }
@@ -286,9 +286,9 @@ public static class JavHDTo
     // Danh sach server tu trang detail, sap xep theo Rank. Lay ca
     // `data-embed` (base64 url don) va `data-embeds` (base64 json array
     // cua embed du phong javhdz) — chi giu host da biet resolve.
-    public static List<JavHDServer> Servers(string html)
+    public static List<JavHDTodayServer> Servers(string html)
     {
-        var list = new List<JavHDServer>();
+        var list = new List<JavHDTodayServer>();
         if (string.IsNullOrEmpty(html))
             return list;
 
@@ -304,7 +304,7 @@ public static class JavHDTo
             if (string.IsNullOrEmpty(label) || !IsSupported(label))
                 return;
 
-            list.Add(new JavHDServer()
+            list.Add(new JavHDTodayServer()
             {
                 Label = label,
                 PageUrl = u,
@@ -753,13 +753,13 @@ public static class JavHDTo
         string host, List<(string name, string path)> genres,
         List<(string name, string query)> studios)
     {
-        var cats = new List<Shared.Models.SISI.Base.MenuItem>()
+        var sorts = new List<Shared.Models.SISI.Base.MenuItem>()
         {
-            new("Mới nhất", host + "/javhd?c=recent/"),
-            new("Phổ biến hôm nay", host + "/javhd?c=popular/today/"),
-            new("Phổ biến tuần", host + "/javhd?c=popular/week/"),
-            new("Phổ biến tháng", host + "/javhd?c=popular/month/"),
-            new("Ngày phát hành", host + "/javhd?c=releaseday/"),
+            new("Mới nhất", host + "/javhdtoday?c=recent/"),
+            new("Phổ biến hôm nay", host + "/javhdtoday?c=popular/today/"),
+            new("Phổ biến tuần", host + "/javhdtoday?c=popular/week/"),
+            new("Phổ biến tháng", host + "/javhdtoday?c=popular/month/"),
+            new("Ngày phát hành", host + "/javhdtoday?c=releaseday/"),
         };
 
         var menu = new List<Shared.Models.SISI.Base.MenuItem>()
@@ -768,18 +768,15 @@ public static class JavHDTo
             {
                 title = "Tìm kiếm",
                 search_on = "search_on",
-                playlist_url = host + "/javhd"
+                playlist_url = host + "/javhdtoday"
             },
+            // DÒNG 2 — Sắp xếp (công thức SISI 9g). Các kiểu sắp xếp
+            // của site: recent / popular today-week-month / releaseday.
             new Shared.Models.SISI.Base.MenuItem()
             {
-                title = "Mới nhất",
-                playlist_url = host + "/javhd"
-            },
-            new Shared.Models.SISI.Base.MenuItem()
-            {
-                title = "Danh mục",
+                title = "Sắp xếp",
                 playlist_url = "submenu",
-                submenu = cats
+                submenu = sorts
             }
         };
 
@@ -795,7 +792,7 @@ public static class JavHDTo
                     new Shared.Models.SISI.Base.MenuItem()
                     {
                         title = x.name,
-                        playlist_url = host + "/javhd?c=" + x.path
+                        playlist_url = host + "/javhdtoday?c=" + x.path
                     }).ToList()
             });
 
@@ -808,7 +805,7 @@ public static class JavHDTo
                     new Shared.Models.SISI.Base.MenuItem()
                     {
                         title = x.name,
-                        playlist_url = host + "/javhd?search="
+                        playlist_url = host + "/javhdtoday?search="
                             + HttpUtility.UrlEncode(x.query)
                     }).ToList()
             });

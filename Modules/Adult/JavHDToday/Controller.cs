@@ -11,17 +11,17 @@ using System.Net.Http;
 using System.Threading.Tasks;
 using System.Web;
 
-namespace JavHD;
+namespace JavHDToday;
 
-public class JavHDController : BaseSisiController
+public class JavHDTodayController : BaseSisiController
 {
     static readonly HttpClient httpClient =
         FriendlyHttp.CreateHttpClient();
 
-    public JavHDController() : base(ModInit.conf) { }
+    public JavHDTodayController() : base(ModInit.conf) { }
 
     [HttpGet, Staticache(manually: true)]
-    [Route("javhd")]
+    [Route("javhdtoday")]
     async public Task<ActionResult> Index(
         string search, string c, int pg = 1)
     {
@@ -29,7 +29,7 @@ public class JavHDController : BaseSisiController
             return badInitMsg;
 
         var cache = await InvokeCacheResult(
-            ipkey($"javhd:{search}:{c}:{pg}"),
+            ipkey($"javhdtoday:{search}:{c}:{pg}"),
             10, jsonContext.ListPlaylistItem, async e =>
         {
             List<PlaylistItem> playlists = null;
@@ -41,15 +41,15 @@ public class JavHDController : BaseSisiController
                 if (t > 0)
                     await Task.Delay(1200);
                 await httpHydra.GetSpan(
-                    JavHDTo.Uri(init.host, search, c, pg),
+                    JavHDTodayTo.Uri(init.host, search, c, pg),
                     span =>
                 {
-                    var pl = JavHDTo.Playlist(
-                        "javhd/vidosik", span.ToString());
+                    var pl = JavHDTodayTo.Playlist(
+                        "javhdtoday/vidosik", span.ToString());
                     if (pl.Count > 0)
                         playlists = pl;
                 }, addheaders: HeadersModel.Init(
-                    ("User-Agent", JavHDTo.ChromeUA),
+                    ("User-Agent", JavHDTodayTo.ChromeUA),
                     ("Referer", "https://javhd.today/"),
                     ("X-Requested-With", "XMLHttpRequest")
                 ));
@@ -73,8 +73,8 @@ public class JavHDController : BaseSisiController
     // Cache 1 gio trong RAM.
     async Task<List<MenuItem>> MenuAsync()
     {
-        string gkey = ipkey("javhd:cats");
-        string skey = ipkey("javhd:studios");
+        string gkey = ipkey("javhdtoday:cats");
+        string skey = ipkey("javhdtoday:studios");
 
         if (!hybridCache.TryGetValue(gkey,
             out List<(string name, string path)> genres)
@@ -82,10 +82,10 @@ public class JavHDController : BaseSisiController
         {
             long dl = Ms() + 12000;
             string html = await FetchHtmlAsync(
-                JavHDTo.SiteHost + "/categories/",
+                JavHDTodayTo.SiteHost + "/categories/",
                 "category-", 2, 4, dl);
-            genres = JavHDTo.CatTop(
-                JavHDTo.CatList(html));
+            genres = JavHDTodayTo.CatTop(
+                JavHDTodayTo.CatList(html));
 
             if (genres.Count > 0)
                 hybridCache.Set(gkey, genres, cacheTime(60));
@@ -97,17 +97,17 @@ public class JavHDController : BaseSisiController
         {
             long dl = Ms() + 12000;
             string home = await FetchHtmlAsync(
-                JavHDTo.SiteHost + "/", "Studios", 2, 4, dl);
-            studios = JavHDTo.StudioList(home);
+                JavHDTodayTo.SiteHost + "/", "Studios", 2, 4, dl);
+            studios = JavHDTodayTo.StudioList(home);
 
             if (studios.Count > 0)
                 hybridCache.Set(skey, studios, cacheTime(60));
         }
 
-        Console.WriteLine("JavHD: cats genres="
+        Console.WriteLine("JavHDToday: cats genres="
             + genres.Count + " studios=" + studios.Count);
 
-        return JavHDTo.Menu(host, genres, studios);
+        return JavHDTodayTo.Menu(host, genres, studios);
     }
 
     static long Ms() => Environment.TickCount64;
@@ -126,11 +126,11 @@ public class JavHDController : BaseSisiController
             {
                 html = span.ToString();
             }, addheaders: HeadersModel.Init(
-                ("User-Agent", JavHDTo.ChromeUA),
+                ("User-Agent", JavHDTodayTo.ChromeUA),
                 ("Referer", "https://javhd.today/")
             ));
 
-            Console.WriteLine("JavHD: fetch hydra "
+            Console.WriteLine("JavHDToday: fetch hydra "
                 + $"{Ms() - tr}ms len={html?.Length ?? 0}");
 
             if (!string.IsNullOrEmpty(html)
@@ -141,10 +141,10 @@ public class JavHDController : BaseSisiController
         catch { }
 
         long tr2 = Ms();
-        string body = await JavHDTo.CurlGetRetry(url,
-            JavHDTo.SiteHost + "/", marker,
+        string body = await JavHDTodayTo.CurlGetRetry(url,
+            JavHDTodayTo.SiteHost + "/", marker,
             attempts, maxTime, deadline);
-        Console.WriteLine("JavHD: fetch curl "
+        Console.WriteLine("JavHDToday: fetch curl "
             + $"{Ms() - tr2}ms len={body?.Length ?? 0}");
 
         return body;
@@ -153,19 +153,19 @@ public class JavHDController : BaseSisiController
     // Trang detail: tach data-embed (base64 url don) + data-embeds
     // (base64 json array du phong). Cache 15 phut de bam server thu
     // hai khong tai lai trang detail.
-    async Task<List<JavHDServer>> DetailServersAsync(string uri)
+    async Task<List<JavHDTodayServer>> DetailServersAsync(string uri)
     {
         if (string.IsNullOrWhiteSpace(uri))
             return null;
 
-        string memKey = ipkey($"javhd:servers:{uri}");
+        string memKey = ipkey($"javhdtoday:servers:{uri}");
         if (hybridCache.TryGetValue(memKey,
-            out List<JavHDServer> cached)
+            out List<JavHDTodayServer> cached)
             && cached != null && cached.Count > 0)
             return cached;
 
         string pageUrl = uri.StartsWith("/")
-            ? JavHDTo.SiteHost + uri : uri;
+            ? JavHDTodayTo.SiteHost + uri : uri;
 
         // Timeout ngan + it lan thu: lan thanh cong 0.4-0.6s,
         // lan treo an het --max-time. Deadline 12s + probe
@@ -176,7 +176,7 @@ public class JavHDController : BaseSisiController
         if (string.IsNullOrEmpty(detail))
             return null;
 
-        var servers = JavHDTo.Servers(detail);
+        var servers = JavHDTodayTo.Servers(detail);
         if (servers.Count == 0)
             return null;
 
@@ -188,7 +188,7 @@ public class JavHDController : BaseSisiController
     // hien ra, server nao nguoi dung BAM moi resolve — chi mot server
     // nen 2-13s, luon duoi tran 30s cua client.
     [HttpGet, Staticache(manually: true)]
-    [Route("javhd/vidosik")]
+    [Route("javhdtoday/vidosik")]
     async public Task<ActionResult> Vidosik(string uri)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
@@ -200,7 +200,7 @@ public class JavHDController : BaseSisiController
 
         // Lay het server ma trang detail co, chi bo server chua xu ly.
         var servers = all.Where(x =>
-            JavHDTo.IsSupported(x.Label)).ToList();
+            JavHDTodayTo.IsSupported(x.Label)).ToList();
         if (servers.Count == 0)
             return OnError("stream_links", refresh_proxy: true);
 
@@ -214,14 +214,14 @@ public class JavHDController : BaseSisiController
         async Task Probe(int i)
         {
             string u = servers[i].PageUrl;
-            if (JavHDTo.IsDood(u) || JavHDTo.IsCloud(u)
-                || JavHDTo.IsJavhdz(u))
+            if (JavHDTodayTo.IsDood(u) || JavHDTodayTo.IsCloud(u)
+                || JavHDTodayTo.IsJavhdz(u))
             {
                 kinds[i] = servers[i].Kind;
                 return;
             }
 
-            kinds[i] = await JavHDTo.ServerKindAsync(
+            kinds[i] = await JavHDTodayTo.ServerKindAsync(
                 u, 3, kindDl);
         }
 
@@ -236,36 +236,36 @@ public class JavHDController : BaseSisiController
 
             // Nho dang da do de /video fallback khong do lai.
             hybridCache.Set(
-                ipkey($"javhd:kind:{uri}:{servers[i].Label}"),
+                ipkey($"javhdtoday:kind:{uri}:{servers[i].Label}"),
                 servers[i].Kind ?? "",
                 cacheTime(15));
 
             if (dict.ContainsKey(servers[i].Label))
                 continue;
 
-            string tail = servers[i].Kind == JavHDTo.KindMp4
+            string tail = servers[i].Kind == JavHDTodayTo.KindMp4
                 ? ".mp4" : ".m3u8";
-            dict[servers[i].Label] = $"{host}/javhd/video{tail}"
+            dict[servers[i].Label] = $"{host}/javhdtoday/video{tail}"
               + $"?uri={HttpUtility.UrlEncode(uri)}"
               + $"&srv={HttpUtility.UrlEncode(servers[i].Label)}";
         }
 
         hybridCache.Set(
-            ipkey($"javhd:servers:{uri}"), servers, cacheTime(15));
+            ipkey($"javhdtoday:servers:{uri}"), servers, cacheTime(15));
 
         return Json(dict);
     }
 
     // Resolve DUNG MOT server theo `srv`, roi chuyen tiep sang link.
     async Task<List<(string url, string tag, string referer)>> ResolveAsync(
-        JavHDServer pick, long deadline)
+        JavHDTodayServer pick, long deadline)
     {
         var empty = new List<(string, string, string)>();
 
         // --- DoodStream: 301 sang host doi -> API pass_md5 -> mp4 ---
-        if (JavHDTo.IsDood(pick.PageUrl))
+        if (JavHDTodayTo.IsDood(pick.PageUrl))
         {
-            var (src, refDood) = await JavHDTo.DoodSourceAsync(
+            var (src, refDood) = await JavHDTodayTo.DoodSourceAsync(
                 pick.PageUrl, 6, deadline);
             if (string.IsNullOrEmpty(src))
                 return empty;
@@ -273,13 +273,13 @@ public class JavHDController : BaseSisiController
             return new List<(string, string, string)> { (src, "mp4", refDood) };
         }
 
-        string player = await JavHDTo.CurlGetRetry(pick.PageUrl,
-            JavHDTo.SiteHost + "/", null, 4, 5, deadline);
+        string player = await JavHDTodayTo.CurlGetRetry(pick.PageUrl,
+            JavHDTodayTo.SiteHost + "/", null, 4, 5, deadline);
         if (string.IsNullOrEmpty(player))
             return empty;
 
         // --- Cloudwish / Mycloudz: packer -> var links hls4>hls3>hls2 ---
-        if (JavHDTo.IsCloud(pick.PageUrl))
+        if (JavHDTodayTo.IsCloud(pick.PageUrl))
         {
             string pHost = null;
             try
@@ -291,11 +291,11 @@ public class JavHDController : BaseSisiController
 
             string pref = string.IsNullOrEmpty(pHost)
                 ? null : pHost + "/";
-            var masters = JavHDTo.CloudMasters(player, pHost);
+            var masters = JavHDTodayTo.CloudMasters(player, pHost);
 
             foreach (string master in masters)
             {
-                var variants = await JavHDTo.MasterVariants(
+                var variants = await JavHDTodayTo.MasterVariants(
                     master, 3, 7, deadline, pref);
                 if (variants.Count > 0)
                     return variants.Select(x =>
@@ -314,9 +314,9 @@ public class JavHDController : BaseSisiController
         // --- Javhdz (Myserver/Topserver/Maxcloud/Bpserver):
         // embed Plyr -> FIRST.playlist (media 1 level, segment
         // absolute, tien to PNG do hls.js cat o client) ---
-        if (JavHDTo.IsJavhdz(pick.PageUrl))
+        if (JavHDTodayTo.IsJavhdz(pick.PageUrl))
         {
-            string pl = JavHDTo.JavhdzPlaylist(player, pick.PageUrl);
+            string pl = JavHDTodayTo.JavhdzPlaylist(player, pick.PageUrl);
             if (string.IsNullOrEmpty(pl))
                 return empty;
 
@@ -325,13 +325,13 @@ public class JavHDController : BaseSisiController
         }
 
         // --- Turbo: data-hash (m3u8) truoc, urlPlay (mp4) sau ---
-        foreach (string media in JavHDTo.StreamUrls(player))
+        foreach (string media in JavHDTodayTo.StreamUrls(player))
         {
-            if (JavHDTo.IsDirectMp4(media))
+            if (JavHDTodayTo.IsDirectMp4(media))
                 return new List<(string, string, string)>
                     { (media, "mp4", null) };
 
-            var variants = await JavHDTo.MasterVariants(media, 3, 7, deadline);
+            var variants = await JavHDTodayTo.MasterVariants(media, 3, 7, deadline);
             if (variants.Count > 0)
                 return variants.Select(x =>
                     (x.url, x.tag, (string)null)).ToList();
@@ -343,30 +343,14 @@ public class JavHDController : BaseSisiController
         return empty;
     }
 
-    [HttpGet]
-    [Route("javhdepick.js")]
-    public ActionResult EpPick()
-    {
-        try
-        {
-            string path = System.IO.Path.Combine(
-                ModInit.modpath, "javhdepick.js");
-            if (System.IO.File.Exists(path))
-                return Content(System.IO.File.ReadAllText(path),
-                    "application/javascript; charset=utf-8");
-        }
-        catch { }
-        return NotFound();
-    }
-
     // Resolve server theo `srv` roi chuyen tiep sang link phat; server
     // do chet thi TU THU cac server con lai theo Rank (DoodStream ->
     // Turbo -> Cloudwish -> Mycloudz). Moi server mot sub-deadline nen
     // ca chuoi van duoi tran 30s cua client.
     [HttpGet]
-    [Route("javhd/video")]
-    [Route("javhd/video.mp4")]
-    [Route("javhd/video.m3u8")]
+    [Route("javhdtoday/video")]
+    [Route("javhdtoday/video.mp4")]
+    [Route("javhdtoday/video.m3u8")]
     async public Task<ActionResult> Video(
         string uri, string srv, string q = null)
     {
@@ -377,7 +361,7 @@ public class JavHDController : BaseSisiController
             srv = q;
 
         // Cache resolve: an ngay neu da resolve trong 1 phut truoc.
-        string streamKey = ipkey($"javhd:stream:{uri}:{srv}");
+        string streamKey = ipkey($"javhdtoday:stream:{uri}:{srv}");
         if (hybridCache.TryGetValue(streamKey, out string cachedRaw)
             && !string.IsNullOrEmpty(cachedRaw))
         {
@@ -392,9 +376,9 @@ public class JavHDController : BaseSisiController
 
         var pick = servers.FirstOrDefault(x =>
             string.Equals(x.Label, srv, StringComparison.OrdinalIgnoreCase)
-            && JavHDTo.IsSupported(x.Label));
+            && JavHDTodayTo.IsSupported(x.Label));
 
-        var order = new List<JavHDServer>();
+        var order = new List<JavHDTodayServer>();
         if (pick != null)
             order.Add(pick);
 
@@ -423,7 +407,7 @@ public class JavHDController : BaseSisiController
             long sub = Math.Min(deadline, Ms() + 12000);
             var streams = await ResolveAsync(s, sub);
             Console.WriteLine(
-                $"JavHD: srv={s.Label} n={streams.Count}");
+                $"JavHDToday: srv={s.Label} n={streams.Count}");
 
             if (streams.Count == 0)
                 continue;
@@ -434,11 +418,11 @@ public class JavHDController : BaseSisiController
                 best = streams[0];
 
             Console.WriteLine(
-                $"JavHD: chon srv={s.Label} tag={best.tag}");
+                $"JavHDToday: chon srv={s.Label} tag={best.tag}");
 
             string raw = best.url + "\n" + (best.referer ?? "");
             hybridCache.Set(
-                ipkey($"javhd:stream:{uri}:{s.Label}"),
+                ipkey($"javhdtoday:stream:{uri}:{s.Label}"),
                 raw, cacheTime(1));
             hybridCache.Set(streamKey, raw, cacheTime(1));
 
@@ -450,12 +434,12 @@ public class JavHDController : BaseSisiController
 
     // Dang phat cua mot server: uu tien ket qua /vidosik da do
     // (cache 15 phut), khong thi dung dang tinh theo host.
-    string KindOf(string uri, JavHDServer s)
+    string KindOf(string uri, JavHDTodayServer s)
     {
         if (s == null)
             return "";
 
-        string key = ipkey($"javhd:kind:{uri}:{s.Label}");
+        string key = ipkey($"javhdtoday:kind:{uri}:{s.Label}");
         if (hybridCache.TryGetValue(key, out string k)
             && !string.IsNullOrEmpty(k))
             return k;
