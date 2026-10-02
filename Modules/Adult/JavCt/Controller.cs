@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Web;
 
@@ -16,6 +17,8 @@ namespace JavCt;
 
 public class JavCtController : BaseSisiController
 {
+    static readonly SemaphoreSlim menuLock = new(1, 1);
+    const int MenuFetchBudget = 10_000;
     public JavCtController() : base(ModInit.conf) { }
 
     [HttpGet, Staticache(manually: true)]
@@ -35,6 +38,10 @@ public class JavCtController : BaseSisiController
         if (sortUrl != null)
             pg = 1;
 
+        // Menu fetch chay SONG SONG voi playlist: tong thoi gian la MAX
+        // thay vi TONG (JavCt: 15.9s -> xem log `JavCt: menu`).
+        var menuTask = MenuAsync();
+
         var cache = await InvokeCacheResult(
             ipkey($"javct:{search}:{c}:{sort}:{pg}"),
             10, jsonContext.ListPlaylistItem, async e =>
@@ -52,7 +59,7 @@ public class JavCtController : BaseSisiController
         if (rch?.enable == true)
             StatiCacheDisabled = true;
 
-        return PlaylistResult(cache, await MenuAsync(),
+        return PlaylistResult(cache, await menuTask,
             total_pages: sortUrl != null ? 1 : 0);
     }
 
@@ -66,11 +73,41 @@ public class JavCtController : BaseSisiController
 
         string hostLocal = host;
 
-        // Truoc day chay nen roi tra menu 2 dong (search+sort) ngay —
-        // app cache menu do luon nen KHONG bao gio thay the loai/hang.
-        // Fetch chi ~1s -> cho lay xong roi tra menu that.
+        // App cache response DAU CA PHIEN -> lan truy cap dau phai tra
+        // menu THAT, khong duoc tra menu rut gon. Nhung `GetPageAsync` co
+        // deadline 14s nen phai CO NGAN SACH: het 10s -> tra menu toi
+        // thieu (fetch chay tiep cho request sau) thay vi treo app.
+        if (!await menuLock.WaitAsync(2000))
+            return JavCtTo.Menu(hostLocal, null, null);
+
         try
         {
+            // Request truoc do da nap xong cache trong luc ta cho lock.
+            if (hybridCache.TryGetValue(memKey, out List<MenuItem> hit2)
+                && hit2 != null && hit2.Count > 0)
+                return hit2;
+
+            var build = BuildMenuAsync(hostLocal, memKey);
+
+            if (build != await Task.WhenAny(build, Task.Delay(MenuFetchBudget)))
+                return JavCtTo.Menu(hostLocal, null, null);
+
+            return await build;
+        }
+        finally
+        {
+            menuLock.Release();
+        }
+    }
+
+    async Task<List<MenuItem>> BuildMenuAsync(string hostLocal, string memKey)
+    {
+        long tr = Environment.TickCount64;
+
+        try
+        {
+            // 2 trang fetch SONG SONG. `/studios` = 1479 hang nen day la
+            // phan ton thoi gian cua lan mo app dau tien.
             var catsTask = TaxonomiesAsync("/categories", "category");
             var studiosTask = TaxonomiesAsync("/studios", "studio");
             await Task.WhenAll(catsTask, studiosTask);
@@ -82,10 +119,17 @@ public class JavCtController : BaseSisiController
             {
                 var menu = JavCtTo.Menu(hostLocal, cats, studios);
                 hybridCache.Set(memKey, menu, cacheTime(720), true);
+                Console.WriteLine(
+                    $"JavCt: menu cats={cats.Count} studios={studios.Count}"
+                    + $" ({Environment.TickCount64 - tr}ms)");
+
                 return menu;
             }
         }
         catch { }
+
+        Console.WriteLine(
+            $"JavCt: menu that bai ({Environment.TickCount64 - tr}ms)");
 
         return JavCtTo.Menu(hostLocal, null, null);
     }

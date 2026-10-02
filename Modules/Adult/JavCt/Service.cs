@@ -555,21 +555,17 @@ public static class JavCtTo
         string host, IReadOnlyList<(string name, string path)> cats = null,
         IReadOnlyList<(string name, string path)> studios = null)
     {
+        // Lay HET, khong cat top N — chi CHIA nho de moi submenu <= 300.
         var genreMenu = new List<Shared.Models.SISI.Base.MenuItem>();
         if (cats != null)
         {
-            foreach (var c in cats.Take(300))
+            foreach (var c in cats)
                 genreMenu.Add(new(c.name, host + "/javct?c=" + c.path));
         }
 
-        var studioMenu = new List<Shared.Models.SISI.Base.MenuItem>();
-        if (studios != null)
-        {
-            // /studios la 1 trang, 1479 hang. Lay HET (truoc day cat 100
-            // lam user tuong thieu). Select cuon duoc.
-            foreach (var s in studios)
-                studioMenu.Add(new(s.name, host + "/javct?c=" + s.path));
-        }
+        // 1479 hang -> 5 dong `Hang phim #–B ... M–P` thay vi 1 submenu
+        // 1479 muc (client SISI chi 1 tang nen KHONG tach them tang).
+        var studioRows = DirBuckets(host, "Hãng phim", studios);
 
         var root = new List<Shared.Models.SISI.Base.MenuItem>()
         {
@@ -605,14 +601,111 @@ public static class JavCtTo
                 submenu = genreMenu
             });
 
-        if (studioMenu.Count > 0)
-            root.Add(new Shared.Models.SISI.Base.MenuItem()
-            {
-                title = "Hãng phim",
-                playlist_url = "submenu",
-                submenu = studioMenu
-            });
+        root.AddRange(studioRows);
 
         return root;
+    }
+
+    // MOI NHOM = 1 muc TANG 1, submenu la cac muc trong nhom do.
+    // Client SISI chi hien MOT tang submenu nen KHONG tach
+    // `Hang phim -> A -> Madonna` (3 tang = muc chet).
+    public const int MaxPerBucket = 300;
+
+    public static List<Shared.Models.SISI.Base.MenuItem> DirBuckets(
+        string host, string title,
+        IReadOnlyList<(string name, string path)> all, int maxPer = MaxPerBucket)
+    {
+        var res = new List<Shared.Models.SISI.Base.MenuItem>();
+        if (all == null || all.Count == 0)
+            return res;
+
+        // Gom theo KY TU DAU cua ten. Ky tu khong phai A-Z (so, `#`)
+        // gom vao nhom `#` — khong in ky tu la ra ten muc (client tach
+        // subtitle bang `:` nen ky ten la se bi cat).
+        var groups = new Dictionary<char, List<(string name, string path)>>();
+
+        foreach (var it in all)
+        {
+            if (string.IsNullOrWhiteSpace(it.name))
+                continue;
+
+            char c = char.ToUpperInvariant(it.name.Trim()[0]);
+            if (c < 'A' || c > 'Z')
+                c = '#';
+
+            if (!groups.TryGetValue(c, out var lst))
+            {
+                lst = new List<(string, string)>();
+                groups[c] = lst;
+            }
+
+            lst.Add(it);
+        }
+
+        // `#` truoc, roi so 0-9, roi A-Z.
+        var keys = groups.Keys.OrderBy(CharRank).ToList();
+
+        // Flatten roi cat chunk. Nhom vuot `maxPer` se bi cat giua: phan
+        // du lot sang chunk sau, KHONG bo muc nao.
+        var flat = new List<(char key, string name, string path)>(all.Count);
+        foreach (var k in keys)
+            foreach (var it in groups[k])
+                flat.Add((k, it.name, it.path));
+
+        var from = new List<char>();
+        var to = new List<char>();
+        var subs = new List<List<Shared.Models.SISI.Base.MenuItem>>();
+
+        for (int i = 0; i < flat.Count; i += maxPer)
+        {
+            int n = Math.Min(maxPer, flat.Count - i);
+
+            from.Add(flat[i].key);
+            to.Add(flat[i + n - 1].key);
+            subs.Add(flat.Skip(i).Take(n).Select(x =>
+                new Shared.Models.SISI.Base.MenuItem(
+                    x.name, host + "/javct?c=" + x.path)).ToList());
+        }
+
+        // Chunk cat giua mot chu cai (from == to) thi them `(1/2)`,`(2/2)`
+        // — khong thi menu hien hai dong trung ten.
+        for (int k = 0; k < from.Count; k++)
+        {
+            string name = title + " " + from[k]
+                + (to[k] == from[k] ? "" : "–" + to[k]);
+
+            if (to[k] == from[k])
+            {
+                int parts = from.Count(c => c == from[k]);
+                if (parts > 1)
+                {
+                    int nth = 1;
+                    for (int q = 0; q < k; q++)
+                        if (from[q] == from[k])
+                            nth++;
+
+                    name += $" ({nth}/{parts})";
+                }
+            }
+
+            res.Add(new Shared.Models.SISI.Base.MenuItem(name, "submenu")
+            { submenu = subs[k] });
+        }
+
+        return res;
+    }
+
+    // `#` < 0 < 1 < ... < 9 < A < ... < Z. So PHAI xep TANG so (cua chu
+    // so) chu khong phai tat ca so cung hang — neu khong ten muc ra
+    // `Hang phim 9–7` theo thu tu site.
+    static int CharRank(char c)
+    {
+        if (c == '#')
+            return 0;
+        if (c >= '0' && c <= '9')
+            return 1 + (c - '0');
+        if (c >= 'A' && c <= 'Z')
+            return 20 + (c - 'A');
+        return 100;
     }
 }
