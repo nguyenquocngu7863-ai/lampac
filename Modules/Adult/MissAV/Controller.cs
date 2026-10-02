@@ -109,7 +109,10 @@ public class MissAVController : BaseSisiController
                             else if (img.src && !img.src.startsWith('data:')) p = img.src;
                         }
                         const lines = (d.innerText || '').trim().split('\n').map(s => s.trim()).filter(s => s.length > 0);
-                        return { u: a ? a.getAttribute('href') : '', t: lines.join('\n'), p: p, a: a ? (a.getAttribute('alt') || '') : '' };
+                        // Tile co HAI alt: <a alt=ma-phim> va <img alt=ten-day-du>.
+                        // Phai lay alt cua img; lay alt cua a se ra ma phim.
+                        const ia = img ? (img.getAttribute('alt') || '') : '';
+                        return { u: a ? a.getAttribute('href') : '', t: lines.join('\n'), p: p, a: ia, c: a ? (a.getAttribute('alt') || '') : '' };
                     }))");
                 }
                 catch { }
@@ -130,18 +133,18 @@ public class MissAVController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("missav")]
-    async public Task<ActionResult> Index(string search, string c, int pg = 1)
+    async public Task<ActionResult> Index(string search, string c, int pg = 1, string sort = null)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
 
         async Task<CacheResult<List<PlaylistItem>>> GetPageAsync(string search, string c, int page, bool allowRefresh)
         {
-            return await InvokeCacheResult(ipkey($"missav:{search}:{c}:{page}"), 10, jsonContext.ListPlaylistItem, async e =>
+            return await InvokeCacheResult(ipkey($"missav:{search}:{c}:{sort}:{page}"), 10, jsonContext.ListPlaylistItem, async e =>
             {
                 List<PlaylistItem> playlists = null;
 
-                string pageUrl = MissAVTo.Uri(init.host, search, c, page);
+                string pageUrl = MissAVTo.Uri(init.host, search, c, page, sort);
                 var (_, tilesJson) = await PageFetchAsync(pageUrl);
                 if (!string.IsNullOrEmpty(tilesJson))
                     playlists = MissAVTo.Playlist("missav/vidosik", tilesJson);
@@ -175,8 +178,7 @@ public class MissAVController : BaseSisiController
 
     // Menu dong: genres HET cac trang + makers 4 trang dau (~150 hang lon).
     // Trang taxonomy la HTML tinh (khong can Playwright) nen dung Http
-    // thuong. Tra fallback ngay, warm that o background; giu inmemory vi
-    // ValueTuple qua file cache doc lai khong duoc.
+    // thuong. Giu inmemory vi ValueTuple qua file cache doc lai khong duoc.
     async Task<List<MenuItem>> MenuAsync()
     {
         string memKey = ipkey("missav:menu");
@@ -187,80 +189,177 @@ public class MissAVController : BaseSisiController
 
         string hostLocal = host;
 
-        _ = Task.Run(async () =>
+        // KHONG chay nen roi tra menu tinh ngay: app cache response dau
+        // cho ca phien -> the loai/hang khong bao gio hien. Cho fetch xong.
+        try
         {
-            try
-            {
-                var g = await TaxonomiesAsync("/vi/genres", 0);
-                var s = await TaxonomiesAsync("/vi/makers", 4);
+            var t1 = TaxonomiesAsync("/vi/genres", 8);
+            var t2 = TaxonomiesAsync("/vi/makers", 4);
+            await Task.WhenAll(t1, t2);
 
-                if (g.Count > 0 || s.Count > 0)
-                    hybridCache.Set(memKey,
-                        MissAVTo.Menu(hostLocal, g, s), cacheTime(720), true);
+            var g = await t1;
+            var s = await t2;
+
+            if (g.Count > 0 || s.Count > 0)
+            {
+                var menu = MissAVTo.Menu(hostLocal, g, s);
+                hybridCache.Set(memKey, menu, cacheTime(720), true);
+                return menu;
             }
-            catch { }
-        });
+        }
+        catch { }
 
         return MissAVTo.Menu(hostLocal, null, null);
     }
 
-    // maxPages = 0 nghia la het (doc so trang tu p1). Trang 2..N fetch song
-    // song. Moi trang ~36 muc, timeout rieng de trang treo khong giu ca lot.
+    // maxPages: so trang taxonomy toi da (genres 8 ~ 288 muc, makers 4 ~ 144).
     async Task<List<(string name, string url)>> TaxonomiesAsync(
         string page, int maxPages)
     {
         var all = new List<(string, string)>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        void Add(List<(string name, string url)> rows)
+        var htmls = await TaxPagesHtmlAsync(page, maxPages);
+
+        foreach (var html in htmls)
         {
-            foreach (var r in rows)
+            foreach (var r in MissAVTo.Taxonomies(html))
             {
                 if (seen.Add(r.url))
                     all.Add(r);
             }
         }
 
-        string first = await TaxPageAsync(page, 1);
-        Add(MissAVTo.Taxonomies(first));
-
-        int pages = MissAVTo.TaxPages(first, page);
-        if (maxPages > 0 && pages > maxPages)
-            pages = maxPages;
-
-        if (pages <= 1)
-            return all;
-
-        var tasks = new List<Task<string>>();
-        for (int p = 2; p <= pages; p++)
-            tasks.Add(TaxPageAsync(page, p));
-
-        foreach (var t in tasks)
-            Add(MissAVTo.Taxonomies(await t));
-
         return all;
     }
 
-    async Task<string> TaxPageAsync(string page, int pg)
+    // missav chan TLS fingerprint cua .NET/curl (SSL_connect closed) ->
+    // taxonomy phai lay bang real Chrome. Reuse 1 browser, 4 tab chay song
+    // song de lan dau khong qua lau; dung chung semaphore voi PageFetchAsync.
+    async Task<List<string>> TaxPagesHtmlAsync(string page, int maxPages)
     {
-        string url = MissAVTo.SiteHost + page + (pg > 1 ? "?page=" + pg : "");
+        var htmls = new List<string>();
+        if (maxPages < 1)
+            maxPages = 1;
+
+        var acquired = await _pageFetchLock.WaitAsync(TimeSpan.FromSeconds(30));
+        if (!acquired)
+            return htmls;
+
+        var headers = new Dictionary<string, string>
+        {
+            ["User-Agent"] = MissAVTo.ChromeUA,
+            ["Referer"] = "https://missav.live/"
+        };
 
         try
         {
-            return await Http.Get(
-                url,
-                timeoutSeconds: 12,
-                httpversion: init.httpversion,
-                proxy: proxy,
-                headers: HeadersModel.Init(
-                    ("User-Agent", MissAVTo.ChromeUA),
-                    ("Referer", MissAVTo.SiteHost + "/"),
-                    ("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")));
+            using (var browser = new Shared.PlaywrightCore.PlaywrightBrowser())
+            {
+                // trang 1 truoc de biet tong so trang
+                string first = null;
+                IPage p1 = await browser.NewPageAsync("MissAV", headers, keepopen: true);
+                if (p1 == null)
+                    return htmls;
+
+                try
+                {
+                    var r1 = await p1.GotoAsync(MissAVTo.SiteHost + page,
+                        new PageGotoOptions
+                        {
+                            Timeout = 20000,
+                            WaitUntil = WaitUntilState.DOMContentLoaded
+                        });
+                    if (r1 != null && r1.Ok)
+                        first = await p1.ContentAsync();
+                }
+                finally
+                {
+                    try { await p1.CloseAsync(); } catch { }
+                }
+
+                if (string.IsNullOrEmpty(first))
+                    return htmls;
+
+                htmls.Add(first);
+
+                int total = MissAVTo.TaxPages(first, page);
+                if (total > maxPages)
+                    total = maxPages;
+                if (total <= 1)
+                    return htmls;
+
+                // Tao tab truoc (tuan tu) roi moi cho chay song song — tranh
+                // goi NewPageAsync dong thoi tren cung browser.
+                int workers = Math.Min(4, total - 1);
+                var pool = new List<IPage>(workers);
+                for (int i = 0; i < workers; i++)
+                {
+                    IPage wp = await browser.NewPageAsync("MissAV", headers, keepopen: true);
+                    if (wp != null)
+                        pool.Add(wp);
+                }
+
+                if (pool.Count == 0)
+                    return htmls;
+
+                var result = new string[total + 1];
+                int next = 2;
+                var gate = new object();
+
+                async Task Worker(IPage wp)
+                {
+                    while (true)
+                    {
+                        int n;
+                        lock (gate) { n = next++; }
+                        if (n > total)
+                            break;
+
+                        try
+                        {
+                            var r = await wp.GotoAsync(
+                                MissAVTo.SiteHost + page + "?page=" + n,
+                                new PageGotoOptions
+                                {
+                                    Timeout = 20000,
+                                    WaitUntil = WaitUntilState.DOMContentLoaded
+                                });
+                            if (r != null && r.Ok)
+                            {
+                                string h = await wp.ContentAsync();
+                                if (!string.IsNullOrEmpty(h))
+                                    result[n] = h;
+                            }
+                        }
+                        catch { }
+                    }
+                }
+
+                try
+                {
+                    await Task.WhenAll(pool.Select(wp => Worker(wp)));
+                }
+                finally
+                {
+                    foreach (var wp in pool)
+                    {
+                        try { await wp.CloseAsync(); } catch { }
+                    }
+                }
+
+                for (int n = 2; n <= total; n++)
+                    if (!string.IsNullOrEmpty(result[n]))
+                        htmls.Add(result[n]);
+            }
         }
-        catch
+        catch { }
+        finally
         {
-            return null;
+            _pageFetchLock.Release();
         }
+
+        return htmls;
     }
 
     async Task<Dictionary<string, string>> ResolveLinksAsync(string uri)

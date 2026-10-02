@@ -52,14 +52,14 @@ public class JavGuruController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("javguru")]
-    async public Task<ActionResult> Index(string search, string c, int pg = 1)
+    async public Task<ActionResult> Index(string search, string c, int pg = 1, string sort = null)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
 
-        var cache = await InvokeCacheResult(ipkey($"javguru:{search}:{c}:{pg}"), 10, jsonContext.ListPlaylistItem, async e =>
+        var cache = await InvokeCacheResult(ipkey($"javguru:{search}:{c}:{sort}:{pg}"), 10, jsonContext.ListPlaylistItem, async e =>
         {
-            string html = await FetchHtmlAsync(JavGuruTo.Uri(init.host, search, c, pg), "<div class=\"inside-article\">");
+            string html = await FetchHtmlAsync(JavGuruTo.Uri(init.host, search, c, pg, sort), "<div class=\"inside-article\">");
             if (string.IsNullOrEmpty(html))
                 return e.Fail("playlists", refresh_proxy: string.IsNullOrEmpty(search));
 

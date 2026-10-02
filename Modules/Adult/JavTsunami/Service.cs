@@ -1068,8 +1068,12 @@ public static class JavTsunamiTo
         _ = tags;
         var tagMenu = new List<Shared.Models.SISI.Base.MenuItem>();
 
+        // DÒNG 2 — Sắp xếp (công thức SISI 9g). Site dung `?filter=`.
+// Da do 2026-10-02: latest/longest/most-viewed/random ra 4 bo phim
+// KHAC nhau; `?filter=hot` bi WP bo qua (ra y trang mac dinh) -> khong dua.
         var views = new List<Shared.Models.SISI.Base.MenuItem>()
         {
+            new("Mới nhất", host + "/javtsunami"),
             new("Xem nhiều", host + "/javtsunami?c=filter/most-viewed"),
             new("Lâu nhất", host + "/javtsunami?c=filter/longest"),
             new("Ngẫu nhiên", host + "/javtsunami?c=filter/random"),
@@ -1085,8 +1089,9 @@ public static class JavTsunamiTo
             },
             new Shared.Models.SISI.Base.MenuItem()
             {
-                title = "Mới nhất",
-                playlist_url = host + "/javtsunami"
+                title = "Sắp xếp",
+                playlist_url = "submenu",
+                submenu = views
             },
             new Shared.Models.SISI.Base.MenuItem()
             {
@@ -1104,13 +1109,6 @@ public static class JavTsunamiTo
                 playlist_url = "submenu",
                 submenu = tagMenu
             });
-
-        root.Add(new Shared.Models.SISI.Base.MenuItem()
-        {
-            title = "Lọc",
-            playlist_url = "submenu",
-            submenu = views
-        });
 
         return root;
     }

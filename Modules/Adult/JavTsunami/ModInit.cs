@@ -42,7 +42,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
         conf = ModuleInvoke.Init("JavTsunami", new SisiSettings("JavTsunami", "https://javtsunami.com")
         {
             // 9 = nam ke JavGuru (8), tuc la cuoi nhom tu lam truoc VietSexBlog 10.
-            displayindex = 9,
+            displayindex = 4,
             streamproxy = true,
             httpversion = 2,
             rch_access = "apk",

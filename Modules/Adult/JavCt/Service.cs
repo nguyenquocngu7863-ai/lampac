@@ -39,7 +39,18 @@ public static class JavCtTo
 
         string baseUrl;
         if (!string.IsNullOrWhiteSpace(search))
-            baseUrl = host + "/search/" + HttpUtility.UrlEncode(search.Trim());
+        {
+            // Search path cua site: /search/<tu1>-<tu2>. Khoang trang PHAI
+            // doi thanh '-' — dung '%20' hay '+' deu 404 (da do: "Yui Hatano"
+            // -> /search/Yui-Hatano moi ra ket qua, canonical y vay).
+            var parts = search.Trim().Split(
+                new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+            var enc = new List<string>(parts.Length);
+            foreach (var p in parts)
+                enc.Add(System.Uri.EscapeDataString(p));
+
+            baseUrl = host + "/search/" + string.Join("-", enc);
+        }
         else if (!string.IsNullOrWhiteSpace(c))
         {
             string cat = c.Trim();
@@ -53,6 +64,19 @@ public static class JavCtTo
         }
 
         return pg > 1 ? baseUrl.TrimEnd('/') + "/pg-" + pg : baseUrl;
+    }
+
+    // Sort cua site (WP) la QUERY `?sort=most-viewed|new-releases`
+    // (nav site con tro them `most-liked` nhung do la 404 -> khong dung).
+    // QUAN TRONG: bang xep hang khong phan trang duoc — moi `/pg-N` deu tra
+    // ve cung trang 1 (do 2026-10-02). Caller phai khoa total_pages=1.
+    public static string UriSort(string host, string c, string sort)
+    {
+        if (string.IsNullOrWhiteSpace(sort))
+            return null;
+
+        string cat = string.IsNullOrWhiteSpace(c) ? "amateur" : c.Trim().Trim('/');
+        return host.TrimEnd('/') + "/" + cat + "?sort=" + sort.Trim();
     }
 
     // Card: card__cover > img[data-src|src + alt] + card__title > a[href=/v/slug].
@@ -541,8 +565,9 @@ public static class JavCtTo
         var studioMenu = new List<Shared.Models.SISI.Base.MenuItem>();
         if (studios != null)
         {
-            // 1479 studio 1 trang — chi lay 100 dau, hoi user neu muon full.
-            foreach (var s in studios.Take(100))
+            // /studios la 1 trang, 1479 hang. Lay HET (truoc day cat 100
+            // lam user tuong thieu). Select cuon duoc.
+            foreach (var s in studios)
                 studioMenu.Add(new(s.name, host + "/javct?c=" + s.path));
         }
 
@@ -554,10 +579,21 @@ public static class JavCtTo
                 search_on = "search_on",
                 playlist_url = host + "/javct"
             },
+            // DÒNG 2 — Sắp xếp (công thức SISI 9g). Site dung QUERY
+            // `?sort=`. Do 2026-10-02: `most-viewed` va `new-releases` ra
+            // danh sach khac nhau tren /amateur, /uncensored, /censored.
+            // `most-liked` / `rating` / `random` tra 404 Page Not Found
+            // (nav site tro toi nhung link chet) -> khong dua vao menu.
             new Shared.Models.SISI.Base.MenuItem()
             {
-                title = "Mới nhất",
-                playlist_url = host + "/javct"
+                title = "Sắp xếp",
+                playlist_url = "submenu",
+                submenu = new List<Shared.Models.SISI.Base.MenuItem>()
+                {
+                    new("Mới nhất", host + "/javct"),
+                    new("Xem nhiều nhất", host + "/javct?c=amateur&sort=most-viewed"),
+                    new("Mới phát hành", host + "/javct?c=amateur&sort=new-releases"),
+                }
             },
         };
 

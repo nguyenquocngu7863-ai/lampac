@@ -67,7 +67,7 @@ public static class JavGuruTo
         return null;
     }
 
-    public static string Uri(string host, string search, string c, int pg)
+    public static string Uri(string host, string search, string c, int pg, string sort = null)
     {
         if (string.IsNullOrEmpty(host))
             host = SiteHost;
@@ -78,11 +78,17 @@ public static class JavGuruTo
             return host + "/?s=" + HttpUtility.UrlEncode(search.Trim()) + (pg > 1 ? "&paged=" + pg : "");
         }
 
+        // Sort cua site (WP) la QUERY `?orderby=views|likes|title`,
+        // dat sau duong dan phan trang /page/N/.
+        string sq = string.IsNullOrWhiteSpace(sort)
+            ? ""
+            : "?orderby=" + sort.Trim();
+
         string path;
         if (!string.IsNullOrWhiteSpace(c))
         {
             if (c.StartsWith("http", StringComparison.OrdinalIgnoreCase))
-                return NormalizePageUrl(c, pg);
+                return NormalizePageUrl(c, pg) + sq;
 
             path = "/" + c.Trim().Trim('/') + "/";
         }
@@ -95,7 +101,7 @@ public static class JavGuruTo
         if (pg > 1)
             path = path.TrimEnd('/') + "/page/" + pg + "/";
 
-        return host + path;
+        return host + path + sq;
     }
 
     public static string NormalizePageUrl(string url, int pg = 1)
@@ -1241,14 +1247,26 @@ public static bool IsVoServer(string label)
                 search_on = "search_on",
                 playlist_url = host + "/javguru"
             },
+            // DÒNG 2 — Sắp xếp (công thức SISI 9g). WP dung QUERY
+            // `?orderby=`. Da do: views / likes / title doi hoan toan danh
+            // sach; `likes-today|likes-week|likes-month` bi WP BO QUA
+            // (tra ve y trang mac dinh) -> khong dua vao menu.
             new Shared.Models.SISI.Base.MenuItem()
             {
-                title = "Mới nhất",
-                playlist_url = host + "/javguru"
+                title = "Sắp xếp",
+                playlist_url = "submenu",
+                submenu = new List<Shared.Models.SISI.Base.MenuItem>()
+                {
+                    new("Mới nhất", host + "/javguru"),
+                    new("Xem nhiều nhất", host + "/javguru?c=category/jav&sort=views"),
+                    new("Nhiều like nhất", host + "/javguru?c=category/jav&sort=likes"),
+                    new("Tên A–Z", host + "/javguru?c=category/jav&sort=title"),
+                }
             },
-            // Khong dua "Xem nhieu" (most-watched-rank) vao menu: trang do dung
-            // markup <article class="rank-item"> va /page/N/ tra lai dung mot
-            // bang xep hang -> phan trang se lap phim.
+            // Khong dua trang "Xem nhieu" (most-watched-rank) vao menu: trang do
+            // dung markup <article class="rank-item"> va /page/N/ tra lai
+            // dung mot bang xep hang -> phan trang se lap phim. Dung `?orderby=views`
+            // o tren thi lay duoc noi dung that cua WP.
             new Shared.Models.SISI.Base.MenuItem()
             {
                 title = "Thể loại",

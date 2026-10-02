@@ -39,7 +39,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
     {
         conf = ModuleInvoke.Init("Javtiful", new SisiSettings("Javtiful", "https://javtiful.com")
         {
-            displayindex = 19,
+            displayindex = 7,
             streamproxy = true,
             httpversion = 2,
             rch_access = "apk",

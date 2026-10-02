@@ -38,7 +38,7 @@ public static class JavtifulTo
         return s;
     }
 
-    public static string Uri(string host, string search, string c, int pg)
+    public static string Uri(string host, string search, string c, int pg, string sort = null)
     {
         if (string.IsNullOrEmpty(host))
             host = SiteHost;
@@ -57,11 +57,22 @@ public static class JavtifulTo
         if (!string.IsNullOrEmpty(c))
         {
             string url = c.StartsWith("http") ? c : host + "/vn/" + c.Trim('/');
-            return url + (pg > 1 ? (url.Contains("?") ? "&" : "?") + "page=" + pg : "");
+            string q = pg > 1 ? (url.Contains("?") ? "&" : "?") + "page=" + pg : "";
+
+            // Sort cua site la QUERY `?sort=popular_week|popular_month|
+            // popular_day|popular`, dat sau duong dan co phan trang.
+            if (!string.IsNullOrWhiteSpace(sort))
+                q += (q.Length == 0 ? "?" : "&") + "sort=" + sort.Trim();
+
+            return url + q;
         }
 
         // home /vn khong phan trang (?page= bi bo qua) -> dung feed /vn/foryou
-        return host + "/vn/foryou" + page;
+        string sq = page;
+        if (!string.IsNullOrWhiteSpace(sort))
+            sq += (sq.Length == 0 ? "?" : "&") + "sort=" + sort.Trim();
+
+        return host + "/vn/foryou" + sq;
     }
 
     public static List<Shared.Models.SISI.Base.PlaylistItem> Playlist(string uri, string html)
@@ -244,25 +255,33 @@ public static class JavtifulTo
                 search_on = "search_on",
                 playlist_url = host + "/javtiful"
             },
+            // DÒNG 2 — Sắp xếp (công thức SISI 9g). Site dùng QUERY
+            // `?sort=popular_week|popular_month|popular_day|popular`
+            // (menu "Phổ biến tuần này" cua trang chủ).
             new Shared.Models.SISI.Base.MenuItem()
             {
-                title = "Mới nhất",
-                playlist_url = host + "/javtiful"
+                title = "Sắp xếp",
+                playlist_url = "submenu",
+                submenu = new List<Shared.Models.SISI.Base.MenuItem>()
+                {
+                    new("Mới nhất", host + "/javtiful?c=videos"),
+                    new("Phổ biến hôm nay", host + "/javtiful?c=videos&sort=popular_day"),
+                    new("Phổ biến tuần này", host + "/javtiful?c=videos&sort=popular_week"),
+                    new("Phổ biến tháng này", host + "/javtiful?c=videos&sort=popular_month"),
+                    new("Xem nhiều nhất", host + "/javtiful?c=videos&sort=popular"),
+                    new("JAVMost", host + "/javtiful?c=javmost"),
+                }
             },
             new Shared.Models.SISI.Base.MenuItem()
             {
-                title = "Có che",
-                playlist_url = host + "/javtiful?c=censored"
-            },
-            new Shared.Models.SISI.Base.MenuItem()
-            {
-                title = "Không che",
-                playlist_url = host + "/javtiful?c=uncensored"
-            },
-            new Shared.Models.SISI.Base.MenuItem()
-            {
-                title = "Giảm mosaic",
-                playlist_url = host + "/javtiful?c=reducing-mosaic"
+                title = "Kiểm duyệt",
+                playlist_url = "submenu",
+                submenu = new List<Shared.Models.SISI.Base.MenuItem>()
+                {
+                    new("Có che", host + "/javtiful?c=censored"),
+                    new("Không che", host + "/javtiful?c=uncensored"),
+                    new("Giảm mosaic", host + "/javtiful?c=reducing-mosaic"),
+                }
             },
             new Shared.Models.SISI.Base.MenuItem()
             {

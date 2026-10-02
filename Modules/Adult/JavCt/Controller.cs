@@ -20,7 +20,7 @@ public class JavCtController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("javct")]
-    async public Task<ActionResult> Index(string search, string c, int pg = 1)
+    async public Task<ActionResult> Index(string search, string c, int pg = 1, string sort = null)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
@@ -28,11 +28,19 @@ public class JavCtController : BaseSisiController
         if (pg < 1)
             pg = 1;
 
+        // Bang xep hang `?sort=` cua site KHONG phan trang duoc — moi trang
+        // deu ra cung noi dung. Ep ve trang 1 va khoa total_pages de app
+        // khong cuon tiep va lap phim.
+        string sortUrl = JavCtTo.UriSort(init.host, c, sort);
+        if (sortUrl != null)
+            pg = 1;
+
         var cache = await InvokeCacheResult(
-            ipkey($"javct:{search}:{c}:{pg}"),
+            ipkey($"javct:{search}:{c}:{sort}:{pg}"),
             10, jsonContext.ListPlaylistItem, async e =>
         {
-            string html = await GetPageAsync(JavCtTo.Uri(init.host, search, c, pg));
+            string html = await GetPageAsync(
+                sortUrl ?? JavCtTo.Uri(init.host, search, c, pg));
             var playlists = JavCtTo.Playlist("javct/vidosik", html ?? "");
 
             if (playlists == null || playlists.Count == 0)
@@ -44,7 +52,8 @@ public class JavCtController : BaseSisiController
         if (rch?.enable == true)
             StatiCacheDisabled = true;
 
-        return PlaylistResult(cache, await MenuAsync());
+        return PlaylistResult(cache, await MenuAsync(),
+            total_pages: sortUrl != null ? 1 : 0);
     }
 
     async Task<List<MenuItem>> MenuAsync()
@@ -57,23 +66,26 @@ public class JavCtController : BaseSisiController
 
         string hostLocal = host;
 
-        _ = Task.Run(async () =>
+        // Truoc day chay nen roi tra menu 2 dong (search+sort) ngay —
+        // app cache menu do luon nen KHONG bao gio thay the loai/hang.
+        // Fetch chi ~1s -> cho lay xong roi tra menu that.
+        try
         {
-            try
+            var catsTask = TaxonomiesAsync("/categories", "category");
+            var studiosTask = TaxonomiesAsync("/studios", "studio");
+            await Task.WhenAll(catsTask, studiosTask);
+
+            var cats = await catsTask;
+            var studios = await studiosTask;
+
+            if (cats.Count > 0 || studios.Count > 0)
             {
-                var catsTask = TaxonomiesAsync("/categories", "category");
-                var studiosTask = TaxonomiesAsync("/studios", "studio", 100);
-                await Task.WhenAll(catsTask, studiosTask);
-
-                var cats = await catsTask;
-                var studios = await studiosTask;
-
-                if (cats.Count > 0 || studios.Count > 0)
-                    hybridCache.Set(memKey,
-                        JavCtTo.Menu(hostLocal, cats, studios), cacheTime(720), true);
+                var menu = JavCtTo.Menu(hostLocal, cats, studios);
+                hybridCache.Set(memKey, menu, cacheTime(720), true);
+                return menu;
             }
-            catch { }
-        });
+        }
+        catch { }
 
         return JavCtTo.Menu(hostLocal, null, null);
     }

@@ -18,15 +18,15 @@ public class JavtifulController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("javtiful")]
-    async public Task<ActionResult> Index(string search, string c, int pg = 1)
+    async public Task<ActionResult> Index(string search, string c, int pg = 1, string sort = null)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
 
-        var cache = await InvokeCacheResult(ipkey($"javtiful:{search}:{c}:{pg}"), 10, jsonContext.ListPlaylistItem, async e =>
+        var cache = await InvokeCacheResult(ipkey($"javtiful:{search}:{c}:{sort}:{pg}"), 10, jsonContext.ListPlaylistItem, async e =>
         {
             string html = await FetchHtmlAsync(
-                JavtifulTo.Uri(init.host, search, c, pg));
+                JavtifulTo.Uri(init.host, search, c, pg, sort));
 
             var playlists = JavtifulTo.Playlist(
                 "javtiful/vidosik", html ?? "");

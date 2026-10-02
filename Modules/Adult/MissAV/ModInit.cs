@@ -141,7 +141,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
     {
         conf = ModuleInvoke.Init("MissAV", new SisiSettings("MissAV", "https://missav.live")
         {
-            displayindex = 18,
+            displayindex = 8,
             streamproxy = true,
             httpversion = 2,
             rch_access = "apk",

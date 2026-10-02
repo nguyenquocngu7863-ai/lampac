@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Web;
@@ -39,7 +40,7 @@ public static class MissAVTo
         return s;
     }
 
-    public static string Uri(string host, string search, string c, int pg)
+    public static string Uri(string host, string search, string c, int pg, string sort = null)
     {
         if (string.IsNullOrEmpty(host))
             host = SiteHost;
@@ -58,7 +59,14 @@ public static class MissAVTo
         {
             // c co the la full URL missav (menu giu nguyen /dmNN/ cua site) hoac path sau /vi/
             string url = c.StartsWith("http") ? c : host + "/vi/" + c.Trim('/');
-            return url + (pg > 1 ? (url.Contains("?") ? "&" : "?") + "page=" + pg : "");
+            string q = pg > 1 ? (url.Contains("?") ? "&" : "?") + "page=" + pg : "";
+
+            // Sort cua site (dropdown "Sap xep theo") la QUERY `?sort=`,
+            // dat sau duong dan co phan trang.
+            if (!string.IsNullOrWhiteSpace(sort))
+                q += (q.Length == 0 ? "?" : "&") + "sort=" + sort.Trim();
+
+            return url + q;
         }
 
         // Trang chu mac dinh KHONG lay feed "/vi": do la Recombee goi y, khong
@@ -89,8 +97,10 @@ public static class MissAVTo
                     string href = el.TryGetProperty("u", out var pu) ? pu.GetString() : "";
                     string name = el.TryGetProperty("t", out var pt) ? pt.GetString() : "";
                     string poster = el.TryGetProperty("p", out var pp) ? pp.GetString() : "";
+                    // `a` = alt cua <img> (ten day du), `c` = alt cua <a> (ma phim)
                     string alt = el.TryGetProperty("a", out var pa) ? pa.GetString() : "";
-                    AddTile(playlists, seen, uri, href, name, poster, alt);
+                    string code = el.TryGetProperty("c", out var pc) ? pc.GetString() : "";
+                    AddTile(playlists, seen, uri, href, name, poster, alt, code);
                 }
             }
         }
@@ -99,7 +109,7 @@ public static class MissAVTo
         return playlists;
     }
 
-    static void AddTile(List<Shared.Models.SISI.Base.PlaylistItem> playlists, HashSet<string> seen, string uri, string href, string name, string poster, string alt)
+    static void AddTile(List<Shared.Models.SISI.Base.PlaylistItem> playlists, HashSet<string> seen, string uri, string href, string name, string poster, string alt, string code)
     {
             if (string.IsNullOrEmpty(href) || href == "#")
                 return;
@@ -110,13 +120,49 @@ public static class MissAVTo
                 href = SiteHost + href;
             if (!href.StartsWith("http") || !seen.Add(href))
                 return;
-            // fallback: tile chua hydrate title (name rong hoac chi la duration)
-            // -> dung alt (ma phim, vd mond-287)
             string display = string.IsNullOrWhiteSpace(name) ? "" : name.Trim();
-            if ((string.IsNullOrEmpty(display) || Regex.IsMatch(display, @"^\d{1,3}:\d{2}(:\d{2})?$")) && !string.IsNullOrWhiteSpace(alt))
+
+            // innerText cua tile nhieu dong: dong dau/cuoi la THOI LUONG
+            // ("2:39:35\nSNOS-334 ..." hoac "... \n2:39:35"). Phai tach
+            // ra, neu khong ten phim se hien kem gio phim.
+            string time = "";
+            string[] lines = display.Split('\n')
+                .Select(s => s.Trim()).Where(s => s.Length > 0).ToArray();
+            if (lines.Length > 1)
+            {
+                var reDur = new Regex(@"^\d{1,3}:\d{2}(:\d{2})?$");
+                if (reDur.IsMatch(lines[0]))
+                {
+                    time = lines[0];
+                    lines = lines.Skip(1).ToArray();
+                }
+                else if (reDur.IsMatch(lines[lines.Length - 1]))
+                {
+                    time = lines[lines.Length - 1];
+                    lines = lines.Take(lines.Length - 1).ToArray();
+                }
+                display = string.Join(" ", lines);
+            }
+
+            // innerText chi ra MA PHIM (vd "fays-017") khi Alpine chua hydrate
+            // tieu de; luc do phai dung `alt` cua <img> (ten day du). `code`
+            // (alt cua <a>) chi la ma phim -> chi de so sanh, khong hien thi.
+            bool onlyCode = string.IsNullOrEmpty(display)
+                || Regex.IsMatch(display, @"^\d{1,3}:\d{2}(:\d{2})?$")
+                || (!string.IsNullOrWhiteSpace(code) && display == code.Trim());
+
+            if (onlyCode && !string.IsNullOrWhiteSpace(alt))
                 display = alt.Trim();
             if (string.IsNullOrEmpty(display))
                 return;
+
+            // Ma phim lam doi dau cho doi nhat: "FNS-258 <ten day du>".
+            if (!string.IsNullOrWhiteSpace(code))
+            {
+                code = code.Trim();
+                if (!display.StartsWith(code, StringComparison.OrdinalIgnoreCase))
+                    display = code + " " + display;
+            }
             if (!string.IsNullOrEmpty(poster) && poster.StartsWith("//"))
                 poster = "https:" + poster;
 
@@ -124,6 +170,7 @@ public static class MissAVTo
             {
                 video = uri + "?uri=" + HttpUtility.UrlEncode(href),
                 name = System.Net.WebUtility.HtmlDecode(display),
+                time = time,
                 picture = poster,
                 json = true,
                 bookmark = new Shared.Models.SISI.Base.Bookmark()
@@ -501,20 +548,31 @@ public static class MissAVTo
                 search_on = "search_on",
                 playlist_url = host + "/missav"
             },
+            // DÒNG 2 — Sắp xếp (công thức SISI 9g). `?sort=` là query
+            // dropdown "Sắp xếp theo" của site, áp trên row "Xem nhiều
+            // nhất hôm nay" (row này có đủ mọi kiểu sort trong dropdown).
+            new Shared.Models.SISI.Base.MenuItem()
+            {
+                title = "Sắp xếp",
+                playlist_url = "submenu",
+                submenu = G(
+                    ("Mới nhất", H + "/dm539/vi/new"),
+                    ("Bản phát hành mới", H + "/dm635/vi/release"),
+                    ("Xem nhiều hôm nay", H + "/dm301/vi/today-hot"),
+                    ("Xem nhiều tuần này", H + "/dm170/vi/weekly-hot"),
+                    ("Xem nhiều tháng này", H + "/dm273/vi/monthly-hot"),
+                    ("Xem nhiều tất cả", H + "/dm301/vi/today-hot?sort=views"),
+                    ("Xếp theo ngày phát hành", H + "/dm301/vi/today-hot?sort=released_at"))
+            },
             new Shared.Models.SISI.Base.MenuItem()
             {
                 title = "JAV",
                 playlist_url = "submenu",
                 submenu = G(
-                    ("Recent update", H + "/dm539/vi/new"),
-                    ("Bản phát hành mới", H + "/dm635/vi/release"),
                     ("Rò rỉ không kiểm duyệt", H + "/dm817/vi/uncensored-leak"),
                     ("Danh sách nữ diễn viên", H + "/vi/actresses"),
                     ("BXH nữ diễn viên", H + "/vi/actresses/ranking"),
-                    ("VR", H + "/vi/genres/VR"),
-                    ("Xem nhiều hôm nay", H + "/dm301/vi/today-hot"),
-                    ("Xem nhiều tuần này", H + "/dm170/vi/weekly-hot"),
-                    ("Xem nhiều tháng này", H + "/dm273/vi/monthly-hot"))
+                    ("VR", H + "/vi/genres/VR"))
             },
             new Shared.Models.SISI.Base.MenuItem()
             {
