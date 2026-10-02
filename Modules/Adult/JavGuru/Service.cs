@@ -1124,8 +1124,11 @@ public static bool IsVoServer(string label)
     public const string MakerPath = "/jav-makers-list";
     public const string StudioPath = "/jav-studio-list";
     public const string TagsPath = "/tags";
-    public const int DirLimit = 40;
-    public const int TagsLimit = 100;
+    // MOI NHOM = 1 muc TANG 1, submenu la cac muc trong nhom do.
+    // Client SISI chi hien MOT tang submenu nen KHONG tach
+    // `Hang phim -> A -> MOODYZ` (3 tang = bay, muc 9c) — phai chia
+    // CHU CAI o tang 1.
+    public const int MaxPerBucket = 300;
 
     // Muc la `<a href=".../maker/moodyz/">MOODYZ</a>`. Tra ve (ten, duong dan
     // doi) de Controller doi vao `?c=...`.
@@ -1162,7 +1165,7 @@ public static bool IsVoServer(string label)
     // dung nhu menu The loai cu (FC2, 4K...). Dung so trong `/tags` vi trang
     // nay ghi ca tag 0 phim.
     public static List<(string name, string path)> TagList(
-        string html, int limit = TagsLimit)
+        string html, int limit = int.MaxValue)
     {
         var rows = new List<(string name, string path, int n)>();
         if (string.IsNullOrEmpty(html))
@@ -1199,28 +1202,151 @@ public static bool IsVoServer(string label)
             .ToList();
     }
 
-    // Fisher-Yates roi cat con `limit` — giong JavTsunami.CatPick: trong 1
-    // gio cache thu tu khong doi, het gio bo lai bo khac.
-    public static List<(string name, string path)> DirPick(
-        List<(string name, string path)> pool, int limit = DirLimit)
+    // ============ BUCKET THEO CHU CAI (taxonomy 4669 muc) ============
+    //
+    // `/jav-makers-list` = 992 hang · `/jav-studio-list` = 4669 studio ·
+    // `/tags` = 540 tag co phim > 0.
+    //
+    // KHONG cat top N (JavCt tung cat 100/1479 -> user tuong thieu muc, ke
+    // ca 40 ngau nhien o day cung vay). Cung khong boc 4669 muc vao MOT
+    // submenu (client cuon nang). Cach dung: goi KY TU DAU cua ten thanh
+    // nhom, roi GOI CAC NHOM LIEN TIEP vao cung mot muc tang 1 cho den
+    // khi du `maxPer`. Ten muc `<title> A–B`, nhom 1 chu cai thi
+    // `<title> A`.
+    //
+    // Client chi 1 tang submenu nen KHONG tach `Hang phim -> A -> MOODYZ`
+    // (3 tang = muc chet, muc 9c) — moi nhom phai la muc TANG 1.
+    public static List<Shared.Models.SISI.Base.MenuItem> DirBuckets(
+        string host, string title,
+        List<(string name, string path)> all, int maxPer = MaxPerBucket)
     {
-        var list = new List<(string, string)>();
-        if (pool == null || pool.Count == 0)
-            return list;
+        var res = new List<Shared.Models.SISI.Base.MenuItem>();
+        if (all == null || all.Count == 0)
+            return res;
 
-        list.AddRange(pool);
+        // Gom theo KY TU DAU cua ten. Ky tu khong phai A-Z (so, `#`, tieng
+        // Nhat) gom vao nhom `#` — khong in ky tu la ra ten muc, Lampa
+        // hien thi duoc nhung client tach subtitle bang `:` nen ky ten
+        // la se bay dong.
+        var groups = new Dictionary<char, List<(string name, string path)>>();
 
-        for (int i = list.Count - 1; i > 0; i--)
+        foreach (var it in all)
         {
-            int j = Random.Shared.Next(i + 1);
-            (list[i], list[j]) = (list[j], list[i]);
+            if (string.IsNullOrWhiteSpace(it.name))
+                continue;
+
+            char c = char.ToUpperInvariant(it.name.Trim()[0]);
+            if (c < 'A' || c > 'Z')
+                c = '#';
+
+            if (!groups.TryGetValue(c, out var lst))
+            {
+                lst = new List<(string, string)>();
+                groups[c] = lst;
+            }
+
+            lst.Add(it);
         }
 
-        if (list.Count > limit)
-            list.RemoveRange(limit, list.Count - limit);
+        // `#` truoc, roi so 0-9, roi A-Z.
+        var keys = groups.Keys.OrderBy(CharRank).ToList();
 
-        return list;
+        // Flatten thanh 1 danh sach co nhan de cat chunk. Nhom nao vuot
+        // `maxPer` (vd Studio M 459) se bi cat giua: phan du lot sang
+        // chunk sau, KHONG bo muc nao.
+        var flat = new List<(char key, string name, string path)>(all.Count);
+        foreach (var k in keys)
+            foreach (var it in groups[k])
+                flat.Add((k, it.name, it.path));
+
+        var from = new List<char>();
+        var to = new List<char>();
+        var subs = new List<List<Shared.Models.SISI.Base.MenuItem>>();
+
+        for (int i = 0; i < flat.Count; i += maxPer)
+        {
+            int n = Math.Min(maxPer, flat.Count - i);
+
+            from.Add(flat[i].key);
+            to.Add(flat[i + n - 1].key);
+            subs.Add(flat.Skip(i).Take(n).Select(x =>
+                new Shared.Models.SISI.Base.MenuItem(
+                    x.name, host + "/javguru?c=" + x.path)).ToList());
+        }
+
+        // Nhom bi cat GIUA (from == to, vd `Studio M` 459 muc -> 2 chunk
+        // cung bat dau bang `M`) thi them `(1/2)`, `(2/2)` — khong thi
+        // menu hien hai dong trung ten, user khong biet phan nao nao.
+        for (int k = 0; k < from.Count; k++)
+        {
+            string name = title + " " + from[k]
+                + (to[k] == from[k] ? "" : "–" + to[k]);
+
+            if (to[k] == from[k])
+            {
+                int parts = from.Count(c => c == from[k]);
+                if (parts > 1)
+                {
+                    int nth = 1;
+                    for (int q = 0; q < k; q++)
+                        if (from[q] == from[k])
+                            nth++;
+
+                    name += $" ({nth}/{parts})";
+                }
+            }
+
+            res.Add(new Shared.Models.SISI.Base.MenuItem(name, "submenu")
+            { submenu = subs[k] });
+        }
+
+        return res;
     }
+
+    // `#` < 0 < 1 < ... < 9 < A < B < ... < Z. So PHAI xep TANG so
+    // (cua chu so) chu khong phai tat ca so cung hang — neu khong thi
+    // ten muc ra `Studio 9–7` (thu tu site) thay vi `Studio 0–7`.
+    static int CharRank(char c)
+    {
+        if (c == '#')
+            return 0;
+        if (c >= '0' && c <= '9')
+            return 1 + (c - '0');
+        if (c >= 'A' && c <= 'Z')
+            return 20 + (c - 'A');
+        return 100;      // ky tu khac (tieng Nhat...)
+    }
+
+    // Tags da xep theo SO PHIM giam dan (TagList) nen chia theo THU TU,
+    // khong theo chu cai — nhom dau la tag pho bien nhat.
+    public static List<Shared.Models.SISI.Base.MenuItem> TagBuckets(
+        string host, List<(string name, string path)> all, int maxPer = MaxPerBucket)
+    {
+        var res = new List<Shared.Models.SISI.Base.MenuItem>();
+        if (all == null || all.Count == 0)
+            return res;
+
+        for (int i = 0; i < all.Count; i += maxPer)
+        {
+            var chunk = all.Skip(i).Take(maxPer).ToList();
+            string t = i == 0
+                ? (all.Count <= maxPer ? "Từ khóa" : "Từ khóa phổ biến")
+                : $"Từ khóa {i + 1}–{i + chunk.Count}";
+
+            res.Add(new Shared.Models.SISI.Base.MenuItem(t, "submenu")
+            {
+                submenu = chunk.Select(x =>
+                    new Shared.Models.SISI.Base.MenuItem(
+                        x.name, host + "/javguru?c=" + x.path)).ToList()
+            });
+        }
+
+        return res;
+    }
+
+    // XOA `DirPick` (Fisher-Yates cat con 40 ngau nhien): user thay
+    // "sao lay chi co 40" ma khong hieu quy tac nao. Menu di qua
+    // `DirBuckets` — lay HET roi chia nhom theo chu cai.
 
     public static List<Shared.Models.SISI.Base.MenuItem> Menu(
         string host,
@@ -1275,45 +1401,11 @@ public static bool IsVoServer(string label)
             }
         };
 
-        // submenu trong thi bo qua — trang dir fetch loi thi menu cu van du.
-        if (makers != null && makers.Count > 0)
-            menu.Add(new Shared.Models.SISI.Base.MenuItem()
-            {
-                title = "Hãng phim",
-                playlist_url = "submenu",
-                submenu = makers.Select(x =>
-                    new Shared.Models.SISI.Base.MenuItem()
-                    {
-                        title = x.name,
-                        playlist_url = host + "/javguru?c=" + x.path
-                    }).ToList()
-            });
-
-        if (studios != null && studios.Count > 0)
-            menu.Add(new Shared.Models.SISI.Base.MenuItem()
-            {
-                title = "Studio",
-                playlist_url = "submenu",
-                submenu = studios.Select(x =>
-                    new Shared.Models.SISI.Base.MenuItem()
-                    {
-                        title = x.name,
-                        playlist_url = host + "/javguru?c=" + x.path
-                    }).ToList()
-            });
-
-        if (tags != null && tags.Count > 0)
-            menu.Add(new Shared.Models.SISI.Base.MenuItem()
-            {
-                title = "Tags",
-                playlist_url = "submenu",
-                submenu = tags.Select(x =>
-                    new Shared.Models.SISI.Base.MenuItem()
-                    {
-                        title = x.name,
-                        playlist_url = host + "/javguru?c=" + x.path
-                    }).ToList()
-            });
+        // Taxonomy: CHIA THEO CHU CAI (muc tang 1 = 1 nhom), khong cat top N.
+        // submenu rong thi bo qua — trang dir fetch loi thi menu cu van du.
+        menu.AddRange(JavGuruTo.DirBuckets(host, "Hãng phim", makers));
+        menu.AddRange(JavGuruTo.DirBuckets(host, "Studio", studios));
+        menu.AddRange(JavGuruTo.TagBuckets(host, tags));
 
         return menu;
     }

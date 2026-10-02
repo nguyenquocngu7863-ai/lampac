@@ -149,8 +149,12 @@ public class JavGuruController : BaseSisiController
 
         await Task.WhenAll(t1, t2, t3);
 
-        var makers = JavGuruTo.DirPick(JavGuruTo.DirList(await t1, "maker"));
-        var studios = JavGuruTo.DirPick(JavGuruTo.DirList(await t2, "studio"));
+        // KHONG cat con 40/992 nua: `DirPick` chon NGAU NHIEN nen user
+        // thay "sao lay chi co 40" va khong hieu quy tac nao. Lay HET
+        // (992 hang · 4669 studio · 540 tag), `Menu` tu chia nhom theo
+        // chu cai <= 300 muc/submenu.
+        var makers = JavGuruTo.DirList(await t1, "maker");
+        var studios = JavGuruTo.DirList(await t2, "studio");
         var tags = JavGuruTo.TagList(await t3);
 
         Console.WriteLine(
