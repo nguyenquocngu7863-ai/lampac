@@ -38,9 +38,9 @@ public class ModInit : IModuleLoaded, IModuleSisi
     {
         conf = ModuleInvoke.Init("Jable", new SisiSettings("Jable", JableTo.SiteHost)
         {
-            // 30 da trung voi "Beeg" -> app co the an/overlap. 38 la so trong,
-            // nam ngay sau khoi Adult (36) truoc block 44.
-            displayindex = 38,
+            // 5: module mau chuan cua repo nay — doc file nay truoc khi viet module
+            // Adult moi (xem skill lampac-adult-module, muc "MODULE MAU CHUAN").
+            displayindex = 5,
             streamproxy = true,
             httpversion = 1,
             httptimeout = 20,

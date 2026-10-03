@@ -135,7 +135,10 @@ public class ModInit : IModuleLoaded, IModuleSisi
         conf = ModuleInvoke.Init("JavMoi",
             new SisiSettings("JavMoi", "https://z.javmoi.blog")
         {
-            displayindex = 5,
+            // 6: tranh index 5 cho Jable (module mau chuan, doc file nay truoc
+            // khi viet module moi). Trung index voi BongaCams/Chaturbate/
+            // PubJav/Runetki la binh thuong — app tu day cac module len.
+            displayindex = 6,
             streamproxy = true,
             // httpversion = 1 BAT BUOC (giong PubJav): h2 cua .NET tra ve
             // rong (0 byte, khong exception) trong khi curl h2 van 200.
