@@ -68,8 +68,12 @@ public class JavMoiController : BaseSisiController
         {
             try
             {
+                // Nav PHAI lay tu TRANG CHU `/`, khong phai `/danh-sach/phim-moi`.
+                // Do 2026-10-03: trang chu 24 danh muc, trang danh sach chi 23
+                // (thieu `/the-loai/khong-che` — muc do `home-v2 movie-list-index`
+                // `more-list-index` chi render o trang chu).
                 string html = await FetchHtmlAsync(
-                    JavMoiTo.SiteHost + "/danh-sach/phim-moi");
+                    JavMoiTo.SiteHost + "/");
 
                 var list = JavMoiTo.NavList(html);
                 if (list.Count > 0)
@@ -82,17 +86,18 @@ public class JavMoiController : BaseSisiController
     }
 
     // Site khong cham, no TREO that thuong o ket noi dau (do truc tiep van
-    // 200/1s trong khi module mat 14.5s). Ban cu goi noi tiep 3 attempt,
-    // attempt 1 treo het timeout thi mat trang 8s+ vo ich. Nay chay song
-    // song 2 duong, nhieu vong 4s trong tran 12s, vong nao ve truoc ma co
-    // noi dung thi lay ngay.
-    async Task<string> FetchHtmlAsync(string url, int attempts = 3)
+    // 200/1s trong khi module mat 14.5s). Moi vong chay SONG 2 duong:
+    //   duong 1 = host dang chon (x. — do chu nhung hay rought SSL)
+    //   duong 2 = host phu cua site (z. — on dinh 3/3 200)
+    // Ben nao ve truoc ma co noi dung thi lay ngay -> x. hong van con z.,
+    // khong bao gio tra 0 phim. Vong 4s, tran 12s.
+    // `allowSwap=false` = chi do dung chinh URL do, khong nhay sang host phu
+    // — dung khi phai biet ro URL nay co SONG hay khong.
+    // `seconds` = han cho mot lan (mac dinh 12s).
+    async Task<string> FetchHtmlAsync(string url,
+        bool allowSwap = true, int seconds = 12)
     {
-        var headers = HeadersModel.Init(
-            ("User-Agent", JavMoiTo.ChromeUA),
-            ("Referer", JavMoiTo.SiteHost + "/"));
-
-        var deadline = DateTime.UtcNow.AddSeconds(12);
+        var deadline = DateTime.UtcNow.AddSeconds(seconds);
         while (DateTime.UtcNow < deadline)
         {
             double left = (deadline - DateTime.UtcNow).TotalSeconds;
@@ -100,7 +105,7 @@ public class JavMoiController : BaseSisiController
                 break;
 
             int cap = (int)Math.Ceiling(Math.Min(4, left));
-            string html = await RaceFetchAsync(url, headers, cap);
+            string html = await RaceFetchAsync(url, cap, allowSwap);
             if (!string.IsNullOrEmpty(html))
                 return html;
         }
@@ -108,10 +113,24 @@ public class JavMoiController : BaseSisiController
         return null;
     }
 
+    // Referer lay GOC cua chinh URL dang goi, khong lay SiteHost — vi khi
+    // duong 2 (host phu) chay thi Referer cua no phai theo host do.
+    static IReadOnlyList<HeadersModel> HFor(string url)
+        => HeadersModel.Init(
+            ("User-Agent", JavMoiTo.ChromeUA),
+            ("Referer", JavMoiTo.Origin(url) + "/"));
+
     async Task<string> RaceFetchAsync(string url,
-        IReadOnlyList<HeadersModel> headers, int seconds)
+        int seconds, bool allowSwap)
     {
         string a = null, b = null;
+
+        // Duong 2 la host phu (x <-> z). Neu khong cho phep nhay hoac URL
+        // khong thuoc host nay thi quay lai URL goc — van giu duoc loi
+        // chay 2 song nhu ban cu.
+        string alt = allowSwap
+            ? (JavMoiTo.SwapHost(url) ?? url)
+            : url;
 
         var t1 = Task.Run(async () =>
         {
@@ -120,7 +139,7 @@ public class JavMoiController : BaseSisiController
                 await httpHydra.GetSpan(url, span =>
                 {
                     a = span.ToString();
-                }, addheaders: headers);
+                }, addheaders: HFor(url));
             }
             catch { }
         });
@@ -129,10 +148,10 @@ public class JavMoiController : BaseSisiController
         {
             try
             {
-                await httpHydra.GetSpan(url, span =>
+                await httpHydra.GetSpan(alt, span =>
                 {
                     b = span.ToString();
-                }, addheaders: headers);
+                }, addheaders: HFor(alt));
             }
             catch { }
         });
@@ -174,12 +193,15 @@ public class JavMoiController : BaseSisiController
         if (string.IsNullOrEmpty(path))
             return null;
 
-        string url = JavMoiTo.PlaylistUrl(path);
+        // Origin lay tu trang chi tiet. Nhung trang chi tiet co the den tu
+        // HOST PHU (x. hong -> z. phuc vu) nen ben duoi se do ca 2 host.
+        string origin = JavMoiTo.Origin(uri);
+        string url = JavMoiTo.PlaylistUrl(path, origin);
 
         if (path.EndsWith("/main.m3u8", StringComparison.OrdinalIgnoreCase))
         {
             string alt = JavMoiTo.PlaylistUrl(
-                JavMoiTo.AltPaths(path));
+                JavMoiTo.AltPaths(path), origin);
 
             if (!string.IsNullOrEmpty(alt))
             {
@@ -190,8 +212,34 @@ public class JavMoiController : BaseSisiController
             }
         }
 
+        // Do ro rang URL nay co THAT SU song khong: x. hay rought nen
+        // trang chi tiet lay duoc co the tu z. ma `url` van dung origin x.
+        // Host nao co segment (#EXTINF) thi lay; ca hai deu khong thi giu
+        // URL goc, khong lam het hon truoc day.
+        if (!await HasSegmentsAsync(url))
+        {
+            string swap = JavMoiTo.SwapHost(url);
+            if (!string.IsNullOrEmpty(swap)
+                && await HasSegmentsAsync(swap))
+                url = swap;
+        }
+
         hybridCache.Set(memKey, url, cacheTime(20));
         return url;
+    }
+
+    // Do mot URL rieng (khong cho phep nhay host) de biet no co song.
+    // 5s la du — m3u8 treo 5s thi co cung khong dung duoc.
+    async Task<bool> HasSegmentsAsync(string url)
+    {
+        if (string.IsNullOrEmpty(url))
+            return false;
+
+        string body = await FetchHtmlAsync(url,
+            allowSwap: false, seconds: 5);
+
+        return !string.IsNullOrEmpty(body)
+            && body.Contains("#EXTINF");
     }
 
     [HttpGet, Staticache(manually: true)]
@@ -207,7 +255,7 @@ public class JavMoiController : BaseSisiController
 
         var headers = httpHeaders(init, HeadersModel.Init(
             ("User-Agent", JavMoiTo.ChromeUA),
-            ("Referer", JavMoiTo.SiteHost + "/")));
+            ("Referer", JavMoiTo.Origin(url) + "/")));
 
         return Json(new Dictionary<string, string>()
         {
@@ -229,7 +277,7 @@ public class JavMoiController : BaseSisiController
 
         var headers = httpHeaders(init, HeadersModel.Init(
             ("User-Agent", JavMoiTo.ChromeUA),
-            ("Referer", JavMoiTo.SiteHost + "/")));
+            ("Referer", JavMoiTo.Origin(url) + "/")));
 
         return Redirect(HostStreamProxy(url, headers));
     }

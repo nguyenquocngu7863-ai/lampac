@@ -62,7 +62,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
 
                 head = await Http.Download(
                     uri,
-                    referer: "https://z.javmoi.blog/",
+                    referer: JavMoiTo.SiteHost + "/",
                     timeoutSeconds: 8,
                     MaxResponseContentBufferSize: 4096,
                     headers: HeadersModel.Init(("Range", "bytes=0-376")),
@@ -91,7 +91,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
 
                 data = await Http.Download(
                     uri,
-                    referer: "https://z.javmoi.blog/",
+                    referer: JavMoiTo.SiteHost + "/",
                     timeoutSeconds: 8);
 
                 if (data != null && data.Length >= 376)
@@ -133,7 +133,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
     void updateConf()
     {
         conf = ModuleInvoke.Init("JavMoi",
-            new SisiSettings("JavMoi", "https://z.javmoi.blog")
+            new SisiSettings("JavMoi", JavMoiTo.SiteHost)
         {
             // 6: tranh index 5 cho Jable (module mau chuan, doc file nay truoc
             // khi viet module moi). Trung index voi BongaCams/Chaturbate/
@@ -152,11 +152,11 @@ public class ModInit : IModuleLoaded, IModuleSisi
             stream_access = "apk",
             headers_stream = HeadersModel.Init(
                 ("User-Agent", JavMoiTo.ChromeUA),
-                ("Referer", "https://z.javmoi.blog/")
+                ("Referer", JavMoiTo.SiteHost + "/")
             ).ToDictionary(),
             headers_image = HeadersModel.Init(
                 ("User-Agent", JavMoiTo.ChromeUA),
-                ("Referer", "https://z.javmoi.blog/")
+                ("Referer", JavMoiTo.SiteHost + "/")
             ).ToDictionary()
         });
     }
