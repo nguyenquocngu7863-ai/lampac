@@ -694,8 +694,6 @@ public class SpectreController : BaseOnlineController<ModuleConf>
                             if (browser.IsCompleted ||
                                 route.Request.Url.Contains("/stat") ||
                                 route.Request.Url.Contains("/lists.php") ||
-                                route.Request.Url.EndsWith(".cekh8i") ||
-                                route.Request.Url.EndsWith(".css") ||
                                 route.Request.Url.EndsWith(".svg") ||
                                 route.Request.Url.EndsWith("blank.mp4"))
                             {
@@ -714,7 +712,47 @@ public class SpectreController : BaseOnlineController<ModuleConf>
 
                 PlaywrightBase.GotoAsync(page, "https://kinogo-go.tv/");
 
-                await browser.WaitPageResult(15);
+                var deadline = DateTime.Now.AddSeconds(25);
+                DateTime firstStream = default;
+                int tick = 0;
+                while (DateTime.Now < deadline)
+                {
+                    if (browser.IsCompleted)
+                        break;
+
+                    if (streamquality.Any())
+                    {
+                        if (firstStream == default)
+                            firstStream = DateTime.Now;
+                        else if ((DateTime.Now - firstStream).TotalMilliseconds > 2000)
+                            break;
+                    }
+
+                    try
+                    {
+                        if (tick % 10 == 0)
+                        {
+                            try { await page.Mouse.ClickAsync(640, 360); } catch { }
+                            foreach (var frame in page.Frames)
+                            {
+                                try
+                                {
+                                    await frame.EvaluateAsync(@"() => {
+                                        const btn = document.querySelector('.allplay__player,[class*=play-large],#player,button,.vjs-big-play-button,.jw-display-icon-container');
+                                        if (btn) btn.click();
+                                        const video = document.querySelector('video');
+                                        if (video) { video.muted = true; video.play().catch(() => {}); }
+                                    }");
+                                }
+                                catch { }
+                            }
+                        }
+                    }
+                    catch { break; }
+
+                    tick++;
+                    try { await Task.Delay(100); } catch { }
+                }
             }
 
             return (watch, streamquality, wsUri);

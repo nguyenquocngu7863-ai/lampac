@@ -28,6 +28,9 @@ public class MirageController : BaseOnlineController<ModuleConf>
     static Timer timer;
     static (string hls, long id_file, string token_movie, int lastseek, DateTime lastreq) curenthsl = new();
     static object locker = new();
+    static System.Net.Http.HttpClient dlClient = new System.Net.Http.HttpClient(new System.Net.Http.HttpClientHandler { AllowAutoRedirect = true }) { Timeout = TimeSpan.FromSeconds(20) };
+    static Dictionary<long, (string variantUrl, string referer, List<string> segs, string initMap)> dlStates = new();
+    static string MirageDir(long id_file) => $"cache/mirage/{id_file}";
 
     static MirageController()
     {
@@ -43,12 +46,24 @@ public class MirageController : BaseOnlineController<ModuleConf>
                     page.CloseAsync();
                     page = null;
                     curenthsl = default;
-
-                    foreach (var file in Directory.GetFiles("cache/mirage"))
-                        System.IO.File.Delete(file);
                 }
                 catch { }
             }
+            try
+            {
+                // xoa cache phim cu (>60ph) de nhe RAM/disk, giu phim dang xem
+                foreach (var dir in Directory.GetDirectories("cache/mirage"))
+                {
+                    try
+                    {
+                        var di = new DirectoryInfo(dir);
+                        if (DateTime.Now - di.LastWriteTime > TimeSpan.FromMinutes(60))
+                            Directory.Delete(dir, true);
+                    }
+                    catch { }
+                }
+            }
+            catch { }
         }, null, TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(1));
     }
 
@@ -410,8 +425,9 @@ public class MirageController : BaseOnlineController<ModuleConf>
 
     [HttpGet]
     [AllowAnonymous]
+    [Route("lite/mirage/trans/{id_file:long}/{fileName}")]
     [Route("lite/mirage/trans/{fileName}")]
-    async public Task<ActionResult> Trans(string fileName)
+    async public Task<ActionResult> Trans(string fileName, long id_file = 0)
     {
         if (await IsRequestBlocked(rch: false))
             return badInitMsg;
@@ -421,14 +437,18 @@ public class MirageController : BaseOnlineController<ModuleConf>
 
         curenthsl.lastreq = DateTime.Now;
 
-        string path = $"cache/mirage/{fileName}";
+        if (id_file == 0)
+            id_file = curenthsl.id_file;
+
+        string dir = MirageDir(id_file);
+        string path = $"{dir}/{fileName}";
         int.TryParse(Regex.Match(fileName, "seg-([0-9]+)").Groups[1].Value, out int indexSeg);
 
         if (indexSeg > 20)
         {
             try
             {
-                string oldpath = $"cache/mirage/{fileName.Replace($"seg-{indexSeg}", $"seg-{indexSeg - 4}")}";
+                string oldpath = $"{dir}/{fileName.Replace($"seg-{indexSeg}", $"seg-{indexSeg - 4}")}";
                 if (System.IO.File.Exists(oldpath))
                     System.IO.File.Delete(oldpath);
             }
@@ -440,6 +460,15 @@ public class MirageController : BaseOnlineController<ModuleConf>
 
         while (!System.IO.File.Exists(path) && sw.Elapsed < timeout)
         {
+            if (fileName == "master.m3u8")
+            {
+                await Task.Delay(1_000);
+                continue;
+            }
+
+            if (await FetchSegOnDemand(id_file, indexSeg))
+                break;
+
             if (indexSeg > 0)
             {
                 int seek = (indexSeg * 6) - 10;
@@ -447,15 +476,22 @@ public class MirageController : BaseOnlineController<ModuleConf>
                 {
                     curenthsl.lastseek = seek;
 
-                    await page.EvaluateAsync(@"() => 
-                            document.getElementById('player').contentWindow.postMessage(
-                              JSON.stringify({
-                                api: ""seek"",
-                                value: " + seek + @"
-                              }),
-                              ""*""
-                            );
-                        ");
+                    try
+                    {
+                        if (page != null)
+                        {
+                            await page.EvaluateAsync(@"() => 
+                                    document.getElementById('player').contentWindow.postMessage(
+                                      JSON.stringify({
+                                        api: ""seek"",
+                                        value: " + seek + @"
+                                      }),
+                                      ""*""
+                                    );
+                                ");
+                        }
+                    }
+                    catch { }
                 }
 
                 await Task.Delay(4_000);
@@ -528,11 +564,14 @@ public class MirageController : BaseOnlineController<ModuleConf>
             var browser = new PlaywrightBrowser();
 
             if (page != null)
-                await page.CloseAsync();
+            {
+                try { await page.CloseAsync(); } catch { }
+                page = null;
+            }
 
             try
             {
-                foreach (var file in Directory.GetFiles("cache/mirage"))
+                foreach (var file in Directory.GetFiles(MirageDir(id_file)))
                     System.IO.File.Delete(file);
             }
             catch { }
@@ -575,7 +614,7 @@ public class MirageController : BaseOnlineController<ModuleConf>
                         var injected = @"
                                 <script>
                                 (function() {
-                                    localStorage.setItem('allplay', '{""captionParam"":{""fontSize"":""100%"",""colorText"":""Белый"",""colorBackground"":""Черный"",""opacityText"":""100%"",""opacityBackground"":""75%"",""styleText"":""Без контура"",""weightText"":""Обычный текст""},""quality"":" + (init.m4s ? "2160" : "1080") + @",""volume"":0.5,""muted"":true,""label"":""(Russian) Forced"",""captions"":false}');
+                                    try { localStorage.setItem('allplay', '{""volume"":0.5,""muted"":true}'); } catch(e) {}
                                 })();
                                 </script>";
 
@@ -610,6 +649,11 @@ public class MirageController : BaseOnlineController<ModuleConf>
                         }).ConfigureAwait(false);
 
                         string json = await fetchResponse.TextAsync().ConfigureAwait(false);
+
+                        _ = Task.Run(async () =>
+                        {
+                            try { await ServerFetchHls(id_file, json, uri); } catch { }
+                        });
 
                         await route.FulfillAsync(new RouteFulfillOptions
                         {
@@ -663,8 +707,14 @@ public class MirageController : BaseOnlineController<ModuleConf>
                     {
                         try
                         {
+                            string fn = Path.GetFileName(e.Url);
+                            string dir = MirageDir(id_file);
+                            // master.m3u8 server-side rewrite uu tien, khong de browser ghi de
+                            if (fn == "master.m3u8" || (fn.EndsWith(".m3u8") && System.IO.File.Exists($"{dir}/master.m3u8")))
+                                return;
+                            Directory.CreateDirectory(dir);
                             var file = await e.BodyAsync();
-                            System.IO.File.WriteAllBytes($"cache/mirage/{Path.GetFileName(e.Url)}", file);
+                            System.IO.File.WriteAllBytes($"{dir}/{fn}", file);
                         }
                         catch { }
 
@@ -691,22 +741,235 @@ public class MirageController : BaseOnlineController<ModuleConf>
 
             PlaywrightBase.GotoAsync(page, "https://kinogo-go.tv/");
 
-            if (await tcsPageResponse.Task.WaitAsync(TimeSpan.FromSeconds(15)))
-                return $"{host}/lite/mirage/trans/master.m3u8";
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var deadline = DateTime.Now.AddSeconds(25);
+                    int tick = 0;
+                    while (DateTime.Now < deadline && !tcsPageResponse.Task.IsCompleted)
+                    {
+                        if (tick % 10 == 0)
+                        {
+                            foreach (var frame in page.Frames)
+                            {
+                                try
+                                {
+                                    await frame.EvaluateAsync(@"() => {
+                                        var b = document.querySelector('button');
+                                        if (b) b.click();
+                                        var v = document.querySelector('video');
+                                        if (v) { v.muted = true; v.play().catch(() => {}); }
+                                    }");
+                                }
+                                catch { }
+                            }
+                        }
+                        tick++;
+                        await Task.Delay(100);
+                    }
+                }
+                catch { }
+            });
+
+            bool tcsOk = false;
+            try
+            {
+                var tcsTask = tcsPageResponse.Task;
+                var masterTask = WaitMasterFile(id_file);
+                var done = await Task.WhenAny(tcsTask, masterTask);
+                if (done == tcsTask)
+                {
+                    try { tcsOk = await tcsTask.WaitAsync(TimeSpan.FromSeconds(2)); } catch { }
+                }
+            }
+            catch { }
+            if (tcsOk || System.IO.File.Exists($"{MirageDir(id_file)}/master.m3u8"))
+                return $"{host}/lite/mirage/trans/{id_file}/master.m3u8";
             else
             {
-                await page.CloseAsync();
+                try { await page.CloseAsync(); } catch { }
+                page = null;
                 return default;
             }
         }
         catch
         {
             if (page != null)
-                await page.CloseAsync();
+            {
+                try { await page.CloseAsync(); } catch { }
+                page = null;
+            }
 
             return default;
         }
     }
+
+    #region ServerFetchHls
+    static async Task ServerFetchHls(long id_file, string json, string pageUri)
+    {
+        try
+        {
+            var jo = JObject.Parse(json);
+            var hlsArr = jo["hlsSource"]?.FirstOrDefault();
+            var qtoken = hlsArr?["quality"];
+            var qlist = qtoken == null ? null : qtoken.Children<JProperty>().ToList();
+            if (qlist == null || qlist.Count == 0)
+                return;
+
+            var q = qlist.FirstOrDefault(x => x.Name == "1080") ?? qlist.FirstOrDefault();
+            string masterUrl = ((string)q.Value).Split(new[] { " or " }, StringSplitOptions.RemoveEmptyEntries)[0].Trim();
+            if (string.IsNullOrWhiteSpace(masterUrl) || !masterUrl.StartsWith("http"))
+                return;
+
+            string referer = "https://aport-as.allarknow.online/";
+            string origin = "https://aport-as.allarknow.online";
+
+            string master = await DlText(masterUrl, referer, origin);
+            if (string.IsNullOrWhiteSpace(master) || !master.Contains("#EXTM3U"))
+                return;
+
+            string baseUrl = masterUrl.Substring(0, masterUrl.LastIndexOf('/') + 1);
+            // chon variant thap nhat (cuoi playlist) de nhe CPU/RAM Termux
+            var variants = master.Split('\n').Select(l => l.Trim()).Where(l => !string.IsNullOrWhiteSpace(l) && !l.StartsWith("#")).ToList();
+            if (variants.Count == 0)
+                return;
+            string variantFile = variants[variants.Count - 1];
+
+            string variantUrl = variantFile.StartsWith("http") ? variantFile : baseUrl + variantFile;
+            string variant = await DlText(variantUrl, referer, origin);
+            if (string.IsNullOrWhiteSpace(variant) || !variant.Contains("#EXTINF"))
+                return;
+
+            string vbase = variantUrl.Substring(0, variantUrl.LastIndexOf('/') + 1);
+            string initMap = Regex.Match(variant, "#EXT-X-MAP:URI=\"([^\"]+)\"").Groups[1].Value;
+
+            var segs = new List<string>();
+            foreach (var line in variant.Split('\n'))
+            {
+                var t = line.Trim();
+                if (t.StartsWith("seg-"))
+                    segs.Add(t);
+            }
+            if (segs.Count == 0)
+                return;
+
+            dlStates[id_file] = (variantUrl, referer, segs, initMap);
+
+            string dir = MirageDir(id_file);
+            Directory.CreateDirectory(dir);
+
+            if (!string.IsNullOrWhiteSpace(initMap))
+            {
+                var initBytes = await DlBytes(vbase + initMap, referer, origin);
+                if (initBytes != null)
+                    await System.IO.File.WriteAllBytesAsync($"{dir}/init.mp4", initBytes);
+            }
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("#EXTM3U");
+            sb.AppendLine("#EXT-X-VERSION:6");
+            sb.AppendLine("#EXT-X-TARGETDURATION:7");
+            sb.AppendLine("#EXT-X-PLAYLIST-TYPE:VOD");
+            sb.AppendLine("#EXT-X-MEDIA-SEQUENCE:1");
+            if (!string.IsNullOrWhiteSpace(initMap))
+                sb.AppendLine("#EXT-X-MAP:URI=\"init.mp4\"");
+            int n = 0;
+            foreach (var s in segs)
+            {
+                n++;
+                sb.AppendLine("#EXTINF:6.000,");
+                sb.AppendLine($"seg-{n}.m4s");
+            }
+            sb.AppendLine("#EXT-X-ENDLIST");
+            await System.IO.File.WriteAllTextAsync($"{dir}/master.m3u8", sb.ToString());
+
+            // tai vai seg dau de Trans() co file ngay
+            for (int i = 0; i < Math.Min(3, segs.Count); i++)
+            {
+                var b = await DlBytes(vbase + segs[i], referer, origin);
+                if (b != null)
+                {
+                    try { await System.IO.File.WriteAllBytesAsync($"{dir}/seg-{i + 1}.m4s", b); } catch { }
+                }
+            }
+        }
+        catch { }
+    }
+
+    static async Task<string> DlText(string url, string referer, string origin)
+    {
+        try
+        {
+            using var req = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Get, url);
+            req.Headers.TryAddWithoutValidation("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+            req.Headers.Referrer = new Uri(referer);
+            req.Headers.TryAddWithoutValidation("Origin", origin);
+            using var res = await dlClient.SendAsync(req);
+            if (!res.IsSuccessStatusCode)
+                return null;
+            return await res.Content.ReadAsStringAsync();
+        }
+        catch { return null; }
+    }
+
+    static async Task<byte[]> DlBytes(string url, string referer, string origin)
+    {
+        try
+        {
+            using var req = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Get, url);
+            req.Headers.TryAddWithoutValidation("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+            req.Headers.Referrer = new Uri(referer);
+            req.Headers.TryAddWithoutValidation("Origin", origin);
+            using var res = await dlClient.SendAsync(req);
+            if (!res.IsSuccessStatusCode)
+                return null;
+            return await res.Content.ReadAsByteArrayAsync();
+        }
+        catch { return null; }
+    }
+
+    static async Task<bool> WaitMasterFile(long id_file)
+    {
+        try
+        {
+            string dir = MirageDir(id_file);
+            var sw = Stopwatch.StartNew();
+            while (sw.Elapsed < TimeSpan.FromSeconds(35))
+            {
+                if (System.IO.File.Exists($"{dir}/master.m3u8"))
+                    return true;
+                await Task.Delay(1_000);
+            }
+        }
+        catch { }
+        return false;
+    }
+
+    public static async Task<bool> FetchSegOnDemand(long id_file, int indexSeg)
+    {
+        try
+        {
+            if (!dlStates.TryGetValue(id_file, out var st))
+                return false;
+            if (st.segs == null || indexSeg < 1 || indexSeg > st.segs.Count)
+                return false;
+
+            string path = $"{MirageDir(id_file)}/seg-{indexSeg}.m4s";
+            if (System.IO.File.Exists(path))
+                return true;
+
+            string vbase = st.variantUrl.Substring(0, st.variantUrl.LastIndexOf('/') + 1);
+            var b = await DlBytes(vbase + st.segs[indexSeg - 1], st.referer, "https://aport-as.allarknow.online");
+            if (b == null)
+                return false;
+
+            await System.IO.File.WriteAllBytesAsync(path, b);
+            return true;
+        }
+        catch { return false; }
+    }
+    #endregion
     #endregion
 
 
