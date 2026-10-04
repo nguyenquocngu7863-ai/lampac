@@ -60,8 +60,10 @@ public class JavTsunamiController : BaseSisiController
     // Menu "Thể loại" FULL tu trang `/categories` (4 trang, 93 muc).
     // Tags (~1000 muc) TAM NGHI: nhieu tag it phim, submenu dai kho dung.
     // Code lay tag (TagList/TagAll) giu lai, can thi bat lai.
-    // Fetch o background, tra menu rut gon ngay de khong chan response
-    // home. Cache 12h inmemory (ValueTuple qua file cache doc lai ko duoc).
+    // Fetch CHAN DONG BO lan dau (4 trang WP nhe, deadline + retry san):
+    // warm nen tra menu rong -> Staticache/app cache luon ban thieu
+    // cho ca phien (bam The loai khong ra gi). Cache 12h inmemory
+    // (ValueTuple qua file cache doc lai ko duoc).
     async Task<List<MenuItem>> MenuAsync()
     {
         string key = ipkey("javtsunami:menu");
@@ -72,24 +74,37 @@ public class JavTsunamiController : BaseSisiController
 
         string hostLocal = host;
 
+        try
+        {
+            var cats = await JavTsunamiTo.CatAll(6, Ms() + 15000);
+
+            // Site treo giua chung: lan 1 chi duoc 56/93. Thu lai 1 lan
+            // truoc khi chot, neu khong partial bi dong bang 12h.
+            if (cats.Count < 70)
+                cats = await JavTsunamiTo.CatAll(6, Ms() + 15000);
+
+            if (cats.Count > 0)
+            {
+                // Du (>=70/93 do duoc) thi 12h; thieu thi 5 phut de lan sau
+                // thu lai, khong dong bang ban thieu ca ngay.
+                Console.WriteLine($"JavTsunami: menu cats={cats.Count}");
+                var exp = cats.Count >= 70 ? cacheTime(720) : cacheTime(5);
+                hybridCache.Set(key, JavTsunamiTo.Menu(hostLocal, cats), exp, true);
+                return JavTsunamiTo.Menu(hostLocal, cats);
+            }
+        }
+        catch { }
+
         _ = Task.Run(async () =>
         {
             try
             {
                 var cats = await JavTsunamiTo.CatAll(6, Ms() + 15000);
-
-                // Site treo giua chung: lan 1 chi duoc 56/93. Thu lai 1 lan
-                // truoc khi chot, neu khong partial bi dong bang 12h.
                 if (cats.Count < 70)
                     cats = await JavTsunamiTo.CatAll(6, Ms() + 15000);
-
-                Console.WriteLine($"JavTsunami: menu cats={cats.Count}");
-
                 if (cats.Count <= 0)
                     return;
-
-                // Du (>=70/93 do duoc) thi 12h; thieu thi 5 phut de warm sau
-                // thu lai, khong dong bang ban thieu ca ngay.
+                Console.WriteLine($"JavTsunami: menu cats={cats.Count}");
                 var exp = cats.Count >= 70 ? cacheTime(720) : cacheTime(5);
                 hybridCache.Set(key, JavTsunamiTo.Menu(hostLocal, cats), exp, true);
             }

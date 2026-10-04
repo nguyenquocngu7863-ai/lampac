@@ -58,11 +58,24 @@ public class JavMoiController : BaseSisiController
             && nav != null && nav.Count > 0)
             return JavMoiTo.Menu(host, nav);
 
-        // LAN DAU: tra menu rut gon ngay, warm nav that o background.
-        // Ban cu fetch nav (3 attempt noi tiep) CHAN response home.
-        // `host` capture truoc vi HttpContext co the da xong khi task
-        // background chay. Nav la List<ValueTuple> nen giu inmemory.
+        // LAN DAU: fetch nav CHAN DONG BO (1 trang HTTP nhe, vai giay)
+        // de tra menu du ngay. Ban cu warm o background -> response dau
+        // rut gon, app cache luon ban thieu cho ca phien (user thay
+        // "the loai an lan dau"). Fail moi warm nen + tra rut gon.
         string hostLocal = host;
+
+        try
+        {
+            string html = await FetchHtmlAsync(JavMoiTo.SiteHost + "/");
+
+            var list = JavMoiTo.NavList(html);
+            if (list.Count > 0)
+            {
+                hybridCache.Set(key, list, cacheTime(360), true);
+                return JavMoiTo.Menu(host, list);
+            }
+        }
+        catch { }
 
         _ = Task.Run(async () =>
         {

@@ -17,10 +17,13 @@ namespace VidCore;
 /// <summary>
 /// VidCore — nguồn 4K, resolver thuần HTTP (không Playwright).
 ///
-/// Luồng (theo CSX/CineStream `invokeVidcore`, đã xác minh route còn sống 2026-08-31):
+/// Luồng (theo sample chính chủ enc-dec, đã xác minh 2026-10-04):
 ///   1. GET  {host}/movie/{tmdb}  |  {host}/tv/{tmdb}/{s}/{e}
 ///      → trong HTML có chuỗi mã hoá:  \"en\":\"...\"  (fallback: \"token\":\"...\")
-///   2. GET  {apihost}/enc-vidcore?text=&lt;encrypted&gt;
+///   2. GET  {apihost}/enc-vidcore?text=&lt;encrypted&gt;&stage=1
+///      → {result: {stage1, token}}
+///   3. POST {result.stage1} (kèm X-CSRF-Token) → text
+///   4. GET  {apihost}/enc-vidcore?text=&lt;text&gt;&stage=2
 ///      → {result: {servers, stream, token}}
 ///   3. POST {result.servers}                     (kèm X-CSRF-Token)  → payload mã hoá
 ///      POST {apihost}/dec-vidcore {text:...}     → result = [{name, data}, ...]
@@ -186,11 +189,38 @@ public class VidCoreController : BaseENGController
                 return null;
         }
 
-        // Từ đây về sau là các request tới enc-dec (XHR + CSRF), không phải trang player.
+        // enc-dec doi API (2026-10): enc-vidcore bat buoc `&stage=1|2`
+        // (thieu thi 400 "Expected query: text, stage"). stage=1 bien
+        // en_token -> URL tam + csrf1; POST URL tam lay text; stage=2
+        // bien text -> {servers, stream, token} that nhu cu.
+        // Tu day ve sau la cac request toi enc-dec (XHR + CSRF).
         var headers = PageHeaders(null);
 
+        string s1Raw = await httpHydra.Get(
+            $"{api}{DecryptRouteEnc}?text={Uri.EscapeDataString(encrypted)}&stage=1",
+            addheaders: headers,
+            statusCodeOK: false);
+
+        JToken s1Parsed = ParseJson(s1Raw);
+        JToken s1 = Unwrap(Child(s1Parsed, "result") ?? s1Parsed);
+        string stage1Url = Text(s1, "stage1");
+        string csrf1 = Text(s1, "token");
+
+        if (string.IsNullOrWhiteSpace(stage1Url))
+        {
+            Console.WriteLine($"VidCore: enc-vidcore stage=1 fail ({mediaType}:{tmdbId}) resp={Preview(s1Raw)}");
+            return null;
+        }
+
+        string stage1Text = await PostCipher(stage1Url, PageHeaders(csrf1));
+        if (string.IsNullOrWhiteSpace(stage1Text))
+        {
+            Console.WriteLine($"VidCore: stage1 POST empty ({mediaType}:{tmdbId})");
+            return null;
+        }
+
         string encRaw = await httpHydra.Get(
-            $"{api}{DecryptRouteEnc}?text={Uri.EscapeDataString(encrypted)}",
+            $"{api}{DecryptRouteEnc}?text={Uri.EscapeDataString(stage1Text)}&stage=2",
             addheaders: headers,
             statusCodeOK: false);
 

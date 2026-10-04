@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
+using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Web;
@@ -402,10 +405,14 @@ public static class MissAVTo
 
     /// <summary>
     /// Parse card taxonomy MissAV: anchor co class `text-nord13` VA href chua
-    /// `/vi/genres|makers|actors|actresses/`. Class nay con dung cho link
-    /// login nen bat buoc loc theo href. GiU NGUYEN full dm-URL (dm-ID la
-    /// nhom noi dung, bo di la sai trang). Card dien vien de ten trong
-    /// `img alt` chu khong phai text nen phai fallback alt.
+    /// `/genres|makers|actors|actresses/` (khong khoa `/vi/` de dung
+    /// duoc ca ban EN). Class nay con dung cho link login nen bat buoc
+    /// loc theo href. GiU NGUYEN full dm-URL (dm-ID la nhom noi dung).
+    /// Card dien vien de ten trong `img alt` chu khong phai text nen
+    /// phai fallback alt. Ban EN moi item co dong dem (`50591 videos`,
+    /// sap giam dan): tach so dem ra, ghep vao ten dang `Ten (50591)`.
+    /// Ban VI mat so dem (template render thieu) nen menu taxonomy lay
+    /// ban EN, khong lay VI.
     /// </summary>
     public static List<(string name, string url)> Taxonomies(string html)
     {
@@ -428,10 +435,10 @@ public static class MissAVTo
                 continue;
 
             string url = System.Net.WebUtility.HtmlDecode(href.Groups[1].Value.Trim());
-            if (url.IndexOf("/vi/genres/", StringComparison.OrdinalIgnoreCase) < 0
-                && url.IndexOf("/vi/makers/", StringComparison.OrdinalIgnoreCase) < 0
-                && url.IndexOf("/vi/actors/", StringComparison.OrdinalIgnoreCase) < 0
-                && url.IndexOf("/vi/actresses/", StringComparison.OrdinalIgnoreCase) < 0)
+            if (url.IndexOf("/genres/", StringComparison.OrdinalIgnoreCase) < 0
+                && url.IndexOf("/makers/", StringComparison.OrdinalIgnoreCase) < 0
+                && url.IndexOf("/actors/", StringComparison.OrdinalIgnoreCase) < 0
+                && url.IndexOf("/actresses/", StringComparison.OrdinalIgnoreCase) < 0)
                 continue;
 
             int end = html.IndexOf("</a>", m.Index, StringComparison.OrdinalIgnoreCase);
@@ -453,11 +460,32 @@ public static class MissAVTo
                     name = CleanTax(System.Net.WebUtility.HtmlDecode(alt.Groups[1].Value));
             }
 
-            if (string.IsNullOrEmpty(name) || name.Length > 60)
+            if (string.IsNullOrEmpty(name) || name.Length > 80)
                 continue;
+
+            // Ban EN: duoi ten co dong dem `50591 videos`. Tach ra ghep
+            // vao ten `Ten (50591)`. Ten goc co so (`4K`, `4 Hours...`)
+            // van dung vi regex an so CUOI CUNG truoc chu `videos`.
+            var cm = Regex.Match(name, @"^(.*)\s+([\d,]+)\s*videos?\s*$",
+                RegexOptions.IgnoreCase);
+            if (cm.Success && !string.IsNullOrWhiteSpace(cm.Groups[1].Value))
+                name = cm.Groups[1].Value.Trim() + " (" + cm.Groups[2].Value + ")";
 
             // Client SISI cat title bang `:` — ten co dau do bi cut.
             name = name.Replace(':', '-').Replace('|', '-');
+
+            // Dem video nam NGOAI anchor (div ngay duoi ten): quet 300
+            // ky tu sau </a> tim `N videos`. Ten chua co ngoac moi ghep.
+            if (name.IndexOf('(') < 0)
+            {
+                int tail = Math.Min(html.Length, end + 300);
+                string after = Regex.Replace(
+                    html.Substring(end, tail - end), "<[^>]+>", " ");
+                var cm2 = Regex.Match(after, @"([\d,]+)\s*videos?\b",
+                    RegexOptions.IgnoreCase);
+                if (cm2.Success)
+                    name += " (" + cm2.Groups[1].Value + ")";
+            }
 
             if (!seen.Add(url))
                 continue;
@@ -616,21 +644,226 @@ public static class MissAVTo
                     ("Furuke", H + "/dm15/vi/furuke"),
                     ("Hàn Quốc trực tiếp", H + "/vi/klive"),
                     ("Trung Quốc trực tiếp", H + "/vi/clive"))
-            },
-            new Shared.Models.SISI.Base.MenuItem()
-            {
-                title = "Thể loại",
-                playlist_url = "submenu",
-                submenu = genreMenu
-            },
-            new Shared.Models.SISI.Base.MenuItem()
-            {
-                title = "Hãng phim",
-                playlist_url = "submenu",
-                submenu = makerMenu
             }
         };
 
+        // Thieu (fetch fail) -> 1 muc don + submenu tinh. Duoi 300 ->
+        // 1 muc don ten goc. Vuot 300 -> DirBuckets cat chunk (moi chunk
+        // 1 muc tang 1, client SISI chi hien 1 tang submenu).
+        root.AddRange(TaxRows(host, "Thể loại", genres, genreMenu));
+        root.AddRange(TaxRows(host, "Hãng phim", makers, makerMenu));
+
         return root;
+    }
+
+    static List<Shared.Models.SISI.Base.MenuItem> TaxRows(
+        string host, string title,
+        List<(string name, string url)> all,
+        List<Shared.Models.SISI.Base.MenuItem> fallback)
+    {
+        var res = new List<Shared.Models.SISI.Base.MenuItem>();
+        if (all == null || all.Count == 0 || all.Count <= MaxPerBucket)
+        {
+            var sub = fallback;
+            if (all != null && all.Count > 0)
+            {
+                sub = new List<Shared.Models.SISI.Base.MenuItem>(all.Count);
+                foreach (var (name, url) in all)
+                    sub.Add(new(name, host + "/missav?c=" + HttpUtility.UrlEncode(url)));
+            }
+            res.Add(new Shared.Models.SISI.Base.MenuItem()
+            {
+                title = title,
+                playlist_url = "submenu",
+                submenu = sub
+            });
+            return res;
+        }
+        res.AddRange(DirBuckets(host, title, all));
+        return res;
+    }
+
+    // Chia chunk theo SO PHIM GIAM DAN (khong gom theo chu cai): muc
+    // it phim chim xuong day. Chunk dau la top `maxPer` -> ten
+    // `Title pho bien`; cac chunk sau `Title 301-600`... Ten co ngoac
+    // dem `Ten (12,345)`; muc khong dem coi nhu 0.
+    public const int MaxPerBucket = 300;
+
+    static int TaxCount(string name)
+    {
+        if (string.IsNullOrEmpty(name))
+            return 0;
+        var m = Regex.Match(name, @"\(([\d,]+)\)\s*$");
+        if (!m.Success)
+            return 0;
+        return int.TryParse(m.Groups[1].Value.Replace(",", ""), out int c) ? c : 0;
+    }
+
+    public static List<Shared.Models.SISI.Base.MenuItem> DirBuckets(
+        string host, string title,
+        IReadOnlyList<(string name, string url)> all, int maxPer = MaxPerBucket)
+    {
+        var res = new List<Shared.Models.SISI.Base.MenuItem>();
+        if (all == null || all.Count == 0)
+            return res;
+
+        var sorted = all.Where(x => !string.IsNullOrWhiteSpace(x.name))
+            .Select(x => (x.name, x.url, c: TaxCount(x.name)))
+            .OrderByDescending(x => x.c)
+            .ThenBy(x => x.name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        for (int i = 0; i < sorted.Count; i += maxPer)
+        {
+            int n = Math.Min(maxPer, sorted.Count - i);
+            var sub = sorted.Skip(i).Take(n).Select(x =>
+                new Shared.Models.SISI.Base.MenuItem(
+                    x.name, host + "/missav?c=" + HttpUtility.UrlEncode(x.url))).ToList();
+            string name = i == 0
+                ? title + " phổ biến"
+                : title + " " + (i + 1) + "–" + (i + n);
+            res.Add(new Shared.Models.SISI.Base.MenuItem(name, "submenu")
+            { submenu = sub });
+        }
+
+        return res;
+    }
+}
+
+// Cache taxonomy ra FILE de fetch nen gom dan: site nuot request khi
+// fetch don ~130 trang/lan (chi lot ~10 trang dau = top dem cao nhat).
+// Disk giu ket qua qua restart; job nen lum not trang thieu (1 tab,
+// delay moi trang), merge theo URL. Luu theo tung trang de biet trang
+// nao thieu; trang chan (khong tai duoc) khong luu de lan sau thu lai.
+public static class MissAVTaxCache
+{
+    public class PageRec
+    {
+        public List<string> names { get; set; } = new List<string>();
+        public List<string> urls { get; set; } = new List<string>();
+    }
+
+    public class KindRec
+    {
+        public Dictionary<string, PageRec> pages { get; set; } = new Dictionary<string, PageRec>();
+        public int end { get; set; } = 0;
+    }
+
+    public class FileRec
+    {
+        public KindRec genres { get; set; } = new KindRec();
+        public KindRec makers { get; set; } = new KindRec();
+    }
+
+    static readonly object _lock = new object();
+    static string _path;
+
+    static string CachePath()
+    {
+        if (_path == null)
+        {
+            string home = Environment.GetEnvironmentVariable("HOME");
+            _path = !string.IsNullOrEmpty(home)
+                ? Path.Combine(home, "lampac-run", "cache", "missav-tax.json")
+                : Path.Combine(AppContext.BaseDirectory, "missav-tax.json");
+        }
+        return _path;
+    }
+
+    static FileRec Read()
+    {
+        try
+        {
+            string p = CachePath();
+            if (!File.Exists(p))
+                return new FileRec();
+            return JsonSerializer.Deserialize<FileRec>(File.ReadAllText(p)) ?? new FileRec();
+        }
+        catch { return new FileRec(); }
+    }
+
+    static void Write(FileRec rec)
+    {
+        try { File.WriteAllText(CachePath(), JsonSerializer.Serialize(rec)); }
+        catch { }
+    }
+
+    static KindRec Kind(FileRec rec, string kind)
+        => kind == "makers" ? rec.makers : rec.genres;
+
+    public static void StorePage(string kind, int page, List<(string name, string url)> items)
+    {
+        if (items == null || items.Count == 0 || page < 1)
+            return;
+        lock (_lock)
+        {
+            var rec = Read();
+            var pr = new PageRec();
+            foreach (var (name, url) in items)
+            {
+                pr.names.Add(name);
+                pr.urls.Add(url);
+            }
+            Kind(rec, kind).pages[page.ToString()] = pr;
+            Write(rec);
+        }
+    }
+
+    public static bool HasPage(string kind, int page)
+    {
+        lock (_lock)
+            return Kind(Read(), kind).pages.ContainsKey(page.ToString());
+    }
+
+    // Trang cuoi da biet: cac trang >= end khong ton tai. Chua biet = MaxValue.
+    public static void SetEnd(string kind, int end)
+    {
+        if (end < 1)
+            return;
+        lock (_lock)
+        {
+            var rec = Read();
+            var k = Kind(rec, kind);
+            if (k.end == 0 || end < k.end)
+                k.end = end;
+            Write(rec);
+        }
+    }
+
+    public static int End(string kind)
+    {
+        lock (_lock)
+        {
+            int e = Kind(Read(), kind).end;
+            return e > 0 ? e : int.MaxValue;
+        }
+    }
+
+    public static (List<(string name, string url)> genres, List<(string name, string url)> makers) LoadMerged()
+    {
+        lock (_lock)
+        {
+            var rec = Read();
+            return (Merge(Kind(rec, "genres")), Merge(Kind(rec, "makers")));
+        }
+    }
+
+    static List<(string name, string url)> Merge(KindRec k)
+    {
+        var res = new List<(string, string)>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var keys = k.pages.Keys.OrderBy(p => int.TryParse(p, out int n) ? n : int.MaxValue);
+        foreach (var key in keys)
+        {
+            var pr = k.pages[key];
+            int m = Math.Min(pr.names.Count, pr.urls.Count);
+            for (int i = 0; i < m; i++)
+            {
+                if (string.IsNullOrEmpty(pr.urls[i]) || !seen.Add(pr.urls[i]))
+                    continue;
+                res.Add((pr.names[i] ?? "", pr.urls[i]));
+            }
+        }
+        return res;
     }
 }

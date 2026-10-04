@@ -29,6 +29,11 @@ public class MissAVController : BaseSisiController
     // Neu nhieu request chay song song, chung se tao nhieu page -> RAM nhoe.
     static SemaphoreSlim _pageFetchLock = new SemaphoreSlim(1, 1);
 
+    // Lock RIENG cho fetch taxonomy menu (genres 40 trang + makers 71
+    // trang, cold load vai phut). Dung chung _pageFetchLock thi request
+    // xem phim doi lock 30s -> fail trong luc menu dang load.
+    static SemaphoreSlim _taxLock = new SemaphoreSlim(1, 1);
+
     async Task<(string content, string tilesJson)> PageFetchAsync(string url)
     {
         IPage page = null;
@@ -37,6 +42,7 @@ public class MissAVController : BaseSisiController
             return (null, null);
         try
         {
+            // Render bang Chrome (chromium) nhu ban goc.
             using (var browser = new Shared.PlaywrightCore.PlaywrightBrowser())
             {
                 page = await browser.NewPageAsync("MissAV", new Dictionary<string, string>
@@ -176,9 +182,11 @@ public class MissAVController : BaseSisiController
         return PlaylistResult(cache, await MenuAsync());
     }
 
-    // Menu dong: genres HET cac trang + makers 4 trang dau (~150 hang lon).
-    // Trang taxonomy la HTML tinh (khong can Playwright) nen dung Http
-    // thuong. Giu inmemory vi ValueTuple qua file cache doc lai khong duoc.
+    // Menu doc tu DISK cache (MissAVTaxCache): lan dau chua co file thi
+    // fetch blocking top 12 trang cho nhanh; job nen lum not trang
+    // thieu sau do. Disk giu qua restart nen restart xong menu du ngay,
+    // khong can browser. Du lieu disk deu la trang tai thanh cong nen
+    // cu phuc vu (thieu ben nao thi ben do hien fallback tinh tam).
     async Task<List<MenuItem>> MenuAsync()
     {
         string memKey = ipkey("missav:menu");
@@ -189,21 +197,29 @@ public class MissAVController : BaseSisiController
 
         string hostLocal = host;
 
-        // KHONG chay nen roi tra menu tinh ngay: app cache response dau
-        // cho ca phien -> the loai/hang khong bao gio hien. Cho fetch xong.
         try
         {
-            var t1 = TaxonomiesAsync("/vi/genres", 8);
-            var t2 = TaxonomiesAsync("/vi/makers", 4);
-            await Task.WhenAll(t1, t2);
+            var (g, s) = MissAVTaxCache.LoadMerged();
 
-            var g = await t1;
-            var s = await t2;
+            if (g.Count == 0 && s.Count == 0)
+            {
+                var t1 = TaxPagesAsync("/en/genres", 12);
+                var t2 = TaxPagesAsync("/en/makers", 12);
+                await Task.WhenAll(t1, t2);
+                var pg = await t1;
+                var ps = await t2;
+                for (int i = 0; i < pg.Count; i++)
+                    MissAVTaxCache.StorePage("genres", i + 1, pg[i]);
+                for (int i = 0; i < ps.Count; i++)
+                    MissAVTaxCache.StorePage("makers", i + 1, ps[i]);
+                (g, s) = MissAVTaxCache.LoadMerged();
+            }
 
             if (g.Count > 0 || s.Count > 0)
             {
                 var menu = MissAVTo.Menu(hostLocal, g, s);
                 hybridCache.Set(memKey, menu, cacheTime(720), true);
+                FillMissingBackground(memKey, hostLocal);
                 return menu;
             }
         }
@@ -212,25 +228,100 @@ public class MissAVController : BaseSisiController
         return MissAVTo.Menu(hostLocal, null, null);
     }
 
-    // maxPages: so trang taxonomy toi da (genres 8 ~ 288 muc, makers 4 ~ 144).
-    async Task<List<(string name, string url)>> TaxonomiesAsync(
+    // Job nen: 1 tab duy nhat, tuan tu tung trang + delay 2.5s (gia nguoi
+    // duyet, tranh CF chan fetch don). Trang tai loi/chan thi BO QUA (khong
+    // luu) de lan sau thu lai; trang tai duoc ma 0 muc -> qua trang cuoi,
+    // danh dau end. Xong thi dung menu moi vao memory cache.
+    static int _fillRunning = 0;
+
+    void FillMissingBackground(string memKey, string hostLocal)
+    {
+        if (Interlocked.Exchange(ref _fillRunning, 1) == 1)
+            return;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var headers = new Dictionary<string, string>
+                {
+                    ["User-Agent"] = MissAVTo.ChromeUA,
+                    ["Referer"] = "https://missav.live/"
+                };
+                using (var browser = new Shared.PlaywrightCore.PlaywrightBrowser())
+                {
+                    IPage page = null;
+                    try
+                    {
+                        page = await browser.NewPageAsync("MissAV", headers, keepopen: false);
+                        if (page != null)
+                        {
+                            await FillKindAsync(page, "genres", "/en/genres", 50);
+                            await FillKindAsync(page, "makers", "/en/makers", 80);
+                        }
+                    }
+                    finally
+                    {
+                        try { if (page != null) await page.CloseAsync(); } catch { }
+                    }
+                }
+                try
+                {
+                    var (g, s) = MissAVTaxCache.LoadMerged();
+                    if (g.Count > 0 || s.Count > 0)
+                        hybridCache.Set(memKey, MissAVTo.Menu(hostLocal, g, s), cacheTime(720), true);
+                }
+                catch { }
+            }
+            catch { }
+            finally
+            {
+                Interlocked.Exchange(ref _fillRunning, 0);
+            }
+        });
+    }
+
+    async Task FillKindAsync(IPage page, string kind, string basePath, int max)
+    {
+        int end = MissAVTaxCache.End(kind);
+        for (int n = 1; n <= max && n < end; n++)
+        {
+            if (MissAVTaxCache.HasPage(kind, n))
+                continue;
+            try
+            {
+                string url = MissAVTo.SiteHost + basePath + (n == 1 ? "" : "?page=" + n);
+                var r = await page.GotoAsync(url, new PageGotoOptions
+                {
+                    Timeout = 25000,
+                    WaitUntil = WaitUntilState.DOMContentLoaded
+                });
+                if (r == null || !r.Ok)
+                    continue;
+                string html = await page.ContentAsync();
+                if (string.IsNullOrEmpty(html) || html.IndexOf("text-nord13") < 0)
+                    continue;
+                var items = MissAVTo.Taxonomies(html);
+                if (items.Count == 0)
+                {
+                    MissAVTaxCache.SetEnd(kind, n);
+                    break;
+                }
+                MissAVTaxCache.StorePage(kind, n, items);
+            }
+            catch { }
+            try { await Task.Delay(2500); } catch { }
+        }
+    }
+
+    // maxPages: SO TRANG FETCH (tran du room: genres 40 + makers 71).
+    // Tra ve theo tung trang (giu thu tu) de disk cache luu rieng.
+    async Task<List<List<(string name, string url)>>> TaxPagesAsync(
         string page, int maxPages)
     {
-        var all = new List<(string, string)>();
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        var htmls = await TaxPagesHtmlAsync(page, maxPages);
-
-        foreach (var html in htmls)
-        {
-            foreach (var r in MissAVTo.Taxonomies(html))
-            {
-                if (seen.Add(r.url))
-                    all.Add(r);
-            }
-        }
-
-        return all;
+        var per = new List<List<(string, string)>>();
+        foreach (var html in await TaxPagesHtmlAsync(page, maxPages))
+            per.Add(MissAVTo.Taxonomies(html));
+        return per;
     }
 
     // missav chan TLS fingerprint cua .NET/curl (SSL_connect closed) ->
@@ -242,7 +333,8 @@ public class MissAVController : BaseSisiController
         if (maxPages < 1)
             maxPages = 1;
 
-        var acquired = await _pageFetchLock.WaitAsync(TimeSpan.FromSeconds(30));
+        // Cho toi 5 phut: 111 trang cold load lau, lock chung se doi nhau.
+        var acquired = await _taxLock.WaitAsync(TimeSpan.FromMinutes(5));
         if (!acquired)
             return htmls;
 
@@ -254,6 +346,7 @@ public class MissAVController : BaseSisiController
 
         try
         {
+            // Render bang Chrome (chromium) — xem ghi chu o PageFetchAsync.
             using (var browser = new Shared.PlaywrightCore.PlaywrightBrowser())
             {
                 // trang 1 truoc de biet tong so trang
@@ -283,9 +376,9 @@ public class MissAVController : BaseSisiController
 
                 htmls.Add(first);
 
-                int total = MissAVTo.TaxPages(first, page);
-                if (total > maxPages)
-                    total = maxPages;
+                // Lay thang maxPages: trang 1 khong co link trang cuoi
+                // (pagination rut gon) nen TaxPages parse thieu (8-9).
+                int total = maxPages;
                 if (total <= 1)
                     return htmls;
 
@@ -356,7 +449,7 @@ public class MissAVController : BaseSisiController
         catch { }
         finally
         {
-            _pageFetchLock.Release();
+            _taxLock.Release();
         }
 
         return htmls;
