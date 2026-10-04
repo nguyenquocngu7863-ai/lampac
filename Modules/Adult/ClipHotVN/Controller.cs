@@ -28,19 +28,29 @@ public class ClipHotVNController : BaseSisiController
 
         var menuTask = MenuAsync();
 
-        var cache = await InvokeCacheResult(ipkey($"cliphotvn:{search}:{c}:{pg}"), 10, jsonContext.ListPlaylistItem, async e =>
+        var cache = await InvokeCacheResult<(List<PlaylistItem> playlists, int total_pages)>(ipkey($"cliphotvn:{search}:{c}:{pg}"), 10, async e =>
         {
             string page = await GetPageAsync(ClipHotVNTo.Uri(init.host, search, c, pg));
             var playlists = ClipHotVNTo.Playlist("cliphotvn/vidosik", page);
             if (playlists.Count == 0)
                 return e.Fail("playlists", refresh_proxy: string.IsNullOrEmpty(search));
-            return e.Success(playlists);
+            int total_pages = ClipHotVNTo.Pages(page);
+            // Pages: 1 = 1 trang (tat nut next), 0 = khong ro (giu Infinite nhu cu)
+            return e.Success((playlists, total_pages));
         });
 
         if (rch?.enable == true)
             StatiCacheDisabled = true;
 
-        return PlaylistResult(cache, await menuTask);
+        if (!cache.IsSuccess)
+            return OnError(cache.ErrorMsg);
+
+        return PlaylistResult(
+            cache.Value.playlists,
+            cache.ISingleCache,
+            await menuTask,
+            total_pages: cache.Value.total_pages
+        );
     }
 
     async Task<List<MenuItem>> MenuAsync()
@@ -126,6 +136,12 @@ public class ClipHotVNController : BaseSisiController
             {
                 if (ClipHotVNTo.IsMedia(file))
                     res.Add((file.Contains(".m3u8")?22:18, file));
+            }
+            if (res.Count == 0)
+            {
+                string vidss = ClipHotVNTo.VidssSource(goHtml);
+                if (ClipHotVNTo.IsMedia(vidss))
+                    res.Add((vidss.Contains(".m3u8")?22:18, vidss));
             }
         }
         catch { }

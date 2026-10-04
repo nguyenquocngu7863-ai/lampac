@@ -96,6 +96,17 @@ public static class ClipHotVNTo
         return list;
     }
 
+    // Tong so trang: title "Trang X tren Y" (chinh xac, co tu pg>=2);
+    // khong co khoi .pagination => 1 trang; con lai => 0 (app tu load nhu cu).
+    public static int Pages(string html)
+    {
+        if (string.IsNullOrWhiteSpace(html)) return 0;
+        var t = Regex.Match(html, @"Trang\s+\d+\s+trên\s+(\d+)", RegexOptions.IgnoreCase);
+        if (t.Success && int.TryParse(t.Groups[1].Value, out int total) && total > 0) return total;
+        if (html.IndexOf("class=\"pagination\"", StringComparison.OrdinalIgnoreCase) < 0) return 1;
+        return 0;
+    }
+
     public static List<(string name, string path)> NavCats(string html)
     {
         var res = new List<(string, string)>();
@@ -140,7 +151,7 @@ public static class ClipHotVNTo
         {
             string url = m.Groups[1].Value.Trim();
             if (!url.StartsWith("http", StringComparison.OrdinalIgnoreCase)) continue;
-            if (url.Contains("qooglevideo") || url.Contains("gun1.lat") || url.Contains("/stream/") || url.Contains("/x/"))
+            if (url.Contains("qooglevideo") || url.Contains("gun1.lat") || url.Contains("gun.lat") || url.Contains("vidss.cyou") || url.Contains("/stream/") || url.Contains("/watch/") || url.Contains("/x/"))
             {
                 if (!ret.Any(x => x.Item1 == url)) ret.Add((url, "0", $"Server {ret.Count + 1}"));
             }
@@ -192,6 +203,31 @@ public static class ClipHotVNTo
     }
 
     public static bool IsHls(string url) => IsMedia(url) && url.EndsWith(".m3u8", StringComparison.OrdinalIgnoreCase);
+
+    public static string VidssSource(string html)
+    {
+        if (string.IsNullOrWhiteSpace(html)) return null;
+        var m = Regex.Match(html, @"file_play\s*=\s*[A-Za-z_$][\w$]*\s*\(\s*""([^""]+)""\s*,\s*""([^""]+)""\s*\)");
+        if (!m.Success) return null;
+        return VidssDecrypt(m.Groups[1].Value, m.Groups[2].Value);
+    }
+
+    // vidss.cyou obfuscation: atob(removeDots(enc).reverse) XOR repeating key
+    public static string VidssDecrypt(string encoded, string key)
+    {
+        if (string.IsNullOrEmpty(encoded) || string.IsNullOrEmpty(key)) return null;
+        try
+        {
+            char[] a = encoded.Replace(".", "").ToCharArray();
+            Array.Reverse(a);
+            byte[] data = Convert.FromBase64String(new string(a));
+            var sb = new System.Text.StringBuilder(data.Length);
+            for (int i = 0; i < data.Length; i++)
+                sb.Append((char)(data[i] ^ key[i % key.Length]));
+            return sb.ToString();
+        }
+        catch { return null; }
+    }
 
     public static List<(string file, string label)> JwPlayerSources(string html)
     {
