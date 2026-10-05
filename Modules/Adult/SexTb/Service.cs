@@ -488,8 +488,26 @@ public static class SexTbTo
         var seen=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         // prefix like "genre/" compare lower
         prefix=prefix.Trim('/').ToLowerInvariant()+"/";
-        foreach(Match m in Regex.Matches(html, @"<a[^>]*href\s*=\s*""[^""]*?/(genre|studio|label|director)/([^""]+)""[^>]*>(.*?)</a>", RegexOptions.IgnoreCase|RegexOptions.Singleline))
+        // chi boc trong <section class="tray"> (grid chinh). Nav navbar-submenu chua caret-sub
+        // toan link sort rac (Latest Updates / New Releases / ...) - phai loai.
+        string scope=html;
+        int sec=html.IndexOf("<section", StringComparison.OrdinalIgnoreCase);
+        while(sec>=0)
         {
+            int cls=html.IndexOf("tray", sec, StringComparison.OrdinalIgnoreCase);
+            int end=html.IndexOf("</section>", sec, StringComparison.OrdinalIgnoreCase);
+            if(cls>=0 && (end<0 || cls<end))
+            {
+                scope=end>=0 ? html.Substring(sec, end-sec) : html.Substring(sec);
+                break;
+            }
+            sec=html.IndexOf("<section", sec+8, StringComparison.OrdinalIgnoreCase);
+        }
+        foreach(Match m in Regex.Matches(scope, @"<a[^>]*href\s*=\s*""[^""]*?/(genre|studio|label|director)/([^""#?]+)[^""]*""[^>]*>(.*?)</a>", RegexOptions.IgnoreCase|RegexOptions.Singleline))
+        {
+            // bo link nav (navbar / caret-sub)
+            if(m.Value.IndexOf("caret-sub", StringComparison.OrdinalIgnoreCase)>=0
+                || m.Value.IndexOf("navbar-", StringComparison.OrdinalIgnoreCase)>=0) continue;
             string pf=m.Groups[1].Value.ToLowerInvariant()+"/";
             if(pf!=prefix) continue;
             string slugPart=m.Groups[2].Value.Trim();

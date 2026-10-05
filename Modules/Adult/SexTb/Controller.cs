@@ -18,7 +18,7 @@ namespace SexTb;
 public class SexTbController : BaseSisiController
 {
     static readonly SemaphoreSlim menuLock = new(1, 1);
-    const int MenuFetchBudget = 10_000;
+    const int MenuFetchBudget = 25000;
     public SexTbController() : base(ModInit.conf) { }
 
     [HttpGet, Staticache(manually: true)]
@@ -88,7 +88,7 @@ public class SexTbController : BaseSisiController
         try
         {
             var genresTask = TaxonomiesAsync("/genres", "genre/");
-            var studiosTask = TaxonomiesAsync("/list-studios", "studio/");
+            var studiosTask = StudiosAsync();
             await Task.WhenAll(genresTask, studiosTask);
             var genres = await genresTask;
             var studios = await studiosTask;
@@ -103,6 +103,32 @@ public class SexTbController : BaseSisiController
         catch { }
         Console.WriteLine($"SexTb: menu fail ({Environment.TickCount64 - tr}ms)");
         return SexTbTo.Menu(hostLocal, null, null);
+    }
+
+    // Studios co 2055 muc, phan theo chu cai /list-studios/a..z. Trang goc chi co ~168.
+    // Fetch song song base + a-z roi gop dedup + sort.
+    async Task<List<(string slug, string name)>> StudiosAsync()
+    {
+        string memKey = ipkey("sextb:tax:studio/");
+        if (hybridCache.TryGetValue(memKey, out List<(string slug, string name)> hit) && hit != null && hit.Count > 0)
+            return hit;
+        var pages = new List<string>(27) { "/list-studios" };
+        for (char c = 'a'; c <= 'z'; c++) pages.Add("/list-studios/" + c);
+        var tasks = pages.Select(p => GetPageAsync($"{SexTbTo.SiteHost}{p}")).ToArray();
+        await Task.WhenAll(tasks);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var all = new List<(string slug, string name)>();
+        foreach (var t in tasks)
+        {
+            string html = await t;
+            if (string.IsNullOrEmpty(html)) continue;
+            foreach (var it in SexTbTo.Taxonomies(html, "studio/"))
+                if (seen.Add(it.slug)) all.Add(it);
+        }
+        all.Sort((a, b) => string.Compare(a.name, b.name, StringComparison.OrdinalIgnoreCase));
+        if (all.Count == 0) return all;
+        hybridCache.Set(memKey, all, cacheTime(720), true);
+        return all;
     }
 
     async Task<List<(string slug, string name)>> TaxonomiesAsync(string page, string prefix)
