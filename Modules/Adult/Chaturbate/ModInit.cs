@@ -81,7 +81,8 @@ public class ModInit : IModuleLoaded, IModuleSisi
         // Keep the live HLS proxy on even if an older init.conf/Kit profile
         // still has streamproxy=false from before this fix.
         conf.kit = false;
-        conf.rhub = true;
+        // Khong ep rhub: khong co hub ket noi thi moi request an {"rch":true}.
+        // De init.conf quyet dinh (mac dinh local truc tiep).
         conf.rhub_fallback = true;
         conf.rhub_streamproxy = true;
         conf.qualitys_proxy = false;

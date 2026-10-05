@@ -51,6 +51,12 @@ public static class ChaturbateTo
         if (html.IsEmpty)
             return null;
 
+        // API room-list tra JSON {rooms:[{username,current_show,img,...}]}.
+        // Trang HTML gio chi la age-wall (khong con display_age) -> parse JSON truoc.
+        var fromJson = PlaylistJson(route, html, onplaylist);
+        if (fromJson != null && fromJson.Count > 0)
+            return fromJson;
+
         var rx = Rx.Split("display_age", html, 1);
         if (rx.Count == 0)
             return null;
@@ -85,6 +91,46 @@ public static class ChaturbateTo
         }
 
         return playlists;
+    }
+
+    static List<PlaylistItem> PlaylistJson(string route, ReadOnlySpan<char> html, Func<PlaylistItem, PlaylistItem> onplaylist)
+    {
+        string json = html.ToString();
+        int at = json.IndexOf("\"rooms\"");
+        if (at < 0)
+            return null;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty("rooms", out var rooms) ||
+                rooms.ValueKind != System.Text.Json.JsonValueKind.Array)
+                return null;
+            var list = new List<PlaylistItem>();
+            foreach (var r in rooms.EnumerateArray())
+            {
+                if (r.ValueKind != System.Text.Json.JsonValueKind.Object)
+                    continue;
+                string show = r.TryGetProperty("current_show", out var s) && s.ValueKind == System.Text.Json.JsonValueKind.String ? s.GetString() : "";
+                if (!string.Equals(show, "public", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                string baba = r.TryGetProperty("username", out var u) && u.ValueKind == System.Text.Json.JsonValueKind.String ? u.GetString().Trim() : "";
+                if (string.IsNullOrWhiteSpace(baba))
+                    continue;
+                string img = r.TryGetProperty("img", out var im) && im.ValueKind == System.Text.Json.JsonValueKind.String ? im.GetString() : "";
+                var pl = new PlaylistItem()
+                {
+                    name = baba,
+                    video = $"{route}?baba={baba}",
+                    picture = img,
+                    json = true
+                };
+                if (onplaylist != null)
+                    pl = onplaylist.Invoke(pl);
+                list.Add(pl);
+            }
+            return list;
+        }
+        catch { return null; }
     }
     #endregion
 
