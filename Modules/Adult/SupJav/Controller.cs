@@ -301,22 +301,68 @@ public class SupJavController : BaseSisiController
         if (await IsRequestBlocked(rch: true))
             return badInitMsg;
         var links = await ResolveAsync(uri);
-        if (links == null || !links.TryGetValue(q, out string packed) || string.IsNullOrEmpty(packed))
+        if (links == null || links.Count == 0)
             return OnError("stream_links", refresh_proxy: true);
-        string link = packed, referer = SupJavTo.SiteHost + "/";
-        int nl = packed.IndexOf('\n');
-        if (nl > 0) { link = packed.Substring(0, nl); referer = packed.Substring(nl + 1); }
-        // nhan chrome: resolve that bang Playwright roi redirect
-        if (link.StartsWith("chrome:", StringComparison.OrdinalIgnoreCase))
+        // Fallback chain: thu q truoc, chet thi thu server khac (da resolve).
+        // Verify master song (Range 0-0, 6s) truoc khi redirect de khong day
+        // app vao link chet (FST 403 / ST 500 theo dot).
+        var order = new List<string>();
+        if (!string.IsNullOrEmpty(q) && links.ContainsKey(q)) order.Add(q);
+        foreach (var k in links.Keys)
+            if (!order.Contains(k, StringComparer.OrdinalIgnoreCase)) order.Add(k);
+        foreach (string label in order)
         {
-            string final = link.Substring(7);
-            string voe = await SupJavTo.VoeSourceAsync(final, referer, 15000);
-            if (string.IsNullOrEmpty(voe))
-                return OnError("stream_links", refresh_proxy: true);
-            var h2 = httpHeaders(init, HeadersModel.Init(("referer", referer)));
-            return Redirect(HostStreamProxy(voe, h2));
+            string packed = links[label];
+            string link = packed, referer = SupJavTo.SiteHost + "/";
+            int nl = packed.IndexOf('\n');
+            if (nl > 0) { link = packed.Substring(0, nl); referer = packed.Substring(nl + 1); }
+            // nhan chrome: resolve that bang Playwright roi redirect
+            if (link.StartsWith("chrome:", StringComparison.OrdinalIgnoreCase))
+            {
+                string final = link.Substring(7);
+                string voe = await SupJavTo.VoeSourceAsync(final, referer, 15000);
+                if (string.IsNullOrEmpty(voe)) continue;
+                var h2 = httpHeaders(init, HeadersModel.Init(("referer", referer)));
+                return Redirect(HostStreamProxy(voe, h2));
+            }
+            if (await VerifyLinkAsync(link, referer))
+            {
+                var direct = httpHeaders(init, HeadersModel.Init(("referer", referer)));
+                return Redirect(HostStreamProxy(link, direct));
+            }
         }
-        var direct = httpHeaders(init, HeadersModel.Init(("referer", referer)));
-        return Redirect(HostStreamProxy(link, direct));
+        return OnError("stream_links", refresh_proxy: true);
+    }
+
+    // HEAD kiem tra link song truoc khi redirect (6s, khong tai body).
+    // Yeu cau content-type media (video/*, mpegurl, octet-stream): ST tra
+    // HEAD 200 text/html nhung GET 500 -> phai loai.
+    static bool IsMediaContentType(string ct)
+    {
+        if (string.IsNullOrEmpty(ct)) return false;
+        ct = ct.ToLowerInvariant();
+        return ct.Contains("mpegurl") || ct.Contains("mp2t") || ct.Contains("octet-stream")
+            || ct.Contains("video/") || ct.Contains("application/vnd.apple");
+    }
+
+    async Task<bool> VerifyLinkAsync(string link, string referer)
+    {
+        if (string.IsNullOrEmpty(link)) return false;
+        var headers = HeadersModel.Init(
+            ("User-Agent", SupJavTo.ChromeUA),
+            ("Referer", referer));
+        try
+        {
+            using var resp = await Http.ResponseHeaders(link, timeoutSeconds: 6, headers: headers, httpversion: init.httpversion);
+            if (resp != null && resp.IsSuccessStatusCode && IsMediaContentType(resp.Content?.Headers?.ContentType?.ToString()))
+                return true;
+        }
+        catch { }
+        try
+        {
+            using var resp = await Http.ResponseHeaders(link, timeoutSeconds: 6, headers: headers, proxy: proxy, httpversion: init.httpversion);
+            return resp != null && resp.IsSuccessStatusCode && IsMediaContentType(resp.Content?.Headers?.ContentType?.ToString());
+        }
+        catch { return false; }
     }
 }
