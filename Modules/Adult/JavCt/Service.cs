@@ -376,7 +376,9 @@ public static class JavCtTo
         if (string.IsNullOrEmpty(plain))
             return null;
 
-        foreach (var key in new[] { "hls4", "hls3", "hls2" })
+        // uu tien hls3 (master.txt) > hls2 (cdn token) > hls4 (/stream/ can cookie).
+        // hls4 khong token, phu thuoc cookie + IP -> hay 403/timeout.
+        foreach (var key in new[] { "hls3", "hls2", "hls4" })
         {
             var m = Regex.Match(plain, "\"" + key + "\"\\s*:\\s*\"([^\"]+)\"",
                 RegexOptions.IgnoreCase);

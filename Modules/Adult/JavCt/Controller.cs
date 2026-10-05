@@ -234,7 +234,19 @@ public class JavCtController : BaseSisiController
         if (links == null || links.Count == 0)
             return OnError("stream_links", refresh_proxy: true);
 
-        return Json(links.ToDictionary(k => k.Key, k =>
+        // DD (mp4, song dai) len truoc lam mac dinh - app lay phan dau.
+        // Cac nhanh chet da bi loai o Resolve (packed rong).
+        var ordered = links
+            .OrderBy(kv =>
+            {
+                string v = kv.Value;
+                bool isMp4 = !(v.Contains(".m3u8") || v.Contains("/hls/") || v.Contains("master.txt"));
+                return isMp4 ? 0 : 1;
+            })
+            .ThenBy(kv => kv.Key)
+            .ToDictionary(kv => kv.Key, kv => kv.Value);
+
+        return Json(ordered.ToDictionary(k => k.Key, k =>
         {
             // HLS di route .m3u8, mp4 di route .mp4 (lan lon la app bao
             // "no EXTM3U delimiter"). Playmate tra master .txt (HLS) nen
@@ -302,14 +314,22 @@ public class JavCtController : BaseSisiController
             servers.Add((key, b.Groups[1].Value));
         }
 
-        // Khong thay nut episode: episode = filmId (data-source).
-        // episode=0 tra E_TOK_MISS (SexTb do tay xac nhan cung ho API).
-        if (servers.Count == 0)
+        // Player mac dinh (fakeplayer playbox): episode = filmId, khong co data-id.
+        // Thuong la DD (dood, song dai) - uu tien resolve TRUOC lam mac dinh.
+        // Phim cu chet key se tra "We are updating" (khong iframe) -> tu skip.
+        // episode=0 tra E_TOK_MISS, khong dung.
+        // Moi POST xoay pt 1 vong nen resolve TUAN TU theo thu tu nut.
+        for (int i = 0; i < servers.Count; i++)
         {
-            var dsm = Regex.Match(page, @"data-source\s*=\s*[""']([^""']+)[""']",
-                RegexOptions.IgnoreCase);
-            servers.Add(("MP4", dsm.Success ? dsm.Groups[1].Value : "0"));
+            if (string.Equals(servers[i].label, "DD", StringComparison.OrdinalIgnoreCase))
+            {
+                int n = 2;
+                string nk = "DD " + (n++);
+                while (servers.Exists(s => s.label == nk)) nk = "DD " + (n++);
+                servers[i] = (nk, servers[i].episode);
+            }
         }
+        servers.Insert(0, ("DD", ds.Groups[1].Value));
 
 
         // pt/pk DUNG 1 LAN: response tra next_pt/next_pk cho request KE
@@ -345,7 +365,14 @@ public class JavCtController : BaseSisiController
     async Task<(string packed, string nextPt, string nextPk)> ResolveServerAsync(
         string pageUrl, string filmId, string episode, string pt, string pk, string label)
     {
-        string api;
+        // javct.net mo direct (detail + ajax deu 200 direct) - POST direct truoc,
+        // proxy fallback sau (proxy SIN hay timeout).
+        string api = null;
+        var postHeaders = HeadersModel.Init(
+            ("User-Agent", JavCtTo.ChromeUA),
+            ("Referer", pageUrl),
+            ("Origin", JavCtTo.SiteHost),
+            ("X-Requested-With", "XMLHttpRequest"));
         try
         {
             using var content = new FormUrlEncodedContent(new Dictionary<string, string>()
@@ -359,19 +386,37 @@ public class JavCtController : BaseSisiController
                 JavCtTo.PlayerApi,
                 content,
                 timeoutSeconds: Math.Max(15, init.httptimeout),
-                headers: HeadersModel.Init(
-                    ("User-Agent", JavCtTo.ChromeUA),
-                    ("Referer", pageUrl),
-                    ("Origin", JavCtTo.SiteHost),
-                    ("X-Requested-With", "XMLHttpRequest")),
-                proxy: proxy,
+                headers: postHeaders,
                 httpversion: init.httpversion,
                 statusCodeOK: true,
                 disposeData: true);
         }
-        catch
+        catch { api = null; }
+        if (string.IsNullOrEmpty(api))
         {
-            return (null, null, null);
+            try
+            {
+                using var content2 = new FormUrlEncodedContent(new Dictionary<string, string>()
+                {
+                    ["episode"] = episode,
+                    ["filmId"] = filmId,
+                    ["pt"] = pt
+                });
+
+                api = await Http.Post(
+                    JavCtTo.PlayerApi,
+                    content2,
+                    timeoutSeconds: Math.Max(15, init.httptimeout),
+                    headers: postHeaders,
+                    proxy: proxy,
+                    httpversion: init.httpversion,
+                    statusCodeOK: true,
+                    disposeData: true);
+            }
+            catch
+            {
+                return (null, null, null);
+            }
         }
 
         if (string.IsNullOrEmpty(api))
@@ -430,7 +475,9 @@ public class JavCtController : BaseSisiController
             return (mp4 + "\n" + referer, nextPt, nextPk);
 
         // Khong phai dood (ryderjet...): packer base36 -> hls (F1).
-        // DoodSourceAsync da fetch embed 1 lan; fetch lai de giai packer.
+        // Embed fetch DIRECT truoc (token bind IP phai cung IP voi stream direct).
+        // Truoc fetch qua proxy nhung stream direct -> lech IP/timeout.
+        // Nhanh chet (nhu FL #B: 5KB, khong packer/links) -> skip, giu nhanh song.
         try
         {
             string embedHtml = await Http.Get(
@@ -439,12 +486,28 @@ public class JavCtController : BaseSisiController
                 headers: HeadersModel.Init(
                     ("User-Agent", JavCtTo.ChromeUA),
                     ("Referer", pageUrl)),
-                proxy: proxy,
                 httpversion: init.httpversion);
 
             string master = JavCtTo.StreamHgMaster(embedHtml, pageUrl);
             if (!string.IsNullOrEmpty(master))
                 return (master + "\n" + embed, nextPt, nextPk);
+
+            try
+            {
+                string embedHtml2 = await Http.Get(
+                    embed,
+                    timeoutSeconds: 12,
+                    headers: HeadersModel.Init(
+                        ("User-Agent", JavCtTo.ChromeUA),
+                        ("Referer", pageUrl)),
+                    proxy: proxy,
+                    httpversion: init.httpversion);
+
+                string master2 = JavCtTo.StreamHgMaster(embedHtml2, pageUrl);
+                if (!string.IsNullOrEmpty(master2))
+                    return (master2 + "\n" + embed, nextPt, nextPk);
+            }
+            catch { }
         }
         catch { }
 
