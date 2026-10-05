@@ -246,9 +246,16 @@ public class SupJavController : BaseSisiController
         var links = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var (label, link) in servers)
         {
-            // VOE (localStorage redirect) + VAS (pako/crypto): curl khong ra link,
-            // giu nhan de /video resolve that bang Chrome (ton 4-12s). optimistic .m3u8.
-            if (SupJavTo.IsVoeLabel(label))
+            // VAS (Vidara): giai thang server-side, khong can Chrome
+            if (label.IndexOf("VAS", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                string vas = await ResolveVasAsync(pageUrl, link);
+                if (!string.IsNullOrEmpty(vas) && !links.ContainsKey(label))
+                    links.TryAdd(label, vas);
+                continue;
+            }
+            // VOE (localStorage redirect): giu nhan de /video resolve that bang Chrome
+            if (SupJavTo.IsVoeLabel(label) && label.IndexOf("VAS", StringComparison.OrdinalIgnoreCase) < 0)
             {
                 string final = SupJavTo.FinalUrl(link);
                 if (!string.IsNullOrEmpty(final) && !links.ContainsKey(label))
@@ -264,13 +271,74 @@ public class SupJavController : BaseSisiController
         return links;
     }
 
-    async Task<string> ResolveServerAsync(string pageUrl, string label, string link)
+    // VAS (Vidara): final 302 -> https://<host>/e/<filecode> -> POST /api/stream -> streaming_url (HLS)
+    async Task<string> ResolveVasAsync(string pageUrl, string link)
     {
-        // Gateway: supjav.php?l=<link> -> ?c=<reversed>
         string final = SupJavTo.FinalUrl(link);
         if (string.IsNullOrEmpty(final)) return null;
+        var headers = HeadersModel.Init(
+            ("User-Agent", SupJavTo.ChromeUA),
+            ("Referer", pageUrl));
+        string loc = null;
+        try { loc = await Http.GetLocation(final, timeoutSeconds: 15, headers: headers, httpversion: init.httpversion); }
+        catch { }
+        if (string.IsNullOrEmpty(loc))
+        {
+            try { loc = await Http.GetLocation(final, timeoutSeconds: 15, headers: headers, proxy: proxy, httpversion: init.httpversion); }
+            catch { return null; }
+        }
+        var (apiHost, filecode) = SupJavTo.VasTarget(loc ?? "");
+        if (string.IsNullOrEmpty(apiHost) || string.IsNullOrEmpty(filecode)) return null;
+        string emb = apiHost + "/e/" + filecode;
+        string json = null;
+        try
+        {
+            using var content = new System.Net.Http.StringContent(
+                "{\"filecode\":\"" + filecode + "\",\"device\":\"web\"}",
+                System.Text.Encoding.UTF8, "application/json");
+            json = await Http.Post(apiHost + "/api/stream",
+                content, timeoutSeconds: 15,
+                headers: HeadersModel.Init(
+                    ("User-Agent", SupJavTo.ChromeUA),
+                    ("Referer", emb),
+                    ("Origin", apiHost)),
+                httpversion: init.httpversion, disposeData: true);
+        }
+        catch { }
+        string master = SupJavTo.VasStreamingUrl(json ?? "");
+        if (string.IsNullOrEmpty(master)) return null;
+        return master + "\n" + emb;
+    }
+
+    async Task<string> ResolveServerAsync(string pageUrl, string label, string link)
+    {        // Gateway chain (cookiejar rieng): ?l=<link> lay session -> ?l=&c=<rev>.
+        // Backend VOE doi session cookie, di tat ?l=&c= ngay tra shell.
+        string gateway = SupJavTo.GatewayUrl(link);
+        string final = SupJavTo.FinalUrl(link);
+        if (string.IsNullOrEmpty(final)) return null;
+        var jar = new System.Net.CookieContainer();
         string gw = await SupJavTo.GetHtmlAsync(final, pageUrl, 25, proxy, init.httpversion);
+        if (string.IsNullOrEmpty(gw) || SupJavTo.IsGatewayShell(gw))
+        {
+            try
+            {
+                var headers = HeadersModel.Init(
+                    ("User-Agent", SupJavTo.ChromeUA),
+                    ("Referer", pageUrl));
+                await Http.Get(gateway, timeoutSeconds: 15, headers: headers, httpversion: init.httpversion, cookieContainer: jar);
+                gw = await Http.Get(final, timeoutSeconds: 25, headers: HeadersModel.Init(
+                    ("User-Agent", SupJavTo.ChromeUA),
+                    ("Referer", gateway)), httpversion: init.httpversion, cookieContainer: jar);
+            }
+            catch { }
+        }
         if (string.IsNullOrEmpty(gw)) return null;
+        // VAS (Vidara): 302 -> <host>/e/<filecode> -> POST /api/stream -> streaming_url
+        if (label.IndexOf("VAS", StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            var vas = await ResolveVasAsync(final, pageUrl);
+            if (!string.IsNullOrEmpty(vas)) return vas;
+        }
         // FST (StreamHg): unpack -> hls3>hls2
         var masters = SupJavTo.StreamHgMasters(gw);
         if (masters.Count > 0)

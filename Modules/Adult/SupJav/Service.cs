@@ -185,6 +185,34 @@ public static class SupJavTo
         return res;
     }
 
+    // ========== Gateway shell: trang playbutton trung gian (can di ?l= lay session truoc) ==========
+    public static bool IsGatewayShell(string html)
+    {
+        if (string.IsNullOrEmpty(html)) return true;
+        if (html.Contains("start_player") || html.Contains("var OLID")) return true;
+        if (html.Length < 6000 && !html.Contains("jwplayer") && !html.Contains("var links") && !html.Contains("robotlink"))
+            return true;
+        return false;
+    }
+
+    // ========== VAS (Vidara): 302 -> https://<host>/e/<filecode> -> POST /api/stream -> streaming_url ==========
+    public static (string apiHost, string filecode) VasTarget(string location)
+    {
+        if (string.IsNullOrEmpty(location)) return (null, null);
+        var m = Regex.Match(location, @"(https?://[^/]+)/e/([A-Za-z0-9]+)", RegexOptions.IgnoreCase);
+        if (!m.Success) return (null, null);
+        return (m.Groups[1].Value, m.Groups[2].Value);
+    }
+
+    public static string VasStreamingUrl(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        var m = Regex.Match(json, @"""streaming_url""\s*:\s*""([^""]+)""", RegexOptions.IgnoreCase);
+        if (!m.Success) return null;
+        string v = m.Groups[1].Value.Replace("\\/", "/");
+        return v.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? v : null;
+    }
+
     // ========== StreamTape: /e/ID -> #robotlink ==========
     public static string StreamTapeId(string embedUrl)
     {
