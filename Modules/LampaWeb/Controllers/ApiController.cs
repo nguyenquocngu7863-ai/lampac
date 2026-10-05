@@ -778,6 +778,17 @@ public class ApiController : BaseController
     }
     #endregion
 
+    #region FastHide plugin (an control player nhanh)
+    [HttpGet, AllowAnonymous]
+    [Staticache(20, always: true, setHeadersNoCache: true)]
+    [Route("fasthide.js")]
+    public ActionResult FastHide()
+    {
+        string script = FileCache.ReadAllText($"{ModInit.modpath}/plugins/fasthide.js", "fasthide.js", saveCache: false);
+        return ContentTo(script, "application/javascript; charset=utf-8");
+    }
+    #endregion
+
     #region lampainit.js
     [HttpGet, AllowAnonymous]
     [Staticache(20, always: true, setHeadersNoCache: true)]
