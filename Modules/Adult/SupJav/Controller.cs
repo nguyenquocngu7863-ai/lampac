@@ -339,10 +339,13 @@ public class SupJavController : BaseSisiController
             var vas = await ResolveVasAsync(final, pageUrl);
             if (!string.IsNullOrEmpty(vas)) return vas;
         }
-        // FST (StreamHg): unpack -> hls3>hls2
+        // FST (StreamHg): unpack -> hls2>hls3>hls4, thu tung bien cho den
+        // khi co master that (host khac nhau co the da chet doc lap).
         var masters = SupJavTo.StreamHgMasters(gw);
-        if (masters.Count > 0)
-            return masters[0] + "\n" + final;
+        for (int i = 0; i < masters.Count; i++)
+        {
+            if (await VerifyLinkAsync(masters[i], final)) return masters[i] + "\n" + final;
+        }
         // ST (StreamTape): /e/ID -> #robotlink mp4
         string stId = SupJavTo.StreamTapeId(gw);
         if (string.IsNullOrEmpty(stId))

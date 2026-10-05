@@ -177,7 +177,10 @@ public static class SupJavTo
         var kv = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (Match x in Regex.Matches(m.Groups[1].Value, @"""(hls\d)""\s*:\s*""([^""]+)""", RegexOptions.IgnoreCase))
             kv[x.Groups[1].Value] = HttpUtility.HtmlDecode(x.Groups[2].Value.Trim()).Replace("\\/", "/");
-        foreach (string key in new[] { "hls3", "hls2", "hls4" })
+        // Thu tu hls2 truoc: hls3 tro toi host crystalhavenstudios.shop da bi
+        // Cloudflare chan (403 "Website Access Blocked") va host khac (404) --
+        // hls2 tren cdn-centaurus.com moi la bien con song (2026-10).
+        foreach (string key in new[] { "hls2", "hls3", "hls4" })
         {
             if (!kv.TryGetValue(key, out string v) || string.IsNullOrEmpty(v)) continue;
             if (v.StartsWith("http", StringComparison.OrdinalIgnoreCase) && !res.Contains(v)) res.Add(v);
