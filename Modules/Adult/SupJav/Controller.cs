@@ -55,14 +55,14 @@ public class SupJavController : BaseSisiController
             return hit;
         string hostLocal = host;
         if (!await menuLock.WaitAsync(2000))
-            return SupJavTo.Menu(hostLocal, null);
+            return SupJavTo.Menu(hostLocal, null, null, null);
         try
         {
             if (hybridCache.TryGetValue(memKey, out List<MenuItem> hit2) && hit2 != null && hit2.Count > 0)
                 return hit2;
             var build = BuildMenuAsync(hostLocal, memKey);
             if (build != await Task.WhenAny(build, Task.Delay(MenuFetchBudget)))
-                return SupJavTo.Menu(hostLocal, null);
+                return SupJavTo.Menu(hostLocal, null, null, null);
             return await build;
         }
         finally { menuLock.Release(); }
@@ -73,19 +73,24 @@ public class SupJavController : BaseSisiController
         long tr = Environment.TickCount64;
         try
         {
-            string html = await GetPageAsync(SupJavTo.SiteHost + "/");
-            var cats = SupJavTo.Taxonomies(html ?? "");
-            if (cats.Count > 0)
+            var homeTask = GetPageAsync(SupJavTo.SiteHost + "/");
+            var makerTask = GetPageAsync(SupJavTo.SiteHost + "/maker");
+            var tagTask = GetPageAsync(SupJavTo.SiteHost + "/tag");
+            await Task.WhenAll(homeTask, makerTask, tagTask);
+            var cats = SupJavTo.Taxonomies(await homeTask ?? "");
+            var makers = SupJavTo.Makers(await makerTask ?? "");
+            var tags = SupJavTo.Tags(await tagTask ?? "");
+            if (cats.Count > 0 || makers.Count > 0 || tags.Count > 0)
             {
-                var menu = SupJavTo.Menu(hostLocal, cats);
+                var menu = SupJavTo.Menu(hostLocal, cats, makers, tags);
                 hybridCache.Set(memKey, menu, cacheTime(720), true);
-                Console.WriteLine($"SupJav: menu cats={cats.Count} ({Environment.TickCount64 - tr}ms)");
+                Console.WriteLine($"SupJav: menu cats={cats.Count} makers={makers.Count} tags={tags.Count} ({Environment.TickCount64 - tr}ms)");
                 return menu;
             }
         }
         catch { }
         Console.WriteLine($"SupJav: menu fail ({Environment.TickCount64 - tr}ms)");
-        return SupJavTo.Menu(hostLocal, null);
+        return SupJavTo.Menu(hostLocal, null, null, null);
     }
 
     async Task<string> GetPageAsync(string url)
@@ -148,7 +153,8 @@ public class SupJavController : BaseSisiController
         {
             string v = k.Value;
             string link = v.Contains('\n') ? v.Substring(0, v.IndexOf('\n')) : v;
-            string route = link.Contains(".m3u8") || link.Contains("/hls/") || link.Contains("master.txt") ? "video.m3u8" : "video.mp4";
+            // chrome: = VOE/VAS resolve that o /video, optimistic HLS
+            string route = link.StartsWith("chrome:", StringComparison.OrdinalIgnoreCase) || link.Contains(".m3u8") || link.Contains("/hls/") || link.Contains("master.txt") ? "video.m3u8" : "video.mp4";
             return $"{host}/supjav/{route}?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(k.Key)}";
         }));
     }
@@ -167,9 +173,15 @@ public class SupJavController : BaseSisiController
         var links = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var (label, link) in servers)
         {
-            // VOE (localStorage redirect) + VAS (pako/crypto) chua giai duoc -> skip
-            if (label.IndexOf("VOE", StringComparison.OrdinalIgnoreCase) >= 0) continue;
-            if (label.IndexOf("VAS", StringComparison.OrdinalIgnoreCase) >= 0) continue;
+            // VOE (localStorage redirect) + VAS (pako/crypto): curl khong ra link,
+            // giu nhan de /video resolve that bang Chrome (ton 4-12s). optimistic .m3u8.
+            if (SupJavTo.IsVoeLabel(label))
+            {
+                string final = SupJavTo.FinalUrl(link);
+                if (!string.IsNullOrEmpty(final) && !links.ContainsKey(label))
+                    links.TryAdd(label, "chrome:" + final + "\n" + pageUrl);
+                continue;
+            }
             string packed = await ResolveServerAsync(pageUrl, label, link);
             if (!string.IsNullOrEmpty(packed) && !links.ContainsKey(label))
                 links.TryAdd(label, packed);
@@ -221,6 +233,16 @@ public class SupJavController : BaseSisiController
         string link = packed, referer = SupJavTo.SiteHost + "/";
         int nl = packed.IndexOf('\n');
         if (nl > 0) { link = packed.Substring(0, nl); referer = packed.Substring(nl + 1); }
+        // nhan chrome: resolve that bang Playwright roi redirect
+        if (link.StartsWith("chrome:", StringComparison.OrdinalIgnoreCase))
+        {
+            string final = link.Substring(7);
+            string voe = await SupJavTo.VoeSourceAsync(final, referer, 15000);
+            if (string.IsNullOrEmpty(voe))
+                return OnError("stream_links", refresh_proxy: true);
+            var h2 = httpHeaders(init, HeadersModel.Init(("referer", referer)));
+            return Redirect(HostStreamProxy(voe, h2));
+        }
         var direct = httpHeaders(init, HeadersModel.Init(("referer", referer)));
         return Redirect(HostStreamProxy(link, direct));
     }

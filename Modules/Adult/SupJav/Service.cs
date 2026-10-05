@@ -92,7 +92,12 @@ public static class SupJavTo
             if (string.IsNullOrEmpty(name)) continue;
             string snippet = html.Substring(m.Index, Math.Min(2000, html.Length - m.Index));
             string poster = null;
-            var pm = Regex.Match(snippet, @"<img\b[^>]*\bsrc\s*=\s*""([^""]+)""", RegexOptions.IgnoreCase);
+            // anh lazyload: data-original / data-src truoc, src thuong sau
+            var pm = Regex.Match(snippet, @"<img\b[^>]*\bdata-original\s*=\s*""([^""]+)""", RegexOptions.IgnoreCase);
+            if (!pm.Success)
+                pm = Regex.Match(snippet, @"<img\b[^>]*\bdata-src\s*=\s*""([^""]+)""", RegexOptions.IgnoreCase);
+            if (!pm.Success)
+                pm = Regex.Match(snippet, @"<img\b[^>]*\bsrc\s*=\s*""([^""]+)""", RegexOptions.IgnoreCase);
             if (pm.Success) poster = NormalizeMediaUrl(pm.Groups[1].Value);
             list.Add(new PlaylistItem()
             {
@@ -201,40 +206,192 @@ public static class SupJavTo
         return "https://streamtape.com/" + path;
     }
 
-    // ========== Taxonomies: /category/<slug>/ ==========
+    // ========== Taxonomies ==========
+    // categories: /category/<slug>/ (nav home) ; makers: /category/maker/<slug> (trang /maker)
     public static List<(string slug, string name)> Taxonomies(string html)
     {
         var res = new List<(string slug, string name)>();
         if (string.IsNullOrEmpty(html)) return res;
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (Match m in Regex.Matches(html, @"<a[^>]*href\s*=\s*""(https?://supjav\.com)?/category/([a-z0-9\-]+)/?""[^>]*>(.*?)</a>", RegexOptions.IgnoreCase | RegexOptions.Singleline))
+        foreach (Match m in Regex.Matches(html, @"<a[^>]*href\s*=\s*""(https?://supjav\.com)?/category/(?!maker/)([a-z0-9\-]+)/?""[^>]*>(.*?)</a>", RegexOptions.IgnoreCase | RegexOptions.Singleline))
         {
             string slug = "category/" + m.Groups[2].Value.Trim();
-            string raw = Regex.Replace(m.Groups[3].Value, "<[^>]+>", " ");
-            string name = Clean(HttpUtility.HtmlDecode(raw));
-            if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(slug) || !seen.Add(slug)) continue;
-            if (name.Length > 40) continue;
+            string name = Clean(Regex.Replace(HttpUtility.HtmlDecode(m.Groups[3].Value), "<[^>]+>", " "));
+            if (string.IsNullOrEmpty(name) || name.Length > 40 || !seen.Add(slug)) continue;
             res.Add((slug, name));
         }
         return res;
     }
 
-    public static List<MenuItem> Menu(string host, List<(string slug, string name)> cats)
+    public static List<(string slug, string name)> Makers(string html)
+    {
+        var res = new List<(string slug, string name)>();
+        if (string.IsNullOrEmpty(html)) return res;
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (Match m in Regex.Matches(html, @"<a[^>]*href\s*=\s*""(https?://supjav\.com)?/category/maker/([a-z0-9\-]+)/?""[^>]*>(.*?)</a>", RegexOptions.IgnoreCase | RegexOptions.Singleline))
+        {
+            string slug = "category/maker/" + m.Groups[2].Value.Trim();
+            string name = Clean(Regex.Replace(HttpUtility.HtmlDecode(m.Groups[3].Value), "<[^>]+>", " "));
+            name = Regex.Replace(name, @"\s*\(\d+\)\s*$", "").Trim();
+            if (string.IsNullOrEmpty(name) || !seen.Add(slug)) continue;
+            res.Add((slug, name));
+        }
+        return res;
+    }
+
+    public static List<(string slug, string name)> Tags(string html)
+    {
+        var res = new List<(string slug, string name)>();
+        if (string.IsNullOrEmpty(html)) return res;
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (Match m in Regex.Matches(html, @"<a[^>]*href\s*=\s*""(https?://supjav\.com)?/tag/([a-z0-9\-]+)/?""[^>]*>(.*?)</a>", RegexOptions.IgnoreCase | RegexOptions.Singleline))
+        {
+            string slug = "tag/" + m.Groups[2].Value.Trim();
+            string name = Clean(Regex.Replace(HttpUtility.HtmlDecode(m.Groups[3].Value), "<[^>]+>", " "));
+            name = Regex.Replace(name, @"\s*\(\d+\)\s*$", "").Trim();
+            if (string.IsNullOrEmpty(name) || !seen.Add(slug)) continue;
+            res.Add((slug, name));
+        }
+        return res;
+    }
+
+    public static List<MenuItem> Menu(string host, List<(string slug, string name)> cats, List<(string slug, string name)> makers, List<(string slug, string name)> tags)
     {
         host = host.TrimEnd('/');
         string url(string c) => host + "/supjav?c=" + HttpUtility.UrlEncode(c);
-        var root = new List<MenuItem>(3)
+        var root = new List<MenuItem>(5)
         {
-            new MenuItem(){ title = "Tìm kiếm", search_on = "search_on", playlist_url = host + "/supjav" }
+            new MenuItem(){ title = "Tìm kiếm", search_on = "search_on", playlist_url = host + "/supjav" },
+            new("Phổ biến", url("popular"))
         };
-        if (cats != null && cats.Count > 0)
+        List<MenuItem> TaxMenu(List<(string slug, string name)> items)
         {
-            var gm = new List<MenuItem>(cats.Count);
-            foreach (var (slug, name) in cats)
+            var gm = new List<MenuItem>(items.Count);
+            foreach (var (slug, name) in items)
                 gm.Add(new MenuItem(string.IsNullOrEmpty(name) ? slug : name, url(slug)));
-            root.Add(new MenuItem() { title = "Thể loại", playlist_url = "submenu", submenu = gm });
+            return gm;
+        }
+        if (cats != null && cats.Count > 0)
+            root.Add(new MenuItem() { title = "Thể loại", playlist_url = "submenu", submenu = TaxMenu(cats) });
+        if (makers != null && makers.Count > 0)
+        {
+            var mm = TaxMenu(makers);
+            if (mm.Count > 300)
+                mm = DirBuckets(host, "Hãng phim", makers, 300).SelectMany(b => b.submenu).ToList();
+            root.Add(new MenuItem() { title = "Hãng phim", playlist_url = "submenu", submenu = mm });
+        }
+        if (tags != null && tags.Count > 0)
+        {
+            if (tags.Count > 300)
+            {
+                foreach (var b in DirBuckets(host, "Genre", tags, 300))
+                    root.Add(b);
+            }
+            else root.Add(new MenuItem() { title = "Genre", playlist_url = "submenu", submenu = TaxMenu(tags) });
         }
         return root;
+    }
+
+    public const int MaxPerBucket = 300;
+    public static List<MenuItem> DirBuckets(string host, string title, IReadOnlyList<(string slug, string name)> all, int maxPer = MaxPerBucket)
+    {
+        var res = new List<MenuItem>();
+        if (all == null || all.Count == 0) return res;
+        var groups = new Dictionary<char, List<(string slug, string name)>>();
+        foreach (var it in all)
+        {
+            if (string.IsNullOrWhiteSpace(it.name)) continue;
+            char c = char.ToUpperInvariant(it.name.Trim()[0]);
+            if (c < 'A' || c > 'Z') c = '#';
+            if (!groups.TryGetValue(c, out var lst)) { lst = new List<(string, string)>(); groups[c] = lst; }
+            lst.Add(it);
+        }
+        var keys = groups.Keys.OrderBy(k => k == '#' ? 0 : 20 + (k - 'A')).ToList();
+        var flat = new List<(char key, string name, string path)>(all.Count);
+        foreach (var k in keys) foreach (var it in groups[k]) flat.Add((k, it.name, it.slug));
+        var from = new List<char>(); var to = new List<char>(); var subs = new List<List<MenuItem>>();
+        for (int i = 0; i < flat.Count; i += maxPer)
+        {
+            int n = Math.Min(maxPer, flat.Count - i);
+            from.Add(flat[i].key); to.Add(flat[i + n - 1].key);
+            subs.Add(flat.Skip(i).Take(n).Select(x => new MenuItem(x.name, host.TrimEnd('/') + "/supjav?c=" + HttpUtility.UrlEncode(x.path))).ToList());
+        }
+        for (int k = 0; k < from.Count; k++)
+            res.Add(new MenuItem(title + " " + from[k] + (to[k] == from[k] ? "" : "–" + to[k]), "submenu") { submenu = subs[k] });
+        return res;
+    }
+
+    // ========== VOE/VAS qua Chrome (port JavGuru VoSourceAsync) ==========
+    // Trang final (supjav.php?l=..&c=..) redirect bang JS localStorage (VOE)
+    // hoac jwplayer + pako/crypto (VAS): curl khong ra link. Mo that bang
+    // Playwright, bat network .m3u8/.mp4 + doc jwplayer playlist.
+    // CHI goi o /video (ton 4-12s), khong goi o /vidosik.
+    public static bool IsVoeLabel(string label)
+        => !string.IsNullOrEmpty(label) &&
+            (label.IndexOf("VOE", StringComparison.OrdinalIgnoreCase) >= 0 ||
+             label.IndexOf("VAS", StringComparison.OrdinalIgnoreCase) >= 0);
+
+    public static async Task<string> VoeSourceAsync(string pageUrl, string referer, int timeoutMs = 12000)
+    {
+        if (string.IsNullOrEmpty(pageUrl)) return null;
+        try
+        {
+            using (var browser = new Shared.PlaywrightCore.PlaywrightBrowser())
+            {
+                var page = await browser.NewPageAsync("SupJav",
+                    new Dictionary<string, string>
+                    {
+                        ["User-Agent"] = ChromeUA,
+                        ["Referer"] = referer ?? (SiteHost + "/")
+                    }, keepopen: false);
+                if (page == null) return null;
+                string got = null;
+                page.Request += (_, req) =>
+                {
+                    try
+                    {
+                        string u = req.Url;
+                        if (got != null) return;
+                        bool media = u.Contains(".m3u8") || u.Contains(".mp4");
+                        bool ad = u.IndexOf("ima3.js", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                  u.IndexOf("ads", StringComparison.OrdinalIgnoreCase) >= 0;
+                        if (media && !ad) got = u;
+                    }
+                    catch { }
+                };
+                await page.GotoAsync(pageUrl, new Microsoft.Playwright.PageGotoOptions
+                {
+                    Timeout = timeoutMs,
+                    WaitUntil = Microsoft.Playwright.WaitUntilState.DOMContentLoaded
+                });
+                string file = null;
+                for (int i = 0; i < 10; i++)
+                {
+                    try
+                    {
+                        file = await page.EvaluateAsync<string>(@"() => {
+                            try {
+                                var p = jwplayer('a');
+                                var pl = p && p.getPlaylist ? p.getPlaylist() : null;
+                                var s = pl && pl[0] && pl[0].sources ? pl[0].sources : null;
+                                return (s && s[0] && s[0].file) ? s[0].file : null;
+                            } catch (e) { return null; }
+                        }");
+                    }
+                    catch { }
+                    if (!string.IsNullOrEmpty(file) || got != null) break;
+                    await Task.Delay(700);
+                }
+                try { await page.CloseAsync(); } catch { }
+                string best = !string.IsNullOrEmpty(file) ? file : got;
+                return string.IsNullOrEmpty(best) ? null : best;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"SupJav: voe loi {ex.Message}");
+            return null;
+        }
     }
 
     // ========== Fetch helpers (direct-first, retry vi CF abort theo dot) ==========
