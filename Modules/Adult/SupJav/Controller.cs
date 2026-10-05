@@ -68,18 +68,91 @@ public class SupJavController : BaseSisiController
         finally { menuLock.Release(); }
     }
 
+    // /tag phan 291 muc, /maker 808 muc theo /page/N/ (trang 1 khong lo link).
+    // Crawl song song den khi het (toi da 12/4 trang), gop dedup.
+    async Task<List<(string slug, string name)>> TagsAsync()
+    {
+        string memKey = ipkey("supjav:tax:tags");
+        if (hybridCache.TryGetValue(memKey, out List<(string slug, string name)> hit) && hit != null && hit.Count > 0)
+            return hit;
+        var tasks = new List<Task<string>>(5);
+        tasks.Add(GetPageAsync($"{SupJavTo.SiteHost}/tag"));
+        for (int p = 2; p <= 5; p++)
+            tasks.Add(GetPageAsync($"{SupJavTo.SiteHost}/tag/page/{p}/"));
+        await Task.WhenAll(tasks);
+        for (int i = 0; i < tasks.Count; i++)
+        {
+            string html = await tasks[i];
+            if (string.IsNullOrEmpty(html))
+            {
+                await Task.Delay(3000);
+                tasks[i] = GetPageAsync(i == 0 ? $"{SupJavTo.SiteHost}/tag" : $"{SupJavTo.SiteHost}/tag/page/{i + 1}/");
+            }
+        }
+        await Task.WhenAll(tasks);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var all = new List<(string slug, string name)>();
+        foreach (var t in tasks)
+        {
+            string html = await t;
+            if (string.IsNullOrEmpty(html)) continue;
+            foreach (var it in SupJavTo.Tags(html))
+                if (seen.Add(it.slug)) all.Add(it);
+        }
+        all.Sort((a, b) => string.Compare(a.name, b.name, StringComparison.OrdinalIgnoreCase));
+        if (all.Count == 0) return all;
+        hybridCache.Set(memKey, all, cacheTime(720), true);
+        return all;
+    }
+
+    async Task<List<(string slug, string name)>> MakersAsync()
+    {
+        string memKey = ipkey("supjav:tax:makers");
+        if (hybridCache.TryGetValue(memKey, out List<(string slug, string name)> hit2) && hit2 != null && hit2.Count > 0)
+            return hit2;
+        var tasks = new List<Task<string>>(12);
+        tasks.Add(GetPageAsync($"{SupJavTo.SiteHost}/maker?sort=quantity"));
+        for (int p = 2; p <= 12; p++)
+            tasks.Add(GetPageAsync($"{SupJavTo.SiteHost}/maker/page/{p}/?sort=quantity"));
+        await Task.WhenAll(tasks);
+        // CF challenge theo dot: trang ve rong thi doi 3s thu lai 1 lan
+        for (int i = 0; i < tasks.Count; i++)
+        {
+            string html = await tasks[i];
+            if (string.IsNullOrEmpty(html))
+            {
+                await Task.Delay(3000);
+                tasks[i] = GetPageAsync(i == 0 ? $"{SupJavTo.SiteHost}/maker?sort=quantity" : $"{SupJavTo.SiteHost}/maker/page/{i + 1}/?sort=quantity");
+            }
+        }
+        await Task.WhenAll(tasks);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var all = new List<(string slug, string name)>();
+        foreach (var t in tasks)
+        {
+            string html = await t;
+            if (string.IsNullOrEmpty(html)) continue;
+            foreach (var it in SupJavTo.Makers(html))
+                if (seen.Add(it.slug)) all.Add(it);
+        }
+        // GIU nguyen thu tu site (sort=quantity: nhieu phim len truoc), khong sort A-Z
+        if (all.Count == 0) return all;
+        hybridCache.Set(memKey, all, cacheTime(720), true);
+        return all;
+    }
+
     async Task<List<MenuItem>> BuildMenuAsync(string hostLocal, string memKey)
     {
         long tr = Environment.TickCount64;
         try
         {
             var homeTask = GetPageAsync(SupJavTo.SiteHost + "/");
-            var makerTask = GetPageAsync(SupJavTo.SiteHost + "/maker");
-            var tagTask = GetPageAsync(SupJavTo.SiteHost + "/tag");
+            var makerTask = MakersAsync();
+            var tagTask = TagsAsync();
             await Task.WhenAll(homeTask, makerTask, tagTask);
             var cats = SupJavTo.Taxonomies(await homeTask ?? "");
-            var makers = SupJavTo.Makers(await makerTask ?? "");
-            var tags = SupJavTo.Tags(await tagTask ?? "");
+            var makers = await makerTask;
+            var tags = await tagTask;
             if (cats.Count > 0 || makers.Count > 0 || tags.Count > 0)
             {
                 var menu = SupJavTo.Menu(hostLocal, cats, makers, tags);

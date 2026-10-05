@@ -25,6 +25,7 @@ public static class SupJavTo
     }
 
     // ========== Uri (WordPress) ==========
+    // Home = Popular (list tron 24, lay het roi ngung). Moi nhat = latest home (/).
     public static string Uri(string host, string search, string c, int pg)
     {
         if (string.IsNullOrWhiteSpace(host)) host = SiteHost;
@@ -38,12 +39,14 @@ public static class SupJavTo
         if (!string.IsNullOrWhiteSpace(c))
         {
             string raw = c.Trim().Trim('/');
+            if (raw == "__latest")
+                return pg > 1 ? host + "/page/" + pg + "/" : host + "/";
             if (raw.StartsWith("http", StringComparison.OrdinalIgnoreCase))
                 return pg > 1 ? raw.TrimEnd('/') + "/page/" + pg + "/" : raw;
             string baseUrl = host + "/" + raw;
             return pg > 1 ? baseUrl.TrimEnd('/') + "/page/" + pg + "/" : baseUrl;
         }
-        return pg > 1 ? host + "/page/" + pg + "/" : host + "/";
+        return host + "/popular";
     }
 
     public static string NormalizePageUrl(string value)
@@ -261,9 +264,12 @@ public static class SupJavTo
         string url(string c) => host + "/supjav?c=" + HttpUtility.UrlEncode(c);
         var root = new List<MenuItem>(5)
         {
-            new MenuItem(){ title = "Tìm kiếm", search_on = "search_on", playlist_url = host + "/supjav" },
-            new("Phổ biến", url("popular"))
+            new MenuItem(){ title = "Tìm kiếm", search_on = "search_on", playlist_url = host + "/supjav" }
         };
+        root.Add(new MenuItem() { title = "Sắp xếp", playlist_url = "submenu", submenu = new List<MenuItem>(){
+            new("Mới nhất", url("__latest")),
+            new("Phổ biến", url("popular")),
+        }});
         List<MenuItem> TaxMenu(List<(string slug, string name)> items)
         {
             var gm = new List<MenuItem>(items.Count);
@@ -275,10 +281,18 @@ public static class SupJavTo
             root.Add(new MenuItem() { title = "Thể loại", playlist_url = "submenu", submenu = TaxMenu(cats) });
         if (makers != null && makers.Count > 0)
         {
-            var mm = TaxMenu(makers);
-            if (mm.Count > 300)
-                mm = DirBuckets(host, "Hãng phim", makers, 300).SelectMany(b => b.submenu).ToList();
-            root.Add(new MenuItem() { title = "Hãng phim", playlist_url = "submenu", submenu = mm });
+            // makers da sort=quantity: chia khoi tuan tu giu thu tu (Top 1-300...), khong bucket A-Z
+            if (makers.Count > 300)
+            {
+                int n = 0;
+                for (int i = 0; i < makers.Count; i += 300)
+                {
+                    var chunk = makers.Skip(i).Take(300).Select(x => new MenuItem(x.name, url(x.slug))).ToList();
+                    n++;
+                    root.Add(new MenuItem() { title = $"Hãng phim Top {i + 1}–{i + chunk.Count}", playlist_url = "submenu", submenu = chunk });
+                }
+            }
+            else root.Add(new MenuItem() { title = "Hãng phim", playlist_url = "submenu", submenu = TaxMenu(makers) });
         }
         if (tags != null && tags.Count > 0)
         {
