@@ -286,7 +286,7 @@ public class SexTbController : BaseSisiController
         {
             if (embed.IndexOf("f4scdn.com", StringComparison.OrdinalIgnoreCase) >= 0 || embed.IndexOf("f4stream.com", StringComparison.OrdinalIgnoreCase) >= 0)
             {
-                string f4 = await SexTbTo.F4SourceAsync(embed, Math.Min(10, init.httptimeout));
+                string f4 = await SexTbTo.F4SourceAsync(embed, Math.Min(10, init.httptimeout), proxy, init.httpversion);
                 if (!string.IsNullOrEmpty(f4))
                     return (f4 + "\n" + embed, nextPt, nextPk);
             }
@@ -297,14 +297,25 @@ public class SexTbController : BaseSisiController
             if (embed.IndexOf("ryderjet.com", StringComparison.OrdinalIgnoreCase) >= 0 || embed.IndexOf("hglink.to", StringComparison.OrdinalIgnoreCase) >= 0 || embed.IndexOf("vibuxer.com", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 string player = SexTbTo.StreamHgUrl(embed);
-                string html = await Http.Get(player, timeoutSeconds: 12, headers: HeadersModel.Init(("User-Agent", SexTbTo.ChromeUA), ("Referer", pageUrl)), proxy: proxy, httpversion: init.httpversion);
+                // CDN hls (ryderjet/vibuxer) sinh token theo IP - phai dung cung IP voi stream (direct).
+                // Truoc dung proxy o day nhung stream lai direct -> token lech -> 403.
+                // Dood cung chi mo khi direct (proxy tra captcha 5k). Giua nguyen direct cho ca embed lan stream.
+                string html = await Http.Get(player, timeoutSeconds: 12, headers: HeadersModel.Init(("User-Agent", SexTbTo.ChromeUA), ("Referer", pageUrl)), httpversion: init.httpversion);
                 var masters = SexTbTo.StreamHgMasters(html, player);
                 if (masters.Count > 0)
                 {
-                    // probe first working?
                     string master = masters[0];
                     return (master + "\n" + player, nextPt, nextPk);
                 }
+                // fallback: thu qua proxy neu direct khong ra (truong hop CDN chan VN)
+                try
+                {
+                    string html2 = await Http.Get(player, timeoutSeconds: 12, headers: HeadersModel.Init(("User-Agent", SexTbTo.ChromeUA), ("Referer", pageUrl)), proxy: proxy, httpversion: init.httpversion);
+                    var masters2 = SexTbTo.StreamHgMasters(html2, player);
+                    if (masters2.Count > 0)
+                        return (masters2[0] + "\n" + player, nextPt, nextPk);
+                }
+                catch { }
             }
         }
         catch { }
@@ -312,7 +323,7 @@ public class SexTbController : BaseSisiController
         {
             if (SexTbTo.IsPlaymate(embed))
             {
-                string pm = await SexTbTo.PlaymateSourceAsync(embed, 10);
+                string pm = await SexTbTo.PlaymateSourceAsync(embed, 10, proxy, init.httpversion);
                 if (!string.IsNullOrEmpty(pm))
                     return (pm + "\n" + embed, nextPt, nextPk);
             }
@@ -322,7 +333,7 @@ public class SexTbController : BaseSisiController
         {
             if (SexTbTo.IsUpn(embed))
             {
-                var (upn, upnRef) = await SexTbTo.UpnSourceAsync(embed, 10);
+                var (upn, upnRef) = await SexTbTo.UpnSourceAsync(embed, 10, proxy, init.httpversion);
                 if (!string.IsNullOrEmpty(upn))
                     return (upn + "\n" + upnRef, nextPt, nextPk);
             }
@@ -332,7 +343,7 @@ public class SexTbController : BaseSisiController
         {
             if (embed.IndexOf("playmogo", StringComparison.OrdinalIgnoreCase) >= 0 || embed.IndexOf("dood", StringComparison.OrdinalIgnoreCase) >= 0)
             {
-                var (dood, doodRef) = await SexTbTo.DoodSourceAsync(embed, 10);
+                var (dood, doodRef) = await SexTbTo.DoodSourceAsync(embed, 10, proxy, init.httpversion);
                 if (!string.IsNullOrEmpty(dood))
                     return (dood + "\n" + doodRef, nextPt, nextPk);
             }

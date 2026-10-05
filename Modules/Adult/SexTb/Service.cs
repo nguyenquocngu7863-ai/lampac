@@ -358,7 +358,9 @@ public static class SexTbTo
         foreach(Match x in Regex.Matches(m.Groups[1].Value, @"""(hls\d)""\s*:\s*""([^""]+)""", RegexOptions.IgnoreCase))
             kv[x.Groups[1].Value]=HttpUtility.HtmlDecode(x.Groups[2].Value.Trim());
         string baseHost=HostOf(playerUrl);
-        foreach(string key in new[]{"hls4","hls3","hls2"})
+        // uu tien hls3 (xxx.space/master.txt) > hls2 (cdn token) > hls4 (/stream/ can cookie file_id).
+        // hls4 khong token, phu thuoc cookie -> Http.Get khong giu cookie de 403 lech IP.
+        foreach(string key in new[]{"hls3","hls2","hls4"})
         {
             if(!kv.TryGetValue(key,out string v)||string.IsNullOrEmpty(v)) continue;
             if(v.StartsWith("/") && !string.IsNullOrEmpty(baseHost)) v=baseHost.TrimEnd('/')+v;
@@ -369,18 +371,28 @@ public static class SexTbTo
     public static string StreamHgMaster(string embedHtml,string referer){ var lst=StreamHgMasters(embedHtml,referer); return lst.Count>0?lst[0]:null; }
 
     // ========== F4 ==========
-    public static async Task<string> F4SourceAsync(string embedUrl,int timeoutSeconds=10)
+    // F4 sinh token theo IP - phai dung cung IP voi stream (direct). Truoc dung proxy o day nhung stream direct -> token lech.
+    public static async Task<string> F4SourceAsync(string embedUrl,int timeoutSeconds=10, WebProxy proxyDirect=null, int httpversion=1)
     {
         if(string.IsNullOrEmpty(embedUrl)) return null;
         string html;
-        try{ html=await Http.Get(embedUrl, timeoutSeconds: timeoutSeconds, headers: HeadersModel.Init(("User-Agent",ChromeUA),("Referer",SiteHost+"/"))); }catch{return null;}
+        // thu direct truoc (token IP VN), fallback proxy neu direct chet
+        try{ html=await Http.Get(embedUrl, timeoutSeconds: timeoutSeconds, headers: HeadersModel.Init(("User-Agent",ChromeUA),("Referer",SiteHost+"/")), httpversion: httpversion); }catch{ html=null; }
+        if(string.IsNullOrEmpty(html))
+        {
+            try{ html=await Http.Get(embedUrl, timeoutSeconds: timeoutSeconds, headers: HeadersModel.Init(("User-Agent",ChromeUA),("Referer",SiteHost+"/")), proxy: proxyDirect, httpversion: httpversion); }catch{return null;}
+        }
         if(string.IsNullOrEmpty(html)) return null;
         var m=Regex.Match(html, @"data-api\s*=\s*""([^""]+)""", RegexOptions.IgnoreCase);
         if(!m.Success) return null;
         string api=m.Groups[1].Value;
         if(api.StartsWith("/")) api="https://f4stream.com"+api;
         string json;
-        try{ json=await Http.Get(api, timeoutSeconds: timeoutSeconds, headers: HeadersModel.Init(("User-Agent",ChromeUA),("Referer",embedUrl))); }catch{return null;}
+        try{ json=await Http.Get(api, timeoutSeconds: timeoutSeconds, headers: HeadersModel.Init(("User-Agent",ChromeUA),("Referer",embedUrl)), httpversion: httpversion); }catch{ json=null; }
+        if(string.IsNullOrWhiteSpace(json))
+        {
+            try{ json=await Http.Get(api, timeoutSeconds: timeoutSeconds, headers: HeadersModel.Init(("User-Agent",ChromeUA),("Referer",embedUrl)), proxy: proxyDirect, httpversion: httpversion); }catch{return null;}
+        }
         if(string.IsNullOrWhiteSpace(json)) return null;
         try
         {
@@ -396,17 +408,26 @@ public static class SexTbTo
     }
 
     // ========== Dood / Upn / Playmate ==========
-    public static async Task<(string url,string referer)> DoodSourceAsync(string embedUrl,int timeoutSeconds=10)
+    // Dood: direct moi co pass_md5 (proxy tra captcha 5k). Sinh token IP phai cung IP voi stream.
+    public static async Task<(string url,string referer)> DoodSourceAsync(string embedUrl,int timeoutSeconds=10, WebProxy proxyDirect=null, int httpversion=1)
     {
         if(string.IsNullOrEmpty(embedUrl)) return (null,null);
-        string body;
-        try{ body=await Http.Get(embedUrl, timeoutSeconds: timeoutSeconds, headers: HeadersModel.Init(("User-Agent",ChromeUA),("Referer",SiteHost+"/"))); }catch{return (null,null);}
+        string body=null;
+        try{ body=await Http.Get(embedUrl, timeoutSeconds: timeoutSeconds, headers: HeadersModel.Init(("User-Agent",ChromeUA),("Referer",SiteHost+"/")), httpversion: httpversion); }catch{}
+        if(string.IsNullOrEmpty(body) || !body.Contains("pass_md5"))
+        {
+            try{ body=await Http.Get(embedUrl, timeoutSeconds: timeoutSeconds, headers: HeadersModel.Init(("User-Agent",ChromeUA),("Referer",SiteHost+"/")), proxy: proxyDirect, httpversion: httpversion); }catch{return (null,null);}
+        }
         var m=Regex.Match(body??"", @"(pass_md5/[A-Za-z0-9_\-]+/[A-Za-z0-9]+)");
         if(!m.Success) return (null,null);
         string apiHost=SiteHost;
         try{ var u=new System.Uri(embedUrl); int at=u.AbsoluteUri.IndexOf("/e/",StringComparison.OrdinalIgnoreCase); if(at>8) apiHost=u.AbsoluteUri.Substring(0,at); }catch{}
-        string src;
-        try{ src=await Http.Get(apiHost+"/"+m.Groups[1].Value+"?referer=sextb.net", timeoutSeconds: timeoutSeconds, headers: HeadersModel.Init(("User-Agent",ChromeUA),("Referer",apiHost+"/"))); }catch{return (null,null);}
+        string src=null;
+        try{ src=await Http.Get(apiHost+"/"+m.Groups[1].Value+"?referer=sextb.net", timeoutSeconds: timeoutSeconds, headers: HeadersModel.Init(("User-Agent",ChromeUA),("Referer",apiHost+"/")), httpversion: httpversion); }catch{}
+        if(string.IsNullOrEmpty(src) || !src.TrimStart().StartsWith("http",StringComparison.OrdinalIgnoreCase))
+        {
+            try{ src=await Http.Get(apiHost+"/"+m.Groups[1].Value+"?referer=sextb.net", timeoutSeconds: timeoutSeconds, headers: HeadersModel.Init(("User-Agent",ChromeUA),("Referer",apiHost+"/")), proxy: proxyDirect, httpversion: httpversion); }catch{return (null,null);}
+        }
         src=(src??"").Trim();
         if(!src.StartsWith("http",StringComparison.OrdinalIgnoreCase)) return (null,null);
         string token=m.Groups[1].Value.Split('/').Last();
@@ -414,26 +435,43 @@ public static class SexTbTo
         return (src+(src.Contains('?')?"&":"?")+$"token={token}&expiry={expiry}", apiHost+"/");
     }
 
-    public static async Task<(string url,string referer)> UpnSourceAsync(string embedUrl,int timeoutSeconds=10)
+    public static async Task<(string url,string referer)> UpnSourceAsync(string embedUrl,int timeoutSeconds=10, WebProxy proxyDirect=null, int httpversion=1)
     {
         if(string.IsNullOrEmpty(embedUrl)) return (null,null);
         int hash=embedUrl.IndexOf('#'); if(hash<0) return (null,null);
         string id=embedUrl.Substring(hash+1).Trim().Trim('/'); int amp=id.IndexOf('&'); if(amp>=0) id=id.Substring(0,amp); if(id.Length<2) return (null,null);
         string host; try{host=new System.Uri(embedUrl).GetLeftPart(System.UriPartial.Authority);}catch{return (null,null);}
-        string hex; try{hex=await Http.Get(host+"/api/v1/video?id="+System.Uri.EscapeDataString(id), timeoutSeconds: timeoutSeconds, headers: HeadersModel.Init(("User-Agent",ChromeUA),("Referer",host+"/")));}catch{return (null,null);}
+        string hex=null;
+        try{hex=await Http.Get(host+"/api/v1/video?id="+System.Uri.EscapeDataString(id), timeoutSeconds: timeoutSeconds, headers: HeadersModel.Init(("User-Agent",ChromeUA),("Referer",host+"/")), httpversion: httpversion);}catch{}
+        if(string.IsNullOrEmpty(hex))
+        {
+            try{hex=await Http.Get(host+"/api/v1/video?id="+System.Uri.EscapeDataString(id), timeoutSeconds: timeoutSeconds, headers: HeadersModel.Init(("User-Agent",ChromeUA),("Referer",host+"/")), proxy: proxyDirect, httpversion: httpversion);}catch{return (null,null);}
+        }
         string json=UpnDecrypt(hex); if(string.IsNullOrEmpty(json)) return (null,null);
         try{ var doc=System.Text.Json.JsonDocument.Parse(json); var root=doc.RootElement; if(root.TryGetProperty("cfNative",out var cf)&&cf.ValueKind==System.Text.Json.JsonValueKind.String&&cf.GetString().StartsWith("http")) return (cf.GetString(), host+"/"); }catch{}
         return (null,null);
     }
 
-    public static async Task<string> PlaymateSourceAsync(string embedUrl,int timeoutSeconds=10)
+    public static async Task<string> PlaymateSourceAsync(string embedUrl,int timeoutSeconds=10, WebProxy proxyDirect=null, int httpversion=1)
     {
         if(string.IsNullOrEmpty(embedUrl)) return null;
         string id=PlaymateId(embedUrl); if(string.IsNullOrEmpty(id)) return null;
         string host; try{host=new System.Uri(embedUrl).GetLeftPart(System.UriPartial.Authority);}catch{return null;}
+        // PM: thu direct truoc, fallback proxy (ca 2 dang 403 hien tai nhung giu co che)
         try
         {
-            string json=await Http.Post(host+"/api/s", new System.Net.Http.StringContent("{\"c\":\""+id+"\",\"d\":\"desktop\"}", System.Text.Encoding.UTF8, "application/json"), timeoutSeconds: timeoutSeconds, headers: HeadersModel.Init(("User-Agent",ChromeUA),("Referer",host+"/")));
+            string json=await Http.Post(host+"/api/s", new System.Net.Http.StringContent("{\"c\":\""+id+"\",\"d\":\"desktop\"}", System.Text.Encoding.UTF8, "application/json"), timeoutSeconds: timeoutSeconds, headers: HeadersModel.Init(("User-Agent",ChromeUA),("Referer",host+"/")), httpversion: httpversion);
+            var m=Regex.Match(json??"", "\"sx\"\\s*:\\s*\"([^\"]+)\"", RegexOptions.IgnoreCase);
+            if(m.Success)
+            {
+                string src=m.Groups[1].Value.Replace("\\/","/");
+                if(src.StartsWith("http")) return src;
+            }
+        }
+        catch{}
+        try
+        {
+            string json=await Http.Post(host+"/api/s", new System.Net.Http.StringContent("{\"c\":\""+id+"\",\"d\":\"desktop\"}", System.Text.Encoding.UTF8, "application/json"), timeoutSeconds: timeoutSeconds, headers: HeadersModel.Init(("User-Agent",ChromeUA),("Referer",host+"/")), proxy: proxyDirect, httpversion: httpversion);
             var m=Regex.Match(json??"", "\"sx\"\\s*:\\s*\"([^\"]+)\"", RegexOptions.IgnoreCase);
             if(!m.Success) return null;
             string src=m.Groups[1].Value.Replace("\\/","/");
