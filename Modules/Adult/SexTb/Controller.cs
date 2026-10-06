@@ -30,6 +30,13 @@ public class SexTbController : BaseSisiController
 
         if (pg < 1) pg = 1;
 
+        // Gop sort ve dung tap cua context (genre/studio moi co sort that;
+        // home/search thi sort la no-op) — TRUOC khi lap vao cache key.
+        // Clamp ve null nghia la: context nay khong sort duoc.
+        // GIU c goc cho MenuHead (c sau merge da lan sort -> link se nhan doi).
+        string menuC = c;
+        sort = SexTbTo.ClampSort(sort, search, c);
+
         // sort param legacy: map to c query if provided
         if (!string.IsNullOrWhiteSpace(sort))
         {
@@ -41,7 +48,7 @@ public class SexTbController : BaseSisiController
                 c = c.Trim() + "&sort=" + sort.Trim();
         }
 
-        var menuTask = MenuAsync();
+        var menuTask = MenuAsync(search, sort, menuC);
 
         var cache = await InvokeCacheResult(ipkey($"sextb:{search}:{c}:{pg}"), 10, jsonContext.ListPlaylistItem, async e =>
         {
@@ -62,7 +69,18 @@ public class SexTbController : BaseSisiController
         return PlaylistResult(cache, await menuTask, total_pages: 0);
     }
 
-    async Task<List<MenuItem>> MenuAsync()
+    // menu = head (phu thuoc search/sort/c, dung lai moi request — rat re)
+    //        + base (taxonomy nghìn muc, cache 1 lan, khong phu thuoc context)
+    async Task<List<MenuItem>> MenuAsync(string search, string sort, string c)
+    {
+        var menu = SexTbTo.MenuHead(host, search, sort, c);
+        var baseGroups = await MenuBaseAsync();
+        if (baseGroups != null && baseGroups.Count > 0)
+            menu.AddRange(baseGroups);
+        return menu;
+    }
+
+    async Task<List<MenuItem>> MenuBaseAsync()
     {
         string memKey = ipkey("sextb:menu");
         if (hybridCache.TryGetValue(memKey, out List<MenuItem> hit) && hit != null && hit.Count > 0)

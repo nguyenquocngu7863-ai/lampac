@@ -44,7 +44,13 @@ public static class SexTbTo
             int q = raw.IndexOf('?');
             string path = (q >= 0 ? raw[..q] : raw).Trim('/').Trim();
             string query = q >= 0 ? raw[(q + 1)..].Trim('&') : "";
-            if (string.IsNullOrEmpty(path)) return host;
+            // path rong (vd c="?quality=hd") la filter tren home — GIU query,
+            // dung return host (lam ca Chất lượng/Năm bay ve trang chu).
+            if (string.IsNullOrEmpty(path))
+            {
+                string home = host + (pg > 1 ? "/pg-" + pg : "");
+                return string.IsNullOrEmpty(query) ? home : home + "?" + query;
+            }
             string basePath = host + "/" + path;
             if (pg <= 1)
                 return string.IsNullOrEmpty(query) ? basePath : basePath + "?" + query;
@@ -541,23 +547,111 @@ public static class SexTbTo
     public static readonly string[] Years = { "2026","2025","2024","2023","2022","2021","2020","2019","2018","2017","2016" };
     public const string FilterQuery = "genre=all&studio=all&quality=all&year=all&sort=";
 
+    // Sort that cua site — do 2026-10-06 truc tiep (curl_cffi):
+    //   genre (n=30): release/liked/viewed/viewed-day/viewed-week/viewed-month/
+    //                 favorite DOI het; desc == mac dinh (CHET)
+    //   studio: cung template list -> doi nhu genre (mau nho n=2: liked/viewed/
+    //                 viewed-day/favorite dao trong trang)
+    //   home + search: tat ca CHET (sort khong co tac dung)
+    public static readonly (string name, string sort)[] SortsFull =
+    {
+        ("Mới nhất",         ""),
+        ("Ngày phát hành",   "release"),
+        ("Yêu thích",        "liked"),
+        ("Xem nhiều",        "viewed"),
+        ("Xem nhiều (ngày)", "viewed-day"),
+        ("Xem nhiều (tuần)", "viewed-week"),
+        ("Xem nhiều (tháng)","viewed-month"),
+        ("Yêu thích nhất",   "favorite"),
+    };
+
+    // Tap sort AP DUOC cho context nay. null = site khong sort duoc o day
+    // (home / search / filter quality-year chua do) -> KHONG hien dong 2.
+    public static (string name, string sort)[] SortsFor(string search, string c)
+    {
+        if (!string.IsNullOrWhiteSpace(search)) return null;
+        if (string.IsNullOrWhiteSpace(c)) return null;
+        string cc = c.Trim().TrimStart('?');
+        if (cc.StartsWith("genre/", StringComparison.OrdinalIgnoreCase) ||
+            cc.StartsWith("studio/", StringComparison.OrdinalIgnoreCase))
+            return SortsFull;
+        return null;
+    }
+
+    public static string NormalizeSort(string sort)
+    {
+        if (string.IsNullOrWhiteSpace(sort)) return null;
+        sort = sort.Trim().ToLowerInvariant();
+        foreach (var (_, s) in SortsFull) if (s == sort) return s;
+        return null;
+    }
+
+    // Gop + kiem tra sort co DUOC phep o context nay khong (khong thi ve null)
+    public static string ClampSort(string sort, string search, string c)
+    {
+        sort = NormalizeSort(sort);
+        if (string.IsNullOrEmpty(sort)) return null;
+        var opts = SortsFor(search, c);
+        if (opts == null) return null;
+        foreach (var o in opts) if (o.sort == sort) return sort;
+        return null;
+    }
+
+    public static string SortLabel(string sort) =>
+        string.IsNullOrEmpty(sort) ? "mới nhất"
+        : sort == "release" ? "ngày phát hành"
+        : sort == "liked" ? "yêu thích"
+        : sort == "viewed" ? "xem nhiều"
+        : sort == "viewed-day" ? "xem nhiều (ngày)"
+        : sort == "viewed-week" ? "xem nhiều (tuần)"
+        : sort == "viewed-month" ? "xem nhiều (tháng)"
+        : sort == "favorite" ? "yêu thích nhất" : sort;
+
+    // ===== head cua menu: phu thuoc search/sort/c -> dung lai moi request =====
+    // Context KHONG sort duoc (home, search — da do tat ca CHET) -> KHONG hien
+    // dong 2. Row 2 chet (bam gi cung khong doi) con te hon row 2 vang.
+    public static List<MenuItem> MenuHead(string host, string search, string sort, string c)
+    {
+        host = host.TrimEnd('/');
+        string root = host + "/sextb";
+        string link(string s)
+        {
+            string q;
+            if (!string.IsNullOrWhiteSpace(search)) q = "search=" + HttpUtility.UrlEncode(search);
+            else if (!string.IsNullOrWhiteSpace(c)) q = "c=" + HttpUtility.UrlEncode(c);
+            else q = "";
+            if (!string.IsNullOrEmpty(s)) q += (q.Length == 0 ? "" : "&") + "sort=" + s;
+            return q.Length == 0 ? root : root + "?" + q;
+        }
+
+        var res = new List<MenuItem>(2)
+        {
+            new MenuItem(){ title = "Tìm kiếm", search_on = "search_on", playlist_url = root }
+        };
+
+        var opts = SortsFor(search, c);
+        if (opts == null || opts.Length == 0)
+            return res;
+
+        var sub = new List<MenuItem>(opts.Length);
+        foreach (var (name, s) in opts)
+            sub.Add(new MenuItem(name, link(s)));
+
+        res.Add(new MenuItem()
+        {
+            title = $"Sắp xếp: {SortLabel(sort)}",
+            playlist_url = "submenu",
+            submenu = sub
+        });
+        return res;
+    }
+
+    // ===== base: KHONG phu thuoc search/sort/c -> cache dung 1 lan =====
     public static List<MenuItem> Menu(string host, List<(string slug,string name)> genres, List<(string slug,string name)> studios)
     {
         host=host.TrimEnd('/');
         string url(string c)=> host + "/sextb?c=" + HttpUtility.UrlEncode(c);
-        var root=new List<MenuItem>(6)
-        {
-            new MenuItem(){ title="Tìm kiếm", search_on="search_on", playlist_url=host+"/sextb" }
-        };
-        root.Add(new MenuItem(){ title="Sắp xếp", playlist_url="submenu", submenu=new List<MenuItem>(){
-            new("Mới nhất", url("?sort=desc")),
-            new("Ngày phát hành", url("?sort=release")),
-            new("Yêu thích", url("?sort=liked")),
-            new("Xem nhiều", url("?sort=viewed")),
-            new("Xem nhiều (ngày)", url("?sort=viewed-day")),
-            new("Xem nhiều (tuần)", url("?sort=viewed-week")),
-            new("Xem nhiều (tháng)", url("?sort=viewed-month")),
-        }});
+        var root=new List<MenuItem>(6);
         if(genres!=null && genres.Count>0)
         {
             var gm=TaxonomyMenu(host,"genre/", genres);

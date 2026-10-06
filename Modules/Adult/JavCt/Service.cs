@@ -75,8 +75,125 @@ public static class JavCtTo
         if (string.IsNullOrWhiteSpace(sort))
             return null;
 
-        string cat = string.IsNullOrWhiteSpace(c) ? "amateur" : c.Trim().Trim('/');
-        return host.TrimEnd('/') + "/" + cat + "?sort=" + sort.Trim();
+        host = host.TrimEnd('/');
+        // home: sort tren chinh trang chu (do 2026-10-06: /?sort=most-viewed
+        // DOI). Dung ep ve /amateur (sai list: user dang xem home).
+        if (string.IsNullOrWhiteSpace(c))
+            return host + "/?sort=" + sort.Trim();
+
+        string cat = c.Trim().Trim('/');
+        return host + "/" + cat + "?sort=" + sort.Trim();
+    }
+
+    // Sort that cua site — do 2026-10-06 qua jina (HTML + dung regex module):
+    //   home (n=84, control YEN): most-viewed/new-releases/most-liked DOI het
+    //   /amateur /uncensored /censored: most-viewed + new-releases DOI;
+    //                                  most-liked RONG (404 nhu comment cu)
+    //   category/*, studio/*, search: ca 3 deu CHET sequence -> khong sort duoc
+    public static readonly (string name, string sort)[] SortsHome =
+    {
+        ("Mới nhất",             ""),
+        ("Xem nhiều nhất",       "most-viewed"),
+        ("Mới phát hành",        "new-releases"),
+        ("Được thích nhiều nhất","most-liked"),
+    };
+
+    public static readonly (string name, string sort)[] SortsList =
+    {
+        ("Mới nhất",       ""),
+        ("Xem nhiều nhất", "most-viewed"),
+        ("Mới phát hành",  "new-releases"),
+    };
+
+    // Tap sort AP DUOC cho context nay. null = site khong sort duoc o day
+    // -> KHONG hien dong 2.
+    public static (string name, string sort)[] SortsFor(string search, string c)
+    {
+        if (!string.IsNullOrWhiteSpace(search)) return null;  // search: sort = no-op
+        if (string.IsNullOrWhiteSpace(c)) return SortsHome;   // home: ca 3 deu song
+
+        string cc = c.Trim().Trim('/');
+        if (cc.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+        {
+            int i = cc.IndexOf("javct.net", StringComparison.OrdinalIgnoreCase);
+            cc = i >= 0 ? cc.Substring(i + "javct.net".Length) : cc;
+            cc = cc.Trim('/');
+        }
+        if (cc == "amateur" || cc == "uncensored" || cc == "censored")
+            return SortsList;   // most-liked 404 o day -> khong dua vao
+
+        return null;            // category/*, studio/*, ...: sort = no-op
+    }
+
+    public static string NormalizeSort(string sort)
+    {
+        if (string.IsNullOrWhiteSpace(sort)) return null;
+        sort = sort.Trim().ToLowerInvariant();
+        foreach (var (_, s) in SortsHome) if (s == sort) return s;
+        foreach (var (_, s) in SortsList) if (s == sort) return s;
+        return null;
+    }
+
+    // Gop + kiem tra sort co DUOC phep o context nay khong (khong thi ve null)
+    public static string ClampSort(string sort, string search, string c)
+    {
+        sort = NormalizeSort(sort);
+        if (string.IsNullOrEmpty(sort)) return null;
+        var opts = SortsFor(search, c);
+        if (opts == null) return null;
+        foreach (var o in opts) if (o.sort == sort) return sort;
+        return null;
+    }
+
+    public static string SortLabel(string sort) =>
+        string.IsNullOrEmpty(sort) ? "mới nhất"
+        : sort == "most-viewed" ? "xem nhiều nhất"
+        : sort == "new-releases" ? "mới phát hành"
+        : sort == "most-liked" ? "được thích nhiều nhất" : sort;
+
+    // ===== head cua menu: phu thuoc search/sort/c -> dung lai moi request =====
+    // Context KHONG sort duoc (category/*, studio/*, search — da do ca 3 deu
+    // CHET sequence) -> KHONG hien dong 2.
+    public static List<Shared.Models.SISI.Base.MenuItem> MenuHead(
+        string host, string search, string sort, string c)
+    {
+        host = host.TrimEnd('/');
+        string root = host + "/javct";
+        string link(string s)
+        {
+            string q;
+            if (!string.IsNullOrWhiteSpace(search)) q = "search=" + HttpUtility.UrlEncode(search);
+            else if (!string.IsNullOrWhiteSpace(c)) q = "c=" + HttpUtility.UrlEncode(c);
+            else q = "";
+            if (!string.IsNullOrEmpty(s)) q += (q.Length == 0 ? "" : "&") + "sort=" + s;
+            return q.Length == 0 ? root : root + "?" + q;
+        }
+
+        var res = new List<Shared.Models.SISI.Base.MenuItem>(2)
+        {
+            new Shared.Models.SISI.Base.MenuItem()
+            {
+                title = "Tìm kiếm",
+                search_on = "search_on",
+                playlist_url = root
+            }
+        };
+
+        var opts = SortsFor(search, c);
+        if (opts == null || opts.Length == 0)
+            return res;
+
+        var sub = new List<Shared.Models.SISI.Base.MenuItem>(opts.Length);
+        foreach (var (name, s) in opts)
+            sub.Add(new(name, link(s)));
+
+        res.Add(new Shared.Models.SISI.Base.MenuItem()
+        {
+            title = $"Sắp xếp: {SortLabel(sort)}",
+            playlist_url = "submenu",
+            submenu = sub
+        });
+        return res;
     }
 
     // Card: card__cover > img[data-src|src + alt] + card__title > a[href=/v/slug].
@@ -569,31 +686,10 @@ public static class JavCtTo
         // 1479 muc (client SISI chi 1 tang nen KHONG tach them tang).
         var studioRows = DirBuckets(host, "Hãng phim", studios);
 
-        var root = new List<Shared.Models.SISI.Base.MenuItem>()
-        {
-            new Shared.Models.SISI.Base.MenuItem()
-            {
-                title = "Tìm kiếm",
-                search_on = "search_on",
-                playlist_url = host + "/javct"
-            },
-            // DÒNG 2 — Sắp xếp (công thức SISI 9g). Site dung QUERY
-            // `?sort=`. Do 2026-10-02: `most-viewed` va `new-releases` ra
-            // danh sach khac nhau tren /amateur, /uncensored, /censored.
-            // `most-liked` / `rating` / `random` tra 404 Page Not Found
-            // (nav site tro toi nhung link chet) -> khong dua vao menu.
-            new Shared.Models.SISI.Base.MenuItem()
-            {
-                title = "Sắp xếp",
-                playlist_url = "submenu",
-                submenu = new List<Shared.Models.SISI.Base.MenuItem>()
-                {
-                    new("Mới nhất", host + "/javct"),
-                    new("Xem nhiều nhất", host + "/javct?c=amateur&sort=most-viewed"),
-                    new("Mới phát hành", host + "/javct?c=amateur&sort=new-releases"),
-                }
-            },
-        };
+        // base: KHONG phu thuoc search/sort/c -> cache dung 1 lan.
+        // Dong 1 (Tim kiem) + dong 2 (Sap xep) do MenuHead dung rieng moi
+        // request — khong cache cung taxonomy.
+        var root = new List<Shared.Models.SISI.Base.MenuItem>();
 
         if (genreMenu.Count > 0)
             root.Add(new Shared.Models.SISI.Base.MenuItem()

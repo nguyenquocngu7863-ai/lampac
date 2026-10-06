@@ -31,6 +31,11 @@ public class JavCtController : BaseSisiController
         if (pg < 1)
             pg = 1;
 
+        // Gop sort ve dung tap cua context (home + 3 list amateur/uncensored/
+        // censored moi co sort that; category/studio/search thi sort la no-op)
+        // — TRUOC khi lap vao cache key. Clamp ve null = khong sort.
+        sort = JavCtTo.ClampSort(sort, search, c);
+
         // Bang xep hang `?sort=` cua site KHONG phan trang duoc — moi trang
         // deu ra cung noi dung. Ep ve trang 1 va khoa total_pages de app
         // khong cuon tiep va lap phim.
@@ -40,7 +45,7 @@ public class JavCtController : BaseSisiController
 
         // Menu fetch chay SONG SONG voi playlist: tong thoi gian la MAX
         // thay vi TONG (JavCt: 15.9s -> xem log `JavCt: menu`).
-        var menuTask = MenuAsync();
+        var menuTask = MenuAsync(search, sort, c);
 
         var cache = await InvokeCacheResult(
             ipkey($"javct:{search}:{c}:{sort}:{pg}"),
@@ -63,7 +68,18 @@ public class JavCtController : BaseSisiController
             total_pages: sortUrl != null ? 1 : 0);
     }
 
-    async Task<List<MenuItem>> MenuAsync()
+    // menu = head (phu thuoc search/sort/c, dung lai moi request — rat re)
+    //        + base (taxonomy, cache 1 lan, khong phu thuoc context)
+    async Task<List<MenuItem>> MenuAsync(string search, string sort, string c)
+    {
+        var menu = JavCtTo.MenuHead(host, search, sort, c);
+        var baseGroups = await MenuBaseAsync();
+        if (baseGroups != null && baseGroups.Count > 0)
+            menu.AddRange(baseGroups);
+        return menu;
+    }
+
+    async Task<List<MenuItem>> MenuBaseAsync()
     {
         string memKey = ipkey("javct:menu");
 
