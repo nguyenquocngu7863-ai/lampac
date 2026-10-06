@@ -77,7 +77,7 @@ public class DuJavController : BaseSisiController
         string hostLocal = host;
 
         if (!await menuLock.WaitAsync(2000))
-            return DuJavTo.Menu(hostLocal, null, null);
+            return DuJavTo.Menu(hostLocal, null);
 
         try
         {
@@ -88,7 +88,7 @@ public class DuJavController : BaseSisiController
             var build = BuildMenuAsync(hostLocal, memKey);
 
             if (build != await Task.WhenAny(build, Task.Delay(MenuFetchBudget)))
-                return DuJavTo.Menu(hostLocal, null, null);
+                return DuJavTo.Menu(hostLocal, null);
 
             return await build;
         }
@@ -102,33 +102,19 @@ public class DuJavController : BaseSisiController
     {
         try
         {
-            // topics (~500, 1 trang) + top dien vien theo works (p1+p2 = ~48).
-            // stars co ~800 trang (38k dien vien) nen chi lay top.
-            var topicsTask = TaxonomiesAsync("/vi/topics", "topics");
-            var starsTask1 = TaxonomiesAsync("/vi/stars?sort=works", "stars");
-            var starsTask2 = TaxonomiesAsync("/vi/stars?sort=works&page=2", "stars", "stars-p2");
-            await Task.WhenAll(topicsTask, starsTask1, starsTask2);
+            // Chi 1 request: topics gom het (~500, khong phan trang).
+            var topics = await TaxonomiesAsync("/vi/topics", "topics");
 
-            var topics = await topicsTask;
-            var stars = await starsTask1;
-            foreach (var s in await starsTask2)
+            if (topics.Count > 0)
             {
-                bool dup = false;
-                foreach (var x in stars)
-                    if (x.path == s.path) { dup = true; break; }
-                if (!dup) stars.Add(s);
-            }
-
-            if (topics.Count > 0 || stars.Count > 0)
-            {
-                var menu = DuJavTo.Menu(hostLocal, topics, stars);
+                var menu = DuJavTo.Menu(hostLocal, topics);
                 hybridCache.Set(memKey, menu, cacheTime(720), true);
                 return menu;
             }
         }
         catch { }
 
-        return DuJavTo.Menu(hostLocal, null, null);
+        return DuJavTo.Menu(hostLocal, null);
     }
 
     async Task<List<(string name, string path)>> TaxonomiesAsync(string page, string kind, string cacheKey = null)

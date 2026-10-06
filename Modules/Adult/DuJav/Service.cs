@@ -350,9 +350,10 @@ public static class DuJavTo
     }
 
     // ===== base: KHONG phu thuoc search/sort/c -> cache dung 1 lan =====
+    // KHONG co nhom Dien vien: site co ~38k dien vien, lay vai chuc nguoi
+    // top vao menu vua thieu vua kho chiu -> bo han (2026-10-06).
     public static List<Shared.Models.SISI.Base.MenuItem> Menu(
-        string host, IReadOnlyList<(string name, string path)> topics,
-        IReadOnlyList<(string name, string path)> stars)
+        string host, IReadOnlyList<(string name, string path)> topics)
     {
         host = host.TrimEnd('/');
         string cat(string c) => host + "/dujav?c=" + HttpUtility.UrlEncode(c);
@@ -404,19 +405,6 @@ public static class DuJavTo
                     submenu = sub
                 });
             }
-        }
-
-        if (stars != null && stars.Count > 0)
-        {
-            var sub = new List<Shared.Models.SISI.Base.MenuItem>(stars.Count);
-            foreach (var (name, path) in stars)
-                sub.Add(new(name, cat(path)));
-            root.Add(new Shared.Models.SISI.Base.MenuItem()
-            {
-                title = "Diễn viên",
-                playlist_url = "submenu",
-                submenu = sub
-            });
         }
 
         return root;

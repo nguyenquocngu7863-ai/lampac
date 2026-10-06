@@ -34,7 +34,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
 
     void updateConf()
     {
-        conf = ModuleInvoke.Init("DuJav", new SisiSettings("DuJav", "https://d.dujav.com")
+        conf = ModuleInvoke.Init("dujav", new SisiSettings("dujav", "https://d.dujav.com")
         {
             displayindex = 32,
             rch_access = "apk,cors",
