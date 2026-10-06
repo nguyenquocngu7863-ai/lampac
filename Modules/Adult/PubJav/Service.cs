@@ -294,7 +294,9 @@ public static class PubJavTo
 
     // Nut server: <button class="switch-source" data-source="<filmId>"
     //   data-id="<episode>"><i ...></i> TB</button>
-    // Tra label -> episode, giu thu tu xuat hien tren trang.
+    // Phim cu co 1 nguon/server (label tran "PM"); phim 2 nguon thi label
+    // "F4 #A" (bug 2026-10-06: regex cu doi "<" ngay sau label nen miss het).
+    // Tra FULL label -> episode, giu thu tu xuat hien tren trang.
     public static Dictionary<string, string> Servers(string html, string filmId)
     {
         var res = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -302,7 +304,7 @@ public static class PubJavTo
             return res;
 
         var pattern = @"data-source\s*=\s*[""" + filmId + @"""][^>]*" +
-                      @"data-id\s*=\s*[""'](\d+)[""'][^>]*>\s*<i[^>]*>\s*</i>\s*([A-Za-z0-9]{1,4})\s*<";
+                      @"data-id\s*=\s*[""'](\d+)[""'][^>]*>\s*<i[^>]*>\s*</i>\s*([^<]+?)\s*<";
 
         foreach (Match match in Regex.Matches(html, pattern, RegexOptions.IgnoreCase))
         {
@@ -402,7 +404,12 @@ public static class PubJavTo
     // 5 va co `PM` thay cho `PP`. Code phai loc theo phim, khong hardcode.
     public static int Priority(string label)
     {
-        switch ((label ?? "").ToUpperInvariant())
+        // Label co the kem nguon ("F4 #A") -> lay token dau ("F4").
+        // Label tran ("PM") van khop nhu cu.
+        string key = label ?? "";
+        var m = Regex.Match(key, @"^([A-Za-z0-9]+)");
+        key = m.Success ? m.Groups[1].Value.ToUpperInvariant() : "";
+        switch (key)
         {
             case "PM": return 0;
             case "FL": return 1;
@@ -411,6 +418,7 @@ public static class PubJavTo
             case "DD": return 4;
             case "US": return 5;
             case "PP": return 6;
+            case "F4": return 7;
             default: return 99;
         }
     }
