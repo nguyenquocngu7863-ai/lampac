@@ -176,8 +176,13 @@ public class DuJavController : BaseSisiController
             cache != null && cache.Count > 0)
             return cache;
 
-        // 1 chat luong duy nhat (master 1080p). Token + m3u8 dung lai duoc
-        // nen cache 30p thay vi resolve moi lan bam.
+        // Backend 1 (uncenxcdn, ~20% phim, toan bo uncen-leak): m3u8 truc tiep
+        // trong token page — khong CF, khong can cookie.
+        // Backend 2 (helvid, ~80%): URL ky + Cloudflare "Attention Required"
+        // GIU challenge voi moi client automation (da thu 2026-10-06: Chrome
+        // headless + imitationHuman + click checkbox + di qua proxy IP sach
+        // van dung im 30s+). Khong co duong lay stream server-side -> tra null
+        // de app bao loi NHANH thay vi treo. Mo lai neu CF doi policy.
         string m3u8 = await DuJavTo.ResolveM3U8(pageUrl);
         if (string.IsNullOrEmpty(m3u8))
             return null;
