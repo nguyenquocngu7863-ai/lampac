@@ -245,15 +245,17 @@ public static class SexTbTo
     }
 
     // ========== Kind / Priority ==========
+    // PM (playmate.to) bi bop CDN sieu cham (2026-10-06) -> XEP SAU DD.
+    // F4 len dau (verify ngon). Dong bo voi PubJav.
     public static int Priority(string label)
     {
         switch((label??"").ToUpperInvariant())
         {
-            case "PM": return 0;
-            case "F4": return 1;
-            case "FL": return 2;
-            case "SW": return 3;
-            case "DD": return 4;
+            case "F4": return 0;
+            case "FL": return 1;
+            case "SW": return 2;
+            case "DD": return 3;
+            case "PM": return 4;
             case "US": return 5;
             default: return 99;
         }

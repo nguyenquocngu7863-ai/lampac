@@ -386,12 +386,15 @@ public static class PubJavTo
     // ================= SERVER =================
 
     // Thu tu uu tien do DO DUOC tren may nay, khong do ten host:
-    //   PM (playmate.to)   HLS 1080p .txt, 1.15MB/s — master/variant/segment
-    //                      deu OK qua stream proxy (TS 0x47). XEP #1
+    //   F4 (f4stream.com)  HLS, verify 2026-10-06 phat ngon ca 2 nhanh
+    //                      #A/#B phim ofje-138-rm. XEP #1
     //   FL (ryderjet.com)  StreamHG  hls4 ~1050KB/s
     //   SW (hglink.to)     StreamHG  hls4 ~1560KB/s
     //   ST (strtape.cloud) Streamtape mp4 1.17GB, 206
     //   DD (playmogo.com)  DoodStream mp4 878MB, 206
+    //   PM (playmate.to)   HLS 1080p .txt, tung 1.15MB/s nhung 2026-10-06
+    //                      bi bop CDN sieu cham -> XEP SAU DD (van giu vi
+    //                      chat luong 1080p, lam fallback duoc)
     //   US (player.upn.one)   master qua `cfNative` 4/4 OK, NHUNG segment
     //                      tren CDN `*.gamezonehub.shop` bi Cloudflare chan
     //                      IP may chu (522/504/403 lien tuc). XEP CUOI: co
@@ -411,14 +414,14 @@ public static class PubJavTo
         key = m.Success ? m.Groups[1].Value.ToUpperInvariant() : "";
         switch (key)
         {
-            case "PM": return 0;
+            case "F4": return 0;
             case "FL": return 1;
             case "SW": return 2;
             case "ST": return 3;
             case "DD": return 4;
-            case "US": return 5;
-            case "PP": return 6;
-            case "F4": return 7;
+            case "PM": return 5;
+            case "US": return 6;
+            case "PP": return 7;
             default: return 99;
         }
     }
@@ -438,6 +441,13 @@ public static class PubJavTo
             iframe.IndexOf("vibuxer.com", StringComparison.OrdinalIgnoreCase) >= 0)
             return "hls";
 
+        // F4 (f4s.top / f4scdn.com / f4stream.com): m3u8 nhung resolve rieng
+        // (data-api -> JSON url), KHONG phai packer StreamHg — xem StreamAsync.
+        if (iframe.IndexOf("f4s.top", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            iframe.IndexOf("f4scdn.com", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            iframe.IndexOf("f4stream.com", StringComparison.OrdinalIgnoreCase) >= 0)
+            return "hls";
+
         if (iframe.IndexOf("strtape.cloud", StringComparison.OrdinalIgnoreCase) >= 0 ||
             iframe.IndexOf("streamtape", StringComparison.OrdinalIgnoreCase) >= 0)
             return "mp4";
@@ -449,6 +459,56 @@ public static class PubJavTo
         if (IsUpn(iframe) || IsPlaymate(iframe))
             return "hls";
 
+        return null;
+    }
+
+    public static bool IsF4(string iframe) =>
+        !string.IsNullOrEmpty(iframe) &&
+        (iframe.IndexOf("f4s.top", StringComparison.OrdinalIgnoreCase) >= 0 ||
+         iframe.IndexOf("f4scdn.com", StringComparison.OrdinalIgnoreCase) >= 0 ||
+         iframe.IndexOf("f4stream.com", StringComparison.OrdinalIgnoreCase) >= 0);
+
+    // ========== F4 (f4s.top / f4scdn.com / f4stream.com) ==========
+    // Cong thuc goc tu SexTb (F4SourceAsync, da verify ben do):
+    //   GET embed -> data-api="/api/play/<uuid>" -> GET api (host f4stream.com
+    //   neu relative) -> JSON {"url":"/v/<token>"} -> m3u8 (200 #EXTM3U).
+    // F4 sinh token theo IP -> direct (CurlGet, giong DoodSourceAsync).
+    // Verified 2026-10-06: f4s.top/e/dv1wes3h (nut F4 #A phim ofje-138-rm).
+    public static async Task<string> F4SourceAsync(string embedUrl, string referer,
+        int timeoutSeconds = 10)
+    {
+        if (string.IsNullOrEmpty(embedUrl))
+            return null;
+
+        string html = await CurlGet(embedUrl, referer ?? SiteHost + "/",
+            Math.Max(6, timeoutSeconds));
+        if (string.IsNullOrEmpty(html))
+            return null;
+
+        var m = Regex.Match(html, @"data-api\s*=\s*""([^""]+)""", RegexOptions.IgnoreCase);
+        if (!m.Success)
+            return null;
+        string api = m.Groups[1].Value;
+        if (api.StartsWith("/"))
+            api = "https://f4stream.com" + api;
+
+        string json = await CurlGet(api, embedUrl, Math.Max(6, timeoutSeconds));
+        if (string.IsNullOrWhiteSpace(json))
+            return null;
+
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("url", out var u) &&
+                u.ValueKind == System.Text.Json.JsonValueKind.String)
+            {
+                string v = u.GetString().Replace("\\/", "/");
+                if (v.StartsWith("/"))
+                    v = "https://f4stream.com" + v;
+                return v.StartsWith("http") ? v : null;
+            }
+        }
+        catch { }
         return null;
     }
 

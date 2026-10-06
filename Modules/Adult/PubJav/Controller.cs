@@ -279,6 +279,14 @@ public class PubJavController : BaseSisiController
             url = pm.url;
             referer = pm.referer;
         }
+        else if (PubJavTo.IsF4(server.Iframe))
+        {
+            // F4: embed -> data-api -> JSON url (khong phai packer StreamHg).
+            // Token theo IP nen resolve direct (CurlGet).
+            url = await PubJavTo.F4SourceAsync(server.Iframe,
+                PubJavTo.SiteHost + "/", Math.Min(maxTime, 10));
+            referer = server.Iframe;
+        }
         else if (server.Kind == "hls")
         {
             // FL/SW: trang player StreamHG, giai packer -> `var links`
