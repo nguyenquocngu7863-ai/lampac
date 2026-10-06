@@ -17,7 +17,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
     {
         return new List<SisiModuleItem>()
         {
-            new("d.dujav.com", conf, "dujav")
+            new("dujav", conf, "dujav")
         };
     }
 
