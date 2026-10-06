@@ -58,10 +58,14 @@ public class JavGuruController : BaseSisiController
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
 
+        // gộp sort về đúng tập của site (17 giá trị thử: chỉ views/likes/title
+        // là thật; `post__in` trả list rỗng -> 503 nên bắt buộc whitelist)
+        sort = JavGuruTo.NormalizeSort(sort);
+
         // Bat dau fetch taxonomy NGAY, song song voi trang danh sach, va
         // await o cuoi. Truoc day await playlist xong moi den menu -> tong
         // thoi gian la TONG; gio la MAX nen app mo nhanh hon.
-        var menuTask = MenuAsync();
+        var menuTask = MenuAsync(search, sort, c);
 
         var cache = await InvokeCacheResult(ipkey($"javguru:{search}:{c}:{sort}:{pg}"), 10, jsonContext.ListPlaylistItem, async e =>
         {
@@ -97,7 +101,19 @@ public class JavGuruController : BaseSisiController
     static readonly SemaphoreSlim menuLock = new(1, 1);
     const int MenuFetchBudget = 8000;
 
-    async Task<List<MenuItem>> MenuAsync()
+    // menu = head (Tìm kiếm + "Sắp xếp: <sort hiện tại>" — phụ thuộc
+    // search/sort/c, dựng lại mỗi request, rất rẻ)
+    //        + base (Thể loại + Hãng phim + Studio + Tags, cache 1 lần)
+    async Task<List<MenuItem>> MenuAsync(string search, string sort, string c)
+    {
+        var menu = JavGuruTo.MenuHead(host, search, sort, c);
+        var baseGroups = await MenuBaseAsync();
+        if (baseGroups != null && baseGroups.Count > 0)
+            menu.AddRange(baseGroups);
+        return menu;
+    }
+
+    async Task<List<MenuItem>> MenuBaseAsync()
     {
         string key = ipkey("javguru:dirs");
 

@@ -73,16 +73,25 @@ public static class JavGuruTo
             host = SiteHost;
         host = host.TrimEnd('/');
 
+        // Sort cua site (WP) la QUERY `?orderby=views|likes|title`, dat SAU
+        // phan trang /page/N/.
+        // DO 2026-10-06 (fetch truc tiep, khong qua proxy):
+        //   /  ,  /category/*  ,  /?s=X  deu doi list khi ?orderby=...
+        //   -> sort PHAI ghep cho ca search (ban cu return truoc doan sort ->
+        //      search bi bo qua) va home.
+        //   views / likes / title khac default 0/13/0 -> 3 sort that.
+        //   KHONG ghep sort != whitelist: `post__in` tra list RONG (module 503).
+        string so = string.IsNullOrWhiteSpace(sort) ? "" : "orderby=" + sort.Trim();
+
         if (!string.IsNullOrWhiteSpace(search))
         {
-            return host + "/?s=" + HttpUtility.UrlEncode(search.Trim()) + (pg > 1 ? "&paged=" + pg : "");
+            string q = "?s=" + HttpUtility.UrlEncode(search.Trim());
+            if (pg > 1) q += "&paged=" + pg;
+            if (so.Length > 0) q += "&" + so;
+            return host + "/" + q;
         }
 
-        // Sort cua site (WP) la QUERY `?orderby=views|likes|title`,
-        // dat sau duong dan phan trang /page/N/.
-        string sq = string.IsNullOrWhiteSpace(sort)
-            ? ""
-            : "?orderby=" + sort.Trim();
+        string sq = so.Length > 0 ? "?" + so : "";
 
         string path;
         if (!string.IsNullOrWhiteSpace(c))
@@ -1348,6 +1357,70 @@ public static bool IsVoServer(string label)
     // "sao lay chi co 40" ma khong hieu quy tac nao. Menu di qua
     // `DirBuckets` — lay HET roi chia nhom theo chu cai.
 
+    // ===== DÒNG 2 "Sắp xếp" — sort CHO LIST ĐANG MỞ (chuẩn 9g, chốt 2026-10-06) =====
+    // BẢN CŨ SAI MỤC ĐÍCH: dòng 2 bám cứng `?c=category/jav` -> mở tag/hãng nào
+    // nó vẫn hiện list của category/jav, không sort gì cả.
+    // BẢN MỚI: row 2 GIỮ NGUYÊN `c`/`search`/home, chỉ đổi sort. Vẫn 2 tầng.
+    //
+    // Sort thật (fetch truc tiep jav.guru, 17 gia tri thu, 2026-10-06):
+    //   views / likes / title  -> khac default (0/0/0) va khac nhau (0/13/0)
+    //   date / relevance / year / popular / hot -> no-op (WP bo qua)
+    //   post__in               -> list RONG  => bat buoc whitelist
+    public static readonly (string name, string sort)[] Sorts =
+    {
+        ("Mới nhất",         ""),
+        ("Xem nhiều nhất",   "views"),
+        ("Nhiều like nhất",  "likes"),
+        ("Tên A–Z",          "title"),
+    };
+
+    public static string NormalizeSort(string sort)
+    {
+        if (string.IsNullOrWhiteSpace(sort)) return null;
+        sort = sort.Trim().ToLowerInvariant();
+        foreach (var (_, s) in Sorts) if (s == sort) return s;
+        return null;
+    }
+
+    public static string SortLabel(string sort) =>
+        string.IsNullOrEmpty(sort) ? "mới nhất"
+        : sort == "views" ? "xem nhiều"
+        : sort == "likes" ? "nhiều like"
+        : sort == "title" ? "tên A–Z" : sort;
+
+    // head: phụ thuộc search/sort/c -> dựng lại mỗi request (rẻ)
+    public static List<Shared.Models.SISI.Base.MenuItem> MenuHead(
+        string host, string search, string sort, string c)
+    {
+        host = host.TrimEnd('/');
+        string root = host + "/javguru";
+        string link(string s)
+        {
+            string q;
+            if (!string.IsNullOrWhiteSpace(search)) q = "search=" + HttpUtility.UrlEncode(search);
+            else if (!string.IsNullOrWhiteSpace(c)) q = "c=" + HttpUtility.UrlEncode(c);
+            else q = "";
+            if (!string.IsNullOrEmpty(s)) q += (q.Length == 0 ? "" : "&") + "sort=" + s;
+            return q.Length == 0 ? root : root + "?" + q;
+        }
+        var res = new List<Shared.Models.SISI.Base.MenuItem>(2)
+        {
+            new Shared.Models.SISI.Base.MenuItem()
+            {
+                title = "Tìm kiếm", search_on = "search_on", playlist_url = root
+            }
+        };
+        var sub = new List<Shared.Models.SISI.Base.MenuItem>(Sorts.Length);
+        foreach (var (name, s) in Sorts)
+            sub.Add(new(name, link(s)));
+        res.Add(new Shared.Models.SISI.Base.MenuItem()
+        {
+            title = $"Sắp xếp: {SortLabel(sort)}", playlist_url = "submenu", submenu = sub
+        });
+        return res;
+    }
+
+    // base: KHÔNG phụ thuộc search/sort/c -> cache 1 lần
     public static List<Shared.Models.SISI.Base.MenuItem> Menu(
         string host,
         List<(string name, string path)> makers = null,
@@ -1356,6 +1429,10 @@ public static bool IsVoServer(string label)
     {
         var genres = new List<Shared.Models.SISI.Base.MenuItem>()
         {
+            // "Tất cả" = trang chủ (không lọc category) — pattern Eporner.
+            // Phải có ở đây vì dòng 2 không còn chứa link trang chủ nữa
+            // (dòng 2 = sort cho list đang mở, xem MenuHead()).
+            new("Tất cả (trang chủ)", host + "/javguru"),
             new("JAV", host + "/javguru?c=category/jav"),
             new("Không che", host + "/javguru?c=category/decensored"),
             new("Có phụ đề", host + "/javguru?c=category/english-subbed"),
@@ -1365,30 +1442,14 @@ public static bool IsVoServer(string label)
             new("4K", host + "/javguru?c=category/4k"),
         };
 
+        // DÒNG 1 + DÒNG 2 do MenuHead() dựng riêng mỗi request:
+        //   "Tìm kiếm" + "Sắp xếp: <sort hiện tại>" — GIỮ NGUYÊN c/search của
+        //   list đang mở, chỉ đổi sort (chuẩn 9g). Bản cũ bám cứng
+        //   `?c=category/jav` nên mở tag/hãng nào nó cũng hiện list category/jav.
+        // Trang chủ ("Mới nhất") chuyển vào "Thể loại" -> mục "Tất cả"
+        // (pattern Eporner): JavGuru không có bảng xếp hạng nào khác.
         var menu = new List<Shared.Models.SISI.Base.MenuItem>()
         {
-            new Shared.Models.SISI.Base.MenuItem()
-            {
-                title = "Tìm kiếm",
-                search_on = "search_on",
-                playlist_url = host + "/javguru"
-            },
-            // DÒNG 2 — Sắp xếp (công thức SISI 9g). WP dung QUERY
-            // `?orderby=`. Da do: views / likes / title doi hoan toan danh
-            // sach; `likes-today|likes-week|likes-month` bi WP BO QUA
-            // (tra ve y trang mac dinh) -> khong dua vao menu.
-            new Shared.Models.SISI.Base.MenuItem()
-            {
-                title = "Sắp xếp",
-                playlist_url = "submenu",
-                submenu = new List<Shared.Models.SISI.Base.MenuItem>()
-                {
-                    new("Mới nhất", host + "/javguru"),
-                    new("Xem nhiều nhất", host + "/javguru?c=category/jav&sort=views"),
-                    new("Nhiều like nhất", host + "/javguru?c=category/jav&sort=likes"),
-                    new("Tên A–Z", host + "/javguru?c=category/jav&sort=title"),
-                }
-            },
             // Khong dua trang "Xem nhieu" (most-watched-rank) vao menu: trang do
             // dung markup <article class="rank-item"> va /page/N/ tra lai
             // dung mot bang xep hang -> phan trang se lap phim. Dung `?orderby=views`

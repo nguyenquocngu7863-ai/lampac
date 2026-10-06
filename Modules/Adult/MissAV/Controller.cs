@@ -144,6 +144,10 @@ public class MissAVController : BaseSisiController
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
 
+        // gộp sort về đúng tập của site (46 giá trị thử, chỉ views/released_at
+        // là thật) — giá trị vào luôn cache key, xem MissAVTo.NormalizeSort
+        sort = MissAVTo.NormalizeSort(sort);
+
         async Task<CacheResult<List<PlaylistItem>>> GetPageAsync(string search, string c, int page, bool allowRefresh)
         {
             return await InvokeCacheResult(ipkey($"missav:{search}:{c}:{sort}:{page}"), 10, jsonContext.ListPlaylistItem, async e =>
@@ -179,7 +183,18 @@ public class MissAVController : BaseSisiController
         if (rch?.enable == true)
             StatiCacheDisabled = true;
 
-        return PlaylistResult(cache, await MenuAsync());
+        return PlaylistResult(cache, await MenuAsync(search, sort, c));
+    }
+
+    // menu = head (phụ thuộc search/sort/c, dựng lại mỗi request — rất rẻ)
+    //        + base (taxonomy ~nghìn mục, cache 1 lần, không phụ thuộc context)
+    async Task<List<MenuItem>> MenuAsync(string search, string sort, string c)
+    {
+        var menu = MissAVTo.MenuHead(host, search, sort, c);
+        var baseGroups = await MenuBaseAsync();
+        if (baseGroups != null && baseGroups.Count > 0)
+            menu.AddRange(baseGroups);
+        return menu;
     }
 
     // Menu doc tu DISK cache (MissAVTaxCache): lan dau chua co file thi
@@ -187,7 +202,7 @@ public class MissAVController : BaseSisiController
     // thieu sau do. Disk giu qua restart nen restart xong menu du ngay,
     // khong can browser. Du lieu disk deu la trang tai thanh cong nen
     // cu phuc vu (thieu ben nao thi ben do hien fallback tinh tam).
-    async Task<List<MenuItem>> MenuAsync()
+    async Task<List<MenuItem>> MenuBaseAsync()
     {
         string memKey = ipkey("missav:menu");
 

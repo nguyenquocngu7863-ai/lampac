@@ -3,6 +3,7 @@ using Shared.Models.SISI.Base;
 using Shared.Services;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Net;
 using System.Text.RegularExpressions;
@@ -25,28 +26,70 @@ public static class SupJavTo
     }
 
     // ========== Uri (WordPress) ==========
-    // Home = Popular (list tron 24, lay het roi ngung). Moi nhat = latest home (/).
-    public static string Uri(string host, string search, string c, int pg)
+    // Home = Popular (mac dinh = Day). Moi nhat = latest home (/).
+    // QUAN TRONG: phan trang PHAI duoc ap dung cho home. Truoc day `pg` bi bo qua
+    // khi `c` rong (`return host + "/popular"`), nen app cuon toi trang N nao cung
+    // tra cung 24 phim dau -> home lap vo han. Do la nguyen nhan "home van lap".
+    //
+    // `sort` phai di SAU /page/N/ moi dung (đo trên site):
+    //   /popular/page/2/?sort=week  ✅  (khac trang 1, giu tab active "Week")
+    //   /popular/?sort=week&page=2  ❌  -> /popular/2?sort=week = trang 1
+    public static string Uri(string host, string search, string c, string sort, int pg)
     {
         if (string.IsNullOrWhiteSpace(host)) host = SiteHost;
         host = host.TrimEnd('/');
         if (!string.IsNullOrWhiteSpace(search))
         {
-            // /?s=term, trang N: /page/N/?s=term
+            // /?s=term, trang N: /page/N/?s=term  (search khong co sort)
             string q = "s=" + System.Uri.EscapeDataString(search.Trim());
             return pg > 1 ? host + "/page/" + pg + "/?" + q : host + "/?" + q;
         }
+        string url;
         if (!string.IsNullOrWhiteSpace(c))
         {
             string raw = c.Trim().Trim('/');
             if (raw == "__latest")
-                return pg > 1 ? host + "/page/" + pg + "/" : host + "/";
-            if (raw.StartsWith("http", StringComparison.OrdinalIgnoreCase))
-                return pg > 1 ? raw.TrimEnd('/') + "/page/" + pg + "/" : raw;
-            string baseUrl = host + "/" + raw;
-            return pg > 1 ? baseUrl.TrimEnd('/') + "/page/" + pg + "/" : baseUrl;
+                url = pg > 1 ? host + "/page/" + pg + "/" : host + "/";
+            else if (raw.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                url = pg > 1 ? raw.TrimEnd('/') + "/page/" + pg + "/" : raw;
+            else
+            {
+                string baseUrl = host + "/" + raw;
+                url = pg > 1 ? baseUrl.TrimEnd('/') + "/page/" + pg + "/" : baseUrl;
+            }
         }
-        return host + "/popular";
+        else
+            url = pg > 1 ? host + "/popular/page/" + pg + "/" : host + "/popular";
+
+        string s = NormalizeSort(sort);
+        if (string.IsNullOrEmpty(s)) return url;
+        return url + (url.Contains('?') ? "&" : "?") + "sort=" + s;
+    }
+
+    // Cac gia tri sort MA SITE CO THAT (do tu <div class="sort">, khong bịa).
+    // Whitelist — khong cho phep sort tu query len URL (tranh SSRF/injection).
+    public static readonly string[] SortWhitelist = { "week", "month", "views" };
+    public static string NormalizeSort(string sort)
+    {
+        if (string.IsNullOrWhiteSpace(sort)) return null;
+        sort = sort.Trim().ToLowerInvariant();
+        return Array.IndexOf(SortWhitelist, sort) >= 0 ? sort : null;
+    }
+
+    // ========== So trang ==========
+    // 1 = chi co 1 trang (khoa nut cuon de app khong keo ra trang rong/loi)
+    // 0 = khong doc duoc (giu infinite nhu cu)
+    // N = so trang that, lay tu <div class="pagination"> -> /page/N> lon nhat
+    public static int Pages(string html)
+    {
+        if (string.IsNullOrWhiteSpace(html)) return 0;
+        int i = html.IndexOf("class=\"pagination\"", StringComparison.OrdinalIgnoreCase);
+        if (i < 0) return 1;                       // khong co pagination: / (trang chu) la 1 trang
+        string slice = html.Substring(i, Math.Min(4000, html.Length - i));
+        int max = 1;
+        foreach (Match m in Regex.Matches(slice, @"/page/(\d+)"))
+            if (int.TryParse(m.Groups[1].Value, out int n) && n > max) max = n;
+        return max;
     }
 
     public static string NormalizePageUrl(string value)
@@ -217,6 +260,122 @@ public static class SupJavTo
     }
 
     // ========== StreamTape: /e/ID -> #robotlink ==========
+    // Trang embed co `<link rel="canonical">` / og:url tro ve dung URL day du
+    // (`/e/<id>/<slug>`) — dung lam Referer cho API `get_video`.
+    public static string StreamTapeEmbedUrl(string html)
+    {
+        if (string.IsNullOrEmpty(html)) return null;
+        var m = Regex.Match(html, @"<link[^>]*rel\s*=\s*""canonical""[^>]*href\s*=\s*""([^""]+)""", RegexOptions.IgnoreCase);
+        if (!m.Success)
+            // og:url: StreamTape dung `name=` (khong phai `property=`)
+            m = Regex.Match(html, @"<meta[^>]*(?:name|property)\s*=\s*""og:url""[^>]*content\s*=\s*""([^""]+)""", RegexOptions.IgnoreCase);
+        if (!m.Success) return null;
+        string u = m.Groups[1].Value.Trim();
+        if (u.StartsWith("//")) return "https:" + u;
+        if (u.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return u;
+        return "https://streamtape.com/" + u.TrimStart('/');
+    }
+
+    public static bool HasRobotLink(string html)
+        => !string.IsNullOrEmpty(html)
+           && html.IndexOf("robotlink", StringComparison.OrdinalIgnoreCase) >= 0;
+
+    // Chi lay URL CUOI cua chuoi 302, KHONG tai ve noi dung: file mp4 cua
+    // StreamTape 1GB+ nen dung `-r 0-0` de curl chi yeu 1 byte roi doc
+    // `url_effective`. BAT BUOC cho ST: API `get_video` tra 302 sang CDN,
+    // `VerifyLinkAsync` (HEAD) se tra 302 chu phai media nen phai follow
+    // truoc roi redirect thang URL CDN. (Giong PubJav CurlFinalUrl.)
+    static void PrepCurlEnv(ProcessStartInfo psi)
+    {
+        psi.Environment.Remove("LD_PRELOAD");
+        psi.Environment.Remove("LD_LIBRARY_PATH");
+        string curl = "/data/data/com.termux/files/usr/bin/curl";
+        psi.FileName = System.IO.File.Exists(curl) ? curl : "curl";
+    }
+
+    public static async Task<string> CurlFinalUrl(string url, string referer, int maxTime = 10)
+    {
+        if (string.IsNullOrEmpty(url)) return null;
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            PrepCurlEnv(psi);
+            psi.ArgumentList.Add("-sL");
+            psi.ArgumentList.Add("--http1.1");
+            psi.ArgumentList.Add("--compressed");
+            psi.ArgumentList.Add("--connect-timeout");
+            psi.ArgumentList.Add("8");
+            psi.ArgumentList.Add("--max-time");
+            psi.ArgumentList.Add(maxTime.ToString());
+            psi.ArgumentList.Add("-A");
+            psi.ArgumentList.Add(ChromeUA);
+            if (!string.IsNullOrEmpty(referer))
+            {
+                psi.ArgumentList.Add("-e");
+                psi.ArgumentList.Add(referer);
+            }
+            psi.ArgumentList.Add("-r");
+            psi.ArgumentList.Add("0-0");
+            psi.ArgumentList.Add("-o");
+            psi.ArgumentList.Add("/dev/null");
+            psi.ArgumentList.Add("-w");
+            psi.ArgumentList.Add("%{url_effective}");
+            psi.ArgumentList.Add("--");
+            psi.ArgumentList.Add(url);
+
+            using var p = Process.Start(psi);
+            if (p == null) return null;
+            string stdout = await p.StandardOutput.ReadToEndAsync();
+            await p.WaitForExitAsync();
+            if (p.ExitCode != 0) return null;
+            string eff = stdout.Trim();
+            if (eff.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return eff;
+            return url;
+        }
+        catch { return null; }
+    }
+
+    // ========== VOE: quyet chuoi redirect TAI SERVER ==========
+    // Chrome bi chan `net::ERR_BLOCKED_BY_CLIENT` khi di theo redirect
+    // `voe.sx` -> host VOE (2026-10: teresapoliticallearn.com) -- cu the la
+    // chi chan CAC NAVIGATION DI THEO REDIRECT, con vao truc tiep host do thi
+    // hoan toan binh thuong (da do: goto 200, jwplayer tra master.m3u8 song).
+    // Nen quyet chuoi bang curl + GET truoc roi dua URL cuoi cho Chrome mo
+    // truc tiep. Tra ve null thi se dung lai tai finalGateway (cu~ troi Chrome
+    // tu, thua ca chuoi do chan).
+    public static async Task<string> VoeEmbedUrlAsync(string finalGateway, string referer, int timeoutSeconds = 8)
+    {
+        if (string.IsNullOrEmpty(finalGateway)) return null;
+        try
+        {
+            string url = await CurlFinalUrl(finalGateway, referer, timeoutSeconds);
+            if (string.IsNullOrEmpty(url) || !url.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                url = finalGateway;
+            for (int i = 0; i < 4; i++)
+            {
+                string html = await GetHtmlAsync(url, referer, timeoutSeconds, null, 1);
+                if (string.IsNullOrEmpty(html)) break;
+                var m = Regex.Match(html,
+                    @"window\.location\.href\s*=\s*['""]([^'""]+)['""]",
+                    RegexOptions.IgnoreCase);
+                if (!m.Success) break;
+                string next = m.Groups[1].Value.Trim();
+                if (next.StartsWith("//")) next = "https:" + next;
+                else if (!next.StartsWith("http", StringComparison.OrdinalIgnoreCase)) break;
+                if (string.Equals(next, url, StringComparison.OrdinalIgnoreCase)) break;
+                url = next;
+            }
+            return url;
+        }
+        catch { return finalGateway; }
+    }
+
     public static string StreamTapeId(string embedUrl)
     {
         if (string.IsNullOrEmpty(embedUrl)) return null;
@@ -224,12 +383,53 @@ public static class SupJavTo
         return m.Success ? m.Groups[1].Value : null;
     }
 
+    // StreamTape trang embed co HAI token trong cung mot `id/expires/ip`:
+    //   <div id="robotlink">...&token=AAA</div>   -> token CU, API tra {"status":500}
+    //   script gan lai robotlink  ...&token=BBB     -> token MOI, 302 sang CDN .mp4
+    // Script chay SAU nen chi token gan lai moi chay duoc -> phai lay match CUOI.
+    // Do la ly do ST fail o SupJav (da do 500 o ca 3 host) — KHONG phai IP.
     public static string StreamTapeMp4(string embedHtml)
     {
         if (string.IsNullOrEmpty(embedHtml)) return null;
-        var m = Regex.Match(embedHtml, @"id\s*=\s*""robotlink""[^>]*>([^<]+)<", RegexOptions.IgnoreCase);
-        if (!m.Success) return null;
-        string path = m.Groups[1].Value.Trim();
+
+        // 1) uu tien token do script gan lai (regex PubJav da dung)
+        string query = null;
+        foreach (Match m in Regex.Matches(embedHtml,
+            @"robotlink.{0,4}\.innerHTML\s*=\s*'[^']*get_video\?'\s*\+\s*\('([^']+)'",
+            RegexOptions.IgnoreCase))
+            query = m.Groups[1].Value;
+
+        // 2) fallback: ghep tay tu bieu thuc `'A' + ('B').substring(...)`
+        if (string.IsNullOrEmpty(query))
+        {
+            foreach (Match m in Regex.Matches(embedHtml,
+                @"robotlink'\)\.innerHTML\s*=\s*'([^']*)'\s*\+\s*\('([^']*)'\)((?:\s*\.substring\(\d+\)\s*)*)",
+                RegexOptions.IgnoreCase))
+            {
+                // `.substring(n)` CHI ap cho chuoi trong ngoac (nhom 2), KHONG ap
+                // cho ca bieu thuc: '//streamta' + ('xcdpe.com/..').substring(2)
+                //                  .substring(1)  ->  //streamtape.com/..
+                string tail = m.Groups[2].Value;
+                foreach (Match s in Regex.Matches(m.Groups[3].Value ?? "", @"substring\((\d+)\)"))
+                {
+                    int n;
+                    if (int.TryParse(s.Groups[1].Value, out n) && n >= 0 && n <= tail.Length)
+                        tail = tail.Substring(n);
+                }
+                query = m.Groups[1].Value + tail;
+            }
+        }
+
+        // 3) cuoi cung moi lay div (token cu, thuong chet nhung van giong regex)
+        if (string.IsNullOrEmpty(query))
+        {
+            var div = Regex.Match(embedHtml, @"id\s*=\s*""robotlink""[^>]*>([^<]+)<", RegexOptions.IgnoreCase);
+            if (div.Success) query = div.Groups[1].Value;
+        }
+
+        if (string.IsNullOrEmpty(query)) return null;
+
+        string path = query.Trim();
         if (string.IsNullOrEmpty(path)) return null;
         if (path.StartsWith("//")) return "https:" + path;
         // robotlink dang "/streamtape.com/get_video?..." (host nam trong path)
@@ -289,18 +489,98 @@ public static class SupJavTo
         return res;
     }
 
+    // ===== Dòng 2 "Sắp xếp" — MỤC ĐÍCH: sort CHO LIST ĐANG MỞ =====
+    // Sai lầm cũ (đã sửa 2026-10-06): từng làm dòng 2 thành danh sách xếp hạng
+    // TỔNG ("Mới nhất / Phổ biến (Ngày/Tuần/Tháng)") -> mở category nào nó vẫn
+    // hiện list tổng, không sort gì cả. Mục đích đúng = **sort đúng cái đang xem**.
+    //
+    // Pattern chuẩn (EpornerTo.Menu): menu sinh trong CHÍNH request list nên
+    // server biết `c` hiện tại -> row 2 GIỮ NGUYÊN `c`, chỉ đổi `sort`.
+    // Vẫn đúng 2 tầng (sisi.js không hỗ trợ 3 tầng: mục cấp 2 có submenu ->
+    // playlist_url=="submenu" -> màn trống).
+    //
+    // Sort thật của site — soi <div class="sort"> từng trang (đo 2026-10-06):
+    //   /category/* , /tag/* (kể cả /category/maker/*) -> Date (mặc định) | Views
+    //   /popular                                       -> Day (mặc định) | Week | Month
+    //   / (mới nhất) và ?s= (search)                   -> KHÔNG có sort
+    //     (đã đo: `?s=SSIS&sort=views` == `?s=SSIS`, ID y hệt cả trang 1 & 2)
+    // Đừng bịa sort cho context site không có.
+    public static readonly (string name, string sort)[] TaxSorts =
+    {
+        ("Theo ngày",     ""),
+        ("Theo lượt xem", "views"),
+    };
+    public static readonly (string name, string sort)[] PopSorts =
+    {
+        ("Theo ngày",  ""),
+        ("Theo tuần",  "week"),
+        ("Theo tháng", "month"),
+    };
+
+    public static bool IsTaxonomy(string c) =>
+        !string.IsNullOrWhiteSpace(c) &&
+        (c.StartsWith("category/") || c.StartsWith("tag/"));
+
+    // Tập sort ÁP ĐƯỢC cho context này. null = site không sort được ở đây.
+    public static (string name, string sort)[] SortsFor(string search, string c)
+    {
+        if (!string.IsNullOrWhiteSpace(search)) return null;   // ?s=  -> không có sort
+        if (string.IsNullOrWhiteSpace(c)) return null;
+        if (c == "popular") return PopSorts;
+        if (IsTaxonomy(c)) return TaxSorts;
+        return null;                                           // __latest
+    }
+
+    // Gộp sort về đúng tập của context — `sort=week` khi đang ở category vô nghĩa.
+    public static string ClampSort(string sort, string search, string c)
+    {
+        var opts = SortsFor(search, c);
+        if (opts == null) return null;
+        sort = NormalizeSort(sort);
+        if (string.IsNullOrEmpty(sort)) return null;
+        foreach (var o in opts) if (o.sort == sort) return sort;
+        return null;
+    }
+
+    public static string SortLabel(string sort) =>
+        string.IsNullOrEmpty(sort) ? "ngày"
+        : sort == "views" ? "lượt xem"
+        : sort == "week" ? "tuần"
+        : sort == "month" ? "tháng" : sort;
+
+    // ===== head của menu: phụ thuộc search/sort/c -> dựng lại mỗi request (rẻ) =====
+    public static List<MenuItem> MenuHead(string host, string search, string sort, string c)
+    {
+        host = host.TrimEnd('/');
+        string root = host + "/supjav";
+        var res = new List<MenuItem>(2)
+        {
+            new MenuItem(){ title = "Tìm kiếm", search_on = "search_on", playlist_url = root }
+        };
+        var opts = SortsFor(search, c);
+        if (opts == null || opts.Length == 0) return res;   // context không sort được -> không thêm dòng chết
+        var sub = new List<MenuItem>(opts.Length);
+        foreach (var (name, s) in opts)
+            sub.Add(new MenuItem(name, root + "?c=" + HttpUtility.UrlEncode(c)
+                + (string.IsNullOrEmpty(s) ? "" : "&sort=" + s)));
+        res.Add(new MenuItem(){ title = $"Sắp xếp: {SortLabel(sort)}", playlist_url = "submenu", submenu = sub });
+        return res;
+    }
+
+    // ===== base của menu: KHÔNG phụ thuộc search/sort/c -> cache đúng 1 lần =====
     public static List<MenuItem> Menu(string host, List<(string slug, string name)> cats, List<(string slug, string name)> makers, List<(string slug, string name)> tags)
     {
         host = host.TrimEnd('/');
-        string url(string c) => host + "/supjav?c=" + HttpUtility.UrlEncode(c);
-        var root = new List<MenuItem>(5)
+        string url(string c, string sort = null) => host + "/supjav?c=" + HttpUtility.UrlEncode(c)
+            + (string.IsNullOrEmpty(sort) ? "" : "&sort=" + sort);
+        var root = new List<MenuItem>(6)
         {
-            new MenuItem(){ title = "Tìm kiếm", search_on = "search_on", playlist_url = host + "/supjav" }
+            // 2 list TOÀN CỤC (đây là "list", không phải "sort" -> không được lẫn vào dòng 2)
+            new MenuItem(){ title = "Bảng xếp hạng", playlist_url = "submenu", submenu = new List<MenuItem>(){
+                new("Mới nhất", url("__latest")),
+                new("Phổ biến",  url("popular")),
+            }}
         };
-        root.Add(new MenuItem() { title = "Sắp xếp", playlist_url = "submenu", submenu = new List<MenuItem>(){
-            new("Mới nhất", url("__latest")),
-            new("Phổ biến", url("popular")),
-        }});
         List<MenuItem> TaxMenu(List<(string slug, string name)> items)
         {
             var gm = new List<MenuItem>(items.Count);
@@ -410,7 +690,10 @@ public static class SupJavTo
                     WaitUntil = Microsoft.Playwright.WaitUntilState.DOMContentLoaded
                 });
                 string file = null;
-                for (int i = 0; i < 10; i++)
+                // Cho 2 vong reload cua VOE host: lan 1 luu permanentToken vao
+                // localStorage roi reload, lan 2 moi hien player va phat m3u8.
+                // 20s de du; khong du thi se tra rong.
+                for (int i = 0; i < 25; i++)
                 {
                     try
                     {
@@ -425,7 +708,7 @@ public static class SupJavTo
                     }
                     catch { }
                     if (!string.IsNullOrEmpty(file) || got != null) break;
-                    await Task.Delay(700);
+                    await Task.Delay(800);
                 }
                 try { await page.CloseAsync(); } catch { }
                 string best = !string.IsNullOrEmpty(file) ? file : got;

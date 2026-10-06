@@ -19,36 +19,109 @@ public class SupJavController : BaseSisiController
     const int MenuFetchBudget = 25000;
     public SupJavController() : base(ModInit.conf) { }
 
+    // HOME: SupJav hien khong con phim moi -> trang chu luon tra cung 1 list,
+    // cuon them thi van do. Moi lan vao home (pg=1) lay NGAU NHIEN 1 trong 3
+    // the loai, roi GIU NGUYEN lua chon do cho ca chuoi cuon vo van (pg=2..N)
+    // de khong lon giua cac trang.
+    static readonly string[] HomeCats =
+    {
+        "category/censored-jav",
+        "category/uncensored-jav",
+        "category/amateur",
+    };
+
+    // Key khong dung `ipkey()`: ipkey kham `proxy.CurrentProxyIp` (do doi khi
+    // proxy refresh) -> luon ton khoa giua trang 1 va trang 2 se doi the loai
+    // khi dang cuon. Dung IP client (on dinh hon nhieu).
+    string HomeCatKey()
+    {
+        string client = "";
+        try { client = rch?.enable == true ? requestInfo?.IP : null; } catch { }
+        if (string.IsNullOrEmpty(client))
+        {
+            try { client = HttpContext?.Connection?.RemoteIpAddress?.ToString(); } catch { }
+        }
+        return "supjav:homecat:" + (client ?? "");
+    }
+
+    string HomeCategory(int pg)
+    {
+        string key = HomeCatKey();
+        if (pg <= 1)
+        {
+            string pick = HomeCats[Random.Shared.Next(HomeCats.Length)];
+            hybridCache.Set(key, pick, cacheTime(720), true);
+            return pick;
+        }
+        if (hybridCache.TryGetValue(key, out string prev) && !string.IsNullOrWhiteSpace(prev))
+            return prev;
+        return HomeCats[Random.Shared.Next(HomeCats.Length)];
+    }
+
     [HttpGet, Staticache(manually: true)]
     [Route("supjav")]
-    async public Task<ActionResult> Index(string search, string c, int pg = 1)
+    async public Task<ActionResult> Index(string search, string c, string sort, int pg = 1)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
 
         if (pg < 1) pg = 1;
-        var menuTask = MenuAsync();
 
-        var cache = await InvokeCacheResult(ipkey($"supjav:{search}:{c}:{pg}"), 10, jsonContext.ListPlaylistItem, async e =>
+        // Home (khong search, khong c) -> 1/3 the loai ngau nhien, giu cho
+        // cac trang sau. `c` do thi nhanh danh sach binh thuong.
+        string effC = c;
+        if (string.IsNullOrWhiteSpace(c) && string.IsNullOrWhiteSpace(search))
+            effC = HomeCategory(pg);
+
+        // gọt sort về đúng tập của CONTEXT (search/__latest không sort được;
+        // sort=week khi đang ở category vô nghĩa) — xem SupJavTo.ClampSort
+        sort = SupJavTo.ClampSort(sort, search, effC);
+
+        var menuTask = MenuAsync(search, sort, effC);
+
+        var cache = await InvokeCacheResult<(List<PlaylistItem> playlists, int total_pages)>(
+            // v3: + sort (checklist 9e: cache key phai du search/c/sort/pg).
+            // v2: doi tu List<PlaylistItem> sang (list, total_pages). Phai doi key,
+            // khong thi entry fdb cu (JSON array) bi doc thanh tuple -> JsonSerializationException.
+            ipkey($"supjav:v3:{search}:{effC}:{sort}:{pg}"), 10, async e =>
         {
-            string html = await GetPageAsync(SupJavTo.Uri(init.host, search, c, pg));
+            string html = await GetPageAsync(SupJavTo.Uri(init.host, search, effC, sort, pg));
             var playlists = SupJavTo.Playlist("supjav/vidosik", html ?? "");
             if (playlists == null || playlists.Count == 0)
             {
-                if (!string.IsNullOrWhiteSpace(search))
-                    return e.Success(new List<PlaylistItem>());
+                if (!string.IsNullOrWhiteSpace(search) || pg > 1)
+                    return e.Success((new List<PlaylistItem>(), 0));
                 return e.Fail("playlists", refresh_proxy: true);
             }
-            return e.Success(playlists);
+            return e.Success((playlists, SupJavTo.Pages(html)));
         });
 
         if (rch?.enable == true)
             StatiCacheDisabled = true;
 
-        return PlaylistResult(cache, await menuTask, total_pages: 0);
+        if (!cache.IsSuccess)
+            return OnError(cache.ErrorMsg);
+
+        return PlaylistResult(
+            cache.Value.playlists,
+            cache.ISingleCache,
+            await menuTask,
+            total_pages: cache.Value.total_pages
+        );
     }
 
-    async Task<List<MenuItem>> MenuAsync()
+    // menu = head (phụ thuộc search/sort/c, dựng lại mỗi request — rất rẻ)
+    //        + base (taxonomy ~1100 mục, cache đúng 1 lần, không phụ thuộc context)
+    async Task<List<MenuItem>> MenuAsync(string search, string sort, string c)
+    {
+        var menu = SupJavTo.MenuHead(host, search, sort, c);
+        var baseGroups = await MenuBaseAsync();
+        if (baseGroups != null && baseGroups.Count > 0)
+            menu.AddRange(baseGroups);
+        return menu;
+    }
+
+    async Task<List<MenuItem>> MenuBaseAsync()
     {
         string memKey = ipkey("supjav:menu");
         if (hybridCache.TryGetValue(memKey, out List<MenuItem> hit) && hit != null && hit.Count > 0)
@@ -254,12 +327,17 @@ public class SupJavController : BaseSisiController
                     links.TryAdd(label, vas);
                 continue;
             }
-            // VOE (localStorage redirect): giu nhan de /video resolve that bang Chrome
+            // VOE: chuoi redirect `lk1 -> voe.sx -> host VOE` bi Chrome chan
+            // (net::ERR_BLOCKED_BY_CLIENT) chi khi di theo redirect do, con
+            // vao truc tiep host VOE thi OK nen quyet doan tai server roi dua
+            // URL cuoi cho Chrome mo truc tiep.
             if (SupJavTo.IsVoeLabel(label) && label.IndexOf("VAS", StringComparison.OrdinalIgnoreCase) < 0)
             {
-                string final = SupJavTo.FinalUrl(link);
-                if (!string.IsNullOrEmpty(final) && !links.ContainsKey(label))
-                    links.TryAdd(label, "chrome:" + final + "\n" + pageUrl);
+                string gw = SupJavTo.FinalUrl(link);
+                string voe = await SupJavTo.VoeEmbedUrlAsync(gw, pageUrl, 8);
+                if (string.IsNullOrEmpty(voe)) voe = gw;
+                if (!string.IsNullOrEmpty(voe) && !links.ContainsKey(label))
+                    links.TryAdd(label, "chrome:" + voe + "\n" + pageUrl);
                 continue;
             }
             string packed = await ResolveServerAsync(pageUrl, label, link);
@@ -346,19 +424,31 @@ public class SupJavController : BaseSisiController
         {
             if (await VerifyLinkAsync(masters[i], final)) return masters[i] + "\n" + final;
         }
-        // ST (StreamTape): /e/ID -> #robotlink mp4
+        // ST (StreamTape): gateway TRA SAN trang embed (co ca #robotlink), nen
+        // uu tien boc token truc tiep tu `gw`. KHONG fetch lai
+        // `streamtape.com/e/<id>`: URL ngan do tra 404 (StreamTape can
+        // `/e/<id>/<slug>`) -> khong co robotlink -> ST chet.
+        string stEmbed = SupJavTo.StreamTapeEmbedUrl(gw);
         string stId = SupJavTo.StreamTapeId(gw);
-        if (string.IsNullOrEmpty(stId))
+        string stHtml = gw;
+        if (!SupJavTo.HasRobotLink(gw) && !string.IsNullOrEmpty(stId))
         {
-            var m = System.Text.RegularExpressions.Regex.Match(gw, @"streamtape\.com/e/([A-Za-z0-9]+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-            if (m.Success) stId = m.Groups[1].Value;
+            stEmbed = "https://streamtape.com/e/" + stId;
+            stHtml = await SupJavTo.GetHtmlAsync(stEmbed, pageUrl, 20, proxy, init.httpversion) ?? "";
         }
-        if (!string.IsNullOrEmpty(stId))
+        string stMp4 = SupJavTo.StreamTapeMp4(stHtml);
+        if (!string.IsNullOrEmpty(stMp4))
         {
-            string embed = await SupJavTo.GetHtmlAsync("https://streamtape.com/e/" + stId, pageUrl, 20, proxy, init.httpversion);
-            string mp4 = SupJavTo.StreamTapeMp4(embed ?? "");
-            if (!string.IsNullOrEmpty(mp4))
-                return mp4 + "\nhttps://streamtape.com/";
+            // Referer = trang embed StreamTape (khong phai trang phim):
+            // API `get_video` tra 302 sang CDN, app se follow.
+            string stRef = string.IsNullOrEmpty(stEmbed)
+                ? "https://streamtape.com/"
+                : stEmbed;
+            // Follow 302 lay URL CDN thuoc. App khong phai qua them 1 hop,
+            // va VerifyLinkAsync (HEAD) se thay media thay vi 302.
+            string stCdn = await SupJavTo.CurlFinalUrl(stMp4, stRef, 10);
+            if (!string.IsNullOrEmpty(stCdn)) return stCdn + "\n" + stRef;
+            return stMp4 + "\n" + stRef;
         }
         return null;
     }
@@ -374,16 +464,14 @@ public class SupJavController : BaseSisiController
         var links = await ResolveAsync(uri);
         if (links == null || links.Count == 0)
             return OnError("stream_links", refresh_proxy: true);
-        // Fallback chain: thu q truoc, chet thi thu server khac (da resolve).
-        // Verify master song (Range 0-0, 6s) truoc khi redirect de khong day
-        // app vao link chet (FST 403 / ST 500 theo dot).
-        var order = new List<string>();
-        if (!string.IsNullOrEmpty(q) && links.ContainsKey(q)) order.Add(q);
-        foreach (var k in links.Keys)
-            if (!order.Contains(k, StringComparer.OrdinalIgnoreCase)) order.Add(k);
-        foreach (string label in order)
+        // KHONG fallback chain: bam nut nao phat dung nut do, con thi bao loi.
+        // Fallback lam sau tach mat phim giua cac nguon (FST/ST/VOE deu ra
+        // cung 1 master) va che loi cua nnut dang hong. Muon fallback thi
+        // bo `continue` -> thay bang `break` (chi dung nut hien tai).
+        if (string.IsNullOrEmpty(q) || !links.TryGetValue(q, out string packed))
+            return OnError("stream_links", refresh_proxy: true);
+
         {
-            string packed = links[label];
             string link = packed, referer = SupJavTo.SiteHost + "/";
             int nl = packed.IndexOf('\n');
             if (nl > 0) { link = packed.Substring(0, nl); referer = packed.Substring(nl + 1); }
@@ -391,9 +479,14 @@ public class SupJavController : BaseSisiController
             if (link.StartsWith("chrome:", StringComparison.OrdinalIgnoreCase))
             {
                 string final = link.Substring(7);
-                string voe = await SupJavTo.VoeSourceAsync(final, referer, 15000);
-                if (string.IsNullOrEmpty(voe)) continue;
-                var h2 = httpHeaders(init, HeadersModel.Init(("referer", referer)));
+                string voe = await SupJavTo.VoeSourceAsync(final, referer, 30000);
+                if (string.IsNullOrEmpty(voe)) return OnError("stream_links", refresh_proxy: true);
+                // BAN BUOC co User-Agent: CDN VOE (openresty) tra 403 neu thieu.
+                // Rieng `headers` cho proxy = proxy chi gui cac header nay va
+                // BO qua User-Agent mac dinh (ProxyAPI.Utilities CreateProxyHttpRequest).
+                var h2 = httpHeaders(init, HeadersModel.Init(
+                    ("user-agent", SupJavTo.ChromeUA),
+                    ("referer", referer)));
                 return Redirect(HostStreamProxy(voe, h2));
             }
             if (await VerifyLinkAsync(link, referer))

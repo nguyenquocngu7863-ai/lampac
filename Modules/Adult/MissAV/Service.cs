@@ -50,6 +50,16 @@ public static class MissAVTo
 
         string page = pg > 1 ? "?page=" + pg : "";
 
+        // `?sort=` an tren MOI trang list cua site — do 2026-10-06 qua chinh
+        // module (missav SSL-reset khi fetch truc tiep, nen do qua endpoint):
+        //   /vi/genres/* , /dmNN/* , /vi/search/* , /dm635/vi/release
+        //     deu doi list khi ?sort=views
+        //   -> sort PHAI gap cho ca search va home (ban cu chi gap trong c branch
+        //      nen home + search bi bo qua sort).
+        // Ghep SAU phan trang: /path?page=2&sort=views
+        if (!string.IsNullOrWhiteSpace(sort))
+            page += (page.Length == 0 ? "?" : "&") + "sort=" + sort.Trim();
+
         if (!string.IsNullOrWhiteSpace(search))
         {
             string slug = SlugifyVi(search);
@@ -62,13 +72,11 @@ public static class MissAVTo
         {
             // c co the la full URL missav (menu giu nguyen /dmNN/ cua site) hoac path sau /vi/
             string url = c.StartsWith("http") ? c : host + "/vi/" + c.Trim('/');
-            string q = pg > 1 ? (url.Contains("?") ? "&" : "?") + "page=" + pg : "";
-
-            // Sort cua site (dropdown "Sap xep theo") la QUERY `?sort=`,
-            // dat sau duong dan co phan trang.
+            string sep = url.Contains("?") ? "&" : "?";
+            string q = "";
+            if (pg > 1) q += sep + "page=" + pg;
             if (!string.IsNullOrWhiteSpace(sort))
-                q += (q.Length == 0 ? "?" : "&") + "sort=" + sort.Trim();
-
+                q += (q.Length == 0 ? sep : "&") + "sort=" + sort.Trim();
             return url + q;
         }
 
@@ -512,6 +520,69 @@ public static class MissAVTo
         return max;
     }
 
+    // ===== DÒNG 2 "Sắp xếp" — sort CHO LIST ĐANG MỞ (chuẩn 9g, chốt 2026-10-06) =====
+    // BẢN CŨ SAI MỤC ĐÍCH: dòng 2 gắn 7 list TOÀN CỤC (dm539/dm635/dm301…) ->
+    // mở category nào nó vẫn hiện list tổng, không sort gì cả.
+    // BẢN MỚI: row 2 GIỮ NGUYÊN `c`/`search`/home của list đang xem, chỉ đổi sort.
+    // Vẫn đúng 2 tầng (sisi.js không hỗ trợ 3 tầng).
+    //
+    // Sort thật của site — 46 giá trị thử qua chính module (2026-10-06):
+    //   ?sort=views       -> đổi list VÀ GIỮ NGUYÊN category
+    //                         (dm817 ∩ vi/genres/VR = 0; dm301 ∩ dm817 = 0)
+    //   ?sort=released_at  -> đổi list trên dm301/dm539; TRÊN GENRE = mặc định
+    //   44 giá trị còn lại -> no-op
+    public static readonly (string name, string sort)[] Sorts =
+    {
+        ("Mặc định",       ""),
+        ("Ngày phát hành", "released_at"),
+        ("Xem nhiều",      "views"),
+    };
+
+    public static string NormalizeSort(string sort)
+    {
+        if (string.IsNullOrWhiteSpace(sort)) return null;
+        sort = sort.Trim().ToLowerInvariant();
+        foreach (var (_, s) in Sorts) if (s == sort) return s;
+        return null;
+    }
+
+    public static string SortLabel(string sort) =>
+        string.IsNullOrEmpty(sort) ? "mới nhất"
+        : sort == "views" ? "xem nhiều"
+        : sort == "released_at" ? "ngày phát hành" : sort;
+
+    // head: phụ thuộc search/sort/c -> dựng lại mỗi request (rẻ, 2 object)
+    public static List<Shared.Models.SISI.Base.MenuItem> MenuHead(
+        string host, string search, string sort, string c)
+    {
+        string root = host + "/missav";
+        string link(string s)
+        {
+            string q;
+            if (!string.IsNullOrWhiteSpace(search)) q = "search=" + HttpUtility.UrlEncode(search);
+            else if (!string.IsNullOrWhiteSpace(c)) q = "c=" + HttpUtility.UrlEncode(c);
+            else q = "";                                   // home (ReleaseUrl)
+            if (!string.IsNullOrEmpty(s)) q += (q.Length == 0 ? "" : "&") + "sort=" + s;
+            return q.Length == 0 ? root : root + "?" + q;
+        }
+        var res = new List<Shared.Models.SISI.Base.MenuItem>(2)
+        {
+            new Shared.Models.SISI.Base.MenuItem()
+            {
+                title = "Tìm kiếm", search_on = "search_on", playlist_url = root
+            }
+        };
+        var sub = new List<Shared.Models.SISI.Base.MenuItem>(Sorts.Length);
+        foreach (var (name, s) in Sorts)
+            sub.Add(new(name, link(s)));
+        res.Add(new Shared.Models.SISI.Base.MenuItem()
+        {
+            title = $"Sắp xếp: {SortLabel(sort)}", playlist_url = "submenu", submenu = sub
+        });
+        return res;
+    }
+
+    // base: KHÔNG phụ thuộc search/sort/c -> cache đúng 1 lần (đã disk-cache taxonomy)
     public static List<Shared.Models.SISI.Base.MenuItem> Menu(
         string host, List<(string name, string url)> genres,
         List<(string name, string url)> makers)
@@ -570,27 +641,21 @@ public static class MissAVTo
 
         var root = new List<Shared.Models.SISI.Base.MenuItem>()
         {
+            // DÒNG 3 — 5 list TOÀN CỤC của site (trước đây nằm ở DÒNG 2 = sai mục
+            // đích: mở category nào nó cũng hiện list tổng).
+            // Bỏ 2 mục `dm301?sort=views|released_at`: đó là "list × sort" — chính
+            // là việc của dòng 2, giờ mở "Xem nhiều hôm nay" rồi chọn
+            // "Xem nhiều" / "Ngày phát hành" là ra (và title mới phản ánh đúng).
             new Shared.Models.SISI.Base.MenuItem()
             {
-                title = "Tìm kiếm",
-                search_on = "search_on",
-                playlist_url = host + "/missav"
-            },
-            // DÒNG 2 — Sắp xếp (công thức SISI 9g). `?sort=` là query
-            // dropdown "Sắp xếp theo" của site, áp trên row "Xem nhiều
-            // nhất hôm nay" (row này có đủ mọi kiểu sort trong dropdown).
-            new Shared.Models.SISI.Base.MenuItem()
-            {
-                title = "Sắp xếp",
+                title = "Bảng xếp hạng",
                 playlist_url = "submenu",
                 submenu = G(
                     ("Mới nhất", H + "/dm539/vi/new"),
                     ("Bản phát hành mới", H + "/dm635/vi/release"),
                     ("Xem nhiều hôm nay", H + "/dm301/vi/today-hot"),
                     ("Xem nhiều tuần này", H + "/dm170/vi/weekly-hot"),
-                    ("Xem nhiều tháng này", H + "/dm273/vi/monthly-hot"),
-                    ("Xem nhiều tất cả", H + "/dm301/vi/today-hot?sort=views"),
-                    ("Xếp theo ngày phát hành", H + "/dm301/vi/today-hot?sort=released_at"))
+                    ("Xem nhiều tháng này", H + "/dm273/vi/monthly-hot"))
             },
             new Shared.Models.SISI.Base.MenuItem()
             {
@@ -598,8 +663,12 @@ public static class MissAVTo
                 playlist_url = "submenu",
                 submenu = G(
                     ("Rò rỉ không kiểm duyệt", H + "/dm817/vi/uncensored-leak"),
-                    ("Danh sách nữ diễn viên", H + "/vi/actresses"),
-                    ("BXH nữ diễn viên", H + "/vi/actresses/ranking"),
+                    // BỎ 2026-10-06 (user: "module chỉ phục vụ phim"):
+                    //   /vi/actresses          = danh mục TÊN diễn viên, 0 phim
+                    //   /vi/actresses/ranking  = bảng xếp hạng tên người
+                    //   -> ca 2 tra `Playlist` rong -> 503 `playlists`
+                    //   (Taxonomies() o dong ~449 da tu loai /actresses/ ra roi,
+                    //    2 muc nay chi con vi duoc hardcode o day)
                     ("VR", H + "/vi/genres/VR"))
             },
             new Shared.Models.SISI.Base.MenuItem()
