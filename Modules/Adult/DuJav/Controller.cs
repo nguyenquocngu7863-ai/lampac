@@ -185,7 +185,6 @@ public class DuJavController : BaseSisiController
             return null;
 
         string helvidCfg = DuJavTo.ExtractPlayerConfig(tokenHtml);
-        System.Console.WriteLine($"DuJav: route helvidCfg={(helvidCfg == null ? "null" : helvidCfg.Substring(0, Math.Min(60, helvidCfg.Length)))}");
         if (!string.IsNullOrEmpty(helvidCfg) && helvidCfg.Contains("helvid"))
         {
             var hel = await ResolveHelvidFromTokenAsync(pageUrl, tokenHtml);
@@ -196,7 +195,6 @@ public class DuJavController : BaseSisiController
             // helvid doi ca 2 tren moi fetch (master + segment).
             // NOTE: luu dang Dictionary (string tran bi miss kho hieu) —
             // view-cache Dictionary hit on dinh, ck string miss lien tuc.
-            System.Console.WriteLine($"DuJav: ck WRITE key={ipkey($"dujav:ck:{pageUrl}")}");
             hybridCache.Set(ipkey($"dujav:ck:{pageUrl}"),
                 new Dictionary<string, string>() { { "packed", hel.cookie + "\n" + hel.referer } },
                 cacheTime(20), true);
