@@ -333,6 +333,19 @@ public class SupJavController : BaseSisiController
             dict[label] =
                 $"{host}/supjav/video{ServerKind(label)}"
               + $"?uri={HttpUtility.UrlEncode(uri)}&srv={HttpUtility.UrlEncode(label)}";
+            // FST: tach nut chat luong de user chon tay (CDN ~420KB/s,
+            // ABR rot roi ket). Nut goc giu auto.
+            if (string.Equals(label?.Trim(), "FST", StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (var (name, h) in SupJavTo.FstQualities)
+                {
+                    if (dict.ContainsKey(name))
+                        continue;
+                    dict[name] =
+                        $"{host}/supjav/video.m3u8"
+                      + $"?uri={HttpUtility.UrlEncode(uri)}&srv=FST&h={h}";
+                }
+            }
         }
 
         // Warm-up nen: VAS/VOE resolve bang Chrome (toi 30s), app cat
@@ -494,19 +507,35 @@ public class SupJavController : BaseSisiController
     [Route("supjav/video")]
     [Route("supjav/video.m3u8")]
     [Route("supjav/video.mp4")]
-    async public Task<ActionResult> Video(string uri, string q, string srv = null)
+    async public Task<ActionResult> Video(string uri, string q, string srv = null, string h = null)
     {
         if (await IsRequestBlocked(rch: true))
             return badInitMsg;
         // Cho phep ca `srv` (URL moi) va `q` (cache cu/bookmark).
+        // `h` = chieu cao FST user chon (1080/720/480); nut goc khong `h` = auto.
+        // Nhan chat luong ("FST 720p") map ve server FST that.
         string label = !string.IsNullOrEmpty(srv) ? srv : q;
+        string wantH = h;
+        if (string.IsNullOrEmpty(wantH) && !string.IsNullOrEmpty(label))
+        {
+            foreach (var (name, hh) in SupJavTo.FstQualities)
+            {
+                if (string.Equals(label.Trim(), name, StringComparison.OrdinalIgnoreCase))
+                {
+                    label = "FST";
+                    wantH = hh;
+                    break;
+                }
+            }
+        }
         if (string.IsNullOrEmpty(label))
             return OnError("stream_links", refresh_proxy: true);
         string pageUrl = uri.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? uri : SupJavTo.SiteHost + "/" + (uri ?? "").Trim('/');
 
         // Cache resolve: nhan chrome: (VOE/VAS 30s Playwright) an ngay
-        // neu da resolve trong 10 phut truoc.
-        string streamKey = ipkey($"supjav:stream:{pageUrl}:{label}");
+        // neu da resolve trong 10 phut truoc. FST co chat luong thi key
+        // rieng theo `h` (moi nut 1 playlist variant).
+        string streamKey = ipkey($"supjav:stream:{pageUrl}:{label}:{wantH ?? ""}");
         string packed = null;
         if (hybridCache.TryGetValue(streamKey, out string cachedRaw) && !string.IsNullOrEmpty(cachedRaw))
             packed = cachedRaw;
@@ -547,11 +576,40 @@ public class SupJavController : BaseSisiController
             }
             if (await VerifyLinkAsync(link, referer))
             {
+                // FST + user chon chat luong: tai master, pick variant, tra
+                // thang playlist variant (khong qua master auto -> ABR ket).
+                if (!string.IsNullOrEmpty(wantH) &&
+                    string.Equals(label?.Trim(), "FST", StringComparison.OrdinalIgnoreCase))
+                {
+                    string picked = await PickFstVariantAsync(link, referer, wantH);
+                    if (!string.IsNullOrEmpty(picked)) link = picked;
+                }
                 var direct = httpHeaders(init, HeadersModel.Init(("referer", referer)));
                 return Redirect(HostStreamProxy(link, direct));
             }
         }
         return OnError("stream_links", refresh_proxy: true);
+    }
+
+    // FST: tai master (proxy sign lai URL nen app van qua proxy binh
+    // thuong), pick variant theo chieu cao user chon.
+    async Task<string> PickFstVariantAsync(string masterUrl, string referer, string wantH)
+    {
+        try
+        {
+            var headers = HeadersModel.Init(
+                ("User-Agent", SupJavTo.ChromeUA),
+                ("Referer", referer));
+            string master = await Http.Get(masterUrl, timeoutSeconds: 10, headers: headers, httpversion: init.httpversion);
+            if (string.IsNullOrEmpty(master) || !master.Contains("#EXT-X-STREAM-INF"))
+            {
+                try { master = await Http.Get(masterUrl, timeoutSeconds: 10, headers: headers, proxy: proxy, httpversion: init.httpversion); }
+                catch { return null; }
+            }
+            if (string.IsNullOrEmpty(master) || !master.Contains("#EXT-X-STREAM-INF")) return null;
+            return SupJavTo.PickVariant(SupJavTo.StreamHgVariants(master, masterUrl), wantH);
+        }
+        catch { return null; }
     }
 
     // HEAD kiem tra link song truoc khi redirect (6s, khong tai body).

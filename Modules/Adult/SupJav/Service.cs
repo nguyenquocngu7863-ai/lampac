@@ -231,7 +231,55 @@ public static class SupJavTo
         return res;
     }
 
-    // ========== Gateway shell: trang playbutton trung gian (can di ?l= lay session truoc) ==========
+    // FST quality split (2026-10-07): StreamHg master co 3 variant nhung
+    // CDN cdn-centaurus.com chi ~420KB/s (do direct, khong phai do proxy),
+    // ABR rot xuong roi ket khong len lai. Tach 3 nut chat luong de user
+    // chon tay: /video?srv=FST&h=720 tra thang playlist variant do.
+    public static readonly (string name, string h)[] FstQualities =
+    {
+        ("FST 1080p", "1080"),
+        ("FST 720p",  "720"),
+        ("FST 480p",  "480"),
+    };
+
+    public static List<(int bandwidth, int height, string url)> StreamHgVariants(string master, string masterUrl)
+    {
+        var res = new List<(int, int, string)>();
+        if (string.IsNullOrEmpty(master)) return res;
+        string[] lines = master.Split('\n');
+        for (int i = 0; i + 1 < lines.Length; i++)
+        {
+            string l = lines[i].Trim();
+            if (!l.StartsWith("#EXT-X-STREAM-INF", StringComparison.OrdinalIgnoreCase)) continue;
+            string u = lines[i + 1].Trim();
+            if (string.IsNullOrEmpty(u) || u.StartsWith("#")) continue;
+            int bw = 0, h = 0;
+            var mb = Regex.Match(l, @"BANDWIDTH=(\d+)", RegexOptions.IgnoreCase);
+            if (mb.Success) int.TryParse(mb.Groups[1].Value, out bw);
+            var mr = Regex.Match(l, @"RESOLUTION=\d+x(\d+)", RegexOptions.IgnoreCase);
+            if (mr.Success) int.TryParse(mr.Groups[1].Value, out h);
+            if (!u.StartsWith("http", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(masterUrl))
+            {
+                try { u = new Uri(new Uri(masterUrl), u).ToString(); } catch { continue; }
+            }
+            if (u.StartsWith("http", StringComparison.OrdinalIgnoreCase)) res.Add((bw, h, u));
+        }
+        return res;
+    }
+
+    // Chon variant theo chieu cao: trung khop > thap hon gan nhat > thap nhat.
+    public static string PickVariant(List<(int bandwidth, int height, string url)> vars, string h)
+    {
+        if (vars == null || vars.Count == 0 || string.IsNullOrEmpty(h)) return null;
+        if (!int.TryParse(h, out int want)) return null;
+        var ordered = vars.OrderBy(v => v.height).ToList();
+        var exact = ordered.FirstOrDefault(v => v.height == want);
+        if (exact.url != null) return exact.url;
+        var below = ordered.Where(v => v.height < want).ToList();
+        if (below.Count > 0) return below[below.Count - 1].url;
+        return ordered[0].url;
+    }
+
     public static bool IsGatewayShell(string html)
     {
         if (string.IsNullOrEmpty(html)) return true;
