@@ -51,7 +51,6 @@ public class ModInit : IModuleLoaded, IModuleSisi
             rchstreamproxy = "web",
             headers = HeadersModel.Init(
                 ("User-Agent", DuJavTo.ChromeUA),
-                ("Referer", "https://d.dujav.com/"),
                 ("Accept-Language", "en-US,en;q=0.9")
             ).ToDictionary(),
             headers_stream = HeadersModel.Init(

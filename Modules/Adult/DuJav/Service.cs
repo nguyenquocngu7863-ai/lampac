@@ -176,62 +176,127 @@ public static class DuJavTo
         return res;
     }
 
-    // Player 3 buoc (do 2026-10-06):
-    //   trang phim -> <iframe src="/watch/<slug>">
-    //   GET /api/player/<slug> (+Referer trang phim) -> {"url":"/watch/t/<token>"}
-    //   GET /watch/t/<token> -> jwplayer + https://...m3u8 (token dung lai duoc,
-    //   m3u8 khong doi Referer)
-    public static async Task<string> ResolveM3U8(string pageUrl)
+    // Fetch chuoi video page -> iframe /watch -> api/player -> token page.
+    // Tra tokenHtml (null neu gay buoc nao). Dung chung cho ca 2 backend.
+    public static async Task<string> FetchTokenHtml(string pageUrl, System.Net.WebProxy proxyDirect = null)
     {
         if (string.IsNullOrWhiteSpace(pageUrl))
             return null;
-
-        string page;
         try
         {
-            page = await Http.Get(pageUrl, timeoutSeconds: 12,
+            string page = await Http.Get(pageUrl, timeoutSeconds: 12, proxy: proxyDirect,
                 headers: HeadersModel.Init(("User-Agent", ChromeUA)));
+            string wslug = ExtractWatchSlug(page);
+            if (string.IsNullOrEmpty(wslug))
+                return null;
+
+            string api = await Http.Get(SiteHost + "/api/player/" + wslug, timeoutSeconds: 12,
+                proxy: proxyDirect,
+                headers: HeadersModel.Init(
+                    ("User-Agent", ChromeUA),
+                    ("Referer", pageUrl)));
+            string tok = ExtractApiToken(api);
+            if (string.IsNullOrEmpty(tok))
+                return null;
+
+            return await Http.Get(SiteHost + tok, timeoutSeconds: 12, proxy: proxyDirect,
+                headers: HeadersModel.Init(
+                    ("User-Agent", ChromeUA),
+                    ("Referer", pageUrl)));
         }
         catch { return null; }
+    }
 
-        var f = Regex.Match(page ?? "", @"<iframe\b[^>]*\bsrc=""(/watch/[^""]+)""",
+    // m3u8 TRUC TIEP (backend uncenxcdn). LOAI helvid ra — URL helvid trong
+    // PLAYER_CONFIG phai di duong cookie (xem Controller), regex loose ma vot
+    // vao la Video mat cookie -> proxy 404 (bug 2026-10-06).
+    public static string ExtractDirectM3U8(string html)
+    {
+        if (string.IsNullOrEmpty(html))
+            return null;
+        foreach (Match m in Regex.Matches(html, @"(https?:)?//[^""\s]+\.m3u8[^""\s]*"))
+        {
+            string u = m.Groups[0].Value;
+            if (u.Contains("helvid"))
+                continue;
+            if (u.StartsWith("//"))
+                u = "https:" + u;
+            return u;
+        }
+        return null;
+    }
+
+    // Player 3 buoc (do 2026-10-06):
+    //   trang phim -> <iframe src="/watch/<slug>">
+    //   GET /api/player/<slug> (+Referer trang phim) -> {"url":"/watch/t/<token>"}
+    //   GET /watch/t/<token> -> tokenHtml (uncenxcdn: m3u8 truc tiep;
+    //   helvid: window.PLAYER_CONFIG -> duong cookie, xem Controller)
+    // (Ham cu ResolveM3U8 tu-fetch da thay bang FetchTokenHtml + trich xuat.)
+
+    // Backend 2 (helvid, ~80% phim): token page co
+    //   window.PLAYER_CONFIG = {"m3u8":"https://helvid.com/m/...","videoKey":"..."}
+    // Chuoi mo (do 2026-10-06, UA Android):
+    //   GET upload18.org/play/index/<videoKey> (Referer=trang phim) -> cookie u18ps
+    //   GET helvid m3u8 (Referer=trang play upload18 + cookie) -> 200 #EXTM3U
+    // Cloudflare helvid chap nhan khi co Referer upload18 + cookie (khong can
+    // browser). Lay Origin tu PLAYER_CONFIG.
+    public static string ExtractWatchSlug(string html)
+    {
+        if (string.IsNullOrEmpty(html))
+            return null;
+        var f = Regex.Match(html, @"<iframe\b[^>]*\bsrc=""/watch/([^""]+)""",
             RegexOptions.IgnoreCase);
-        if (!f.Success)
-            return null;
-        string wslug = f.Groups[1].Value.Substring("/watch/".Length);
+        return f.Success ? f.Groups[1].Value.Trim() : null;
+    }
 
-        string api;
+    public static string ExtractApiToken(string json)
+    {
+        if (string.IsNullOrEmpty(json))
+            return null;
+        var tok = Regex.Match(json, @"""url"":""([^""]+)""");
+        return tok.Success ? tok.Groups[1].Value.Trim() : null;
+    }
+
+    public static string ExtractPlayerConfig(string html)
+    {
+        if (string.IsNullOrEmpty(html))
+            return null;
         try
         {
-            api = await Http.Get(SiteHost + "/api/player/" + wslug, timeoutSeconds: 12,
-                headers: HeadersModel.Init(
-                    ("User-Agent", ChromeUA),
-                    ("Referer", pageUrl)));
+            var m = Regex.Match(html, @"window\.PLAYER_CONFIG\s*=\s*(\{.*?\});",
+                RegexOptions.Singleline);
+            if (!m.Success)
+                return null;
+            using var doc = System.Text.Json.JsonDocument.Parse(m.Groups[1].Value);
+            if (doc.RootElement.TryGetProperty("m3u8", out var el))
+            {
+                string u = el.GetString();
+                return string.IsNullOrWhiteSpace(u) ? null : u.Trim();
+            }
         }
-        catch { return null; }
+        catch { }
+        return null;
+    }
 
-        var tok = Regex.Match(api ?? "", @"""url"":""([^""]+)""");
-        if (!tok.Success)
+    public static string ExtractVideoKey(string html)
+    {
+        if (string.IsNullOrEmpty(html))
             return null;
-
-        string tokPage;
         try
         {
-            tokPage = await Http.Get(SiteHost + tok.Groups[1].Value, timeoutSeconds: 12,
-                headers: HeadersModel.Init(
-                    ("User-Agent", ChromeUA),
-                    ("Referer", pageUrl)));
+            var m = Regex.Match(html, @"window\.PLAYER_CONFIG\s*=\s*(\{.*?\});",
+                RegexOptions.Singleline);
+            if (!m.Success)
+                return null;
+            using var doc = System.Text.Json.JsonDocument.Parse(m.Groups[1].Value);
+            if (doc.RootElement.TryGetProperty("videoKey", out var el))
+            {
+                string v = el.GetString();
+                return string.IsNullOrWhiteSpace(v) ? null : v.Trim();
+            }
         }
-        catch { return null; }
-
-        var m = Regex.Match(tokPage ?? "", @"(https?:)?//[^""\s]+\.m3u8[^""\s]*");
-        if (!m.Success)
-            return null;
-
-        string u = m.Groups[0].Value;
-        if (u.StartsWith("//"))
-            u = "https:" + u;
-        return u;
+        catch { }
+        return null;
     }
 
     // Sort that cua site — do 2026-10-06 truc tiep (so ca set + sequence):
