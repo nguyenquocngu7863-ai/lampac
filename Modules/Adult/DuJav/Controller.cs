@@ -43,8 +43,14 @@ public class DuJavController : BaseSisiController
                 DuJavTo.Uri(init.host, search, c, pg, sort));
             var playlists = DuJavTo.Playlist("dujav/vidosik", html ?? "");
 
+            // Search khong ra gi la ket qua THAT (hien "khong co phim"),
+            // khong phai loi — giong SexTb (e.Success rong), dung Fail.
             if (playlists == null || playlists.Count == 0)
+            {
+                if (!string.IsNullOrWhiteSpace(search))
+                    return e.Success(new List<PlaylistItem>());
                 return e.Fail("playlists", refresh_proxy: true);
+            }
 
             return e.Success(playlists);
         });
