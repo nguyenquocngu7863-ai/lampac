@@ -286,67 +286,104 @@ public class SupJavController : BaseSisiController
         return !string.IsNullOrEmpty(b) && !b.Contains("Just a moment") ? b : null;
     }
 
+    // ========== PLAYER DA SERVER: LAZY-RESOLVE (chuan 2026-10-07) ==========
+    // /vidosik KHONG resolve: moi server ton 8-25s (VAS 15+15s, VOE 8s,
+    // gateway 25s), resolve het 4 server mat ~11s, app timeout.
+    // /vidosik chi fetch detail + suy kind tu label; /video resolve DUNG
+    // 1 server user bam + cache 10p + warm nen VAS/VOE (Chrome 30s).
+    //
+    // Kind suy tu label, khong can fetch (site dat ten on dinh):
+    //   ST = StreamTape -> mp4; con lai (VAS/VOE/FST/EVS/...) -> HLS.
+    // Chu y FST chua "ST" nen phai so EQUALS, khong Contains.
+    static string ServerKind(string label) =>
+        string.Equals(label?.Trim(), "ST", StringComparison.OrdinalIgnoreCase)
+            ? ".mp4" : ".m3u8";
+
+    async Task<List<(string label, string link)>> DetailServersAsync(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return null;
+        string pageUrl = uri.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? uri : SupJavTo.SiteHost + "/" + uri.Trim('/');
+        string memKey = ipkey($"supjav:servers:{pageUrl}");
+        if (hybridCache.TryGetValue(memKey, out List<(string label, string link)> cached) && cached != null && cached.Count > 0)
+            return cached;
+        string page = await GetPageAsync(pageUrl);
+        if (string.IsNullOrEmpty(page)) return null;
+        var servers = SupJavTo.Servers(page);
+        if (servers.Count == 0) return null;
+        hybridCache.Set(memKey, servers, cacheTime(15));
+        return servers;
+    }
+
     [HttpGet, Staticache(manually: true)]
     [Route("supjav/vidosik")]
     async public Task<ActionResult> Vidosik(string uri)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
-        var links = await ResolveAsync(uri);
-        if (links == null || links.Count == 0)
+        var servers = await DetailServersAsync(uri);
+        if (servers == null || servers.Count == 0)
             return OnError("stream_links", refresh_proxy: true);
-        return Json(links.ToDictionary(k => k.Key, k =>
+        string pageUrl = uri.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? uri : SupJavTo.SiteHost + "/" + uri.Trim('/');
+        var dict = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (label, _) in servers)
         {
-            string v = k.Value;
-            string link = v.Contains('\n') ? v.Substring(0, v.IndexOf('\n')) : v;
-            // chrome: = VOE/VAS resolve that o /video, optimistic HLS
-            string route = link.StartsWith("chrome:", StringComparison.OrdinalIgnoreCase) || link.Contains(".m3u8") || link.Contains("/hls/") || link.Contains("master.txt") ? "video.m3u8" : "video.mp4";
-            return $"{host}/supjav/{route}?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(k.Key)}";
-        }));
+            if (dict.ContainsKey(label))
+                continue;
+            dict[label] =
+                $"{host}/supjav/video{ServerKind(label)}"
+              + $"?uri={HttpUtility.UrlEncode(uri)}&srv={HttpUtility.UrlEncode(label)}";
+        }
+
+        // Warm-up nen: VAS/VOE resolve bang Chrome (toi 30s), app cat
+        // manifest sau ~10s. Warm truoc de bam an lien; cache 10p.
+        var warm = servers.Where(x =>
+            x.label.IndexOf("VAS", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            SupJavTo.IsVoeLabel(x.label)).ToList();
+        if (warm.Count > 0)
+        {
+            string purl = pageUrl;
+            _ = Task.Run(async () =>
+            {
+                try { await Task.WhenAll(warm.Select(x => WarmOne(purl, x.label, x.link))); }
+                catch { }
+            });
+        }
+
+        return Json(dict);
     }
 
-    async Task<Dictionary<string, string>> ResolveAsync(string uri)
+    async Task WarmOne(string pageUrl, string label, string link)
     {
-        if (string.IsNullOrWhiteSpace(uri)) return null;
-        string pageUrl = uri.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? uri : SupJavTo.SiteHost + "/" + uri.Trim('/');
-        string memKey = ipkey($"supjav:view:{pageUrl}");
-        if (hybridCache.TryGetValue(memKey, out Dictionary<string, string> cache) && cache != null && cache.Count > 0)
-            return cache;
-        string page = await GetPageAsync(pageUrl);
-        if (string.IsNullOrEmpty(page)) return null;
-        var servers = SupJavTo.Servers(page);
-        if (servers.Count == 0) return null;
-        var links = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var (label, link) in servers)
+        string key = ipkey($"supjav:stream:{pageUrl}:{label}");
+        if (hybridCache.TryGetValue(key, out string _))
+            return;
+        string packed = await ResolveOneAsync(pageUrl, label, link);
+        if (!string.IsNullOrEmpty(packed))
+            hybridCache.Set(key, packed, cacheTime(10));
+    }
+
+    // Resolve DUNG 1 server theo label. Tach tu ResolveAsync cu (da xoa
+    // 2026-10-07: no resolve tuan tu HET server, 10-30s, app timeout).
+    async Task<string> ResolveOneAsync(string pageUrl, string label, string link)
+    {
+        // VAS (Vidara): giai thang server-side, khong can Chrome
+        if (label.IndexOf("VAS", StringComparison.OrdinalIgnoreCase) >= 0)
+            return await ResolveVasAsync(pageUrl, link);
+        // VOE: chuoi redirect `lk1 -> voe.sx -> host VOE` bi Chrome chan
+        // (net::ERR_BLOCKED_BY_CLIENT) chi khi di theo redirect do, con
+        // vao truc tiep host VOE thi OK nen quyet doan tai server roi dua
+        // URL cuoi cho Chrome mo truc tiep.
+        if (SupJavTo.IsVoeLabel(label) && label.IndexOf("VAS", StringComparison.OrdinalIgnoreCase) < 0)
         {
-            // VAS (Vidara): giai thang server-side, khong can Chrome
-            if (label.IndexOf("VAS", StringComparison.OrdinalIgnoreCase) >= 0)
-            {
-                string vas = await ResolveVasAsync(pageUrl, link);
-                if (!string.IsNullOrEmpty(vas) && !links.ContainsKey(label))
-                    links.TryAdd(label, vas);
-                continue;
-            }
-            // VOE: chuoi redirect `lk1 -> voe.sx -> host VOE` bi Chrome chan
-            // (net::ERR_BLOCKED_BY_CLIENT) chi khi di theo redirect do, con
-            // vao truc tiep host VOE thi OK nen quyet doan tai server roi dua
-            // URL cuoi cho Chrome mo truc tiep.
-            if (SupJavTo.IsVoeLabel(label) && label.IndexOf("VAS", StringComparison.OrdinalIgnoreCase) < 0)
-            {
-                string gw = SupJavTo.FinalUrl(link);
-                string voe = await SupJavTo.VoeEmbedUrlAsync(gw, pageUrl, 8);
-                if (string.IsNullOrEmpty(voe)) voe = gw;
-                if (!string.IsNullOrEmpty(voe) && !links.ContainsKey(label))
-                    links.TryAdd(label, "chrome:" + voe + "\n" + pageUrl);
-                continue;
-            }
-            string packed = await ResolveServerAsync(pageUrl, label, link);
-            if (!string.IsNullOrEmpty(packed) && !links.ContainsKey(label))
-                links.TryAdd(label, packed);
+            string gw = SupJavTo.FinalUrl(link);
+            string voe = await SupJavTo.VoeEmbedUrlAsync(gw, pageUrl, 8);
+            if (string.IsNullOrEmpty(voe)) voe = gw;
+            if (!string.IsNullOrEmpty(voe))
+                return "chrome:" + voe + "\n" + pageUrl;
+            return null;
         }
-        if (links.Count == 0) return null;
-        hybridCache.Set(memKey, links, cacheTime(10));
-        return links;
+        return await ResolveServerAsync(pageUrl, label, link);
     }
 
     // VAS (Vidara): final 302 -> https://<host>/e/<filecode> -> POST /api/stream -> streaming_url (HLS)
@@ -457,19 +494,38 @@ public class SupJavController : BaseSisiController
     [Route("supjav/video")]
     [Route("supjav/video.m3u8")]
     [Route("supjav/video.mp4")]
-    async public Task<ActionResult> Video(string uri, string q)
+    async public Task<ActionResult> Video(string uri, string q, string srv = null)
     {
         if (await IsRequestBlocked(rch: true))
             return badInitMsg;
-        var links = await ResolveAsync(uri);
-        if (links == null || links.Count == 0)
+        // Cho phep ca `srv` (URL moi) va `q` (cache cu/bookmark).
+        string label = !string.IsNullOrEmpty(srv) ? srv : q;
+        if (string.IsNullOrEmpty(label))
             return OnError("stream_links", refresh_proxy: true);
-        // KHONG fallback chain: bam nut nao phat dung nut do, con thi bao loi.
-        // Fallback lam sau tach mat phim giua cac nguon (FST/ST/VOE deu ra
-        // cung 1 master) va che loi cua nnut dang hong. Muon fallback thi
-        // bo `continue` -> thay bang `break` (chi dung nut hien tai).
-        if (string.IsNullOrEmpty(q) || !links.TryGetValue(q, out string packed))
-            return OnError("stream_links", refresh_proxy: true);
+        string pageUrl = uri.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? uri : SupJavTo.SiteHost + "/" + (uri ?? "").Trim('/');
+
+        // Cache resolve: nhan chrome: (VOE/VAS 30s Playwright) an ngay
+        // neu da resolve trong 10 phut truoc.
+        string streamKey = ipkey($"supjav:stream:{pageUrl}:{label}");
+        string packed = null;
+        if (hybridCache.TryGetValue(streamKey, out string cachedRaw) && !string.IsNullOrEmpty(cachedRaw))
+            packed = cachedRaw;
+        else
+        {
+            var servers = await DetailServersAsync(uri);
+            if (servers == null || servers.Count == 0)
+                return OnError("stream_links", refresh_proxy: true);
+            var pick = servers.FirstOrDefault(x =>
+                string.Equals(x.label, label, StringComparison.OrdinalIgnoreCase));
+            // KHONG fallback chain: bam nut nao phat dung nut do, con thi
+            // bao loi (fallback lam sau tach mat phim giua cac nguon).
+            if (pick.label == null)
+                return OnError("stream_links", refresh_proxy: true);
+            packed = await ResolveOneAsync(pageUrl, pick.label, pick.link);
+            if (string.IsNullOrEmpty(packed))
+                return OnError("stream_links", refresh_proxy: true);
+            hybridCache.Set(streamKey, packed, cacheTime(10));
+        }
 
         {
             string link = packed, referer = SupJavTo.SiteHost + "/";
