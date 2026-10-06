@@ -23,6 +23,10 @@ public class JavtifulController : BaseSisiController
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
 
+        // Gop sort ve dung tap cua context TRUOC khi lap cache key —
+        // `sort=popular_week` o /vn/category/* da do la no-op.
+        sort = JavtifulTo.ClampSort(sort, search, c);
+
         var cache = await InvokeCacheResult(ipkey($"javtiful:{search}:{c}:{sort}:{pg}"), 10, jsonContext.ListPlaylistItem, async e =>
         {
             string html = await FetchHtmlAsync(
@@ -40,7 +44,7 @@ public class JavtifulController : BaseSisiController
         if (rch?.enable == true)
             StatiCacheDisabled = true;
 
-        return PlaylistResult(cache, await MenuAsync());
+        return PlaylistResult(cache, await MenuAsync(search, sort, c));
     }
 
     // httpHydra.GetSpan re-entrant (bien cuc bo moi lan goi) nen goi
@@ -66,9 +70,18 @@ public class JavtifulController : BaseSisiController
         }
     }
 
+    // head (Tìm kiếm + "Sắp xếp: <sort hiện tại>") phụ thuộc c/search/sort
+    // -> dựng lại mỗi request; base (nhóm dòng 3 trở xuống) mới cache.
+    async Task<List<MenuItem>> MenuAsync(string search, string sort, string c)
+    {
+        var res = JavtifulTo.MenuHead(host, search, sort, c);
+        res.AddRange(await MenuBaseAsync());
+        return res;
+    }
+
     // Menu "Kenh" boc tu /vn/channels (24 kenh/trang, 13 trang).
     // Fetch cac trang con SONG SONG roi gom trung ten, cache 6 gio RAM.
-    async Task<List<MenuItem>> MenuAsync()
+    async Task<List<MenuItem>> MenuBaseAsync()
     {
         string key = ipkey("javtiful:channels");
 

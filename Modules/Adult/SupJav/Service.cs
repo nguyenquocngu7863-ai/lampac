@@ -558,7 +558,10 @@ public static class SupJavTo
             new MenuItem(){ title = "Tìm kiếm", search_on = "search_on", playlist_url = root }
         };
         var opts = SortsFor(search, c);
-        if (opts == null || opts.Length == 0) return res;   // context không sort được -> không thêm dòng chết
+        // Context không sort được (`?s=` đo 2026-10-06: sort=views|week ==
+        // không sort, cả trang 2 cũng trùng; `c=__latest`) -> KHÔNG hiện dòng 2.
+        // Row 2 chết (bấm gì cũng không đổi) còn tệ hơn row 2 vắng.
+        if (opts == null || opts.Length == 0) return res;
         var sub = new List<MenuItem>(opts.Length);
         foreach (var (name, s) in opts)
             sub.Add(new MenuItem(name, root + "?c=" + HttpUtility.UrlEncode(c)

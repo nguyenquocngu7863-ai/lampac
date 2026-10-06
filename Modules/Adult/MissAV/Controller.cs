@@ -144,9 +144,11 @@ public class MissAVController : BaseSisiController
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
 
-        // gộp sort về đúng tập của site (46 giá trị thử, chỉ views/released_at
-        // là thật) — giá trị vào luôn cache key, xem MissAVTo.NormalizeSort
-        sort = MissAVTo.NormalizeSort(sort);
+        // gop sort ve dung tap cua site (46 gia tri thu, chi views/released_at la
+        // that) + KHONG cho phep sort khong co y nghia o context nay
+        // (genre/home khong cho released_at) — xem MissAVTo.ClampSort/SortsFor.
+        // Clamp TRUOC khi lap vao cache key.
+        sort = MissAVTo.ClampSort(sort, search, c);
 
         async Task<CacheResult<List<PlaylistItem>>> GetPageAsync(string search, string c, int page, bool allowRefresh)
         {

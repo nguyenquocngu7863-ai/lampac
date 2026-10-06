@@ -218,6 +218,148 @@ public static class JavtifulTo
         return max > 20 ? 20 : max;
     }
 
+    // ===== DÒNG 2 "Sắp xếp" — sort CHO LIST ĐANG MỞ (chuẩn 9g) =====
+    // BẢN CŨ SAI: dòng 2 chứa 2 muc KHONG phai sort
+    //   ("Mới nhất" -> ?c=videos, "JAVMost" -> ?c=javmost) va 3 muc
+    //   list x sort (?c=videos&sort=...) — ca hai deu lam mat `c` dang mo.
+    //   2 muc do chuyen sang dong 3 "Danh sach khac"; cac muc list x sort
+    //   bo het (dong 2 da lam duoc viec do).
+    //
+    // Sort THAT (fetch truc tiep javtiful.com, do bo ID trang 1, 2026-10-06):
+    //   /vn/videos /vn/censored /vn/uncensored /vn/reducing-mosaic
+    //     -> popular, popular_today, popular_week, popular_month,
+    //        most_viewed, most_liked  (6/6 doi list, khong muc nao rong)
+    //     LOAI: added_week + added_month -> trung ca trang 1 & 2 (no-op)
+    //           added_today  -> chi 1-17 phim, gan 0 se bi 503
+    //   /vn/category/* , /vn/channel/* , /vn/javmost
+    //     -> popular (10/10 category, 6/6 channel doi list)
+    //     LOAI: added_today  -> 12/21 category RONG (503)
+    //           added_week   -> 3/21 category RONG (503)
+    //           added_month  -> trang 1 TRUNG o 6/10 category + 3/6 channel
+    //           popular_week, most_viewed -> link NAV global tro sang
+    //              /vn/videos?sort=... -> appended vao day = no-op
+    //   /vn/foryou (home), /vn/search?q= -> KHONG sort duoc
+    //     (do trang 1 + trang 2, moi gia tri deu y hệt ban khong sort)
+    public static readonly string[] SortFullCs =
+        { "videos", "censored", "uncensored", "reducing-mosaic" };
+
+    public static readonly (string name, string sort)[] SortsFull =
+    {
+        ("Mặc định",           ""),
+        ("Phổ biến",           "popular"),
+        ("Phổ biến hôm nay",   "popular_today"),
+        ("Phổ biến tuần này",  "popular_week"),
+        ("Phổ biến tháng này", "popular_month"),
+        ("Xem nhiều nhất",     "most_viewed"),
+        ("Được thích nhiều nhất", "most_liked"),
+    };
+
+    public static readonly (string name, string sort)[] SortsPop =
+    {
+        ("Mặc định", ""),
+        ("Phổ biến", "popular"),
+    };
+
+    // Tap sort AP DUOC cho context nay. null = site khong sort duoc o day
+    // (home / search / c la URL day du / c la trang khac) -> dong 2 chi con
+    // muc "Mac dinh" (xem MenuHead).
+    public static (string name, string sort)[] SortsFor(string search, string c)
+    {
+        if (!string.IsNullOrWhiteSpace(search)) return null;   // /vn/search?q= -> khong sort
+        if (string.IsNullOrWhiteSpace(c)) return null;         // /vn/foryou    -> khong sort
+
+        string cc = c;
+        if (cc.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+        {
+            int i = cc.IndexOf("/vn/", StringComparison.OrdinalIgnoreCase);
+            cc = i >= 0 ? cc.Substring(i + 4) : cc;
+        }
+        cc = cc.Trim('/');
+
+        foreach (var x in SortFullCs)
+            if (cc == x) return SortsFull;
+
+        if (cc.StartsWith("category/") || cc.StartsWith("channel/") || cc == "javmost")
+            return SortsPop;
+
+        return null;
+    }
+
+    // Gop sort ve dung tap cua context — `sort=popular_week` o category
+    // la no-op da do, khong cho phep.
+    public static string NormalizeSort(string sort)
+    {
+        if (string.IsNullOrWhiteSpace(sort)) return null;
+        sort = sort.Trim().ToLowerInvariant();
+        foreach (var (_, s) in SortsFull) if (s == sort) return s;
+        foreach (var (_, s) in SortsPop) if (s == sort) return s;
+        return null;
+    }
+
+    public static string ClampSort(string sort, string search, string c)
+    {
+        var opts = SortsFor(search, c);
+        if (opts == null) return null;
+        sort = NormalizeSort(sort);
+        if (string.IsNullOrEmpty(sort)) return null;
+        foreach (var o in opts) if (o.sort == sort) return sort;
+        return null;
+    }
+
+    public static string SortLabel(string sort) =>
+        string.IsNullOrEmpty(sort) ? "mặc định"
+        : sort == "popular" ? "phổ biến"
+        : sort == "popular_today" ? "phổ biến hôm nay"
+        : sort == "popular_week" ? "phổ biến tuần này"
+        : sort == "popular_month" ? "phổ biến tháng này"
+        : sort == "most_viewed" ? "xem nhiều nhất"
+        : sort == "most_liked" ? "được thích nhiều nhất" : sort;
+
+    // ===== head cua menu: phu thuoc search/sort/c -> dung lai moi request =====
+    // Context KHONG sort duoc (home /vn/foryou, /vn/search?q= — da do trang 1
+    // + trang 2 moi gia tri deu trung) -> KHONG hien dong 2. Row 2 chet (bam
+    // gi cung khong doi) con te hon row 2 vang.
+    public static List<Shared.Models.SISI.Base.MenuItem> MenuHead(
+        string host, string search, string sort, string c)
+    {
+        host = host.TrimEnd('/');
+        string root = host + "/javtiful";
+        string link(string s)
+        {
+            string q;
+            if (!string.IsNullOrWhiteSpace(search)) q = "search=" + HttpUtility.UrlEncode(search);
+            else if (!string.IsNullOrWhiteSpace(c)) q = "c=" + HttpUtility.UrlEncode(c);
+            else q = "";
+            if (!string.IsNullOrEmpty(s)) q += (q.Length == 0 ? "" : "&") + "sort=" + s;
+            return q.Length == 0 ? root : root + "?" + q;
+        }
+
+        var res = new List<Shared.Models.SISI.Base.MenuItem>(2)
+        {
+            new Shared.Models.SISI.Base.MenuItem()
+            {
+                title = "Tìm kiếm", search_on = "search_on", playlist_url = root
+            }
+        };
+
+        var opts = SortsFor(search, c);
+        if (opts == null || opts.Length == 0)
+            return res;
+
+        var sub = new List<Shared.Models.SISI.Base.MenuItem>(opts.Length);
+        foreach (var (name, s) in opts)
+            sub.Add(new Shared.Models.SISI.Base.MenuItem(name, link(s)));
+
+        res.Add(new Shared.Models.SISI.Base.MenuItem()
+        {
+            title = $"Sắp xếp: {SortLabel(sort)}",
+            playlist_url = "submenu",
+            submenu = sub
+        });
+        return res;
+    }
+
+    // ===== base cua menu: KHONG phu thuoc search/sort/c -> cache 1 lan =====
     public static List<Shared.Models.SISI.Base.MenuItem> Menu(
         string host,
         List<(string name, string slug)> channels = null)
@@ -247,28 +389,21 @@ public static class JavtifulTo
             new("MILF", host + "/javtiful?c=category/milf"),
         };
 
+        // DÒNG 1 + DÒNG 2 do MenuHead() dung rieng moi request (phu thuoc
+        // c/search/sort). Day chi con cac nhom dong 3+ (context-free).
+        //
+        // 2 muc TRUOC DAY o dong 2 khong phai sort:
+        //   "Mới nhất" -> ?c=videos (1 list), "JAVMost" -> ?c=javmost (1 list)
+        //   => chuyen vao nhom "Danh sach khac" nay cho dung quy tac.
         var menu = new List<Shared.Models.SISI.Base.MenuItem>()
         {
             new Shared.Models.SISI.Base.MenuItem()
             {
-                title = "Tìm kiếm",
-                search_on = "search_on",
-                playlist_url = host + "/javtiful"
-            },
-            // DÒNG 2 — Sắp xếp (công thức SISI 9g). Site dùng QUERY
-            // `?sort=popular_week|popular_month|popular_day|popular`
-            // (menu "Phổ biến tuần này" cua trang chủ).
-            new Shared.Models.SISI.Base.MenuItem()
-            {
-                title = "Sắp xếp",
+                title = "Danh sách khác",
                 playlist_url = "submenu",
                 submenu = new List<Shared.Models.SISI.Base.MenuItem>()
                 {
-                    new("Mới nhất", host + "/javtiful?c=videos"),
-                    new("Phổ biến hôm nay", host + "/javtiful?c=videos&sort=popular_day"),
-                    new("Phổ biến tuần này", host + "/javtiful?c=videos&sort=popular_week"),
-                    new("Phổ biến tháng này", host + "/javtiful?c=videos&sort=popular_month"),
-                    new("Xem nhiều nhất", host + "/javtiful?c=videos&sort=popular"),
+                    new("Mới nhất (tất cả phim)", host + "/javtiful?c=videos"),
                     new("JAVMost", host + "/javtiful?c=javmost"),
                 }
             },

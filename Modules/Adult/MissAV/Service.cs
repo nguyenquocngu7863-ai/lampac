@@ -538,11 +538,49 @@ public static class MissAVTo
         ("Xem nhiều",      "views"),
     };
 
+    // Context ma ?sort=released_at = no-op -> chi giu 2 muc (§9g: muc nao khong
+    // doi duoc list la "link", khong phai sort -> khong duoc hien).
+    public static readonly (string name, string sort)[] SortsNoDate =
+    {
+        ("Mặc định", ""),
+        ("Xem nhiều", "views"),
+    };
+
+    // Tap sort ap DUOC cho context nay. Dua tren ket qua do qua chinh module
+    // (2026-10-06):
+    //   views       -> doi list O MOI context (genre / hang / bxh / home / search)
+    //   released_at -> chi that tren dm301/dm539 va search (search la dao trong
+    //                  trang, control=search|SSIS = YEN); home (dm635/vi/release)
+    //                  chet ca trang 1+2; genre (dm*/genres/*) = no-op
+    //   -> context chua do duoc thi dung mac dinh an toan (khong hien released_at)
+    public static (string name, string sort)[] SortsFor(string search, string c)
+    {
+        if (!string.IsNullOrWhiteSpace(search)) return Sorts;       // search: ca 2 deu doi
+        if (string.IsNullOrWhiteSpace(c))       return SortsNoDate; // home = dm635/vi/release
+
+        string low = c.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+            ? c : "https://x/" + c.Trim('/');
+
+        low = low.ToLowerInvariant();
+        if (low.Contains("/genres/") || low.Contains("/makers/")) return SortsNoDate;
+        if (low.Contains("dm301/")   || low.Contains("dm539/"))   return Sorts;
+        return SortsNoDate;
+    }
+
     public static string NormalizeSort(string sort)
     {
         if (string.IsNullOrWhiteSpace(sort)) return null;
         sort = sort.Trim().ToLowerInvariant();
         foreach (var (_, s) in Sorts) if (s == sort) return s;
+        return null;
+    }
+
+    // Gop + kiem tra xem sort co DUOC phep o context nay khong (khong thi ve null)
+    public static string ClampSort(string sort, string search, string c)
+    {
+        sort = NormalizeSort(sort);
+        if (string.IsNullOrEmpty(sort)) return null;
+        foreach (var o in SortsFor(search, c)) if (o.sort == sort) return sort;
         return null;
     }
 
@@ -572,8 +610,13 @@ public static class MissAVTo
                 title = "Tìm kiếm", search_on = "search_on", playlist_url = root
             }
         };
-        var sub = new List<Shared.Models.SISI.Base.MenuItem>(Sorts.Length);
-        foreach (var (name, s) in Sorts)
+        var opts = SortsFor(search, c);
+        // khong sort duoc o day -> khong hien dong 2 (§9g #4). MissAV luc nao
+        // cung con "Xem nhiều" nen day chi la cham an toan.
+        if (opts == null || opts.Length == 0) return res;
+
+        var sub = new List<Shared.Models.SISI.Base.MenuItem>(opts.Length);
+        foreach (var (name, s) in opts)
             sub.Add(new(name, link(s)));
         res.Add(new Shared.Models.SISI.Base.MenuItem()
         {
