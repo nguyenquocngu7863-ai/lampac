@@ -77,6 +77,12 @@ public class JableController : BaseSisiController
         if (pg < 1)
             pg = 1;
 
+        // Clamp sort ve dung tap cua context TRUOC khi vao cache key
+        // (sort la o context nay co the chet o context kia).
+        sort = JableTo.ClampSort(sort, search, c);
+
+        var menuTask = MenuAsync(search, sort, c);
+
         var cache = await InvokeCacheResult(
             ipkey($"jable:{search}:{c}:{sort}:{pg}"),
             10, jsonContext.ListPlaylistItem, async e =>
@@ -105,7 +111,7 @@ public class JableController : BaseSisiController
         if (rch?.enable == true)
             StatiCacheDisabled = true;
 
-        return PlaylistResult(cache, await MenuAsync());
+        return PlaylistResult(cache, await menuTask);
     }
 
     // App CACHE response DAU CA PHIEN -> lan truy cap dau ma tra menu
@@ -117,34 +123,52 @@ public class JableController : BaseSisiController
     static readonly SemaphoreSlim menuLock = new(1, 1);
     const int MenuFetchBudget = 10_000;
 
-    async Task<List<MenuItem>> MenuAsync()
+    async Task<List<MenuItem>> MenuAsync(string search, string sort, string c)
     {
+        // HEAD (dong 1+2) phu thuoc context -> dung moi request, re.
+        var menu = JableTo.MenuHead(host, search, sort, c);
+
+        // BASE (dong 3+) cache dung 1 lan.
         string memKey = ipkey("jable:menu");
 
         if (hybridCache.TryGetValue(memKey, out List<MenuItem> hit) &&
             hit != null && hit.Count > 0)
-            return hit;
+        {
+            menu.AddRange(hit);
+            return menu;
+        }
 
         string hostLocal = host;
 
-        // Request khac dang giu lock: tra fallback ngay, khong cho app
-        // treo them.
+        // Request khac dang giu lock: tra head + fallback ngay, khong
+        // cho app treo them.
         if (!await menuLock.WaitAsync(3000))
-            return Fallback(hostLocal);
+        {
+            menu.AddRange(FallbackBase(hostLocal));
+            return menu;
+        }
 
         try
         {
             // Request truoc do da nap xong cache trong luc ta cho lock.
             if (hybridCache.TryGetValue(memKey, out List<MenuItem> hit2) &&
                 hit2 != null && hit2.Count > 0)
-                return hit2;
+            {
+                menu.AddRange(hit2);
+                return menu;
+            }
 
             var build = BuildMenuAsync(hostLocal, memKey);
 
             if (build != await Task.WhenAny(build, Task.Delay(MenuFetchBudget)))
-                return Fallback(hostLocal);   // fetch chay tiep nen lan sau co menu dong
+            {
+                // Het gio: head + fallback, fetch chay tiep nen lan sau co menu dong.
+                menu.AddRange(FallbackBase(hostLocal));
+                return menu;
+            }
 
-            return await build;
+            menu.AddRange(await build);
+            return menu;
         }
         finally
         {
@@ -152,7 +176,7 @@ public class JableController : BaseSisiController
         }
     }
 
-    List<MenuItem> Fallback(string hostLocal)
+    List<MenuItem> FallbackBase(string hostLocal)
         => JableTo.Menu(hostLocal, JableTo.FallbackCats, JableTo.FallbackTags);
 
     // LUON tra menu day du: dynamic neu fetch duoc, nguoc lai fallback.

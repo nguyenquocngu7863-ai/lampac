@@ -67,17 +67,106 @@ public static class JableTo
         return u;
     }
 
-    // CAC KIỂU SẮP XẾP của site jable (mục "Sắp xếp" dòng 2 trong menu).
-    // `c` = path site, `sort` = ?sort_by= của web (null = không).
-    public static readonly (string name, string c, string sort)[] Sorts =
+    // CAC KIỂU SẮP XẾP that cua site — do truc tiep 2026-10-06 (so SEQUENCE,
+    // co control; bai hoc MissAV: cung set nhung dao thu tu van la SONG):
+    //   home (latest-updates, c rong) -> sort chet het (video_viewed/today
+    //     == base, seq y het) -> AN DONG 2
+    //   search (?/search/) -> sort chet (today == base) -> AN DONG 2
+    //   hot -> video_viewed/today/month SONG; week == base (chet) -> 3 muc
+    //   new-release, categories/*, tags/* -> ca 4 SONG (week==month o cat
+    //     nhung ca 2 deu khac base/all/today -> giu ca 2, do site quyet)
+    public static readonly string[] SortWhitelist =
     {
-        ("Mới nhất",        "latest-updates", null),
-        ("Mới phát hành",  "new-release",    null),
-        ("Hot hôm nay",    "hot", "video_viewed_today"),
-        ("Hot tuần này",   "hot", "video_viewed_week"),
-        ("Hot tháng này",  "hot", "video_viewed_month"),
-        ("Hot tất cả",     "hot", "video_viewed"),
+        "video_viewed", "video_viewed_today",
+        "video_viewed_week", "video_viewed_month",
     };
+
+    public static string NormalizeSort(string sort)
+    {
+        if (string.IsNullOrWhiteSpace(sort)) return null;
+        sort = sort.Trim().ToLowerInvariant();
+        return Array.IndexOf(SortWhitelist, sort) >= 0 ? sort : null;
+    }
+
+    public static readonly (string name, string sort)[] HotSorts =
+    {
+        ("Hot tất cả",   "video_viewed"),
+        ("Hot hôm nay",  "video_viewed_today"),
+        ("Hot tháng này","video_viewed_month"),
+    };
+
+    public static readonly (string name, string sort)[] TaxSorts =
+    {
+        ("Mặc định",    ""),
+        ("Xem nhiều",   "video_viewed"),
+        ("Hot hôm nay", "video_viewed_today"),
+        ("Hot tuần này","video_viewed_week"),
+        ("Hot tháng này","video_viewed_month"),
+    };
+
+    public static bool IsTaxonomy(string c) =>
+        !string.IsNullOrWhiteSpace(c) &&
+        (c.StartsWith("categories/", StringComparison.OrdinalIgnoreCase) ||
+         c.StartsWith("tags/", StringComparison.OrdinalIgnoreCase));
+
+    // Tap sort AP DUOC cho context. null = site khong sort duoc -> an dong 2.
+    public static (string name, string sort)[] SortsFor(string search, string c)
+    {
+        if (!string.IsNullOrWhiteSpace(search)) return null;
+        if (string.IsNullOrWhiteSpace(c)) return null;   // home latest-updates
+        if (c.Equals("hot", StringComparison.OrdinalIgnoreCase)) return HotSorts;
+        if (c.Equals("new-release", StringComparison.OrdinalIgnoreCase) ||
+            IsTaxonomy(c)) return TaxSorts;
+        return null;
+    }
+
+    // Gop sort ve dung tap cua context TRUOC khi vao cache key + Uri.
+    public static string ClampSort(string sort, string search, string c)
+    {
+        var opts = SortsFor(search, c);
+        if (opts == null) return null;
+        sort = NormalizeSort(sort);
+        if (string.IsNullOrEmpty(sort))
+            return opts.Any(o => string.IsNullOrEmpty(o.sort)) ? "" : opts[0].sort;
+        foreach (var o in opts) if (o.sort == sort) return sort;
+        return opts.Any(o => string.IsNullOrEmpty(o.sort)) ? "" : opts[0].sort;
+    }
+
+    public static string SortLabel(string sort) =>
+        string.IsNullOrEmpty(sort) ? "mặc định"
+        : sort == "video_viewed" ? "xem nhiều"
+        : sort == "video_viewed_today" ? "hot hôm nay"
+        : sort == "video_viewed_week" ? "hot tuần này"
+        : sort == "video_viewed_month" ? "hot tháng này" : sort;
+
+    // HEAD: dong 1 + 2, phu thuoc search/sort/c -> dung lai moi request.
+    public static List<MenuItem> MenuHead(string host, string search, string sort, string c)
+    {
+        host = host.TrimEnd('/');
+        string root = host + "/jable";
+        var res = new List<MenuItem>(2)
+        {
+            new MenuItem() { title = "Tìm kiếm", search_on = "search_on", playlist_url = root }
+        };
+
+        var opts = SortsFor(search, c);
+        if (opts == null || opts.Length == 0) return res;
+
+        var sub = new List<MenuItem>(opts.Length);
+        foreach (var (name, s) in opts)
+        {
+            // Dang o home/search thi giu search; dang o c thi giu c, chi doi sort.
+            string q;
+            if (!string.IsNullOrWhiteSpace(search))
+                q = "search=" + HttpUtility.UrlEncode(search);
+            else
+                q = "c=" + c.Trim('/');
+            if (!string.IsNullOrEmpty(s)) q += "&sort=" + s;
+            sub.Add(new MenuItem(name, root + "?" + q));
+        }
+        res.Add(new MenuItem() { title = $"Sắp xếp: {SortLabel(sort)}", playlist_url = "submenu", submenu = sub });
+        return res;
+    }
 
     // <h6 class="title"><a href="...videos/slug/">TIEU DE</a></h6>
     // <div class="absolute-bottom-right"><span class="label">2:05:33</span>
@@ -228,11 +317,18 @@ public static class JableTo
             if (!seen.Add(slug))
                 continue;
 
+            // Ten co the nam sau tag long ben trong <a> (vd <a><span>BDSM...).
+            // Window 200 cat ngang tag <span...> -> strip tag khong khop ->
+            // rac "BDSM <sp" (bug 2026-10-06). Tang window + cat bo tag do
+            // o cuoi truoc khi strip.
             string tail = html.Substring(m.Index + m.Length,
-                Math.Min(200, html.Length - m.Index - m.Length));
+                Math.Min(500, html.Length - m.Index - m.Length));
             int cut = tail.IndexOf("</a", StringComparison.OrdinalIgnoreCase);
             if (cut > 0)
                 tail = tail.Substring(0, cut);
+            int lt = tail.LastIndexOf('<');
+            if (lt >= 0 && tail.IndexOf('>', lt) < 0)
+                tail = tail.Substring(0, lt);
 
             string name = Clean(HttpUtility.HtmlDecode(Regex.Replace(tail, "<[^>]+>", " ")));
             if (name.Length == 0)
@@ -384,39 +480,28 @@ public static class JableTo
             ("Wife", "tags/wife"),
         };
 
-    // CÔNG THỨC MENU SISI (áp dụng cho mọi module — xem skill
-    // lampac-adult-module mục 9g):
-    //   dòng 1 : Tìm kiếm  (search_on, được phép ở root)
-    //   dòng 2 : Sắp xếp   (submenu chứa các kiểu xếp hạng của site)
-    //   dòng 3+: taxonomy   (Từ khoá / Thể loại / Kênh / Hãng…)
-    // Mọi mục điều hướng phải nằm trong submenu — mục root không
-    // submenu thì app bấm vào chỉ mở lại menu (chết im, mục 9c).
+    // BASE: dong 3+ — list toan cuc + taxonomy, KHONG phu thuoc
+    // search/sort/c -> cache dung 1 lan. `Sorts` cu (name,c,sort) da XOA
+    // 2026-10-06: no dan toi list tong co dinh, khong sort list dang mo.
     public static List<MenuItem> Menu(
         string host,
         IReadOnlyList<(string name, string path)> cats = null,
         IReadOnlyList<(string name, string path)> tags = null)
     {
-        // QUERY `?c=` — app phan trang bang query `?pg=N`, dung duong dan
-        // se lam trang 2 tra ve trang 1 (lap noi dung, muc 9d).
+        host = host.TrimEnd('/');
+        string url(string c) => host + "/jable?c=" + c.Trim('/');
+
+        // Dong 3: 3 list TOAN CUC (day la "list", khong phai "sort" cua
+        // list dang mo -> khong duoc lan vao dong 2).
         var root = new List<MenuItem>()
         {
-            new MenuItem()
+            new MenuItem() { title = "Bảng xếp hạng", playlist_url = "submenu", submenu = new List<MenuItem>()
             {
-                title = "Tìm kiếm",
-                search_on = "search_on",
-                playlist_url = host + "/jable"
-            }
+                new("Mới nhất", url("latest-updates")),
+                new("Mới phát hành", url("new-release")),
+                new("Hot", url("hot")),
+            }}
         };
-
-        // DÒNG 2 — Sắp xếp. Mỗi kiểu là 1 path site (+ ?sort_by= nếu có).
-        var sortSub = new List<MenuItem>();
-        foreach (var s in Sorts)
-        {
-            string url = host + "/jable?c=" + s.c
-                + (string.IsNullOrEmpty(s.sort) ? "" : "&sort=" + s.sort);
-            sortSub.Add(new MenuItem(s.name, url));
-        }
-        root.Add(new MenuItem() { title = "Sắp xếp", playlist_url = "submenu", submenu = sortSub });
 
         if (cats != null && cats.Count > 0)
         {
