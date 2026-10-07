@@ -40,19 +40,27 @@ public class JavHDTodayController : BaseSisiController
             {
                 if (t > 0)
                     await Task.Delay(1200);
-                await httpHydra.GetSpan(
-                    JavHDTodayTo.Uri(init.host, search, c, pg),
-                    span =>
+                // Hydra doi khi throw (treo/timeout) -> bat de loop retry
+                // that su chay; khong bat thi vang khoi callback -> 503 ngay
+                // (bug 2026-10-07: releaseday 503 2 lan lien, lan 3 URL y het
+                // lai 200 — fail ngau nhien, khong phai URL sai).
+                try
                 {
-                    var pl = JavHDTodayTo.Playlist(
-                        "javhdtoday/vidosik", span.ToString());
-                    if (pl.Count > 0)
-                        playlists = pl;
-                }, addheaders: HeadersModel.Init(
-                    ("User-Agent", JavHDTodayTo.ChromeUA),
-                    ("Referer", "https://javhd.today/"),
-                    ("X-Requested-With", "XMLHttpRequest")
-                ));
+                    await httpHydra.GetSpan(
+                        JavHDTodayTo.Uri(init.host, search, c, pg),
+                        span =>
+                    {
+                        var pl = JavHDTodayTo.Playlist(
+                            "javhdtoday/vidosik", span.ToString());
+                        if (pl.Count > 0)
+                            playlists = pl;
+                    }, addheaders: HeadersModel.Init(
+                        ("User-Agent", JavHDTodayTo.ChromeUA),
+                        ("Referer", "https://javhd.today/"),
+                        ("X-Requested-With", "XMLHttpRequest")
+                    ));
+                }
+                catch { }
             }
 
             if (playlists == null || playlists.Count == 0)
@@ -70,9 +78,10 @@ public class JavHDTodayController : BaseSisiController
 
     // "The loai" boc tu /categories/ (99 card, loc tube, top 50
     // theo so phim); "Hang phim" boc tu dropdown nav trang chu.
-    // Cache 1 gio trong RAM.
+    // Cache 1 gio trong RAM. Head (Tim kiem) dung moi request.
     async Task<List<MenuItem>> MenuAsync()
     {
+        var menu = JavHDTodayTo.MenuHead(host);
         string gkey = ipkey("javhdtoday:cats");
         string skey = ipkey("javhdtoday:studios");
 
@@ -107,7 +116,10 @@ public class JavHDTodayController : BaseSisiController
         Console.WriteLine("JavHDToday: cats genres="
             + genres.Count + " studios=" + studios.Count);
 
-        return JavHDTodayTo.Menu(host, genres, studios);
+        var baseGroups = JavHDTodayTo.Menu(host, genres, studios);
+        if (baseGroups != null && baseGroups.Count > 0)
+            menu.AddRange(baseGroups);
+        return menu;
     }
 
     static long Ms() => Environment.TickCount64;

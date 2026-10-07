@@ -90,13 +90,37 @@ public static class JavHDTodayTo
             return playlists;
 
         string html = json;
+        // JSON dung: {"status":..,"html":"...","pagination":..}. Dung
+        // JsonDocument de lay "html" (giai escape chuan, ke ca \/ -> /).
+        // Regex + Regex.Unescape cu VO HIEU LUC tu khi site escape "/" :
+        // href thanh \/369778\/...\/ va <\/li> lam regex </li> khong khop
+        // -> 0 item -> 503 (bug 2026-10-07).
+        bool extracted = false;
         try
         {
-            var m = Regex.Match(json, "\"html\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"");
-            if (m.Success)
-                html = Regex.Unescape(m.Groups[1].Value);
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object
+                && doc.RootElement.TryGetProperty("html", out var he)
+                && he.ValueKind == System.Text.Json.JsonValueKind.String)
+            {
+                html = he.GetString();
+                extracted = true;
+            }
         }
         catch { }
+        if (!extracted)
+        {
+            try
+            {
+                var m = Regex.Match(json, "\"html\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"");
+                if (m.Success)
+                    html = Regex.Unescape(m.Groups[1].Value);
+            }
+            catch { }
+            // Regex.Unescape khong chac giai \/ -> / tren moi runtime.
+            if (html.Contains("\\/"))
+                html = html.Replace("\\/", "/");
+        }
 
         var seen = new HashSet<string>();
         foreach (Match cm in Regex.Matches(html, "<li id=\"video-(\\d+)\">(.*?)</li>", RegexOptions.Singleline))
@@ -749,34 +773,46 @@ public static class JavHDTodayTo
         return null;
     }
 
-    public static List<Shared.Models.SISI.Base.MenuItem> Menu(
-        string host, List<(string name, string path)> genres,
-        List<(string name, string query)> studios)
+    // MENU §9g (2026-10-07): site KHONG co sort — 5 list (recent /
+    // popular today-week-month / releaseday) la LIST toan cuc, khong phai
+    // sort cua list dang mo -> khong co dong 2. Dong 1 Tim kiem (head),
+    // dong 3 Bang xep hang + taxonomy (base, cache 1 lan).
+    public static List<Shared.Models.SISI.Base.MenuItem> MenuHead(string host)
     {
-        var sorts = new List<Shared.Models.SISI.Base.MenuItem>()
-        {
-            new("Mới nhất", host + "/javhdtoday?c=recent/"),
-            new("Phổ biến hôm nay", host + "/javhdtoday?c=popular/today/"),
-            new("Phổ biến tuần", host + "/javhdtoday?c=popular/week/"),
-            new("Phổ biến tháng", host + "/javhdtoday?c=popular/month/"),
-            new("Ngày phát hành", host + "/javhdtoday?c=releaseday/"),
-        };
-
-        var menu = new List<Shared.Models.SISI.Base.MenuItem>()
+        host = host.TrimEnd('/');
+        return new List<Shared.Models.SISI.Base.MenuItem>()
         {
             new Shared.Models.SISI.Base.MenuItem()
             {
                 title = "Tìm kiếm",
                 search_on = "search_on",
                 playlist_url = host + "/javhdtoday"
-            },
-            // DÒNG 2 — Sắp xếp (công thức SISI 9g). Các kiểu sắp xếp
-            // của site: recent / popular today-week-month / releaseday.
+            }
+        };
+    }
+
+    public static List<Shared.Models.SISI.Base.MenuItem> Menu(
+        string host, List<(string name, string path)> genres,
+        List<(string name, string query)> studios)
+    {
+        host = host.TrimEnd('/');
+        string url(string c) => host + "/javhdtoday?c=" + c.Trim('/');
+
+        var menu = new List<Shared.Models.SISI.Base.MenuItem>()
+        {
+            // Dong 3: 5 list TOAN CUC (day la "list", khong phai "sort").
             new Shared.Models.SISI.Base.MenuItem()
             {
-                title = "Sắp xếp",
+                title = "Bảng xếp hạng",
                 playlist_url = "submenu",
-                submenu = sorts
+                submenu = new List<Shared.Models.SISI.Base.MenuItem>()
+                {
+                    new("Mới nhất", url("recent/")),
+                    new("Phổ biến hôm nay", url("popular/today/")),
+                    new("Phổ biến tuần", url("popular/week/")),
+                    new("Phổ biến tháng", url("popular/month/")),
+                    new("Ngày phát hành", url("releaseday/")),
+                }
             }
         };
 
