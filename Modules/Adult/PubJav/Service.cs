@@ -1356,6 +1356,91 @@ public static class PubJavTo
     // y hang `?sort=desc`). Nen moi duong filter/sort deu phai day du.
     public const string FilterQuery = "genre=all&quality=all&year=all&sort=";
 
+    // Sort thật của site (từ <select name="sort">), THEO CONTEXT:
+    // sort CHỈ SỐNG trên `/movies` (c rỗng = home = /movies, hoặc c bắt
+    // đầu "movies"). `genre/*`, `studio/*`, `?s=` chết hẳn (đo
+    // 2026-10-07: genre?sort= == genre). Context không sort được
+    // -> null -> bỏ hẳn dòng 2.
+    static readonly (string name, string sort)[] MovieSorts =
+    {
+        ("Mới nhất",        "desc"),
+        ("Lâu nhất",        "asc"),
+        ("Ngày phát hành",  "release"),
+        ("Xem nhiều",       "viewed"),
+        ("Nhiều like",      "liked"),
+        ("Nhiều yêu thích", "favorite"),
+    };
+
+    public static (string name, string sort)[] SortsFor(string search, string c)
+    {
+        if (!string.IsNullOrWhiteSpace(search)) return null;
+        if (string.IsNullOrWhiteSpace(c)) return MovieSorts;        // home = /movies
+        string path = c.Trim().TrimStart('/');
+        int at = path.IndexOf('?');
+        if (at >= 0) path = path.Substring(0, at);
+        if (path.StartsWith("movies", StringComparison.OrdinalIgnoreCase)) return MovieSorts;
+        return null;   // genre/*, studio/* -> không sort
+    }
+
+    // Sort hiện tại của list đang mở, đọc từ `c` (movies?...&sort=X).
+    public static string CurrentSort(string c)
+    {
+        if (string.IsNullOrWhiteSpace(c)) return "desc";
+        var m = Regex.Match(c, @"[?&]sort=([^&]+)");
+        return m.Success ? m.Groups[1].Value.Trim().ToLowerInvariant() : "desc";
+    }
+
+    public static string SortLabel(string sort)
+    {
+        switch ((sort ?? "desc").ToLowerInvariant())
+        {
+            case "asc": return "Lâu nhất";
+            case "release": return "Ngày phát hành";
+            case "viewed": return "Xem nhiều";
+            case "liked": return "Nhiều like";
+            case "favorite": return "Nhiều yêu thích";
+            default: return "Mới nhất";
+        }
+    }
+
+    // Giữ nguyên genre/quality/year của `c` hiện tại, chỉ đổi `sort`.
+    public static string WithSort(string c, string sort)
+    {
+        string genre = "all", quality = "all", year = "all";
+        if (!string.IsNullOrWhiteSpace(c))
+        {
+            var g = Regex.Match(c, @"[?&]genre=([^&]+)");
+            var q = Regex.Match(c, @"[?&]quality=([^&]+)");
+            var y = Regex.Match(c, @"[?&]year=([^&]+)");
+            if (g.Success) genre = g.Groups[1].Value;
+            if (q.Success) quality = q.Groups[1].Value;
+            if (y.Success) year = y.Groups[1].Value;
+        }
+        return $"movies?genre={genre}&quality={quality}&year={year}&sort={sort}";
+    }
+
+    // ===== head menu: phụ thuộc search/c -> dựng lại mỗi request (rẻ) =====
+    public static List<MenuItem> MenuHead(string host, string search, string c)
+    {
+        host = host.TrimEnd('/');
+        var res = new List<MenuItem>(2)
+        {
+            new MenuItem(){ title = "Tìm kiếm", search_on = "search_on", playlist_url = host + "/pubjav" }
+        };
+        var opts = SortsFor(search, c);
+        if (opts == null) return res;   // context không sort -> bỏ dòng 2
+        var sub = new List<MenuItem>(opts.Length);
+        foreach (var (name, s) in opts)
+            sub.Add(new MenuItem(name, host + "/pubjav?c=" + HttpUtility.UrlEncode(WithSort(c, s))));
+        res.Add(new MenuItem()
+        {
+            title = "Sắp xếp: " + SortLabel(CurrentSort(c)),
+            playlist_url = "submenu",
+            submenu = sub
+        });
+        return res;
+    }
+
     // Danh muc year lay tu `<select name="year">` cua form.
     public static readonly string[] Years =
     {
@@ -1375,30 +1460,7 @@ public static class PubJavTo
 
         var root = new List<MenuItem>(6)
         {
-            // Dong 1: tim kiem
-            new MenuItem()
-            {
-                title = "Tìm kiếm",
-                search_on = "search_on",
-                playlist_url = host + "/pubjav"
-            }
         };
-
-        // Dong 2: sap xep
-        root.Add(new MenuItem()
-        {
-            title = "Sắp xếp",
-            playlist_url = "submenu",
-            submenu = new List<MenuItem>()
-            {
-                new("Mới nhất", url("movies?" + FilterQuery + "desc")),
-                new("Lâu nhất", url("movies?" + FilterQuery + "asc")),
-                new("Ngày phát hành", url("movies?" + FilterQuery + "release")),
-                new("Xem nhiều", url("movies?" + FilterQuery + "viewed")),
-                new("Nhiều like", url("movies?" + FilterQuery + "liked")),
-                new("Nhiều yêu thích", url("movies?" + FilterQuery + "favorite"))
-            }
-        });
 
         // Dong 3: the loai. `/genres` co `uncensored`/`amateur` nhung
         // THIEU `censored` (form dropdown moi co) nen them `Censored` vao

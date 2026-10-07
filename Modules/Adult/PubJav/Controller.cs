@@ -44,46 +44,53 @@ public class PubJavController : BaseSisiController
         if (rch?.enable == true)
             StatiCacheDisabled = true;
 
-        return PlaylistResult(cache, await MenuAsync());
+        return PlaylistResult(cache, await MenuAsync(search, c));
     }
 
     // ================= MENU (danh muc) =================
 
     // Menu mang 627 muc (315 genre + 312 studio) nen dung `hybridCache` 12h
     // va chi tao lai 1 lan; neu khong cache thi phai FETCH.
-    async Task<List<MenuItem>> MenuAsync()
+    async Task<List<MenuItem>> MenuAsync(string search, string c)
     {
-        string memKey = ipkey("pubjav:menu");
+        // Base (taxonomy + Chất lượng + Năm) context-free -> cache 1 lần.
+        string memKey = ipkey("pubjav:menu2");
 
+        List<MenuItem> baseMenu = null;
         if (hybridCache.TryGetValue(memKey, out List<MenuItem> hit) &&
             hit != null && hit.Count > 0)
-            return hit;
-
-        string hostLocal = host;
-
-        // KHONG chay nen roi tra menu rut gon ngay: app cache response dau
-        // cho ca phien -> the loai/han phim khong bao gio hien (JavCt,
-        // MissAV da gap). `/genres` + `/studios` la 2 trang tinh 140KB,
-        // fetch song song ~1-3s nen cho lay xong roi tra menu that.
-        try
         {
-            var genresTask = TaxonomiesAsync("genres", "genre/");
-            var studiosTask = TaxonomiesAsync("studios", "studio/");
-            await Task.WhenAll(genresTask, studiosTask);
-
-            var g = await genresTask;
-            var s = await studiosTask;
-
-            if (g.Count > 0 || s.Count > 0)
-            {
-                var menu = PubJavTo.Menu(hostLocal, g, s);
-                hybridCache.Set(memKey, menu, cacheTime(720), true);
-                return menu;
-            }
+            baseMenu = hit;
         }
-        catch { }
+        else
+        {
+            string hostLocal = host;
+            try
+            {
+                var genresTask = TaxonomiesAsync("genres", "genre/");
+                var studiosTask = TaxonomiesAsync("studios", "studio/");
+                await Task.WhenAll(genresTask, studiosTask);
 
-        return PubJavTo.Menu(hostLocal, null, null);
+                var g = await genresTask;
+                var s = await studiosTask;
+
+                if (g.Count > 0 || s.Count > 0)
+                {
+                    baseMenu = PubJavTo.Menu(hostLocal, g, s);
+                    hybridCache.Set(memKey, baseMenu, cacheTime(720), true);
+                }
+            }
+            catch { }
+
+            if (baseMenu == null)
+                baseMenu = PubJavTo.Menu(hostLocal, null, null);
+        }
+
+        // Head (dòng 1 + 2) dựng lại mỗi request — rẻ, phụ thuộc search/c.
+        var menu = PubJavTo.MenuHead(host, search, c);
+        if (baseMenu != null)
+            menu.AddRange(baseMenu);
+        return menu;
     }
 
     async Task<List<(string slug, string name)>> TaxonomiesAsync(string page, string prefix)
