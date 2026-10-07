@@ -54,7 +54,7 @@ public class PubJavController : BaseSisiController
     async Task<List<MenuItem>> MenuAsync(string search, string c)
     {
         // Base (taxonomy + Chất lượng + Năm) context-free -> cache 1 lần.
-        string memKey = ipkey("pubjav:menu2");
+        string memKey = ipkey("pubjav:menu3");
 
         List<MenuItem> baseMenu = null;
         if (hybridCache.TryGetValue(memKey, out List<MenuItem> hit) &&

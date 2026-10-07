@@ -1347,96 +1347,148 @@ public static class PubJavTo
         return res;
     }
 
-    // Sort cua site lay tu `<select name="sort">` cua form `/movies`:
-    //   desc | asc | release | viewed | liked | favorite
+    // Sort thật của site (từ <select name="sort"> của form myFilter,
+    // CO MAT tren ca genre/*, studio/*, search tra ve 0 item):
+    // desc | asc | release | viewed | liked | favorite
     //
-    // QUAN TRONG: form do gui DAY DU 4 tham so (`genre`, `quality`,
-    // `year`, `sort`). Chi gui `?sort=viewed` thi server BO QUA sort va
-    // tra ve thu tu mac dinh (da doThat tren site: `?sort=viewed` ra
-    // y hang `?sort=desc`). Nen moi duong filter/sort deu phai day du.
-    public const string FilterQuery = "genre=all&quality=all&year=all&sort=";
-
-    // Sort thật của site (từ <select name="sort">), THEO CONTEXT:
-    // sort CHỈ SỐNG trên `/movies` (c rỗng = home = /movies, hoặc c bắt
-    // đầu "movies"). `genre/*`, `studio/*`, `?s=` chết hẳn (đo
-    // 2026-10-07: genre?sort= == genre). Context không sort được
-    // -> null -> bỏ hẳn dòng 2.
-    static readonly (string name, string sort)[] MovieSorts =
+    // QUAN TRONG (do that 2026-10-07 tren genre/beautiful-pussy):
+    // form GET toi /genre/<slug> voi DAY DU 4 query (genre, quality,
+    // year, sort). Chi gui `?sort=viewed` thi server BO QUA sort, tra ve
+    // y nhu base (sequence 24/24 trung).
+    public static readonly (string name, string sort)[] Sorts =
     {
-        ("Mới nhất",        "desc"),
-        ("Lâu nhất",        "asc"),
-        ("Ngày phát hành",  "release"),
-        ("Xem nhiều",       "viewed"),
-        ("Nhiều like",      "liked"),
-        ("Nhiều yêu thích", "favorite"),
+        ("Mới cập nhật",   "desc"),
+        ("Cũ nhất",        "asc"),
+        ("Ngày phát hành", "release"),
+        ("Xem nhiều",      "viewed"),
+        ("Nhiều like",     "liked"),
+        ("Nhiều yêu thích","favorite"),
     };
 
+    static readonly string[] SortWhitelist =
+        { "desc", "asc", "release", "viewed", "liked", "favorite" };
+
+    public static string NormalizeSort(string sort)
+    {
+        if (string.IsNullOrWhiteSpace(sort)) return null;
+        sort = sort.Trim().ToLowerInvariant();
+        return Array.IndexOf(SortWhitelist, sort) >= 0 ? sort : null;
+    }
+
+    // Sort AP DUOC: genre/* + studio/* (ghep fullquery) VA movies
+    // (home/movies). search KHONG co <select> sort -> null.
     public static (string name, string sort)[] SortsFor(string search, string c)
     {
         if (!string.IsNullOrWhiteSpace(search)) return null;
-        if (string.IsNullOrWhiteSpace(c)) return MovieSorts;        // home = /movies
+        if (string.IsNullOrWhiteSpace(c)) return Sorts;   // home = /movies
         string path = c.Trim().TrimStart('/');
         int at = path.IndexOf('?');
         if (at >= 0) path = path.Substring(0, at);
-        if (path.StartsWith("movies", StringComparison.OrdinalIgnoreCase)) return MovieSorts;
-        return null;   // genre/*, studio/* -> không sort
+        path = path.Trim('/').ToLowerInvariant();
+        if (path.StartsWith("movies")) return Sorts;
+        if (path.StartsWith("genre/")) return Sorts;
+        if (path.StartsWith("studio/")) return Sorts;
+        return null;
     }
 
-    // Sort hiện tại của list đang mở, đọc từ `c` (movies?...&sort=X).
+    // (raw, path, query): tach `c` thanh path + query de ghep sort.
+    static (string path, string query) SplitC(string c)
+    {
+        if (string.IsNullOrWhiteSpace(c)) return ("movies", "");
+        string raw = c.Trim();
+        int at = raw.IndexOf('?');
+        string path = (at >= 0 ? raw.Substring(0, at) : raw).Trim('/');
+        string query = at >= 0 ? raw.Substring(at + 1).Trim('&') : "";
+        if (string.IsNullOrEmpty(path)) path = "movies";
+        return (path, query);
+    }
+
+    static string QVal(string query, string key)
+    {
+        var m = Regex.Match("&" + query, @"[?&]" + key + @"=([^&]*)",
+            RegexOptions.IgnoreCase);
+        return m.Success ? m.Groups[1].Value : null;
+    }
+
+    // Ghep sort vao `c` hien tai: giu nguyen genre/quality/year dang loc,
+    // chi doi sort. Trang genre/studio ghep DAY DU 4 query (form myFilter),
+    // thieu la site bo qua sort (do that 2026-10-07).
+    public static string WithSort(string c, string sort)
+    {
+        var (path, query) = SplitC(c);
+        string genre = QVal(query, "genre") ?? "all";
+        string quality = QVal(query, "quality") ?? "all";
+        string year = QVal(query, "year") ?? "all";
+        return $"{path}?genre={genre}&quality={quality}&year={year}&sort={sort}";
+    }
+
+    // Ghep year vao `c` hien tai: giu sort dang chon, doi year.
+    public static string WithYear(string c, string sort, string year)
+    {
+        var (path, query) = SplitC(c);
+        string genre = QVal(query, "genre") ?? "all";
+        string quality = QVal(query, "quality") ?? "all";
+        return $"{path}?genre={genre}&quality={quality}&year={year}&sort={sort}";
+    }
+
+    // Sort hien tai doc tu `c`; year hien tai doc tu `c`.
     public static string CurrentSort(string c)
     {
-        if (string.IsNullOrWhiteSpace(c)) return "desc";
-        var m = Regex.Match(c, @"[?&]sort=([^&]+)");
-        return m.Success ? m.Groups[1].Value.Trim().ToLowerInvariant() : "desc";
+        var (_, query) = SplitC(c);
+        return NormalizeSort(QVal(query, "sort")) ?? "desc";
+    }
+
+    public static string CurrentYear(string c)
+    {
+        var (_, query) = SplitC(c);
+        string y = QVal(query, "year");
+        if (string.IsNullOrEmpty(y)) return "all";
+        if (y.Equals("all", StringComparison.OrdinalIgnoreCase)) return "all";
+        return Array.IndexOf(Years, y) >= 0 ? y : "all";
     }
 
     public static string SortLabel(string sort)
     {
-        switch ((sort ?? "desc").ToLowerInvariant())
-        {
-            case "asc": return "Lâu nhất";
-            case "release": return "Ngày phát hành";
-            case "viewed": return "Xem nhiều";
-            case "liked": return "Nhiều like";
-            case "favorite": return "Nhiều yêu thích";
-            default: return "Mới nhất";
-        }
-    }
-
-    // Giữ nguyên genre/quality/year của `c` hiện tại, chỉ đổi `sort`.
-    public static string WithSort(string c, string sort)
-    {
-        string genre = "all", quality = "all", year = "all";
-        if (!string.IsNullOrWhiteSpace(c))
-        {
-            var g = Regex.Match(c, @"[?&]genre=([^&]+)");
-            var q = Regex.Match(c, @"[?&]quality=([^&]+)");
-            var y = Regex.Match(c, @"[?&]year=([^&]+)");
-            if (g.Success) genre = g.Groups[1].Value;
-            if (q.Success) quality = q.Groups[1].Value;
-            if (y.Success) year = y.Groups[1].Value;
-        }
-        return $"movies?genre={genre}&quality={quality}&year={year}&sort={sort}";
+        foreach (var (name, s) in Sorts)
+            if (s == sort) return name;
+        return "Mới cập nhật";
     }
 
     // ===== head menu: phụ thuộc search/c -> dựng lại mỗi request (rẻ) =====
+    // Dong 2 "Sắp xếp" + dong 2b "Năm": 2 trong 4 o filter lay vao menu
+    // theo yeu cau user 2026-10-07 (Genre/Quality bo qua: Genre = chinh
+    // menu The loai, Quality chi co HD/SD).
     public static List<MenuItem> MenuHead(string host, string search, string c)
     {
         host = host.TrimEnd('/');
-        var res = new List<MenuItem>(2)
+        var res = new List<MenuItem>(3)
         {
             new MenuItem(){ title = "Tìm kiếm", search_on = "search_on", playlist_url = host + "/pubjav" }
         };
         var opts = SortsFor(search, c);
-        if (opts == null) return res;   // context không sort -> bỏ dòng 2
+        if (opts == null) return res;   // search -> bo dong 2
+        string curSort = CurrentSort(c);
+        string curYear = CurrentYear(c);
         var sub = new List<MenuItem>(opts.Length);
         foreach (var (name, s) in opts)
             sub.Add(new MenuItem(name, host + "/pubjav?c=" + HttpUtility.UrlEncode(WithSort(c, s))));
         res.Add(new MenuItem()
         {
-            title = "Sắp xếp: " + SortLabel(CurrentSort(c)),
+            title = "Sắp xếp: " + SortLabel(curSort),
             playlist_url = "submenu",
             submenu = sub
+        });
+        var ysub = new List<MenuItem>(Years.Length + 1)
+        {
+            new MenuItem("Tất cả", host + "/pubjav?c=" + HttpUtility.UrlEncode(WithYear(c, curSort, "all")))
+        };
+        foreach (string y in Years)
+            ysub.Add(new MenuItem(y, host + "/pubjav?c=" + HttpUtility.UrlEncode(WithYear(c, curSort, y))));
+        res.Add(new MenuItem()
+        {
+            title = "Năm: " + (curYear == "all" ? "Tất cả" : curYear),
+            playlist_url = "submenu",
+            submenu = ysub
         });
         return res;
     }
@@ -1509,18 +1561,8 @@ public static class PubJavTo
             }
         });
 
-        // Dong 6: nam phat hanh
-        var yearMenu = new List<MenuItem>(Years.Length);
-        foreach (string year in Years)
-            yearMenu.Add(new MenuItem(year,
-                url($"movies?genre=all&quality=all&year={year}&sort=desc")));
-
-        root.Add(new MenuItem()
-        {
-            title = "Năm",
-            playlist_url = "submenu",
-            submenu = yearMenu
-        });
+        // Dong 6/Menu base: bo nhom "Năm" tinh — year da la dong dong
+        // trong head (WithYear, giu sort hien tai). Tranh trung lap.
 
         return root;
     }

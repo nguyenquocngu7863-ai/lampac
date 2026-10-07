@@ -73,15 +73,15 @@ public class JavHDTodayController : BaseSisiController
         if (rch?.enable == true)
             StatiCacheDisabled = true;
 
-        return PlaylistResult(cache, await MenuAsync());
+        return PlaylistResult(cache, await MenuAsync(search, c));
     }
 
     // "The loai" boc tu /categories/ (99 card, loc tube, top 50
     // theo so phim); "Hang phim" boc tu dropdown nav trang chu.
     // Cache 1 gio trong RAM. Head (Tim kiem) dung moi request.
-    async Task<List<MenuItem>> MenuAsync()
+    async Task<List<MenuItem>> MenuAsync(string search, string c)
     {
-        var menu = JavHDTodayTo.MenuHead(host);
+        var menu = JavHDTodayTo.MenuHead(host, search, c);
         string gkey = ipkey("javhdtoday:cats");
         string skey = ipkey("javhdtoday:studios");
 

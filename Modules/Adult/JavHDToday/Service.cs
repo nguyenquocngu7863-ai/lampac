@@ -30,57 +30,69 @@ public static class JavHDTodayTo
             host = SiteHost;
         host = host.TrimEnd('/');
 
-        // Tim kiem theo ID/dien vien/hang:
-        // /search/video/?s=<q>&ajax=1[&page=N]
+        // Tim kiem: /search/video/?s=<q>[&o=<sort>]&ajax=1[&page=N].
+        // `c` dang "o=<sort>" khi user chon sort o dong 2 (MenuHead ghep).
         if (!string.IsNullOrWhiteSpace(search))
         {
+            string o = NormalizeSort(SearchO(c));
             string u = host + "/search/video/?s="
                 + HttpUtility.UrlEncode(search.Trim())
+                + (string.IsNullOrEmpty(o) ? "" : "&o=" + o)
                 + "&ajax=1";
             return pg > 1 ? u + "&page=" + pg : u;
         }
 
-        string path = "recent/";
-        if (!string.IsNullOrEmpty(c))
+        // Home (c rong) = /recent/ + browse_videos.
+        if (string.IsNullOrWhiteSpace(c))
+            return host + "/recent/?ajax=browse_videos&page=" + Math.Max(1, pg);
+
+        // Tach sort o segment cuoi: <base>/<sort>/
+        string raw = c.Trim().Trim('/');
+        int qi = raw.IndexOf('?');
+        if (qi >= 0) raw = raw.Substring(0, qi);
+        raw = raw.Trim('/');
+        string low = raw.ToLowerInvariant();
+
+        // 7 list toan cuc + popular goc: browse_videos.
+        if (IsGlobalList(low))
         {
-            c = c.Trim('/');
-            path = c.StartsWith("http",
-                StringComparison.OrdinalIgnoreCase)
-                ? c : c;
-            if (!path.StartsWith("http",
-                StringComparison.OrdinalIgnoreCase))
-                path = path.Trim('/') + "/";
+            string gbu = host + "/" + low + "/";
+            return gbu + "?ajax=browse_videos&page=" + Math.Max(1, pg);
         }
 
-        // 5 trang list goc dung ?ajax=browse_videos; the loai
-        // dung ?ajax=1, trang 2+ theo /<path>/recent/<N>/?ajax=1.
-        if (!path.StartsWith("http",
-                StringComparison.OrdinalIgnoreCase)
-            && !IsBrowsePath(path))
-        {
-            if (pg > 1)
-                return host + "/" + path
-                    + "recent/" + pg + "/?ajax=1";
+        string basePath = BasePath(raw);
+        string last = low.Equals(basePath.ToLowerInvariant(),
+            StringComparison.Ordinal) ? ""
+            : low.Substring(basePath.Length).Trim('/');
+        string sort = NormalizeSort(last);
 
-            return host + "/" + path + "?ajax=1";
+        // Home sort: /<sort>/?ajax=browse_videos (do live 2026-10-07:
+        // /watched/ + browse_videos ra 28 item, /recent/watched/ chet).
+        if (basePath.Equals("recent", StringComparison.OrdinalIgnoreCase))
+        {
+            string b = string.IsNullOrEmpty(sort) ? "recent" : sort;
+            return host + "/" + b + "/?ajax=browse_videos&page=" + Math.Max(1, pg);
         }
 
-        string url = path.StartsWith("http",
-            StringComparison.OrdinalIgnoreCase)
-            ? path.TrimEnd('/') + "/"
-            : host + "/" + path;
-        return url + "?ajax=browse_videos&page="
-            + Math.Max(1, pg);
+        // Genre <slug>[/<sort>]/: sort THAT dang PATH (do live 2026-10-07:
+        // /big-tits/popular/?ajax=1 doi that, con ?ajax=1&sort=popular
+        // tra ve y nhu base). Trang 2: /<slug>/<sort>/recent/<N>/?ajax=1.
+        string gbase = basePath.Trim('/') + "/"
+            + (string.IsNullOrEmpty(sort) ? "" : sort + "/");
+        string gurl = host + "/" + gbase;
+        if (pg > 1)
+            return gurl + "recent/" + pg + "/?ajax=1";
+        return gurl + "?ajax=1";
     }
 
-    // 5 trang list goc (recent/popular/releaseday) chay
-    // ?ajax=browse_videos; con lai (the loai, kenh) chay ?ajax=1.
-    static bool IsBrowsePath(string path)
+    // 7 list toan cuc + popular goc chay ?ajax=browse_videos.
+    static bool IsGlobalList(string path)
     {
-        string p = path.Trim('/').ToLowerInvariant();
-        return p == "recent" || p == "releaseday"
-            || p == "popular/today" || p == "popular/week"
-            || p == "popular/month";
+        string q = path.Trim('/').ToLowerInvariant();
+        return q == "recent" || q == "releaseday"
+            || q == "popular/today" || q == "popular/week"
+            || q == "popular/month" || q == "popular/year"
+            || q == "popular";
     }
 
     public static List<Shared.Models.SISI.Base.PlaylistItem> Playlist(string uri, string json)
@@ -773,22 +785,163 @@ public static class JavHDTodayTo
         return null;
     }
 
-    // MENU §9g (2026-10-07): site KHONG co sort — 5 list (recent /
-    // popular today-week-month / releaseday) la LIST toan cuc, khong phai
-    // sort cua list dang mo -> khong co dong 2. Dong 1 Tim kiem (head),
-    // dong 3 Bang xep hang + taxonomy (base, cache 1 lan).
-    public static List<Shared.Models.SISI.Base.MenuItem> MenuHead(string host)
+    // 8 sort THAT cua dropdown tren moi trang list (do truc tiep
+    // HTML trang genre 2026-10-07). DANG URL: <base>/<sort>/ + ajax:
+    //   genre `<slug>/<sort>/?ajax=1`  (big-tits/watched, rated... OK)
+    //   home  `<sort>/?ajax=browse_videos` (watched OK; /recent/watched/ chet)
+    // Rieng `popular` goc KHONG phai sort — no la base rieng
+    // (/popular/today|week|month|year + browse_videos).
+    public static readonly (string name, string sort)[] Sorts =
+    {
+        ("Mới nhất",      ""),
+        ("Phổ biến",      "popular"),
+        ("Ngày phát hành","releaseday"),
+        ("Đánh giá cao",  "rated"),
+        ("Bình luận",     "discussed"),
+        ("Tải nhiều",     "downloaded"),
+        ("Dài nhất",      "longest"),
+        ("Xem nhiều",     "watched"),
+    };
+
+    static readonly string[] SortWhitelist =
+        { "popular", "releaseday", "rated", "discussed", "downloaded", "longest", "watched" };
+
+    public static string NormalizeSort(string sort)
+    {
+        if (string.IsNullOrWhiteSpace(sort)) return null;
+        sort = sort.Trim().ToLowerInvariant();
+        return Array.IndexOf(SortWhitelist, sort) >= 0 ? sort : null;
+    }
+
+    // Sort AP DUOC: home (c rong = /recent/), genre `<slug>/`, search
+    // (?s=&o=). 5 list toan cuc (/popular/today.../releaseday) la BASE
+    // rieng, khong phai sort — o nhom "Bang xep hang".
+    public static (string name, string sort)[] SortsFor(string search, string c)
+    {
+        if (!string.IsNullOrWhiteSpace(search)) return SearchSorts;
+        if (string.IsNullOrWhiteSpace(c)) return Sorts;   // home
+        string path = c.Trim().Trim('/').ToLowerInvariant();
+        if (IsGlobalList(path)) return null;              // base rieng
+        if (path == "recent") return Sorts;
+        // <base>/<sort>/: tach base truoc (big-tits/watched -> big-tits)
+        string bseg = BasePath(path);
+        if (bseg.Equals("recent", StringComparison.OrdinalIgnoreCase)) return Sorts;
+        if (!bseg.Contains("/")) return Sorts;            // genre <slug>
+        return null;
+    }
+
+    // Search sort that (?s=&o=, do live 2026-10-07: recent/popular/rated
+    // deu doi list so voi relevance).
+    static readonly (string name, string sort)[] SearchSorts =
+    {
+        ("Liên quan",  ""),
+        ("Mới nhất",   "recent"),
+        ("Phổ biến",   "popular"),
+        ("Đánh giá cao","rated"),
+        ("Bình luận",  "discussed"),
+        ("Tải nhiều",  "downloaded"),
+    };
+
+    // Sort hien tai: voi genre/home doc tu segment cuoi cua `c`;
+    // voi search doc tu `o` (truyen qua `c` dang "o=<x>" hoac query).
+    public static string CurrentSort(string search, string c)
+    {
+        if (!string.IsNullOrWhiteSpace(search))
+            return NormalizeSort(SearchO(c)) ?? "";
+        if (string.IsNullOrWhiteSpace(c)) return "";
+        string path = c.Trim().Trim('/').ToLowerInvariant();
+        int slash = path.LastIndexOf('/');
+        string last = slash >= 0 ? path.Substring(slash + 1) : path;
+        if (last == "recent") return "";
+        return NormalizeSort(last) ?? "";
+    }
+
+    static string SearchO(string c)
+    {
+        if (string.IsNullOrWhiteSpace(c)) return null;
+        var m = Regex.Match("&" + c.TrimStart('?'), @"[?&]o=([^&]*)",
+            RegexOptions.IgnoreCase);
+        return m.Success ? m.Groups[1].Value : null;
+    }
+
+    public static string SortLabel(string sort)
+    {
+        if (string.IsNullOrEmpty(sort)) return "Mới nhất";
+        foreach (var (name, s) in Sorts)
+            if (s == sort) return name;
+        foreach (var (name, s) in SearchSorts)
+            if (s == sort) return name;
+        return sort;
+    }
+
+    // Ghep sort vao `c` hien tai (giu base). Genre/home: <base>/<sort>/;
+    // mac dinh (sort rong): ve base goc. Search: truyen "o=<sort>".
+    public static string WithSort(string search, string c, string sort)
+    {
+        if (!string.IsNullOrWhiteSpace(search))
+            return string.IsNullOrEmpty(sort) ? "" : "o=" + sort;
+        string basePath = BasePath(c);
+        return string.IsNullOrEmpty(sort) ? basePath : basePath + "/" + sort;
+    }
+
+    // Base path cua `c` (bo segment sort cuoi neu co).
+    public static string BasePath(string c)
+    {
+        if (string.IsNullOrWhiteSpace(c)) return "recent";
+        string path = c.Trim().Trim('/');
+        // bo query thua (search o=)
+        int q = path.IndexOf('?');
+        if (q >= 0) path = path.Substring(0, q);
+        q = path.IndexOf('&');
+        if (q >= 0) path = path.Substring(0, q);
+        path = path.Trim('/');
+        if (path.Length == 0) return "recent";
+        string low = path.ToLowerInvariant();
+        if (low == "recent") return "recent";
+        int slash = path.LastIndexOf('/');
+        string last = (slash >= 0 ? path.Substring(slash + 1) : path).ToLowerInvariant();
+        if (NormalizeSort(last) != null)
+            path = slash >= 0 ? path.Substring(0, slash) : "recent";
+        path = path.Trim('/');
+        return path.Length == 0 ? "recent" : path;
+    }
+
+    // ===== head menu: dong 1 + 2, dung moi request (re) =====
+    public static List<Shared.Models.SISI.Base.MenuItem> MenuHead(
+        string host, string search, string c)
     {
         host = host.TrimEnd('/');
-        return new List<Shared.Models.SISI.Base.MenuItem>()
+        string root = host + "/javhdtoday";
+        var res = new List<Shared.Models.SISI.Base.MenuItem>(2)
         {
             new Shared.Models.SISI.Base.MenuItem()
             {
                 title = "Tìm kiếm",
                 search_on = "search_on",
-                playlist_url = host + "/javhdtoday"
+                playlist_url = root
             }
         };
+        var opts = SortsFor(search, c);
+        if (opts == null || opts.Length == 0) return res;
+        string cur = CurrentSort(search, c);
+        var sub = new List<Shared.Models.SISI.Base.MenuItem>(opts.Length);
+        foreach (var (name, s) in opts)
+        {
+            string link;
+            if (!string.IsNullOrWhiteSpace(search))
+                link = root + "?search=" + HttpUtility.UrlEncode(search)
+                    + (string.IsNullOrEmpty(s) ? "" : "&c=" + HttpUtility.UrlEncode("o=" + s));
+            else
+                link = root + "?c=" + HttpUtility.UrlEncode(WithSort(search, c, s));
+            sub.Add(new Shared.Models.SISI.Base.MenuItem() { title = name, playlist_url = link });
+        }
+        res.Add(new Shared.Models.SISI.Base.MenuItem()
+        {
+            title = "Sắp xếp: " + SortLabel(cur),
+            playlist_url = "submenu",
+            submenu = sub
+        });
+        return res;
     }
 
     public static List<Shared.Models.SISI.Base.MenuItem> Menu(
