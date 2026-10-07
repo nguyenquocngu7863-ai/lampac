@@ -428,6 +428,34 @@ public static class PubJavTo
 
     public static bool IsSupported(string label) => Priority(label) < 99;
 
+    // Suy kind tu LABEL (khong can fetch iframe): dung cho /vidosik liet ke
+    // nhanh §11c2. Moi label map toi 1 host co dinh:
+    //   F4 -> f4stream.com (hls)   FL/SW -> StreamHG (hls)
+    //   ST -> strtape.cloud (mp4)  DD -> playmogo.com (mp4, Dood)
+    //   PM -> playmate.to (hls)    US/PP -> upn (hls)
+    public static string KindByLabel(string label)
+    {
+        string key = label ?? "";
+        var m = Regex.Match(key, @"^([A-Za-z0-9]+)");
+        key = m.Success ? m.Groups[1].Value.ToUpperInvariant() : "";
+        switch (key)
+        {
+            case "F4":
+            case "FL":
+            case "SW":
+            case "PM":
+            case "US":
+            case "PP":
+                return "hls";
+            case "ST":
+            case "DD":
+            case "TB":
+                return "mp4";
+            default:
+                return "hls";
+        }
+    }
+
     // Host cua iframe -> dang link. Dung de chon route .m3u8 hay .mp4
     // (app Lampa chon player theo DUOI url, mp4 di qua .m3u8 se loi
     // "no EXTM3U delimiter").

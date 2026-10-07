@@ -112,15 +112,57 @@ public class PubJavController : BaseSisiController
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
 
-        var servers = await IframesAsync(uri);
-        if (servers == null || servers.Count == 0)
+        // §11c2: /vidosik CHI LIET KE (1 fetch detail + Servers()), KHONG
+        // POST /ajax/player. POST chain (IframesAsync) cham va token noi tiep
+        // nen lam popup mat 10-20s. Loai kind suy tu label (KindByLabel).
+        string pageUrl = PubJavTo.NormalizePageUrl(uri);
+        if (string.IsNullOrEmpty(pageUrl))
             return OnError("stream_links", refresh_proxy: true);
 
-        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var server in servers)
+        string listKey = ipkey($"pubjav:servers:{pageUrl}");
+        Dictionary<string, string> labels = null;
+        if (hybridCache.TryGetValue(listKey, out Dictionary<string, string> hit)
+            && hit != null && hit.Count > 0)
         {
-            result[server.Label] = StreamRoute(uri, server.Label, server.Kind);
+            labels = hit;
         }
+        else
+        {
+            string detail = await GetPageAsync(pageUrl);
+            var (filmId, pt, pk) = PubJavTo.Tokens(detail);
+            if (string.IsNullOrEmpty(filmId))
+                return OnError("stream_links", refresh_proxy: true);
+            labels = PubJavTo.Servers(detail, filmId);
+            if (labels == null || labels.Count == 0)
+                return OnError("stream_links", refresh_proxy: true);
+            labels = FilterSupported(labels);
+            hybridCache.Set(listKey, labels, cacheTime(15));
+        }
+
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var kv in labels)
+        {
+            string kind = PubJavTo.KindByLabel(kv.Key);
+            result[kv.Key] = StreamRoute(uri, kv.Key, kind);
+        }
+
+        // Warm-up nen: chay IframesAsync (POST chain) + resolve server tot
+        // nhat de khi bam an lien <1s. Khong await.
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var iframes = await IframesAsync(uri);
+                if (iframes == null) return;
+                var warm = iframes
+                    .Where(s => PubJavTo.Priority(s.Label) <= 2)
+                    .OrderBy(s => PubJavTo.Priority(s.Label))
+                    .Take(2);
+                foreach (var s in warm)
+                    await StreamAsync(uri, s, 12000);
+            }
+            catch { }
+        });
 
         if (rch?.enable == true)
             return OnResult(result);
@@ -128,15 +170,26 @@ public class PubJavController : BaseSisiController
         return Json(result);
     }
 
+    static Dictionary<string, string> FilterSupported(Dictionary<string, string> labels)
+    {
+        var r = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var kv in labels)
+            if (PubJavTo.IsSupported(kv.Key)) r[kv.Key] = kv.Value;
+        return r;
+    }
+
     // App bo sau ~30s (thuc te 18s) nen phan trong deadline 22s.
     [HttpGet]
     [Route("pubjav/video.mp4")]
     [Route("pubjav/video.m3u8")]
-    async public Task<ActionResult> Video(string uri, string q)
+    async public Task<ActionResult> Video(string uri, string q, string srv = null)
     {
         if (await IsRequestBlocked(rch: true))
             return badInitMsg;
 
+        // §11c2: srv (hoac q cu) la server user bam. IframesAsync da duoc
+        // warm-up nen trong /vidosik (cache 20p) nen day an nhanh.
+        string label = !string.IsNullOrEmpty(srv) ? srv : q;
         var servers = await IframesAsync(uri);
         if (servers == null || servers.Count == 0)
             return OnError("stream_links", refresh_proxy: true);
@@ -475,7 +528,7 @@ public class PubJavController : BaseSisiController
     {
         string route = kind == "hls" ? "video.m3u8" : "video.mp4";
         return $"{host}/pubjav/{route}?uri={HttpUtility.UrlEncode(uri)}" +
-               $"&q={HttpUtility.UrlEncode(label)}";
+               $"&srv={HttpUtility.UrlEncode(label)}";
     }
 
     static IReadOnlyList<HeadersModel> PageHeaders()
