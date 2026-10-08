@@ -54,43 +54,48 @@ public class JavTsunamiController : BaseSisiController
         if (rch?.enable == true)
             StatiCacheDisabled = true;
 
-        return PlaylistResult(cache, await MenuAsync());
+        return PlaylistResult(cache, await MenuAsync(search, c));
     }
 
-    // Menu "Thể loại" FULL tu trang `/categories` (4 trang, 93 muc).
-    // Tags (~1000 muc) TAM NGHI: nhieu tag it phim, submenu dai kho dung.
-    // Code lay tag (TagList/TagAll) giu lai, can thi bat lai.
-    // Fetch CHAN DONG BO lan dau (4 trang WP nhe, deadline + retry san):
-    // warm nen tra menu rong -> Staticache/app cache luon ban thieu
-    // cho ca phien (bam The loai khong ra gi). Cache 12h inmemory
-    // (ValueTuple qua file cache doc lai ko duoc).
-    async Task<List<MenuItem>> MenuAsync()
+    // Menu = head (Tim kiem + Sắp xếp theo context, re moi request) +
+    // base (The loai + Tags, cache 12h). Tags top 100 theo so phim.
+    async Task<List<MenuItem>> MenuAsync(string search, string c)
     {
-        string key = ipkey("javtsunami:menu");
+        var menu = JavTsunamiTo.MenuHead(host, search, c);
+        string key = ipkey("javtsunami:menu2");
 
         if (hybridCache.TryGetValue(key, out List<MenuItem> hit) &&
             hit != null && hit.Count > 0)
-            return hit;
+        {
+            menu.AddRange(hit);
+            return menu;
+        }
 
         string hostLocal = host;
 
         try
         {
-            var cats = await JavTsunamiTo.CatAll(6, Ms() + 15000);
+            var catsTask = JavTsunamiTo.CatAll(6, Ms() + 15000);
+            var tagsTask = JavTsunamiTo.TagAll(6, Ms() + 10000);
+            await Task.WhenAll(catsTask, tagsTask);
+            var cats = await catsTask;
+            var tags = await tagsTask;
 
             // Site treo giua chung: lan 1 chi duoc 56/93. Thu lai 1 lan
             // truoc khi chot, neu khong partial bi dong bang 12h.
             if (cats.Count < 70)
                 cats = await JavTsunamiTo.CatAll(6, Ms() + 15000);
 
-            if (cats.Count > 0)
+            if (cats.Count > 0 || tags.Count > 0)
             {
-                // Du (>=70/93 do duoc) thi 12h; thieu thi 5 phut de lan sau
-                // thu lai, khong dong bang ban thieu ca ngay.
-                Console.WriteLine($"JavTsunami: menu cats={cats.Count}");
-                var exp = cats.Count >= 70 ? cacheTime(720) : cacheTime(5);
-                hybridCache.Set(key, JavTsunamiTo.Menu(hostLocal, cats), exp, true);
-                return JavTsunamiTo.Menu(hostLocal, cats);
+                // Du (cats>=70/93 + co tags) thi 12h; thieu thi 5 phut de
+                // lan sau thu lai, khong dong bang ban thieu ca ngay.
+                Console.WriteLine($"JavTsunami: menu cats={cats.Count} tags={tags.Count}");
+                var exp = cats.Count >= 70 && tags.Count > 0 ? cacheTime(720) : cacheTime(5);
+                var baseMenu = JavTsunamiTo.Menu(hostLocal, cats, tags);
+                hybridCache.Set(key, baseMenu, exp, true);
+                menu.AddRange(baseMenu);
+                return menu;
             }
         }
         catch { }
@@ -102,16 +107,18 @@ public class JavTsunamiController : BaseSisiController
                 var cats = await JavTsunamiTo.CatAll(6, Ms() + 15000);
                 if (cats.Count < 70)
                     cats = await JavTsunamiTo.CatAll(6, Ms() + 15000);
-                if (cats.Count <= 0)
+                var tags = await JavTsunamiTo.TagAll(6, Ms() + 10000);
+                if (cats.Count <= 0 && tags.Count <= 0)
                     return;
-                Console.WriteLine($"JavTsunami: menu cats={cats.Count}");
+                Console.WriteLine($"JavTsunami: menu cats={cats.Count} tags={tags.Count}");
                 var exp = cats.Count >= 70 ? cacheTime(720) : cacheTime(5);
-                hybridCache.Set(key, JavTsunamiTo.Menu(hostLocal, cats), exp, true);
+                hybridCache.Set(key, JavTsunamiTo.Menu(hostLocal, cats, tags), exp, true);
             }
             catch { }
         });
 
-        return JavTsunamiTo.Menu(hostLocal, new List<(string, string)>());
+        menu.AddRange(JavTsunamiTo.Menu(hostLocal, new List<(string, string)>()));
+        return menu;
     }
 
     // Trang detail: tach iframe trong <div class="video-player">. Cache 15
@@ -206,6 +213,67 @@ public class JavTsunamiController : BaseSisiController
     async Task<List<(string url, string tag, string referer)>> ResolveAsync(
         JavTsunamiServer pick, long deadline)
     {
+        var empty = new List<(string, string, string)>();
+
+        // --- VD (Vidara): POST /api/stream thang, khong can trang player.
+        // Cong thuc SupJav VAS (verified iosbgaigo YUJ-075).
+        if (JavTsunamiTo.IsVidara(pick.PageUrl))
+        {
+            var (apiHost, filecode) = JavTsunamiTo.VidaraTarget(pick.PageUrl);
+            if (!string.IsNullOrEmpty(apiHost) && !string.IsNullOrEmpty(filecode))
+            {
+                string emb = apiHost + "/e/" + filecode;
+                string json = null;
+                try
+                {
+                    using var content = new System.Net.Http.StringContent(
+                        "{\"filecode\":\"" + filecode + "\",\"device\":\"web\"}",
+                        System.Text.Encoding.UTF8, "application/json");
+                    json = await Http.Post(apiHost + "/api/stream", content,
+                        timeoutSeconds: 12,
+                        headers: HeadersModel.Init(
+                            ("User-Agent", JavTsunamiTo.ChromeUA),
+                            ("Referer", emb),
+                            ("Origin", apiHost)),
+                        disposeData: true);
+                }
+                catch { }
+                string master = JavTsunamiTo.VidaraStreamingUrl(json ?? "");
+                if (!string.IsNullOrEmpty(master))
+                    return new List<(string, string, string)> { (master, "1080p", emb) };
+            }
+            return empty;
+        }
+
+        // --- ST (Streamtape): trang embed -> robotlink -> get_video ->
+        // 302 CDN .mp4 (cong thuc SupJav). Curl tra junk (fingerprint) thi
+        // lui ve HttpClient .NET.
+        if (JavTsunamiTo.IsStreamtape(pick.PageUrl))
+        {
+            string stHtml = await JavTsunamiTo.CurlGetRetry(pick.PageUrl,
+                "https://javtsunami.com/", "robotlink", 2, 8, deadline);
+            if (string.IsNullOrEmpty(stHtml)
+                || stHtml.IndexOf("robotlink", StringComparison.OrdinalIgnoreCase) < 0)
+            {
+                try
+                {
+                    stHtml = await Http.Get(pick.PageUrl, timeoutSeconds: 10,
+                        headers: HeadersModel.Init(
+                            ("User-Agent", JavTsunamiTo.ChromeUA),
+                            ("Referer", "https://javtsunami.com/")));
+                }
+                catch { }
+            }
+            string stApi = JavTsunamiTo.StreamtapeMp4(stHtml);
+            if (!string.IsNullOrEmpty(stApi))
+            {
+                var fin = await JavTsunamiTo.CurlGetUrl(stApi, pick.PageUrl, 8);
+                string mp4 = !string.IsNullOrEmpty(fin.finalUrl) ? fin.finalUrl : stApi;
+                return new List<(string, string, string)> { (mp4, "mp4", pick.PageUrl) };
+            }
+            return empty;
+        }
+
         // Server Turbo: iframe /t/<id> -> trang player. Marker rong (khong kiem
         // data-hash) vi player co 2 dang: HLS co data-hash, MP4 chi co
         // `var urlPlay` — yeu cau data-h8 se loai sach 1/3 video.
@@ -229,6 +297,22 @@ public class JavTsunamiController : BaseSisiController
         {
             var masters = JavTsunamiTo.HicherriMasters(player);
             var hvars = await JavTsunamiTo.HicherriVariantsAsync(masters, 5, deadline);
+            if (hvars.Count > 0)
+                return hvars.Select(x => (x.url, x.tag, (string)null)).ToList();
+
+            return new List<(string, string, string)>();
+        }
+
+        // --- EV (FapSharing, ho StreamHG): packer -> var links, path
+        // relative ghep host embed. Probe nhu Hicherri.
+        if (JavTsunamiTo.IsFapsharing(pick.PageUrl))
+        {
+            string ehost = null;
+            try { ehost = new Uri(pick.PageUrl).GetLeftPart(UriPartial.Authority) + "/"; }
+            catch { }
+            var masters = JavTsunamiTo.FapMasters(player, pick.PageUrl);
+            var hvars = await JavTsunamiTo.HicherriVariantsAsync(masters, 5, deadline,
+                ehost ?? "https://fapsharing.com/");
             if (hvars.Count > 0)
                 return hvars.Select(x => (x.url, x.tag, (string)null)).ToList();
 
