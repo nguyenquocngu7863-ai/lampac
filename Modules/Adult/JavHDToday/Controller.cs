@@ -170,7 +170,7 @@ public class JavHDTodayController : BaseSisiController
         if (string.IsNullOrWhiteSpace(uri))
             return null;
 
-        string memKey = ipkey($"javhdtoday:servers:{uri}");
+        string memKey = ipkey($"javhdtoday:servers2:{uri}");
         if (hybridCache.TryGetValue(memKey,
             out List<JavHDTodayServer> cached)
             && cached != null && cached.Count > 0)
@@ -182,9 +182,16 @@ public class JavHDTodayController : BaseSisiController
         // Timeout ngan + it lan thu: lan thanh cong 0.4-0.6s,
         // lan treo an het --max-time. Deadline 12s + probe
         // Turbo 4s van duoi tran 18s cua app (nhu JavTsunami).
+        // Detail uu tien curl direct (trang FULL 155KB, du 12 nut):
+        // httpHydra qua proxy co the tra trang thieu nut (verified
+        // 2026-10-07: hydra len=143389 thieu Limecloud, curl len=155766
+        // du) — bam Limecloud thi pick=null.
         long deadline = Ms() + 12000;
-        string detail = await FetchHtmlAsync(pageUrl,
-            "data-embed", 2, 4, deadline);
+        string detail = await JavHDTodayTo.CurlGetRetry(pageUrl,
+            JavHDTodayTo.SiteHost + "/", "data-embeds", 2, 4, deadline);
+        if (string.IsNullOrEmpty(detail))
+            detail = await FetchHtmlAsync(pageUrl,
+                "data-embed", 2, 4, deadline);
         if (string.IsNullOrEmpty(detail))
             return null;
 
@@ -216,7 +223,9 @@ public class JavHDTodayController : BaseSisiController
         if (servers.Count == 0)
             return OnError("stream_links", refresh_proxy: true);
 
-        // Kind biet ngay tu host (Dood=mp4, Cloud/javhdz=HLS).
+        // Kind biet ngay tu host (Dood/ST/Streamtape=mp4,
+        // Cloud/javhdz cu/Fast=HLS, STserver phan biet bang
+        // embed_server9 trong ServerKindAsync).
         // Rieng Turbo DA DANG nen do song song, deadline 4s.
         // Tong: detail toi da 12s + probe 4s < tran 18s cua app.
         int total = servers.Count;
@@ -227,7 +236,9 @@ public class JavHDTodayController : BaseSisiController
         {
             string u = servers[i].PageUrl;
             if (JavHDTodayTo.IsDood(u) || JavHDTodayTo.IsCloud(u)
-                || JavHDTodayTo.IsJavhdz(u))
+                || JavHDTodayTo.IsJavhdz(u)
+                || JavHDTodayTo.IsStreamtape(u)
+                || JavHDTodayTo.IsUpn(u))
             {
                 kinds[i] = servers[i].Kind;
                 return;
@@ -248,7 +259,7 @@ public class JavHDTodayController : BaseSisiController
 
             // Nho dang da do de /video fallback khong do lai.
             hybridCache.Set(
-                ipkey($"javhdtoday:kind:{uri}:{servers[i].Label}"),
+                ipkey($"javhdtoday:kind2:{uri}:{servers[i].Label}"),
                 servers[i].Kind ?? "",
                 cacheTime(15));
 
@@ -263,7 +274,7 @@ public class JavHDTodayController : BaseSisiController
         }
 
         hybridCache.Set(
-            ipkey($"javhdtoday:servers:{uri}"), servers, cacheTime(15));
+            ipkey($"javhdtoday:servers2:{uri}"), servers, cacheTime(15));
 
         return Json(dict);
     }
@@ -283,6 +294,18 @@ public class JavHDTodayController : BaseSisiController
                 return empty;
 
             return new List<(string, string, string)> { (src, "mp4", refDood) };
+        }
+
+        // --- Upnshare (streambeast.upn.one/#id): API hex -> AES ->
+        // cfNative master HLS (khong can fetch player) ---
+        if (JavHDTodayTo.IsUpn(pick.PageUrl))
+        {
+            var (upnUrl, upnRef) = await JavHDTodayTo.UpnResolveAsync(
+                pick.PageUrl, 10, deadline);
+            if (string.IsNullOrEmpty(upnUrl))
+                return empty;
+
+            return new List<(string, string, string)> { (upnUrl, "1080p", upnRef) };
         }
 
         string player = await JavHDTodayTo.CurlGetRetry(pick.PageUrl,
@@ -323,17 +346,66 @@ public class JavHDTodayController : BaseSisiController
             return empty;
         }
 
-        // --- Javhdz (Myserver/Topserver/Maxcloud/Bpserver):
-        // embed Plyr -> FIRST.playlist (media 1 level, segment
-        // absolute, tien to PNG do hls.js cat o client) ---
+        // --- Javhdz (My/Top/Max/Bp + Fast F4 direct + ST mp4):
+        // embed Plyr -> FIRST.playlist (cu: tb_playlist; Fast:
+        // UU TIEN playlist_origin direct f4scdn de tua nuot nhu PubJav,
+        // gateway f4_playlist.php khong ho tro Range -> tua ket) ---
+        // STserver (embed_server9.php): FIRST.media /universal-stream mp4.
+        // Limecloud (embed_server4.php): FIRST.src /universal-stream-hls
+        // playlist.m3u8 (segment Range 206).
         if (JavHDTodayTo.IsJavhdz(pick.PageUrl))
         {
             string pl = JavHDTodayTo.JavhdzPlaylist(player, pick.PageUrl);
-            if (string.IsNullOrEmpty(pl))
+            if (!string.IsNullOrEmpty(pl))
+                return new List<(string, string, string)>
+                    { (pl, "", null) };
+
+            string voe = JavHDTodayTo.JavhdzVoeSrc(player, pick.PageUrl);
+            if (!string.IsNullOrEmpty(voe))
+                return new List<(string, string, string)>
+                    { (voe, "", null) };
+
+            string uni = JavHDTodayTo.JavhdzUniversalMedia(player, pick.PageUrl);
+            if (!string.IsNullOrEmpty(uni))
+            {
+                string uHost = null;
+                try
+                {
+                    uHost = new Uri(pick.PageUrl).GetLeftPart(UriPartial.Authority) + "/";
+                }
+                catch { }
+                return new List<(string, string, string)>
+                    { (uni, "mp4", uHost ?? JavHDTodayTo.SiteHost + "/") };
+            }
+
+            return empty;
+        }
+
+        // --- Streamtape (nut data-embed don): robotlink -> get_video
+        // -> 302 sang CDN .mp4 (cong thuc SupJav/PubJav).
+        // Streamtape CHAN system curl (TLS fingerprint): curl tra trang
+        // junk 30KB khong robotlink, con HttpClient .NET tra dung trang
+        // embed (SupJav da verify) — nen fetch lai bang HttpClient direct
+        // (cung IP server, token khop) khi player curl khong co robotlink.
+        if (JavHDTodayTo.IsStreamtape(pick.PageUrl))
+        {
+            // Streamtape CHAN ca system curl (junk 30KB) lan HttpClient
+            // .NET direct (exception) — fingerprint. Nut van giu de app
+            // fallback sang mp4 con lai (STserver/DoodStream cung phim).
+            string stHtml = player;
+            if (string.IsNullOrEmpty(stHtml)
+                || stHtml.IndexOf("robotlink",
+                    StringComparison.OrdinalIgnoreCase) < 0)
+                stHtml = await StreamtapeHtmlAsync(pick.PageUrl, deadline);
+
+            string api = JavHDTodayTo.StreamtapeUrl(stHtml);
+            if (string.IsNullOrEmpty(api))
                 return empty;
 
+            string cdn = await JavHDTodayTo.CurlFinalUrl(api, pick.PageUrl, 8);
+            string mp4 = !string.IsNullOrEmpty(cdn) ? cdn : api;
             return new List<(string, string, string)>
-                { (pl, "", null) };
+                { (mp4, "mp4", pick.PageUrl) };
         }
 
         // --- Turbo: data-hash (m3u8) truoc, urlPlay (mp4) sau ---
@@ -353,6 +425,37 @@ public class JavHDTodayController : BaseSisiController
         }
 
         return empty;
+    }
+
+    // Streamtape chan curl (junk page) nhung cho HttpClient .NET qua:
+    // GET direct (cung IP resolve nen token get_video khop).
+    async Task<string> StreamtapeHtmlAsync(string embedUrl, long deadline)
+    {
+        try
+        {
+            long left = deadline > 0 ? deadline - Ms() : 10000;
+            if (left < 3000)
+                return null;
+
+            using var cts = new System.Threading.CancellationTokenSource(
+                (int)Math.Min(left, 10000));
+            using var req = new HttpRequestMessage(
+                HttpMethod.Get, embedUrl);
+            req.Headers.TryAddWithoutValidation(
+                "User-Agent", JavHDTodayTo.ChromeUA);
+            req.Headers.Referrer = new Uri(JavHDTodayTo.SiteHost + "/");
+
+            using var res = await httpClient.SendAsync(
+                req, HttpCompletionOption.ResponseHeadersRead, cts.Token);
+            if (res == null || !res.IsSuccessStatusCode)
+                return null;
+
+            return await res.Content.ReadAsStringAsync(cts.Token);
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     // Resolve server theo `srv` roi chuyen tiep sang link phat; server
@@ -451,7 +554,7 @@ public class JavHDTodayController : BaseSisiController
         if (s == null)
             return "";
 
-        string key = ipkey($"javhdtoday:kind:{uri}:{s.Label}");
+        string key = ipkey($"javhdtoday:kind2:{uri}:{s.Label}");
         if (hybridCache.TryGetValue(key, out string k)
             && !string.IsNullOrEmpty(k))
             return k;
