@@ -139,7 +139,7 @@ public class MissAVController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("missav")]
-    async public Task<ActionResult> Index(string search, string c, int pg = 1, string sort = null)
+    async public Task<ActionResult> Index(string search, string c, int pg = 1, string sort = null, string filters = null)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
@@ -149,14 +149,15 @@ public class MissAVController : BaseSisiController
         // (genre/home khong cho released_at) — xem MissAVTo.ClampSort/SortsFor.
         // Clamp TRUOC khi lap vao cache key.
         sort = MissAVTo.ClampSort(sort, search, c);
+        filters = MissAVTo.ClampFilter(filters, search, c);
 
         async Task<CacheResult<List<PlaylistItem>>> GetPageAsync(string search, string c, int page, bool allowRefresh)
         {
-            return await InvokeCacheResult(ipkey($"missav:{search}:{c}:{sort}:{page}"), 10, jsonContext.ListPlaylistItem, async e =>
+            return await InvokeCacheResult(ipkey($"missav:{search}:{c}:{sort}:{filters}:{page}"), 10, jsonContext.ListPlaylistItem, async e =>
             {
                 List<PlaylistItem> playlists = null;
 
-                string pageUrl = MissAVTo.Uri(init.host, search, c, page, sort);
+                string pageUrl = MissAVTo.Uri(init.host, search, c, page, sort, filters);
                 var (_, tilesJson) = await PageFetchAsync(pageUrl);
                 if (!string.IsNullOrEmpty(tilesJson))
                     playlists = MissAVTo.Playlist("missav/vidosik", tilesJson);
@@ -185,14 +186,14 @@ public class MissAVController : BaseSisiController
         if (rch?.enable == true)
             StatiCacheDisabled = true;
 
-        return PlaylistResult(cache, await MenuAsync(search, sort, c));
+        return PlaylistResult(cache, await MenuAsync(search, sort, c, filters));
     }
 
-    // menu = head (phụ thuộc search/sort/c, dựng lại mỗi request — rất rẻ)
+    // menu = head (phụ thuộc search/sort/filters/c, dựng lại mỗi request — rất rẻ)
     //        + base (taxonomy ~nghìn mục, cache 1 lần, không phụ thuộc context)
-    async Task<List<MenuItem>> MenuAsync(string search, string sort, string c)
+    async Task<List<MenuItem>> MenuAsync(string search, string sort, string c, string filters = null)
     {
-        var menu = MissAVTo.MenuHead(host, search, sort, c);
+        var menu = MissAVTo.MenuHead(host, search, sort, c, filters);
         var baseGroups = await MenuBaseAsync();
         if (baseGroups != null && baseGroups.Count > 0)
             menu.AddRange(baseGroups);
