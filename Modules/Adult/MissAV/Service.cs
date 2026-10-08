@@ -43,20 +43,19 @@ public static class MissAVTo
         return s;
     }
 
-    public static string Uri(string host, string search, string c, int pg, string sort = null)
+    public static string Uri(string host, string search, string c, int pg, string sort = null, string filter = null)
     {
         if (string.IsNullOrEmpty(host))
             host = SiteHost;
 
         string page = pg > 1 ? "?page=" + pg : "";
 
-        // `?sort=` an tren MOI trang list cua site — do 2026-10-06 qua chinh
-        // module (missav SSL-reset khi fetch truc tiep, nen do qua endpoint):
-        //   /vi/genres/* , /dmNN/* , /vi/search/* , /dm635/vi/release
-        //     deu doi list khi ?sort=views
-        //   -> sort PHAI gap cho ca search va home (ban cu chi gap trong c branch
-        //      nen home + search bi bo qua sort).
-        // Ghep SAU phan trang: /path?page=2&sort=views
+        // `?filters=` + `?sort=` an tren MOI trang list cua site — do truc tiep
+        // HTML 2026-10-07 (curl): base/filtered/search/home/genre/maker/bxh
+        // deu co ca 2 dropdown; combo that `?filters=individual&sort=released_at`.
+        // Ghep SAU phan trang: /path?page=2&filters=X&sort=Y
+        if (!string.IsNullOrWhiteSpace(filter))
+            page += (page.Length == 0 ? "?" : "&") + "filters=" + filter.Trim();
         if (!string.IsNullOrWhiteSpace(sort))
             page += (page.Length == 0 ? "?" : "&") + "sort=" + sort.Trim();
 
@@ -71,12 +70,16 @@ public static class MissAVTo
         if (!string.IsNullOrEmpty(c))
         {
             // c co the la full URL missav (menu giu nguyen /dmNN/ cua site) hoac path sau /vi/
+            // Strip query cu (page/sort/filters) — sort/filter gio la param rieng cua module.
             string url = c.StartsWith("http") ? c : host + "/vi/" + c.Trim('/');
-            string sep = url.Contains("?") ? "&" : "?";
+            int qi = url.IndexOf('?');
+            if (qi >= 0) url = url.Substring(0, qi);
             string q = "";
-            if (pg > 1) q += sep + "page=" + pg;
+            if (pg > 1) q += "?page=" + pg;
+            if (!string.IsNullOrWhiteSpace(filter))
+                q += (q.Length == 0 ? "?" : "&") + "filters=" + filter.Trim();
             if (!string.IsNullOrWhiteSpace(sort))
-                q += (q.Length == 0 ? sep : "&") + "sort=" + sort.Trim();
+                q += (q.Length == 0 ? "?" : "&") + "sort=" + sort.Trim();
             return url + q;
         }
 
@@ -526,45 +529,28 @@ public static class MissAVTo
     // BẢN MỚI: row 2 GIỮ NGUYÊN `c`/`search`/home của list đang xem, chỉ đổi sort.
     // Vẫn đúng 2 tầng (sisi.js không hỗ trợ 3 tầng).
     //
-    // Sort thật của site — 46 giá trị thử qua chính module (2026-10-06):
-    //   ?sort=views       -> đổi list VÀ GIỮ NGUYÊN category
-    //                         (dm817 ∩ vi/genres/VR = 0; dm301 ∩ dm817 = 0)
-    //   ?sort=released_at  -> đổi list trên dm301/dm539; TRÊN GENRE = mặc định
-    //   44 giá trị còn lại -> no-op
+    // Sort that cua site — lay NGUYEN dropdown "Sap xep theo" (do truc tiep
+    // HTML 2026-10-07, co mat tren MOI trang list: base/genre/maker/bxh/home/search):
+    //   released_at | published_at | saved | today_views | weekly_views |
+    //   monthly_views | views
     public static readonly (string name, string sort)[] Sorts =
     {
-        ("Mặc định",       ""),
-        ("Ngày phát hành", "released_at"),
-        ("Xem nhiều",      "views"),
+        ("Mặc định",            ""),
+        ("Ngày phát hành",      "released_at"),
+        ("Recent update",       "published_at"),
+        ("Đã lưu",              "saved"),
+        ("lượt xem hôm nay",    "today_views"),
+        ("lượt xem hàng tuần",  "weekly_views"),
+        ("Lượt xem hàng tháng", "monthly_views"),
+        ("Tổng số lượt xem",    "views"),
     };
 
-    // Context ma ?sort=released_at = no-op -> chi giu 2 muc (§9g: muc nao khong
-    // doi duoc list la "link", khong phai sort -> khong duoc hien).
-    public static readonly (string name, string sort)[] SortsNoDate =
-    {
-        ("Mặc định", ""),
-        ("Xem nhiều", "views"),
-    };
-
-    // Tap sort ap DUOC cho context nay. Dua tren ket qua do qua chinh module
-    // (2026-10-06):
-    //   views       -> doi list O MOI context (genre / hang / bxh / home / search)
-    //   released_at -> chi that tren dm301/dm539 va search (search la dao trong
-    //                  trang, control=search|SSIS = YEN); home (dm635/vi/release)
-    //                  chet ca trang 1+2; genre (dm*/genres/*) = no-op
-    //   -> context chua do duoc thi dung mac dinh an toan (khong hien released_at)
+    // Tap sort ap DUOC cho context nay. Site hien ca 7 sort tren MOI context
+    // (do HTML 2026-10-07: genre/maker/bxh/home/search deu du 7 link sort)
+    // -> tra full, khong han che theo context nua.
     public static (string name, string sort)[] SortsFor(string search, string c)
     {
-        if (!string.IsNullOrWhiteSpace(search)) return Sorts;       // search: ca 2 deu doi
-        if (string.IsNullOrWhiteSpace(c))       return SortsNoDate; // home = dm635/vi/release
-
-        string low = c.StartsWith("http", StringComparison.OrdinalIgnoreCase)
-            ? c : "https://x/" + c.Trim('/');
-
-        low = low.ToLowerInvariant();
-        if (low.Contains("/genres/") || low.Contains("/makers/")) return SortsNoDate;
-        if (low.Contains("dm301/")   || low.Contains("dm539/"))   return Sorts;
-        return SortsNoDate;
+        return Sorts;
     }
 
     public static string NormalizeSort(string sort)
@@ -584,26 +570,68 @@ public static class MissAVTo
         return null;
     }
 
-    public static string SortLabel(string sort) =>
-        string.IsNullOrEmpty(sort) ? "mới nhất"
-        : sort == "views" ? "xem nhiều"
-        : sort == "released_at" ? "ngày phát hành" : sort;
+    public static string SortLabel(string sort)
+    {
+        if (string.IsNullOrEmpty(sort)) return "mới nhất";
+        foreach (var (name, s) in Sorts)
+            if (s == sort) return name.ToLowerInvariant();
+        return sort;
+    }
 
-    // head: phụ thuộc search/sort/c -> dựng lại mỗi request (rẻ, 2 object)
+    // ===== DÒNG 2b "Bộ lọc" — ?filters= CHO LIST ĐANG MỞ (site có 2 dropdown) =====
+    // Do truc tiep HTML 2026-10-07 (curl): MOI trang list deu co ca 2 dropdown;
+    // trang da loc giu filter khi doi sort (?filters=individual&sort=released_at).
+    //   base/genre/maker/bxh/home: Tất cả | individual | multiple | english-subtitle
+    //   search: cung 3 tren + jav | asiaav | uncensored | uncensored-leak
+    // ponytail: chi hien 3 filter chung (do duoc o moi context); 4 filter rieng
+    // cua search (jav/asiaav/uncensored/uncensored-leak) them khi do xong.
+    public static readonly (string name, string filter)[] Filters =
+    {
+        ("Tất cả",             ""),
+        ("diễn viên độc thân", "individual"),
+        ("Nhiều nữ diễn viên", "multiple"),
+        ("Phụ đề tiếng anh",   "english-subtitle"),
+    };
+
+    public static string NormalizeFilter(string filter)
+    {
+        if (string.IsNullOrWhiteSpace(filter)) return null;
+        filter = filter.Trim().ToLowerInvariant();
+        foreach (var (_, f) in Filters) if (f == filter) return f;
+        return null;
+    }
+
+    public static string ClampFilter(string filter, string search, string c)
+    {
+        filter = NormalizeFilter(filter);
+        if (string.IsNullOrEmpty(filter)) return null;
+        return filter; // moi context deu co dropdown bo loc (do 2026-10-07)
+    }
+
+    public static string FilterLabel(string filter)
+    {
+        if (string.IsNullOrEmpty(filter)) return "Tất cả";
+        foreach (var (name, f) in Filters)
+            if (f == filter) return name;
+        return filter;
+    }
+
+    // head: phụ thuộc search/sort/filter/c -> dựng lại mỗi request (rẻ, 3 object)
     public static List<Shared.Models.SISI.Base.MenuItem> MenuHead(
-        string host, string search, string sort, string c)
+        string host, string search, string sort, string c, string filter = null)
     {
         string root = host + "/missav";
-        string link(string s)
+        string link(string s, string f)
         {
             string q;
             if (!string.IsNullOrWhiteSpace(search)) q = "search=" + HttpUtility.UrlEncode(search);
             else if (!string.IsNullOrWhiteSpace(c)) q = "c=" + HttpUtility.UrlEncode(c);
             else q = "";                                   // home (ReleaseUrl)
+            if (!string.IsNullOrEmpty(f)) q += (q.Length == 0 ? "" : "&") + "filters=" + f;
             if (!string.IsNullOrEmpty(s)) q += (q.Length == 0 ? "" : "&") + "sort=" + s;
             return q.Length == 0 ? root : root + "?" + q;
         }
-        var res = new List<Shared.Models.SISI.Base.MenuItem>(2)
+        var res = new List<Shared.Models.SISI.Base.MenuItem>(3)
         {
             new Shared.Models.SISI.Base.MenuItem()
             {
@@ -613,14 +641,23 @@ public static class MissAVTo
         var opts = SortsFor(search, c);
         // khong sort duoc o day -> khong hien dong 2 (§9g #4). MissAV luc nao
         // cung con "Xem nhiều" nen day chi la cham an toan.
-        if (opts == null || opts.Length == 0) return res;
-
-        var sub = new List<Shared.Models.SISI.Base.MenuItem>(opts.Length);
-        foreach (var (name, s) in opts)
-            sub.Add(new(name, link(s)));
+        if (opts != null && opts.Length > 0)
+        {
+            var sub = new List<Shared.Models.SISI.Base.MenuItem>(opts.Length);
+            foreach (var (name, s) in opts)
+                sub.Add(new(name, link(s, filter)));
+            res.Add(new Shared.Models.SISI.Base.MenuItem()
+            {
+                title = $"Sắp xếp: {SortLabel(sort)}", playlist_url = "submenu", submenu = sub
+            });
+        }
+        // Dong 2b "Bo loc": giu sort hien tai, chi doi filters.
+        var fsub = new List<Shared.Models.SISI.Base.MenuItem>(Filters.Length);
+        foreach (var (name, f) in Filters)
+            fsub.Add(new(name, link(sort, f)));
         res.Add(new Shared.Models.SISI.Base.MenuItem()
         {
-            title = $"Sắp xếp: {SortLabel(sort)}", playlist_url = "submenu", submenu = sub
+            title = $"Bộ lọc: {FilterLabel(filter)}", playlist_url = "submenu", submenu = fsub
         });
         return res;
     }
