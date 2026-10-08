@@ -231,6 +231,127 @@ public static class SupJavTo
         return res;
     }
 
+    // ========== LUC (LuluStream): jwplayer setup trong P.A.C.K.E.R ==========
+    // Cong thuc chom tu JavGuru (STREAM LU, da verify ben do):
+    //   final gateway -> HTML embed LuluStream -> Unpack (giong StreamHg)
+    //   -> `sources:[{file:"https://<*.tnmr.org>/.../master.m3u8?t=..&s=.."}]`
+    //   -> tach variant cao nhat bang curl (LuluBestVariant).
+    // Verified 2026-10-07: 259LUXU-1901
+    // `wkw3dwshigvf.tnmr.org/hls2/02/04435/0sdch1yv8bku_h/master.m3u8`.
+    // LUU Y: edge nay 403 GET qua proxy (ca master lan variant, ca UA-only
+    // lan kem Referer, ca h1 ghim) trong khi HEAD truc tiep 200
+    // `application/vnd.apple.mpegurl` va LU ben JavGuru 200 voi cung
+    // header — gate theo edge/file, chua co loi di server-side.
+    public static string LuluFile(string html)
+    {
+        if (string.IsNullOrEmpty(html)) return null;
+        string src = Unpack(html) ?? html;
+        var m = Regex.Match(src, "file\\s*:\\s*[\"'](https?://[^\"']+?\\.m3u8[^\"']*)[\"']", RegexOptions.IgnoreCase);
+        if (m.Success)
+            return HttpUtility.HtmlDecode(m.Groups[1].Value);
+        foreach (Match x in Regex.Matches(src, "https?://[^\"'\\s<>]+\\.m3u8[^\"'\\s<>]*", RegexOptions.IgnoreCase))
+            return HttpUtility.HtmlDecode(x.Value);
+        return null;
+    }
+
+    // ========== LUC (LuluStream): tach master 2 level bang curl ==========
+    // Y nhu JavGuru MasterVariants: curl + UA android, thu http2 roi
+    // http1.1, referer trang final. KHONG dung .NET Http o day.
+    public static async Task<string> LuluBestVariant(
+        string master, string referer, int maxTime = 7)
+    {
+        if (string.IsNullOrEmpty(master))
+            return null;
+
+        foreach (bool h2 in new[] { true, false })
+        {
+            string body = await CurlGet(master, referer, maxTime, h2);
+            if (string.IsNullOrEmpty(body)
+                || !body.Contains("#EXT-X-STREAM-INF"))
+                continue;
+
+            string dir = null;
+            try
+            {
+                int at = master.LastIndexOf('/');
+                if (at > 8) dir = master[..(at + 1)];
+            }
+            catch { }
+
+            string best = null;
+            int bestPx = -1;
+            foreach (Match m in Regex.Matches(body,
+                "#EXT-X-STREAM-INF:([^\\r\\n]*)\\r?\\n\\s*(\\S+)",
+                RegexOptions.IgnoreCase))
+            {
+                var px = Regex.Match(m.Groups[1].Value,
+                    @"RESOLUTION=\d+x(\d+)", RegexOptions.IgnoreCase);
+                int h = px.Success && int.TryParse(px.Groups[1].Value,
+                    out int v) ? v : 0;
+                string u = m.Groups[2].Value.Trim();
+                if (!u.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+                    && dir != null)
+                    u = dir + u.TrimStart('/');
+                if (h >= bestPx) { bestPx = h; best = u; }
+            }
+
+            if (!string.IsNullOrEmpty(best))
+                return best;
+        }
+
+        return null;
+    }
+
+    public static async Task<string> CurlGet(
+        string url, string referer, int maxTime = 10, bool http2 = true)
+    {
+        if (string.IsNullOrEmpty(url))
+            return null;
+
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            PrepCurlEnv(psi);
+            psi.ArgumentList.Add("-sL");
+            psi.ArgumentList.Add(http2 ? "--http2" : "--http1.1");
+            psi.ArgumentList.Add("--compressed");
+            psi.ArgumentList.Add("--connect-timeout");
+            psi.ArgumentList.Add("10");
+            psi.ArgumentList.Add("--max-time");
+            psi.ArgumentList.Add(maxTime.ToString());
+            psi.ArgumentList.Add("-A");
+            psi.ArgumentList.Add(ChromeUA);
+            if (!string.IsNullOrEmpty(referer))
+            {
+                psi.ArgumentList.Add("-e");
+                psi.ArgumentList.Add(referer);
+            }
+            psi.ArgumentList.Add("--");
+            psi.ArgumentList.Add(url);
+
+            using var p = Process.Start(psi);
+            if (p == null)
+                return null;
+
+            string stdout = await p.StandardOutput.ReadToEndAsync();
+            await p.WaitForExitAsync();
+            if (p.ExitCode != 0)
+                return null;
+
+            return string.IsNullOrWhiteSpace(stdout) ? null : stdout;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     // ========== Gateway shell: trang playbutton trung gian (can di ?l= lay session truoc) ==========
     public static bool IsGatewayShell(string html)
     {

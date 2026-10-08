@@ -7,6 +7,7 @@ using Shared.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Web;
@@ -386,6 +387,36 @@ public class SupJavController : BaseSisiController
         return await ResolveServerAsync(pageUrl, label, link);
     }
 
+    // LUC (LuluStream): tach master 2 level o server, tra playlist media
+    // chat luong cao nhat — y nhu JavGuru STREAM LU (MasterVariants bang
+    // curl + UA android). Dung `gw` cua chuoi gateway san co, KHONG fetch
+    // lai. Referer tra kem = URL embed that (sau 302).
+    async Task<string> ResolveLucAsync(string gw, string final, string pageUrl)
+    {
+        string master = SupJavTo.LuluFile(gw);
+        if (string.IsNullOrEmpty(master))
+            return null;
+
+        string best = await SupJavTo.LuluBestVariant(master, final);
+        string pick = best ?? master;
+        if (!await VerifyLinkAsync(pick, final))
+            return null;
+        // Referer = URL embed that (sau 302), giong trinh duyet —
+        // proxy chi gui UA + Referer nay (nhanh Video() LUC).
+        string emb = final;
+        try
+        {
+            string canon = await SupJavTo.CurlFinalUrl(final, pageUrl, 8);
+            if (!string.IsNullOrEmpty(canon) && canon.StartsWith("http",
+                StringComparison.OrdinalIgnoreCase))
+                emb = canon;
+        }
+        catch { }
+        if (!await VerifyLinkAsync(pick, emb))
+            return pick + "\n" + final;
+        return pick + "\n" + emb;
+    }
+
     // VAS (Vidara): final 302 -> https://<host>/e/<filecode> -> POST /api/stream -> streaming_url (HLS)
     async Task<string> ResolveVasAsync(string pageUrl, string link)
     {
@@ -448,6 +479,14 @@ public class SupJavController : BaseSisiController
             catch { }
         }
         if (string.IsNullOrEmpty(gw)) return null;
+        // LUC (LuluStream): unpack -> jwplayer sources file (master m3u8
+        // tren *.tnmr.org) -> tach variant nhu JavGuru STREAM LU.
+        // TINH TRANG 2026-10-07: resolve OK (HEAD 200), nhung GET qua
+        // proxy bi edge wkw3dwshigvf.tnmr.org 403 (2 phim) trong khi LU
+        // ben JavGuru 200 voi cung header — gate theo edge/file, can
+        // phien Chrome that. Giu code vi dung khi edge khac.
+        if (string.Equals(label?.Trim(), "LUC", StringComparison.OrdinalIgnoreCase))
+            return await ResolveLucAsync(gw, final, pageUrl);
         // VAS (Vidara): 302 -> <host>/e/<filecode> -> POST /api/stream -> streaming_url
         if (label.IndexOf("VAS", StringComparison.OrdinalIgnoreCase) >= 0)
         {
@@ -547,7 +586,11 @@ public class SupJavController : BaseSisiController
             }
             if (await VerifyLinkAsync(link, referer))
             {
-                var direct = httpHeaders(init, HeadersModel.Init(("referer", referer)));
+                IReadOnlyList<HeadersModel> direct;
+                if (string.Equals(label?.Trim(), "LUC", StringComparison.OrdinalIgnoreCase))
+                    direct = HeadersModel.Init(("user-agent", SupJavTo.ChromeUA));
+                else
+                    direct = httpHeaders(init, HeadersModel.Init(("referer", referer)));
                 return Redirect(HostStreamProxy(link, direct));
             }
         }
