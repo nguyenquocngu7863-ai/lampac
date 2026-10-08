@@ -3,6 +3,8 @@ using Shared.Models.SISI.Base;
 using Shared.Services;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Text.RegularExpressions;
@@ -247,6 +249,8 @@ public static class SexTbTo
     // ========== Kind / Priority ==========
     // PM (playmate.to) bi bop CDN sieu cham (2026-10-06) -> XEP SAU DD.
     // F4 len dau (verify ngon). Dong bo voi PubJav.
+    // ST (Streamtape mp4) them 2026-10-07: nut co tren web (IPZZ-576),
+    // cong thuc SupJav (robotlink token MOI -> get_video -> 302 CDN).
     public static int Priority(string label)
     {
         switch((label??"").ToUpperInvariant())
@@ -257,10 +261,22 @@ public static class SexTbTo
             case "DD": return 3;
             case "PM": return 4;
             case "US": return 5;
+            case "ST": return 6;
             default: return 99;
         }
     }
     public static bool IsSupported(string label) => Priority(label) < 99;
+    // Kind suy tu LABEL (khong can fetch iframe): dung cho /vidosik
+    // lazy (liet ke nhanh). ST/DD = mp4, con lai = hls.
+    public static string KindByLabel(string label)
+    {
+        string k = (label ?? "").Trim().ToUpperInvariant();
+        if (k == "ST" || k == "DD") return "mp4";
+        return "hls";
+    }
+    public static bool IsStreamtape(string embedUrl) => !string.IsNullOrEmpty(embedUrl) &&
+        (embedUrl.IndexOf("streamtape", StringComparison.OrdinalIgnoreCase) >= 0 ||
+         embedUrl.IndexOf("strtape", StringComparison.OrdinalIgnoreCase) >= 0);
     public static string Kind(string iframe)
     {
         if (string.IsNullOrEmpty(iframe)) return null;
@@ -269,6 +285,7 @@ public static class SexTbTo
         if (iframe.IndexOf("playmate.to", StringComparison.OrdinalIgnoreCase)>=0) return "hls";
         if (IsUpn(iframe)) return "hls";
         if (iframe.IndexOf("playmogo", StringComparison.OrdinalIgnoreCase)>=0 || iframe.IndexOf("dood", StringComparison.OrdinalIgnoreCase)>=0) return "mp4";
+        if (IsStreamtape(iframe)) return "mp4";
         return null;
     }
     public static string StreamHgUrl(string iframe)
@@ -295,6 +312,114 @@ public static class SexTbTo
         if (string.IsNullOrEmpty(iframe)) return null;
         var m = Regex.Match(iframe, @"/embed/([A-Za-z0-9_\-]+)", RegexOptions.IgnoreCase);
         return m.Success ? m.Groups[1].Value : null;
+    }
+
+    // ========== Streamtape (ST): robotlink -> get_video -> 302 CDN ==========
+    // Cong thuc chom tu SupJav.StreamTapeMp4 (da verify ben do, 2026-10-06):
+    // trang embed co HAI token — div #robotlink (token CU, API 500) va
+    // script gan lai (token MOI, 302 sang CDN .mp4). Lay match CUOI.
+    public static string StreamtapeMp4(string embedHtml)
+    {
+        if (string.IsNullOrEmpty(embedHtml)) return null;
+        string query = null;
+        foreach (Match m in Regex.Matches(embedHtml,
+            @"robotlink.{0,4}\.innerHTML\s*=\s*'[^']*get_video\?'\s*\+\s*\('([^']+)'",
+            RegexOptions.IgnoreCase))
+            query = m.Groups[1].Value;
+        if (string.IsNullOrEmpty(query))
+        {
+            foreach (Match m in Regex.Matches(embedHtml,
+                @"robotlink'\)\.innerHTML\s*=\s*'([^']*)'\s*\+\s*\('([^']*)'\)((?:\s*\.substring\(\d+\)\s*)*)",
+                RegexOptions.IgnoreCase))
+            {
+                string tail = m.Groups[2].Value;
+                foreach (Match s in Regex.Matches(m.Groups[3].Value ?? "", @"substring\((\d+)\)"))
+                {
+                    if (int.TryParse(s.Groups[1].Value, out int n) && n >= 0 && n <= tail.Length)
+                        tail = tail.Substring(n);
+                }
+                query = m.Groups[1].Value + tail;
+            }
+        }
+        if (string.IsNullOrEmpty(query))
+        {
+            var div = Regex.Match(embedHtml, @"id\s*=\s*""robotlink""[^>]*>([^<]+)<", RegexOptions.IgnoreCase);
+            if (div.Success) query = div.Groups[1].Value;
+        }
+        if (string.IsNullOrEmpty(query)) return null;
+        var tailm = Regex.Match(query, @"id=[A-Za-z0-9_-]+&expires=\d+[^']*");
+        if (tailm.Success)
+            return "https://strtape.cloud/get_video?" + tailm.Value;
+        string path = query.Trim();
+        if (string.IsNullOrEmpty(path)) return null;
+        if (path.StartsWith("//")) return "https:" + path;
+        if (path.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return path;
+        if (path.Contains("get_video"))
+            return "https://strtape.cloud/get_video?" + path[(path.IndexOf("get_video") + 9)..].TrimStart('?', '&');
+        return "https://streamtape.com/" + path.TrimStart('/');
+    }
+
+    public static string StreamtapeEmbedUrl(string html)
+    {
+        if (string.IsNullOrEmpty(html)) return null;
+        var m = Regex.Match(html, @"<link[^>]*rel\s*=\s*""canonical""[^>]*href\s*=\s*""([^""]+)""", RegexOptions.IgnoreCase);
+        if (!m.Success)
+            m = Regex.Match(html, @"<meta[^>]*(?:name|property)\s*=\s*""og:url""[^>]*content\s*=\s*""([^""]+)""", RegexOptions.IgnoreCase);
+        if (!m.Success) return null;
+        string u = m.Groups[1].Value.Trim();
+        if (u.StartsWith("//")) return "https:" + u;
+        if (u.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return u;
+        return "https://streamtape.com/" + u.TrimStart('/');
+    }
+
+    // Chi lay URL CUOI cua chuoi 302 (mp4 1GB+, `-r 0-0` + url_effective).
+    public static async Task<string> CurlFinalUrl(string url, string referer, int maxTime = 10)
+    {
+        if (string.IsNullOrEmpty(url)) return null;
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            psi.Environment.Remove("LD_PRELOAD");
+            psi.Environment.Remove("LD_LIBRARY_PATH");
+            string curl = "/data/data/com.termux/files/usr/bin/curl";
+            psi.FileName = File.Exists(curl) ? curl : "curl";
+            psi.ArgumentList.Add("-sL");
+            psi.ArgumentList.Add("--http1.1");
+            psi.ArgumentList.Add("--compressed");
+            psi.ArgumentList.Add("--connect-timeout");
+            psi.ArgumentList.Add("8");
+            psi.ArgumentList.Add("--max-time");
+            psi.ArgumentList.Add(maxTime.ToString());
+            psi.ArgumentList.Add("-A");
+            psi.ArgumentList.Add(ChromeUA);
+            if (!string.IsNullOrEmpty(referer))
+            {
+                psi.ArgumentList.Add("-e");
+                psi.ArgumentList.Add(referer);
+            }
+            psi.ArgumentList.Add("-r");
+            psi.ArgumentList.Add("0-0");
+            psi.ArgumentList.Add("-o");
+            psi.ArgumentList.Add("/dev/null");
+            psi.ArgumentList.Add("-w");
+            psi.ArgumentList.Add("%{url_effective}");
+            psi.ArgumentList.Add("--");
+            psi.ArgumentList.Add(url);
+            using var p = Process.Start(psi);
+            if (p == null) return null;
+            string stdout = await p.StandardOutput.ReadToEndAsync();
+            await p.WaitForExitAsync();
+            if (p.ExitCode != 0) return null;
+            string eff = (stdout ?? "").Trim();
+            return eff.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? eff : url;
+        }
+        catch { return null; }
     }
 
     // ========== Crypto / Unpack ==========
