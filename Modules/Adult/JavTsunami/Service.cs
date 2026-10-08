@@ -90,40 +90,124 @@ public static class JavTsunamiTo
             host = SiteHost;
         host = host.TrimEnd('/');
 
-        // Tim kiem: WP phan trang bang /page/N? s=... (so voi category la
-        // /category/x/page/N) — hai kieu khac nhau, khong gop duoc.
+        // Do live 2026-10-08: home/genre/tag/search DEU co dropdown sort
+        // ?filter=latest|most-viewed|longest|random (moi cai doi list that).
+        // Mac dinh (khong filter): home/genre/tag = latest; search =
+        // relevance (RIENG). Phan trang: home /page/N?filter=..,
+        // genre/tag /<base>/page/N?filter=.., search /page/N?s=..&filter=..
+        // (`?s=..&paged=N` cung duoc nhung giu 1 dang).
+        var (basePath, filter) = SplitFilter(c);
+
+        // Tim kiem (?s= + &filter= khi chon sort). Mac dinh search KHONG
+        // filter (= relevance); ?filter=latest moi la latest.
         if (!string.IsNullOrWhiteSpace(search))
         {
-            string q = "?s=" + HttpUtility.UrlEncode(search.Trim());
+            string q = "?s=" + HttpUtility.UrlEncode(search.Trim())
+                + (string.IsNullOrEmpty(filter) ? "" : "&filter=" + filter);
             return pg > 1
                 ? host + "/page/" + pg + q
                 : host + "/" + q;
         }
 
-        // Trang chu mac dinh la filter "latest" (khong co ?page=N).
-        if (string.IsNullOrWhiteSpace(c) || c.Trim() == "latest")
-            return pg > 1
-                ? host + "/page/" + pg + "?filter=latest"
-                : host + "/?filter=latest";
+        // Home/genre/tag: base (khong filter) == latest.
+        string f = (string.IsNullOrEmpty(filter) || filter == "latest")
+            ? "" : "?filter=" + filter;
 
-        // Bo loc sap xep: /?filter=most-viewed|longest|random (khong phai
-        // duong dan). Phan trang van la /page/N?filter=... nhu trang chu.
-        string cat = c.Trim();
-        if (cat.StartsWith("filter/", StringComparison.OrdinalIgnoreCase))
+        // Home (base rong): mac dinh latest.
+        if (string.IsNullOrEmpty(basePath))
         {
-            string f = "?filter=" + cat["filter/".Length..].Trim('/');
+            string hf = string.IsNullOrEmpty(f) ? "?filter=latest" : f;
             return pg > 1
-                ? host + "/page/" + pg + f
-                : host + "/" + f;
+                ? host + "/page/" + pg + hf
+                : host + "/" + hf;
         }
 
-        if (cat.StartsWith("http", StringComparison.OrdinalIgnoreCase))
-            return NormalizePageUrl(cat);
+        if (basePath.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            return NormalizePageUrl(basePath);
 
-        string path = "/" + c.Trim().Trim('/');
+        string path = "/" + basePath.Trim().Trim('/');
+        // Genre/tag: base (khong filter) == latest; filter hien thi ghep
+        // ?filter= (do live: /category/big-boobs == ?filter=latest).
         return pg > 1
-            ? host + path + "/page/" + pg
-            : host + path;
+            ? host + path + "/page/" + pg + f
+            : host + path + f;
+    }
+
+    // Sort THAT cua dropdown #filters (do live 2026-10-08, ca 4 doi list
+    // that tren home/genre/tag/search). Mac dinh "" = Mới nhất (latest;
+    // rieng search = relevance).
+    public static readonly (string name, string filter)[] Sorts =
+    {
+        ("Mới nhất",  ""),
+        ("Xem nhiều", "most-viewed"),
+        ("Lâu nhất",  "longest"),
+        ("Ngẫu nhiên","random"),
+    };
+
+    static readonly string[] FilterWhitelist =
+        { "latest", "most-viewed", "longest", "random" };
+
+    public static string NormalizeFilter(string filter)
+    {
+        if (string.IsNullOrWhiteSpace(filter)) return null;
+        filter = filter.Trim().ToLowerInvariant();
+        if (filter == "hot") return null; // WP bo qua (ve mac dinh)
+        return Array.IndexOf(FilterWhitelist, filter) >= 0 ? filter : null;
+    }
+
+    // Tach `c` thanh (base, filter). `c` dang: "" | "filter/<f>" (legacy
+    // home sort) | "<base>" | "<base>?filter=<f>" (genre/tag + sort).
+    // "latest" giu nguyen (search can phan biet base-relevance voi latest).
+    public static (string basePath, string filter) SplitFilter(string c)
+    {
+        if (string.IsNullOrWhiteSpace(c)) return ("", "");
+        string s = c.Trim();
+        int q = s.IndexOf('?');
+        string query = "";
+        if (q >= 0)
+        {
+            query = s[(q + 1)..];
+            s = s[..q];
+        }
+        s = s.Trim().Trim('/');
+        string filter = null;
+        var fm = Regex.Match("&" + query, @"[?&]filter=([^&]*)",
+            RegexOptions.IgnoreCase);
+        if (fm.Success)
+            filter = NormalizeFilter(fm.Groups[1].Value);
+        // Dang legacy "filter/<f>" = home + sort.
+        if (!string.IsNullOrEmpty(s)
+            && s.StartsWith("filter/", StringComparison.OrdinalIgnoreCase))
+        {
+            filter ??= NormalizeFilter(s["filter/".Length..].Trim('/'));
+            s = "";
+        }
+        return (s, filter ?? "");
+    }
+
+    public static string CurrentFilter(string search, string c)
+        => SplitFilter(c).filter ?? "";
+
+    public static string FilterLabel(string filter)
+    {
+        if (string.IsNullOrEmpty(filter) || filter == "latest") return "Mới nhất";
+        foreach (var (name, f) in Sorts)
+            if (f == filter) return name;
+        return filter;
+    }
+
+    // Ghep sort vao `c` (giu base). Home/genre/tag: latest/rong = ve base
+    // goc (bo filter, vi base == latest). Search: "filter/<f>" (ke ca
+    // latest, vi base search = relevance).
+    public static string WithFilter(string search, string c, string filter)
+    {
+        string f = NormalizeFilter(filter);
+        var (basePath, _) = SplitFilter(c);
+        if (!string.IsNullOrWhiteSpace(search))
+            return string.IsNullOrEmpty(f) ? "" : "filter/" + f;
+        if (string.IsNullOrEmpty(basePath))
+            return string.IsNullOrEmpty(f) || f == "latest" ? "" : "filter/" + f;
+        return basePath + ((string.IsNullOrEmpty(f) || f == "latest") ? "" : "?filter=" + f);
     }
 
     // ================= TRANG DANH MUC =================
@@ -229,12 +313,13 @@ public static class JavTsunamiTo
     // Het tag cloud trang `/tags` (1 trang, ~1000 tag). Neo vao class
     // `tag-cloud-link` — lan dau xuat hien la trong `<style>` nen phai bo
     // style truoc, neu khong dem du 1038 ma sai. Ten lay tu text hien thi,
-    // fallback giai ma slug khi text rong.
-    public static List<(string name, string path)> TagList(string html)
+    // fallback giai ma slug khi text rong. Count tu `aria-label="<ten>
+    // (<N> items)"` de lay top tag nhieu phim cho menu.
+    public static List<(int count, string name, string path)> TagListCount(string html)
     {
-        var list = new List<(string, string)>();
+        var res = new List<(int, string, string)>();
         if (string.IsNullOrEmpty(html))
-            return list;
+            return res;
 
         html = Regex.Replace(html, @"<style[\s\S]*?</style>",
             "", RegexOptions.IgnoreCase);
@@ -246,7 +331,12 @@ public static class JavTsunamiTo
             + "class=\"[^\"]*tag-cloud-link[^\"]*\"[^>]*>([^<]{1,60})</a\\s*>",
             RegexOptions.IgnoreCase))
         {
+            string tag = m.Value;
             string path = m.Groups[1].Value.Trim('/');
+            // Bo link hong kieu /tag/tag/... tren site.
+            if (path.StartsWith("tag/tag/",
+                StringComparison.OrdinalIgnoreCase))
+                continue;
             string name = HttpUtility.HtmlDecode(m.Groups[2].Value.Trim());
 
             if (string.IsNullOrEmpty(name))
@@ -258,18 +348,28 @@ public static class JavTsunamiTo
             if (path.Length == 0 || name.Length == 0 || !seen.Add(path))
                 continue;
 
-            list.Add((name, path));
+            int cnt = 0;
+            var cm = Regex.Match(tag, "aria-label=\"[^\"]*\\(([\\d,]+)\\s+items?\\)\"",
+                RegexOptions.IgnoreCase);
+            if (cm.Success)
+                int.TryParse(cm.Groups[1].Value.Replace(",", ""), out cnt);
+
+            res.Add((cnt, name, path));
         }
 
-        return list;
+        return res;
     }
 
+    public static List<(string name, string path)> TagTop(
+        List<(int count, string name, string path)> tags, int max = 100)
+        => tags.OrderByDescending(x => x.count).Take(max)
+            .Select(x => (x.name, x.path)).ToList();
     public static async Task<List<(string name, string path)>> TagAll(
         int maxTime = 6, long deadline = 0)
     {
-        string html = await CurlGetRetry(SiteHost + "/tags", SiteHost + "/",
-            "tag-cloud-link", 3, maxTime, deadline);
-        return TagList(html);
+        string html = await CurlGetRetry(SiteHost + "/tags/", SiteHost + "/",
+            "tag-cloud-link", 4, 8, deadline);
+        return TagTop(TagListCount(html));
     }
     public static List<(string name, string path)> CatPick(
         List<(string name, string path)> pool, int limit = CatsLimit)
@@ -493,6 +593,14 @@ public static class JavTsunamiTo
             return 1;
         if (label.IndexOf("Hicherri", StringComparison.OrdinalIgnoreCase) >= 0)
             return 2;
+        // VD/ST so EQUALS (khong Contains): "ST" xuat hien trong nhieu chu
+        // ("most-viewed", "Fastserver"...), nhan nham la chet.
+        if (string.Equals(label, "VD", StringComparison.OrdinalIgnoreCase))
+            return 3;
+        if (label.IndexOf("EV", StringComparison.OrdinalIgnoreCase) >= 0)
+            return 4;
+        if (string.Equals(label, "ST", StringComparison.OrdinalIgnoreCase))
+            return 5;
 
         return 8;
     }
@@ -500,6 +608,41 @@ public static class JavTsunamiTo
     public static bool IsHicherri(string embedUrl)
         => !string.IsNullOrEmpty(embedUrl)
            && embedUrl.IndexOf("hicherri", StringComparison.OrdinalIgnoreCase) >= 0;
+
+    public static bool IsFapsharing(string embedUrl)
+        => !string.IsNullOrEmpty(embedUrl)
+            && embedUrl.IndexOf("fapsharing", StringComparison.OrdinalIgnoreCase) >= 0;
+
+    // Vidara (site goi la VD): host doi lien tuc (gbiouasou/iosbgaigo...),
+    // nhan dien theo ten host da gap + fallback hinh dang /e/<filecode>
+    // tren host la (rieng vide0/dood/turbo/hicherri/fapsharing/streamtape
+    // da co nhan rieng). Cong thuc giong SupJav VAS: POST /api/stream.
+    public static bool IsVidara(string embedUrl)
+    {
+        if (string.IsNullOrEmpty(embedUrl))
+            return false;
+        if (embedUrl.IndexOf("vidara", StringComparison.OrdinalIgnoreCase) >= 0
+            || embedUrl.IndexOf("iosbgaigo", StringComparison.OrdinalIgnoreCase) >= 0
+            || embedUrl.IndexOf("gbiouasou", StringComparison.OrdinalIgnoreCase) >= 0)
+            return true;
+        if (embedUrl.IndexOf("vide0", StringComparison.OrdinalIgnoreCase) >= 0
+            || embedUrl.IndexOf("dood", StringComparison.OrdinalIgnoreCase) >= 0
+            || embedUrl.IndexOf("turbovid", StringComparison.OrdinalIgnoreCase) >= 0
+            || embedUrl.IndexOf("hicherri", StringComparison.OrdinalIgnoreCase) >= 0
+            || embedUrl.IndexOf("fapsharing", StringComparison.OrdinalIgnoreCase) >= 0
+            || embedUrl.IndexOf("streamtape", StringComparison.OrdinalIgnoreCase) >= 0
+            || embedUrl.IndexOf("shavetape", StringComparison.OrdinalIgnoreCase) >= 0
+            || embedUrl.IndexOf("strtape", StringComparison.OrdinalIgnoreCase) >= 0)
+            return false;
+        return Regex.IsMatch(embedUrl, @"/e/[A-Za-z0-9]{4,}/?(?:[?#]|$)",
+            RegexOptions.IgnoreCase);
+    }
+
+    public static bool IsStreamtape(string embedUrl)
+        => !string.IsNullOrEmpty(embedUrl)
+            && (embedUrl.IndexOf("streamtape", StringComparison.OrdinalIgnoreCase) >= 0
+                || embedUrl.IndexOf("shavetape", StringComparison.OrdinalIgnoreCase) >= 0
+                || embedUrl.IndexOf("strtape", StringComparison.OrdinalIgnoreCase) >= 0);
 
     public static bool IsVide0(string embedUrl)
         => !string.IsNullOrEmpty(embedUrl)
@@ -515,6 +658,12 @@ public static class JavTsunamiTo
             return "Hicherri";
         if (embedUrl.IndexOf("vide0", StringComparison.OrdinalIgnoreCase) >= 0)
             return "Vide0";
+        if (embedUrl.IndexOf("fapsharing", StringComparison.OrdinalIgnoreCase) >= 0)
+            return "EV";
+        if (IsVidara(embedUrl))
+            return "VD";
+        if (IsStreamtape(embedUrl))
+            return "ST";
         return "S" + (Math.Abs(embedUrl.GetHashCode()) % 90 + 10);
     }
 
@@ -582,7 +731,10 @@ public static class JavTsunamiTo
 
         return label.IndexOf("Turbo", StringComparison.OrdinalIgnoreCase) >= 0
             || label.IndexOf("Hicherri", StringComparison.OrdinalIgnoreCase) >= 0
-            || label.IndexOf("Vide0", StringComparison.OrdinalIgnoreCase) >= 0;
+            || label.IndexOf("Vide0", StringComparison.OrdinalIgnoreCase) >= 0
+            || label.IndexOf("EV", StringComparison.OrdinalIgnoreCase) >= 0
+            || label.Equals("VD", StringComparison.OrdinalIgnoreCase)
+            || label.Equals("ST", StringComparison.OrdinalIgnoreCase);
     }
 
     // ================= DANG PHAT (mp4 / hls) =================
@@ -608,6 +760,15 @@ public static class JavTsunamiTo
         if (label.IndexOf("Hicherri", StringComparison.OrdinalIgnoreCase) >= 0)
             return KindHls;   // StreamHG chi co master.m3u8
 
+        if (label.IndexOf("EV", StringComparison.OrdinalIgnoreCase) >= 0)
+            return KindHls;   // FapSharing (ho StreamHG var links) = HLS
+
+        if (string.Equals(label, "VD", StringComparison.OrdinalIgnoreCase))
+            return KindHls;   // Vidara = HLS
+
+        if (string.Equals(label, "ST", StringComparison.OrdinalIgnoreCase))
+            return KindMp4;   // Streamtape = mp4
+
         return "";           // Turbo: HLS 2/3 video, MP4 1/3 -> tinh sau
     }
 
@@ -623,6 +784,15 @@ public static class JavTsunamiTo
 
         if (IsHicherri(pageUrl))
             return KindHls;
+
+        if (IsFapsharing(pageUrl))
+            return KindHls;
+
+        if (IsVidara(pageUrl))
+            return KindHls;
+
+        if (IsStreamtape(pageUrl))
+            return KindMp4;
 
         string player = await CurlGetRetry(pageUrl, SiteHost + "/", null, 3, maxTime, deadline);
         if (string.IsNullOrEmpty(player))
@@ -710,9 +880,198 @@ public static class JavTsunamiTo
         return res;
     }
 
+    // ================= EV - FAPSHARING (ho StreamHG) =================
+    //
+    // Nut EV tren site = iframe `fapsharing.com/embed/<id>`. Player nap code
+    // bang PACKER y nhu Hicherri (giai duoc bang PackerRx):
+    //   var links={"hls2":"...","hls4":"...","hls3":"..."}
+    // va jwplayer lay `links.hls4||links.hls3||links.hls2`.
+    // Verified 2026-10-08 (JUFE-059): hls2 = CDN dramiyos-cdn.com
+    // master.m3u8?t=<token> (200), hls4 = path relative /stream/... tren
+    // chinh host embed (200), hls3 = master.txt tren CDN .sbs.
+    // KHAC Hicherri: path relative ghep voi HOST EMBED (khong phai
+    // HicherriHost).
+    public static List<string> FapMasters(string playerHtml, string embedUrl)
+    {
+        var res = new List<string>();
+        if (string.IsNullOrEmpty(playerHtml))
+            return res;
+
+        var m = Regex.Match(playerHtml, PackerRx, RegexOptions.IgnoreCase);
+        if (!m.Success)
+            return res;
+
+        int radix = 2;
+        int count = 0;
+        if (!int.TryParse(m.Groups[2].Value, out radix) || radix < 2)
+            return res;
+        if (!int.TryParse(m.Groups[3].Value, out count) || count < 1)
+            return res;
+
+        string[] keys = m.Groups[4].Value.Split('|');
+        string code = m.Groups[1].Value;
+
+        for (int i = count - 1; i >= 0; i--)
+        {
+            if (i >= keys.Length || string.IsNullOrEmpty(keys[i]))
+                continue;
+
+            string token = ToBase36(i, radix);
+            string val = keys[i];
+            code = Regex.Replace(code, @"\b" + Regex.Escape(token) + @"\b",
+                _ => val.Replace("$", "$$"));
+        }
+
+        var lm = Regex.Match(code, @"var\s+links\s*=\s*\{([^;]+)\}", RegexOptions.IgnoreCase);
+        if (!lm.Success)
+            return res;
+
+        string baseHost = null;
+        try { baseHost = new Uri(embedUrl).GetLeftPart(UriPartial.Authority); }
+        catch { }
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (string key in new[] { "hls4", "hls3", "hls2" })
+        {
+            var km = Regex.Match(lm.Groups[1].Value, "\"" + key + "\":\"([^\"]+)\"");
+            if (!km.Success)
+                continue;
+
+            string u = HttpUtility.HtmlDecode(km.Groups[1].Value.Trim());
+            if (u.StartsWith("//"))
+                u = "https:" + u;
+            else if (u.StartsWith("/") && !string.IsNullOrEmpty(baseHost))
+                u = baseHost + u;
+
+            if (!u.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (seen.Add(u))
+                res.Add(u);
+        }
+
+        return res;
+    }
+
+    // ================= VD - VIDARA =================
+    //
+    // Site goi la VD (hostAbbr: gbiouasou/iosbgaigo -> VD). Player jwplayer
+    // `file: <streaming_url>`, lay qua API giong SupJav VAS:
+    //   POST https://<host>/api/stream {"filecode":"<id>","device":"web"}
+    //   -> JSON {"streaming_url":"https://.../master.m3u8?token=..."}
+    // Verified 2026-10-08: iosbgaigo.com/e/D7xeYbqb3QFC (YUJ-075).
+    public static (string apiHost, string filecode) VidaraTarget(string embedUrl)
+    {
+        if (string.IsNullOrEmpty(embedUrl))
+            return (null, null);
+        var m = Regex.Match(embedUrl, @"(https?://[^/]+)/e/([A-Za-z0-9]+)",
+            RegexOptions.IgnoreCase);
+        if (!m.Success)
+            return (null, null);
+        return (m.Groups[1].Value, m.Groups[2].Value);
+    }
+
+    public static string VidaraStreamingUrl(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return null;
+        var m = Regex.Match(json, @"""streaming_url""\s*:\s*""([^""]+)""",
+            RegexOptions.IgnoreCase);
+        if (!m.Success)
+            return null;
+        string v = m.Groups[1].Value.Replace("\\/", "/");
+        return v.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? v : null;
+    }
+
+    // ================= ST - STREAMTAPE =================
+    //
+    // Site goi la ST (hostAbbr: streamtape/shavetape -> ST). Cong thuc
+    // SupJav.StreamTapeMp4: div #robotlink (token CU, API 500) vs script
+    // gan lai (token MOI, 302 CDN) — lay match CUOI.
+    public static string StreamtapeMp4(string embedHtml)
+    {
+        if (string.IsNullOrEmpty(embedHtml))
+            return null;
+
+        string query = null;
+        foreach (Match m in Regex.Matches(embedHtml,
+            @"robotlink.{0,4}\.innerHTML\s*=\s*'[^']*get_video\?'\s*\+\s*\('([^']+)'",
+            RegexOptions.IgnoreCase))
+            query = m.Groups[1].Value;
+
+        if (string.IsNullOrEmpty(query))
+        {
+            foreach (Match m in Regex.Matches(embedHtml,
+                @"robotlink'\)\.innerHTML\s*=\s*'([^']*)'\s*\+\s*\('([^']*)'\)((?:\s*\.substring\(\d+\)\s*)*)",
+                RegexOptions.IgnoreCase))
+            {
+                string tail = m.Groups[2].Value;
+                foreach (Match s in Regex.Matches(m.Groups[3].Value ?? "",
+                    @"substring\((\d+)\)"))
+                {
+                    if (int.TryParse(s.Groups[1].Value, out int n)
+                        && n >= 0 && n <= tail.Length)
+                        tail = tail.Substring(n);
+                }
+                query = m.Groups[1].Value + tail;
+            }
+        }
+
+        if (string.IsNullOrEmpty(query))
+        {
+            var div = Regex.Match(embedHtml,
+                @"id\s*=\s*""robotlink""[^>]*>([^<]+)<",
+                RegexOptions.IgnoreCase);
+            if (div.Success)
+                query = div.Groups[1].Value;
+        }
+
+        if (string.IsNullOrEmpty(query))
+            return null;
+
+        var tailm = Regex.Match(query,
+            @"id=[A-Za-z0-9_-]+&expires=\d+[^']*");
+        if (tailm.Success)
+            return "https://strtape.cloud/get_video?" + tailm.Value;
+
+        string path = query.Trim();
+        if (string.IsNullOrEmpty(path))
+            return null;
+        if (path.StartsWith("//"))
+            return "https:" + path;
+        if (path.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            return path;
+        if (path.Contains("get_video"))
+            return "https://strtape.cloud/get_video?"
+                + path[(path.IndexOf("get_video") + 9)..].TrimStart('?', '&');
+        return "https://streamtape.com/" + path.TrimStart('/');
+    }
+
+    public static string StreamtapeEmbedUrl(string html)
+    {
+        if (string.IsNullOrEmpty(html))
+            return null;
+        var m = Regex.Match(html,
+            @"<link[^>]*rel\s*=\s*""canonical""[^>]*href\s*=\s*""([^""]+)""",
+            RegexOptions.IgnoreCase);
+        if (!m.Success)
+            m = Regex.Match(html,
+                @"<meta[^>]*(?:name|property)\s*=\s*""og:url""[^>]*content\s*=\s*""([^""]+)""",
+                RegexOptions.IgnoreCase);
+        if (!m.Success)
+            return null;
+        string u = m.Groups[1].Value.Trim();
+        if (u.StartsWith("//"))
+            return "https:" + u;
+        if (u.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            return u;
+        return "https://streamtape.com/" + u.TrimStart('/');
+    }
+
     // Packer cua hicherri ghi `new RegExp('\\b'+...)` — trong file THAT la
     // 3 ky tu: backslash, backslash, 'b'. Regex phai khop `(\\)+` (mot hoac
     // nhieu backslash) chu khong phai `\\b` se khong bao gio khop.
+    // FapSharing dung y khuon nay (verified JUFE-059) nen dung chung.
     const string PackerRx = @"eval\(function\(p,a,c,k,e,d\)\{while\(c--\)if\(k\[c\]\)p=p\.replace\(new RegExp\('(?:\\\\)+b'\+c\.toString\(a\)\+'(?:\\\\)+b','g'\),k\[c\]\);return p\}\('([\s\S]*?)',(\d+),(\d+),'([\s\S]*?)'\.split\('\|'\)\)";
 
     static string ToBase36(int v, int radix)
@@ -879,13 +1238,13 @@ public static class JavTsunamiTo
     // Vong 2 chi 1 lan thu moi host: host vong 1 tra #EXTM3U thi san thong
     // tin server, khong can doi lane http2/http1.1 them nua.
     public static async Task<List<(string url, string tag)>> HicherriVariantsAsync(
-        List<string> masters, int maxTime = 3, long deadline = 0)
+        List<string> masters, int maxTime = 3, long deadline = 0, string refHost = null)
     {
         var empty = new List<(string url, string tag)>();
         if (masters == null || masters.Count == 0)
             return empty;
 
-        string refHost = HicherriHost + "/";
+        refHost ??= HicherriHost + "/";
 
         // Cho nhieu thu hon: `hls4` nam tren chinh hicherri.com (tokenless,
         // song lai) nen no cham hon `hls3` (CDN `.cfd`) — quy gan 2 lan / 3s
@@ -1049,6 +1408,48 @@ public static class JavTsunamiTo
         return null;
     }
 
+    // ===== head menu (re moi request): Tim kiem + Sắp xếp =====
+    // Moi context (home/genre/tag/search) DEU co dropdown #filters voi
+    // cung 4 sort that (do live 2026-10-08) nen dong 2 hien MỌI NOI.
+    public static List<Shared.Models.SISI.Base.MenuItem> MenuHead(
+        string host, string search, string c)
+    {
+        host = host.TrimEnd('/');
+        string root = host + "/javtsunami";
+        var res = new List<Shared.Models.SISI.Base.MenuItem>(2)
+        {
+            new Shared.Models.SISI.Base.MenuItem()
+            {
+                title = "Tìm kiếm",
+                search_on = "search_on",
+                playlist_url = root
+            }
+        };
+        string cur = CurrentFilter(search, c);
+        var sub = new List<Shared.Models.SISI.Base.MenuItem>(Sorts.Length);
+        foreach (var (name, f) in Sorts)
+        {
+            string nc = WithFilter(search, c, f);
+            string link;
+            if (!string.IsNullOrWhiteSpace(search))
+                link = root + "?search=" + HttpUtility.UrlEncode(search)
+                    + (string.IsNullOrEmpty(nc) ? "" : "&c=" + HttpUtility.UrlEncode(nc));
+            else if (string.IsNullOrEmpty(nc))
+                link = root;
+            else
+                link = root + "?c=" + HttpUtility.UrlEncode(nc);
+            sub.Add(new Shared.Models.SISI.Base.MenuItem() { title = name, playlist_url = link });
+        }
+        res.Add(new Shared.Models.SISI.Base.MenuItem()
+        {
+            title = "Sắp xếp: " + FilterLabel(cur),
+            playlist_url = "submenu",
+            submenu = sub
+        });
+        return res;
+    }
+
+    // ===== base menu (cache): The loai + Tags =====
     // `cats` = danh sach tu trang `/categories` cua site (30 muc). Khong so
     // muc hardcode o day nua. `Lọc` giu nguyen — do la query filter cua trang
     // chu, khong co trang rieng.
@@ -1063,36 +1464,15 @@ public static class JavTsunamiTo
                 genres.Add(new(c.name, host + "/javtsunami?c=" + c.path));
         }
 
-        // Tags tam nghi (it phim, submenu dai): nhan param de sau bat lai
-        // chi can xoa 2 dong duoi, khong phai sua chu ky.
-        _ = tags;
         var tagMenu = new List<Shared.Models.SISI.Base.MenuItem>();
-
-        // DÒNG 2 — Sắp xếp (công thức SISI 9g). Site dung `?filter=`.
-// Da do 2026-10-02: latest/longest/most-viewed/random ra 4 bo phim
-// KHAC nhau; `?filter=hot` bi WP bo qua (ra y trang mac dinh) -> khong dua.
-        var views = new List<Shared.Models.SISI.Base.MenuItem>()
+        if (tags != null)
         {
-            new("Mới nhất", host + "/javtsunami"),
-            new("Xem nhiều", host + "/javtsunami?c=filter/most-viewed"),
-            new("Lâu nhất", host + "/javtsunami?c=filter/longest"),
-            new("Ngẫu nhiên", host + "/javtsunami?c=filter/random"),
-        };
+            foreach (var t in tags)
+                tagMenu.Add(new(t.name, host + "/javtsunami?c=" + t.path));
+        }
 
         var root = new List<Shared.Models.SISI.Base.MenuItem>()
         {
-            new Shared.Models.SISI.Base.MenuItem()
-            {
-                title = "Tìm kiếm",
-                search_on = "search_on",
-                playlist_url = host + "/javtsunami"
-            },
-            new Shared.Models.SISI.Base.MenuItem()
-            {
-                title = "Sắp xếp",
-                playlist_url = "submenu",
-                submenu = views
-            },
             new Shared.Models.SISI.Base.MenuItem()
             {
                 title = "Thể loại",
