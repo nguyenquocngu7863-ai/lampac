@@ -1,6 +1,22 @@
 (function() {
   'use strict';
 
+  // === Chan nag APK khi xem torrent tren Chrome Android (ban web) ===
+  //
+  // Cua ngo (do 2026-10-09 trong app.min.js): item torrent hover:enter lam
+  //   if (UA chua 'android' && !Platform.is('android')) return Platform.install('apk')
+  // UA Android + Platform browser => hien modal + return (chan play).
+  // Strip 'android' khoi UA doc o runtime; Platform detect xong o boot
+  // ('browser') nen cac nhanh Android.* (bridge APK) khong bi anh huong.
+  // Chi co dung 2 cho doc UA-android (1 da comment) nen patch nay hep.
+  try {
+    var _uaNoAndroid = navigator.userAgent.replace(/android/i, 'mobile');
+    Object.defineProperty(window.navigator, 'userAgent', {
+      configurable: true,
+      get: function () { return _uaNoAndroid; }
+    });
+  } catch (e) {}
+
   // === Cat tien to PNG trong segment HLS (LampaWeb) ===
   //
   // Mot so nguon (vi du CDN cua JavGuru) tra segment o dang
