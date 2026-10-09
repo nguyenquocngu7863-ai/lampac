@@ -21,6 +21,11 @@ public static class XNhauTo
     {
         var url = StringBuilderPool.ThreadInstance;
 
+        // Sort that kieu KVS `?sort_by=` (do live 2026-10-08: ca 6 doi list
+        // that tren genre + search; home/tag/page-2 cung vay). Legacy
+        // `?sort=clip-sex-moi|hot|hay` map ve sort_by tuong duong.
+        string s = NormalizeSort(sort);
+
         url.Append(host);
         url.Append("/");
 
@@ -57,63 +62,57 @@ public static class XNhauTo
             url.Append("search/");
             url.Append(encsearch);
             url.Append("/");
+            string sq = string.IsNullOrEmpty(s) ? "" : "?sort_by=" + s;
             if (pg > 1)
             {
                 // Search phan trang qua AJAX (giong web): ?mode=async&function=get_block&...
-                url.Append("?mode=async&function=get_block&block_id=list_videos_videos_list_search_result&q=");
+                url.Append(sq.Length == 0 ? "?" : sq + "&");
+                url.Append("mode=async&function=get_block&block_id=list_videos_videos_list_search_result&q=");
                 url.Append(encsearch);
                 url.Append("&from_videos=");
                 url.Append(pg);
                 url.Append("&from_albums=");
                 url.Append(pg);
             }
+            else if (sq.Length > 0)
+                url.Append(sq);
         }
         else if (!string.IsNullOrEmpty(c))
         {
             url.Append("the-loai/");
             url.Append(c);
             url.Append("/");
+            string cq = string.IsNullOrEmpty(s) ? "" : "?sort_by=" + s;
             if (pg > 1)
             {
-                url.Append("?from=");
+                url.Append(cq.Length == 0 ? "?from=" : cq + "&from=");
                 url.Append(pg);
             }
+            else if (cq.Length > 0)
+                url.Append(cq);
         }
         else if (!string.IsNullOrEmpty(t))
         {
             url.Append("tags/");
             url.Append(t);
             url.Append("/");
+            string tq = string.IsNullOrEmpty(s) ? "" : "?sort_by=" + s;
             if (pg > 1)
             {
-                url.Append("?from=");
+                url.Append(tq.Length == 0 ? "?from=" : tq + "&from=");
                 url.Append(pg);
             }
+            else if (tq.Length > 0)
+                url.Append(tq);
         }
-        else if (sort == "clip-sex-moi")
+        else if (!string.IsNullOrEmpty(s))
         {
-            url.Append("clip-sex-moi/");
+            // Home + sort: ?sort_by= (thay 3 path rieng clip-sex-moi|hot|hay).
+            url.Append("?sort_by=");
+            url.Append(s);
             if (pg > 1)
             {
-                url.Append("?from=");
-                url.Append(pg);
-            }
-        }
-        else if (sort == "clip-sex-hot")
-        {
-            url.Append("clip-sex-hot/");
-            if (pg > 1)
-            {
-                url.Append("?from=");
-                url.Append(pg);
-            }
-        }
-        else if (sort == "clip-sex-hay")
-        {
-            url.Append("clip-sex-hay/");
-            if (pg > 1)
-            {
-                url.Append("?from=");
+                url.Append("&from=");
                 url.Append(pg);
             }
         }
@@ -195,8 +194,99 @@ public static class XNhauTo
     //
     // Cong thuc SISI 3 dong:
     //   dong 1  Tìm kiếm  (search_on)
-    //   dong 2  Sắp xếp   (submenu chua moi kieu sort)
+    //   dong 2  Sắp xếp   (submenu, THEO CONTEXT — MenuHead)
     //   dong 3+ taxonomy   (the loai)
+    //
+    // Sort that kieu KVS `?sort_by=` (do live 2026-10-08, dropdown sort tren
+    // head moi trang list): post_date/video_viewed/rating/duration/
+    // most_commented/most_favourited — ca 6 doi list that. Mac dinh (khong
+    // sort): home/genre/tag = Mới nhất (post_date), search = Liên quan.
+    public static readonly (string name, string sort)[] Sorts =
+    {
+        ("Mới nhất",            "post_date"),
+        ("Xem nhiều nhất",      "video_viewed"),
+        ("Hay nhất",            "rating"),
+        ("Dài nhất",            "duration"),
+        ("Bình luận nhiều nhất","most_commented"),
+        ("Được yêu thích nhất", "most_favourited"),
+    };
+
+    static readonly System.Collections.Generic.Dictionary<string, string> SortAlias =
+        new System.Collections.Generic.Dictionary<string, string>(
+            System.StringComparer.OrdinalIgnoreCase)
+        {
+            { "clip-sex-moi", "post_date" },
+            { "clip-sex-hot", "video_viewed" },
+            { "clip-sex-hay", "rating" },
+            { "new", "post_date" },
+            { "hot", "video_viewed" },
+            { "top", "rating" },
+        };
+
+    // "" = mac dinh context (Mới nhất cho list, Liên quan cho search).
+    public static string NormalizeSort(string sort)
+    {
+        if (string.IsNullOrWhiteSpace(sort)) return "";
+        sort = sort.Trim();
+        if (SortAlias.TryGetValue(sort, out string mapped))
+            return mapped;
+        foreach (var (_, s) in Sorts)
+            if (s.Equals(sort, System.StringComparison.OrdinalIgnoreCase))
+                return s;
+        return "";
+    }
+
+    public static string SortLabel(string search, string sort)
+    {
+        string s = NormalizeSort(sort);
+        if (string.IsNullOrEmpty(s))
+            return string.IsNullOrWhiteSpace(search) ? "Mới nhất" : "Liên quan";
+        foreach (var (name, v) in Sorts)
+            if (v == s) return name;
+        return s;
+    }
+
+    // Dong 2 theo context: giu search/c/t hien tai, chi doi sort.
+    public static List<MenuItem> MenuHead(
+        string host, string search, string sort, string c, string t)
+    {
+        host = host.TrimEnd('/');
+        string url = $"{host}/xnhau";
+        var res = new List<MenuItem>(2)
+        {
+            new MenuItem()
+            {
+                title = "Tìm kiếm",
+                search_on = "search_on",
+                playlist_url = url,
+            }
+        };
+        string link(string s)
+        {
+            var q = new List<string>();
+            if (!string.IsNullOrWhiteSpace(search))
+                q.Add("search=" + HttpUtility.UrlEncode(search));
+            if (!string.IsNullOrWhiteSpace(c))
+                q.Add("c=" + HttpUtility.UrlEncode(c));
+            if (!string.IsNullOrWhiteSpace(t))
+                q.Add("t=" + HttpUtility.UrlEncode(t));
+            string ns = NormalizeSort(s);
+            if (!string.IsNullOrEmpty(ns))
+                q.Add("sort=" + ns);
+            return q.Count == 0 ? url : url + "?" + string.Join("&", q);
+        }
+        var sub = new List<MenuItem>(Sorts.Length + 1);
+        foreach (var (name, s) in Sorts)
+            sub.Add(new(name, link(s)));
+        sub.Add(new("Trang chủ", url));
+        res.Add(new MenuItem()
+        {
+            title = "Sắp xếp: " + SortLabel(search, sort),
+            playlist_url = "submenu",
+            submenu = sub
+        });
+        return res;
+    }
     //
     // Client SISI chi hien MOT TANG submenu, nen moi nhom taxonomy la
     // 1 muc tang 1. `/tags/` co 14634 tag nen KHONG dua vao menu (ke ca
@@ -204,6 +294,7 @@ public static class XNhauTo
     //
     // `groups` = 3 nhom tren trang `/the-loai/`:
     //   "Sex Châu Á" 9 | "Thể loại cụ thể" 59 | "Phim Sex" 4
+    // Day la BASE menu (dong 3+); dong 1+2 do MenuHead giu theo context.
     public static List<MenuItem> Menu(string host,
         List<(string name, List<(string slug, string name)> items)> groups = null)
     {
@@ -211,30 +302,7 @@ public static class XNhauTo
 
         string cat(string slug) => $"{url}?c={HttpUtility.UrlEncode(slug)}";
 
-        var menu = new List<MenuItem>(5)
-        {
-            // Dong 1
-            new MenuItem()
-            {
-                title = "Tìm kiếm",
-                search_on = "search_on",
-                playlist_url = url,
-            },
-            // Dong 2 — moi kieu sort cua site deu la path rieng
-            // (`clip-sex-moi|hot|hay`), khong phai query.
-            new MenuItem()
-            {
-                title = "Sắp xếp",
-                playlist_url = "submenu",
-                submenu = new List<MenuItem>(4)
-                {
-                    new("Mới nhất", $"{url}?sort=clip-sex-moi"),
-                    new("Xem nhiều nhất", $"{url}?sort=clip-sex-hot"),
-                    new("Hay nhất", $"{url}?sort=clip-sex-hay"),
-                    new("Trang chủ", url)
-                }
-            }
-        };
+        var menu = new List<MenuItem>(5);
 
         // Dong 3+ — taxonomy. Client chi 1 tang nen moi nhom 1 muc.
         foreach (var (name, items) in groups ?? FallbackGroups)
