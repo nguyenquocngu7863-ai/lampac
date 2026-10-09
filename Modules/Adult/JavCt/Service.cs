@@ -196,6 +196,86 @@ public static class JavCtTo
         return res;
     }
 
+    // -----------------------------------------------------------------------------
+    // Helpers to parse the detail page
+    // -----------------------------------------------------------------------------
+    /// <summary>
+    /// Extracts the filmId (data‑source), `__pt` and `__pk` values from the
+    /// detail page.  Returns (null, null, null) if the page does not contain
+    /// the expected data.
+    /// </summary>
+    public static (string filmId, string pt, string pk) GetDetailTokens(string page)
+    {
+        if (string.IsNullOrEmpty(page))
+            return (null, null, null);
+
+        var ds = Regex.Match(page, @"data-source\s*=\s*[""']([^""']+)[""']",
+            RegexOptions.IgnoreCase);
+        var pt = Regex.Match(page, @"window\.__pt\s*=\s*[""']([^""']+)[""']");
+        var pk = Regex.Match(page, @"window\.__pk\s*=\s*[""']([^""']+)[""']");
+
+        string filmId = ds.Success ? ds.Groups[1].Value : null;
+        string ptVal  = pt.Success ? pt.Groups[1].Value : null;
+        string pkVal  = pk.Success ? pk.Groups[1].Value : null;
+
+        return (filmId, ptVal, pkVal);
+    }
+
+    /// <summary>
+    /// Returns the list of available servers from the detail page.  The list
+    /// is the same as the one used by the original ResolveAsync – 'DD' is
+    /// inserted at the front, and duplicate labels are renumbered.
+    /// </summary>
+    public static List<(string label, string episode)> GetDetailServers(string page)
+    {
+        if (string.IsNullOrEmpty(page))
+            return null;
+
+        var ds = Regex.Match(page, @"data-source\s*=\s*[""']([^""']+)[""']",
+            RegexOptions.IgnoreCase);
+        if (!ds.Success)
+            return null;
+
+        var servers = new List<(string label, string episode)>();
+
+        foreach (Match b in Regex.Matches(page,
+            @"<button\b[^>]*\bdata-id\s*=\s*[""']([^""']+)[""'][^>]*>(.*?)</button\s*>",
+            RegexOptions.IgnoreCase | RegexOptions.Singleline))
+        {
+            string label = Regex.Replace(b.Groups[2].Value, "<[^>]+>", " ").Trim();
+            if (label.Length > 12)
+                label = label.Substring(0, 12);
+            if (string.IsNullOrEmpty(label))
+                label = "S" + (servers.Count + 1);
+
+            string key = label;
+            int dup = 2;
+            while (servers.Exists(s => s.label == key))
+                key = label + " " + (dup++);
+            servers.Add((key, b.Groups[1].Value));
+        }
+
+        // Player mac dinh (fakeplayer playbox): episode = filmId, khong co data-id.
+        // Do live 2026-10-09: DD chet site-wide ("We are updating", ca phim
+        // moi lan cu) — F4 (f4s.top) thay the. Giu DD o CUOI (phim nao con
+        // song thi van bam duoc), nut that (F4/FL/US/PM) len truoc de app
+        // autoplay khong vot phai nut chet.
+        for (int i = 0; i < servers.Count; i++)
+        {
+            if (string.Equals(servers[i].label, "DD", StringComparison.OrdinalIgnoreCase))
+            {
+                int n = 2;
+                string nk = "DD " + (n++);
+                while (servers.Exists(s => s.label == nk))
+                    nk = "DD " + (n++);
+                servers[i] = (nk, servers[i].episode);
+            }
+        }
+        servers.Add(("DD", ds.Groups[1].Value));
+
+        return servers;
+    }
+
     // Card: card__cover > img[data-src|src + alt] + card__title > a[href=/v/slug].
     public static List<PlaylistItem> Playlist(string route, string html)
     {
@@ -668,6 +748,78 @@ public static class JavCtTo
         {
             return null;
         }
+    }
+
+    // F4 (f4s.top/f4stream, thay DD tu ~2026-10): iframe `f4s.top/e/id`
+    // -> GET embed lay data-api `/api/play/<uuid>` -> GET api (host = embed
+    // authority) -> JSON {url:"/v/<token>", type:"hls", expires_in:300}.
+    // Tra master m3u8 (302 sang CDN). Token song 5 phut -> resolve o /video
+    // (lazy), cache pack NGAN (4 phut).
+    public static async Task<string> F4SourceAsync(
+        string embedUrl, int timeoutSeconds = 10)
+    {
+        if (string.IsNullOrEmpty(embedUrl))
+            return null;
+
+        string host;
+        try
+        {
+            host = new System.Uri(embedUrl).GetLeftPart(System.UriPartial.Authority);
+        }
+        catch
+        {
+            return null;
+        }
+
+        string embedHtml = null;
+        try
+        {
+            embedHtml = await Http.Get(
+                embedUrl,
+                timeoutSeconds: timeoutSeconds,
+                headers: HeadersModel.Init(
+                    ("User-Agent", ChromeUA),
+                    ("Referer", SiteHost + "/")));
+        }
+        catch { }
+        if (string.IsNullOrEmpty(embedHtml))
+            return null;
+
+        var am = Regex.Match(embedHtml, @"data-api\s*=\s*[""']([^""']+)[""']",
+            RegexOptions.IgnoreCase);
+        if (!am.Success)
+            return null;
+
+        string api = am.Groups[1].Value.Trim().Replace("&quot;", "").Replace("&#x27;", "");
+        if (api.StartsWith("/"))
+            api = host + api;
+        else if (!api.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        string json;
+        try
+        {
+            json = await Http.Get(
+                api,
+                timeoutSeconds: timeoutSeconds,
+                headers: HeadersModel.Init(
+                    ("User-Agent", ChromeUA),
+                    ("Referer", embedUrl)));
+        }
+        catch
+        {
+            return null;
+        }
+
+        var um = Regex.Match(json ?? "", @"""url""\s*:\s*""([^""]+)""",
+            RegexOptions.IgnoreCase);
+        if (!um.Success)
+            return null;
+
+        string src = um.Groups[1].Value.Replace("\\/", "/");
+        if (src.StartsWith("/"))
+            src = host + src;
+        return src.StartsWith("http") ? src : null;
     }
 
     public static List<Shared.Models.SISI.Base.MenuItem> Menu(
