@@ -226,15 +226,15 @@ public class JavGuruController : BaseSisiController
     // 0 = tot nhat. Thu tu nay KHONG chi dung de fallback: `/vidosik` phat
     // dict theo thu tu nay va app Lampa lay **phan dau** lam muc mac dinh
     // player => doi o day la doi muc mac dinh cua ca module.
-    //   LU  - user do nhanh nhat nen lam mac dinh.
+    //   SB  - streamhg: user chon lam mac dinh (LU bat on 2026-10-09).
     //   DD  - DoodStream, ben nhung nhat trong 5 server.
     //   TV  - gateway /searcho hay 520, cham/chop -> sau DD.
-    //   JK  - maxstream on dinh nhung cham hon LU.
-    //   SB  - streamhg ~26KB/s, khong tua duoc -> gan cuoi.
+    //   JK  - maxstream on dinh nhung cham.
+    //   LU  - lulustream bat on (token song vai phut + edge flag IP) -> gan cuoi.
     //   VO  - CHUA xu ly, LUON o cuoi cho den khi lam.
     static int Priority(string label)
     {
-        if (label.IndexOf("LU", StringComparison.OrdinalIgnoreCase) >= 0)
+        if (label.IndexOf("SB", StringComparison.OrdinalIgnoreCase) >= 0)
             return 0;
         if (JavGuruTo.IsDdServer(label))
             return 1;
@@ -242,7 +242,7 @@ public class JavGuruController : BaseSisiController
             return 2;
         if (label.IndexOf("JK", StringComparison.OrdinalIgnoreCase) >= 0)
             return 3;
-        if (label.IndexOf("SB", StringComparison.OrdinalIgnoreCase) >= 0)
+        if (label.IndexOf("LU", StringComparison.OrdinalIgnoreCase) >= 0)
             return 4;
         return 5;
     }
