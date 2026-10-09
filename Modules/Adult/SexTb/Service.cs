@@ -504,13 +504,121 @@ public static class SexTbTo
     public static string StreamHgMaster(string embedHtml,string referer){ var lst=StreamHgMasters(embedHtml,referer); return lst.Count>0?lst[0]:null; }
 
     // ========== F4 ==========
-    // F4 sinh token theo IP - phai dung cung IP voi stream (direct). Truoc dung proxy o day nhung stream direct -> token lech.
+    // F4 (f4s.top/f4stream/f4scdn deu phuc vu embed giong nhau): iframe
+    // -> data-api `/api/play/<uuid>` -> api (host = embed authority) ->
+    // {url:"/v/<token>", type:"hls", expires_in:300} -> /v/ 302 sang master
+    // CDN `*.f4scdn.com/.../playlist.m3u8`. Tra MASTER CDN cho app de phan
+    // phat khong can main host (chan TLS thuong).
+    // MO KHOA 2026-10-09: api/play bat buoc query `?ab=0` (player.js them
+    // ab= + r=), thieu `ab=` server tra adblock:true — khong phai IP flag.
+    // Token song 5 phut -> lazy o /video, cache ngan.
+    // Giu proxy fallback cho TH sexTB bi chan direct (dood/streamhg).
+    public static async Task<string> CffiGet(string url, string referer, int maxTime = 10)
+    {
+        if (string.IsNullOrEmpty(url))
+            return null;
+        try
+        {
+            string code =
+                "import sys\n"
+                + "from curl_cffi import requests as rq\n"
+                + "u=sys.argv[1];ref=sys.argv[2];to=int(sys.argv[3])\n"
+                + "r=rq.get(u,impersonate='chrome124',timeout=to,headers={'User-Agent':'" + ChromeUA + "','Referer':ref})\n"
+                + "sys.stdout.write(r.text)\n";
+            var psi = new ProcessStartInfo
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            psi.Environment.Remove("LD_PRELOAD");
+            psi.Environment.Remove("LD_LIBRARY_PATH");
+            string py = "/data/data/com.termux/files/usr/bin/python3";
+            psi.FileName = File.Exists(py) ? py : "python3";
+            psi.ArgumentList.Add("-c");
+            psi.ArgumentList.Add(code);
+            psi.ArgumentList.Add(url);
+            psi.ArgumentList.Add(referer ?? "");
+            psi.ArgumentList.Add(Math.Max(5, maxTime).ToString());
+            using var p = Process.Start(psi);
+            if (p == null)
+                return null;
+            string stdout = await p.StandardOutput.ReadToEndAsync();
+            await p.WaitForExitAsync();
+            if (p.ExitCode != 0 || string.IsNullOrWhiteSpace(stdout))
+                return null;
+            return stdout;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    // Nhu CffiGet nhung tra ca URL cuoi cung sau redirect (lay master CDN
+    // tu /v/<token>). Dong dau stdout = final URL.
+    static async Task<(string body, string finalUrl)> CffiGetFinal(
+        string url, string referer, int maxTime = 10)
+    {
+        if (string.IsNullOrEmpty(url))
+            return (null, null);
+        try
+        {
+            string code =
+                "import sys\n"
+                + "from curl_cffi import requests as rq\n"
+                + "u=sys.argv[1];ref=sys.argv[2];to=int(sys.argv[3])\n"
+                + "r=rq.get(u,impersonate='chrome124',timeout=to,headers={'User-Agent':'" + ChromeUA + "','Referer':ref})\n"
+                + "sys.stdout.write('@@URL@@'+r.url+'\\n'+r.text)\n";
+            var psi = new ProcessStartInfo
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            psi.Environment.Remove("LD_PRELOAD");
+            psi.Environment.Remove("LD_LIBRARY_PATH");
+            string py = "/data/data/com.termux/files/usr/bin/python3";
+            psi.FileName = File.Exists(py) ? py : "python3";
+            psi.ArgumentList.Add("-c");
+            psi.ArgumentList.Add(code);
+            psi.ArgumentList.Add(url);
+            psi.ArgumentList.Add(referer ?? "");
+            psi.ArgumentList.Add(Math.Max(5, maxTime).ToString());
+            using var p = Process.Start(psi);
+            if (p == null)
+                return (null, null);
+            string stdout = await p.StandardOutput.ReadToEndAsync();
+            await p.WaitForExitAsync();
+            if (p.ExitCode != 0 || string.IsNullOrWhiteSpace(stdout))
+                return (null, null);
+            const string sep = "@@URL@@";
+            if (!stdout.StartsWith(sep))
+                return (stdout, null);
+            int nl = stdout.IndexOf('\n');
+            if (nl < 0)
+                return (null, null);
+            return (stdout[(nl + 1)..],
+                stdout[sep.Length..nl].Trim());
+        }
+        catch
+        {
+            return (null, null);
+        }
+    }
+
     public static async Task<string> F4SourceAsync(string embedUrl,int timeoutSeconds=10, WebProxy proxyDirect=null, int httpversion=1)
     {
         if(string.IsNullOrEmpty(embedUrl)) return null;
+        string host;
+        try { var u = new System.Uri(embedUrl); host = u.GetLeftPart(System.UriPartial.Authority); } catch { return null; }
         string html;
         // thu direct truoc (token IP VN), fallback proxy neu direct chet
         try{ html=await Http.Get(embedUrl, timeoutSeconds: timeoutSeconds, headers: HeadersModel.Init(("User-Agent",ChromeUA),("Referer",SiteHost+"/")), httpversion: httpversion); }catch{ html=null; }
+        if(string.IsNullOrEmpty(html))
+            html = await CffiGet(embedUrl, SiteHost + "/", timeoutSeconds);
         if(string.IsNullOrEmpty(html))
         {
             try{ html=await Http.Get(embedUrl, timeoutSeconds: timeoutSeconds, headers: HeadersModel.Init(("User-Agent",ChromeUA),("Referer",SiteHost+"/")), proxy: proxyDirect, httpversion: httpversion); }catch{return null;}
@@ -519,9 +627,13 @@ public static class SexTbTo
         var m=Regex.Match(html, @"data-api\s*=\s*""([^""]+)""", RegexOptions.IgnoreCase);
         if(!m.Success) return null;
         string api=m.Groups[1].Value;
-        if(api.StartsWith("/")) api="https://f4stream.com"+api;
+        if(api.StartsWith("/")) api=host+api;
+        // Bat buoc them ab=0 (player.js apiUrl: ?ab=<0|1>&r=<referrer>).
+        api += (api.Contains("?") ? "&" : "?") + "ab=0";
         string json;
         try{ json=await Http.Get(api, timeoutSeconds: timeoutSeconds, headers: HeadersModel.Init(("User-Agent",ChromeUA),("Referer",embedUrl)), httpversion: httpversion); }catch{ json=null; }
+        if(string.IsNullOrWhiteSpace(json))
+            json = await CffiGet(api, embedUrl, timeoutSeconds);
         if(string.IsNullOrWhiteSpace(json))
         {
             try{ json=await Http.Get(api, timeoutSeconds: timeoutSeconds, headers: HeadersModel.Init(("User-Agent",ChromeUA),("Referer",embedUrl)), proxy: proxyDirect, httpversion: httpversion); }catch{return null;}
@@ -533,8 +645,14 @@ public static class SexTbTo
             if(doc.RootElement.TryGetProperty("url",out var u) && u.ValueKind==System.Text.Json.JsonValueKind.String)
             {
                 string v=u.GetString().Replace("\\/","/");
-                if(v.StartsWith("/")) v="https://f4stream.com"+v;
-                return v.StartsWith("http")?v:null;
+                if(v.StartsWith("/")) v=host+v;
+                if(!v.StartsWith("http",StringComparison.OrdinalIgnoreCase)) return null;
+                // /v/<token> 302 sang master CDN *.f4scdn.com — tra master
+                // CDN cho app (main host chan TLS thuong).
+                var (_, finalUrl) = await CffiGetFinal(v, embedUrl, timeoutSeconds);
+                if(!string.IsNullOrEmpty(finalUrl) && finalUrl.StartsWith("http",StringComparison.OrdinalIgnoreCase))
+                    return finalUrl;
+                return v;
             }
         }catch{}
         return null;

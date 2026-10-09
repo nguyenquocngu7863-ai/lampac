@@ -750,13 +750,20 @@ public static class JavCtTo
         }
     }
 
-    // F4 (f4s.top/f4stream): iframe `f4s.top/e/id`
-    // -> GET embed lay data-api `/api/play/<uuid>` -> GET api (host = embed
-    // authority) -> JSON {url:"/v/<token>", type:"hls", expires_in:300}.
-    // Tra master m3u8 (302 sang CDN). Token song 5 phut -> resolve o /video
+    // F4 (f4s.top/f4stream/f4scdn): iframe `f4s.top/e/id` (ca 3 host deu
+    // phuc vu embed giong nhau) -> GET embed lay data-api `/api/play/<uuid>`
+    // -> GET api (host = embed authority) -> JSON {url:"/v/<token>",
+    // type:"hls", expires_in:300}. /v/<token> 302 sang master CDN
+    // `*.f4scdn.com/.../playlist.m3u8` — theo redirect bang curl_cffi roi
+    // tra MASTER CDN cho app (CDN khong chan TLS thuong; main host chan nen
+    // app khong the tu tai /v/). Token song 5 phut -> resolve o /video
     // (lazy), cache pack NGAN (4 phut).
-    // Do live 2026-10-09 (buoi toi): f4s.top chan TLS thuong (curl 000,
-    // .NET treo) — chi Chrome fingerprint (curl_cffi) qua. Dung CffiGet.
+    // MO KHOA 2026-10-09: api/play bat buoc query `?ab=0` — player.js goi
+    // apiUrl() = api + '?ab=<0|1>&r=<referrer>', thieu `ab=` thi server tra
+    // {"error":"Please disable your ad blocker","adblock":true}. Truoc day
+    // goi api TRAN nen tuong chung IP bi flag — that ra thieu param.
+    // f4s.top main chan TLS thuong (curl 000, .NET treo) — chi Chrome
+    // fingerprint (curl_cffi) qua. Dung CffiGet.
     public static async Task<string> CffiGet(string url, string referer, int maxTime = 10)
     {
         if (string.IsNullOrEmpty(url))
@@ -797,6 +804,59 @@ public static class JavCtTo
         catch
         {
             return null;
+        }
+    }
+
+    // Nhu CffiGet nhung tra ca URL cuoi cung sau khi redirect (de lay
+    // master CDN tu /v/<token>). Dong dau stdout = final URL.
+    static async Task<(string body, string finalUrl)> CffiGetFinal(
+        string url, string referer, int maxTime = 10)
+    {
+        if (string.IsNullOrEmpty(url))
+            return (null, null);
+        try
+        {
+            string code =
+                "import sys\n"
+                + "from curl_cffi import requests as rq\n"
+                + "u=sys.argv[1];ref=sys.argv[2];to=int(sys.argv[3])\n"
+                + "r=rq.get(u,impersonate='chrome124',timeout=to,headers={'User-Agent':'" + ChromeUA + "','Referer':ref})\n"
+                + "sys.stdout.write('@@URL@@'+r.url+'\\n'+r.text)\n";
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            psi.Environment.Remove("LD_PRELOAD");
+            psi.Environment.Remove("LD_LIBRARY_PATH");
+            string py = "/data/data/com.termux/files/usr/bin/python3";
+            psi.FileName = System.IO.File.Exists(py) ? py : "python3";
+            psi.ArgumentList.Add("-c");
+            psi.ArgumentList.Add(code);
+            psi.ArgumentList.Add(url);
+            psi.ArgumentList.Add(referer ?? "");
+            psi.ArgumentList.Add(Math.Max(5, maxTime).ToString());
+            using var p = System.Diagnostics.Process.Start(psi);
+            if (p == null)
+                return (null, null);
+            string stdout = await p.StandardOutput.ReadToEndAsync();
+            await p.WaitForExitAsync();
+            if (p.ExitCode != 0 || string.IsNullOrWhiteSpace(stdout))
+                return (null, null);
+            const string sep = "@@URL@@";
+            if (!stdout.StartsWith(sep))
+                return (stdout, null);
+            int nl = stdout.IndexOf('\n');
+            if (nl < 0)
+                return (null, null);
+            return (stdout[(nl + 1)..],
+                stdout[sep.Length..nl].Trim());
+        }
+        catch
+        {
+            return (null, null);
         }
     }
 
@@ -844,6 +904,10 @@ public static class JavCtTo
         else if (!api.StartsWith("http", StringComparison.OrdinalIgnoreCase))
             return null;
 
+        // Bat buoc them ab=0 (player.js apiUrl: ?ab=<0|1>&r=<referrer>);
+        // thieu `ab=` server tra adblock:true (mo khoa 2026-10-09).
+        api += (api.Contains("?") ? "&" : "?") + "ab=0";
+
         string json = await CffiGet(api, embedUrl);
         if (string.IsNullOrEmpty(json))
         {
@@ -866,7 +930,18 @@ public static class JavCtTo
         string src = um.Groups[1].Value.Replace("\\/", "/");
         if (src.StartsWith("/"))
             src = host + src;
-        return src.StartsWith("http") ? src : null;
+        if (!src.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        // /v/<token> 302 sang master CDN *.f4scdn.com — theo redirect roi
+        // tra MASTER CDN cho app (main host chan TLS thuong nen app khong
+        // tu tai /v/ duoc; CDN thi 200 ca system curl/.NET).
+        var (_, finalUrl) = await CffiGetFinal(src, embedUrl);
+        if (!string.IsNullOrEmpty(finalUrl)
+            && finalUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            return finalUrl;
+
+        return src;
     }
 
     public static List<Shared.Models.SISI.Base.MenuItem> Menu(
