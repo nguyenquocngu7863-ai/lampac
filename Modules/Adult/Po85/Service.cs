@@ -21,6 +21,13 @@ public static class Po85To
     {
         var url = StringBuilderPool.ThreadInstance;
 
+        // Sort that kieu KVS `?sort_by=` (do live 2026-10-08: ca 6 doi list
+        // that tren home/genre/tag/search). Sort cu (latest-updates/
+        // top-rated/most-popular/4k) GIU NGUYEN path rieng de bookmark cu
+        // khong doi noi dung (/top-rated/ != /?sort_by=rating, do live).
+        string s = NormalizeSort(sort);
+        bool legacy = IsLegacySort(sort);
+
         url.Append(host);
         url.Append("/");
 
@@ -28,42 +35,83 @@ public static class Po85To
         {
             url.Append("search/");
             url.Append(HttpUtility.UrlEncode(search));
-            url.Append("/?from_videos=");
-            url.Append(pg);
+            url.Append("/");
+            string sq = string.IsNullOrEmpty(s) ? "" : "?sort_by=" + s;
+            if (pg > 1)
+            {
+                // Search phan trang qua AJAX (giong web): ?mode=async&function=get_block&...
+                url.Append(sq.Length == 0 ? "?" : sq + "&");
+                url.Append("mode=async&function=get_block&block_id=list_videos_videos_list_search_result&q=");
+                url.Append(HttpUtility.UrlEncode(search));
+                url.Append("&from_videos=");
+                url.Append(pg);
+                url.Append("&from_albums=");
+                url.Append(pg);
+            }
+            else if (sq.Length > 0)
+                url.Append(sq);
         }
         else if (!string.IsNullOrEmpty(t))
         {
             url.Append("tags/");
             url.Append(t);
-            url.Append("/?from=");
-            url.Append(pg);
+            url.Append("/");
+            string tq = string.IsNullOrEmpty(s) ? "" : "?sort_by=" + s;
+            if (pg > 1)
+            {
+                url.Append(tq.Length == 0 ? "?from=" : tq + "&from=");
+                url.Append(pg);
+            }
+            else if (tq.Length > 0)
+                url.Append(tq);
         }
         else if (!string.IsNullOrEmpty(c))
         {
             url.Append("categories/");
             url.Append(c);
-            url.Append("/?from=");
-            url.Append(pg);
+            url.Append("/");
+            string cq = string.IsNullOrEmpty(s) ? "" : "?sort_by=" + s;
+            if (pg > 1)
+            {
+                url.Append(cq.Length == 0 ? "?from=" : cq + "&from=");
+                url.Append(pg);
+            }
+            else if (cq.Length > 0)
+                url.Append(cq);
         }
-        else if (sort == "4k")
+        else if (legacy)
         {
-            // trang /4k/ chet 404 tren design moi -> rot ve moi nhat
-            url.Append("latest-updates/");
+            if (sort == "4k")
+            {
+                // trang /4k/ chet 404 tren design moi -> rot ve moi nhat
+                url.Append("latest-updates/");
+            }
+            else if (sort == "top-rated")
+            {
+                url.Append("top-rated/?from=");
+                url.Append(pg);
+            }
+            else if (sort == "most-popular")
+            {
+                url.Append("most-popular/?from=");
+                url.Append(pg);
+            }
+            else if (sort == "latest-updates")
+            {
+                url.Append("latest-updates/?from=");
+                url.Append(pg);
+            }
         }
-        else if (sort == "top-rated")
+        else if (!string.IsNullOrEmpty(s))
         {
-            url.Append("top-rated/?from=");
-            url.Append(pg);
-        }
-        else if (sort == "most-popular")
-        {
-            url.Append("most-popular/?from=");
-            url.Append(pg);
-        }
-        else if (sort == "latest-updates")
-        {
-            url.Append("latest-updates/?from=");
-            url.Append(pg);
+            // Home + sort_by (thay path rieng).
+            url.Append("?sort_by=");
+            url.Append(s);
+            if (pg > 1)
+            {
+                url.Append("&from=");
+                url.Append(pg);
+            }
         }
         else
         {
@@ -156,6 +204,68 @@ public static class Po85To
     #endregion
 
     #region Menu
+    // Sort that kieu KVS `?sort_by=` (do live 2026-10-08: ca 6 doi list that
+    // tren home/genre/tag/search). Mac dinh (khong sort): list = Mới nhất,
+    // search = Liên quan.
+    public static readonly (string name, string sort)[] Sorts =
+    {
+        ("Mới nhất",            "post_date"),
+        ("Xem nhiều nhất",      "video_viewed"),
+        ("Hay nhất",            "rating"),
+        ("Dài nhất",            "duration"),
+        ("Bình luận nhiều nhất","most_commented"),
+        ("Được yêu thích nhất", "most_favourited"),
+    };
+
+    static readonly string[] SortWhitelist =
+        { "post_date", "video_viewed", "rating", "duration", "most_commented", "most_favourited" };
+
+    static readonly string[] LegacySorts =
+        { "4k", "top-rated", "most-popular", "latest-updates" };
+
+    public static bool IsLegacySort(string sort)
+        => !string.IsNullOrWhiteSpace(sort)
+            && System.Array.IndexOf(LegacySorts, sort.Trim()) >= 0;
+
+    public static string NormalizeSort(string sort)
+    {
+        if (string.IsNullOrWhiteSpace(sort)) return "";
+        sort = sort.Trim();
+        if (System.Array.IndexOf(SortWhitelist, sort) >= 0) return sort;
+        foreach (var (_, s) in Sorts)
+            if (s.Equals(sort, System.StringComparison.OrdinalIgnoreCase))
+                return s;
+        return "";
+    }
+
+    public static string SortLabel(string search, string sort)
+    {
+        string s = NormalizeSort(sort);
+        if (string.IsNullOrEmpty(s))
+        {
+            if (IsLegacySort(sort)) return sort;
+            return string.IsNullOrWhiteSpace(search) ? "Trang chủ" : "Liên quan";
+        }
+        foreach (var (name, v) in Sorts)
+            if (v == s) return name;
+        return s;
+    }
+
+    static string SortLink(string url, string search, string sort, string c, string t, string s)
+    {
+        var q = new System.Collections.Generic.List<string>();
+        if (!string.IsNullOrWhiteSpace(search))
+            q.Add("search=" + HttpUtility.UrlEncode(search));
+        if (!string.IsNullOrWhiteSpace(c))
+            q.Add("c=" + HttpUtility.UrlEncode(c));
+        if (!string.IsNullOrWhiteSpace(t))
+            q.Add("t=" + HttpUtility.UrlEncode(t));
+        string ns = NormalizeSort(s);
+        if (!string.IsNullOrEmpty(ns))
+            q.Add("sort=" + ns);
+        return q.Count == 0 ? url : url + "?" + string.Join("&", q);
+    }
+
     public static List<MenuItem> Menu(string host, string search, string sort, string c, string t)
     {
         string url = $"{host}/po85";
@@ -164,6 +274,14 @@ public static class Po85To
         if (!string.IsNullOrEmpty(search))
         {
             string encodesearch = HttpUtility.UrlEncode(search);
+
+            var ssub = new List<MenuItem>(Sorts.Length);
+            foreach (var (name, s) in Sorts)
+                ssub.Add(new MenuItem()
+                {
+                    title = name,
+                    playlist_url = $"{url}?search={encodesearch}&sort={s}"
+                });
 
             return new List<MenuItem>()
             {
@@ -175,21 +293,9 @@ public static class Po85To
                 },
                 new MenuItem()
                 {
-                    title = $"Sắp xếp: {(string.IsNullOrEmpty(sort) ? "Mới nhất" : sort)}",
+                    title = $"Sắp xếp: {SortLabel(search, sort)}",
                     playlist_url = "submenu",
-                    submenu = new List<MenuItem>()
-                    {
-                        new MenuItem()
-                        {
-                            title = "Mới nhất",
-                            playlist_url = $"{url}?c={c}&search={encodesearch}"
-                        },
-                        new MenuItem()
-                        {
-                            title = "Xem nhiều nhất",
-                            playlist_url = $"{url}?c={c}&sort=most-popular&search={encodesearch}"
-                        }
-                    }
+                    submenu = ssub
                 }
             };
         }
@@ -241,29 +347,63 @@ public static class Po85To
             },
             new MenuItem()
             {
-                title = $"Sắp xếp: {(string.IsNullOrEmpty(sort) ? "Trang chủ" : sort)}",
+                title = $"Sắp xếp: {SortLabel(search, sort)}",
                 playlist_url = "submenu",
-                submenu = new List<MenuItem>(5)
-                {
-                    new("Trang chủ (Đang xem)", $"{url}?c={c}&t={t}"),
-                    new("Mới nhất", $"{url}?c={c}&t={t}&sort=latest-updates"),
-                    new("Đánh giá cao", $"{url}?c={c}&t={t}&sort=top-rated"),
-                    new("Xem nhiều nhất", $"{url}?c={c}&t={t}&sort=most-popular")
-                }
+                submenu = SortSubmenu(url, search, sort, c, t)
             },
             new MenuItem()
             {
                 title = "Thể loại",
                 playlist_url = "submenu",
-                submenu = tagmenu
+                submenu = new List<MenuItem>(6)
+                {
+                    // /categories/ chi co 6 vung (do live 2026-10-08, kem
+                    // so phim). Site it doi -> hardcode, khoi fetch.
+                    new("Hồng Kông (8)", $"{url}?c=xiang-gang"),
+                    new("Malaysia (382)", $"{url}?c=ma-lai-xi-ya"),
+                    new("Singapore (427)", $"{url}?c=xin-jia-po"),
+                    new("Nhật Bản (67)", $"{url}?c=ri-ben"),
+                    new("Đài Loan (287)", $"{url}?c=tai-wan"),
+                    new("Trung Quốc (56)", $"{url}?c=zhong-guo"),
+                }
             }
         };
+
+        // Tags = 27 muc curated (tieng Viet). 2711 tags tren /tags/ toan
+        // tieng Trung va KHONG co count → khong loc top duoc.
+        menu.Add(new MenuItem()
+        {
+            title = "Tags",
+            playlist_url = "submenu",
+            submenu = tagmenu
+        });
 
         if (CoreInit.conf.lowMemoryMode == false)
             memoryCache.Set(menuKey, menu, TimeSpan.FromDays(1));
 
         return menu;
     }
+
+    static List<MenuItem> SortSubmenu(
+        string url, string search, string sort, string c, string t)
+    {
+        var sub = new List<MenuItem>(Sorts.Length + 1);
+        // Mac dinh (khong sort) = noi dung goc context (Trang chủ/list,
+        // relevance/search) — giu link sach de phan biet voi sort chon.
+        var q0 = new System.Collections.Generic.List<string>();
+        if (!string.IsNullOrWhiteSpace(search))
+            q0.Add("search=" + HttpUtility.UrlEncode(search));
+        if (!string.IsNullOrWhiteSpace(c))
+            q0.Add("c=" + HttpUtility.UrlEncode(c));
+        if (!string.IsNullOrWhiteSpace(t))
+            q0.Add("t=" + HttpUtility.UrlEncode(t));
+        string defName = string.IsNullOrWhiteSpace(search) ? "Trang chủ" : "Liên quan";
+        sub.Add(new(defName, q0.Count == 0 ? url : url + "?" + string.Join("&", q0)));
+        foreach (var (name, s) in Sorts)
+            sub.Add(new(name, SortLink(url, search, sort, c, t, s)));
+        return sub;
+    }
+
     #endregion
 
     #region StreamLinks
