@@ -750,11 +750,56 @@ public static class JavCtTo
         }
     }
 
-    // F4 (f4s.top/f4stream, thay DD tu ~2026-10): iframe `f4s.top/e/id`
+    // F4 (f4s.top/f4stream): iframe `f4s.top/e/id`
     // -> GET embed lay data-api `/api/play/<uuid>` -> GET api (host = embed
     // authority) -> JSON {url:"/v/<token>", type:"hls", expires_in:300}.
     // Tra master m3u8 (302 sang CDN). Token song 5 phut -> resolve o /video
     // (lazy), cache pack NGAN (4 phut).
+    // Do live 2026-10-09 (buoi toi): f4s.top chan TLS thuong (curl 000,
+    // .NET treo) — chi Chrome fingerprint (curl_cffi) qua. Dung CffiGet.
+    public static async Task<string> CffiGet(string url, string referer, int maxTime = 10)
+    {
+        if (string.IsNullOrEmpty(url))
+            return null;
+        try
+        {
+            string code =
+                "import sys\n"
+                + "from curl_cffi import requests as rq\n"
+                + "u=sys.argv[1];ref=sys.argv[2];to=int(sys.argv[3])\n"
+                + "r=rq.get(u,impersonate='chrome124',timeout=to,headers={'User-Agent':'" + ChromeUA + "','Referer':ref})\n"
+                + "sys.stdout.write(r.text)\n";
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            psi.Environment.Remove("LD_PRELOAD");
+            psi.Environment.Remove("LD_LIBRARY_PATH");
+            string py = "/data/data/com.termux/files/usr/bin/python3";
+            psi.FileName = System.IO.File.Exists(py) ? py : "python3";
+            psi.ArgumentList.Add("-c");
+            psi.ArgumentList.Add(code);
+            psi.ArgumentList.Add(url);
+            psi.ArgumentList.Add(referer ?? "");
+            psi.ArgumentList.Add(Math.Max(5, maxTime).ToString());
+            using var p = System.Diagnostics.Process.Start(psi);
+            if (p == null)
+                return null;
+            string stdout = await p.StandardOutput.ReadToEndAsync();
+            await p.WaitForExitAsync();
+            if (p.ExitCode != 0 || string.IsNullOrWhiteSpace(stdout))
+                return null;
+            return stdout;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     public static async Task<string> F4SourceAsync(
         string embedUrl, int timeoutSeconds = 10)
     {
@@ -771,17 +816,20 @@ public static class JavCtTo
             return null;
         }
 
-        string embedHtml = null;
-        try
+        string embedHtml = await CffiGet(embedUrl, SiteHost + "/");
+        if (string.IsNullOrEmpty(embedHtml))
         {
-            embedHtml = await Http.Get(
-                embedUrl,
-                timeoutSeconds: timeoutSeconds,
-                headers: HeadersModel.Init(
-                    ("User-Agent", ChromeUA),
-                    ("Referer", SiteHost + "/")));
+            try
+            {
+                embedHtml = await Http.Get(
+                    embedUrl,
+                    timeoutSeconds: timeoutSeconds,
+                    headers: HeadersModel.Init(
+                        ("User-Agent", ChromeUA),
+                        ("Referer", SiteHost + "/")));
+            }
+            catch { }
         }
-        catch { }
         if (string.IsNullOrEmpty(embedHtml))
             return null;
 
@@ -796,21 +844,20 @@ public static class JavCtTo
         else if (!api.StartsWith("http", StringComparison.OrdinalIgnoreCase))
             return null;
 
-        string json;
-        try
+        string json = await CffiGet(api, embedUrl);
+        if (string.IsNullOrEmpty(json))
         {
-            json = await Http.Get(
-                api,
-                timeoutSeconds: timeoutSeconds,
-                headers: HeadersModel.Init(
-                    ("User-Agent", ChromeUA),
-                    ("Referer", embedUrl)));
+            try
+            {
+                json = await Http.Get(
+                    api,
+                    timeoutSeconds: timeoutSeconds,
+                    headers: HeadersModel.Init(
+                        ("User-Agent", ChromeUA),
+                        ("Referer", embedUrl)));
+            }
+            catch { }
         }
-        catch
-        {
-            return null;
-        }
-
         var um = Regex.Match(json ?? "", @"""url""\s*:\s*""([^""]+)""",
             RegexOptions.IgnoreCase);
         if (!um.Success)
