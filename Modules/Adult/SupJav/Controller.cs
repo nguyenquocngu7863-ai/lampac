@@ -393,6 +393,19 @@ public class SupJavController : BaseSisiController
     // lai. Referer tra kem = URL embed that (sau 302).
     async Task<string> ResolveLucAsync(string gw, string final, string pageUrl)
     {
+        // Duong 1-session truoc (token song); rot duong cu neu that bai.
+        try
+        {
+            var lu = await SupJavTo.LuResolveAsync(final, pageUrl, 8);
+            if (!string.IsNullOrEmpty(lu.url))
+            {
+                // KHONG VerifyLink (.NET HEAD an 403 oan): variant vua resolve
+                // trong session, app Chrome tu tai. Referer = embed that.
+                string embUrl = string.IsNullOrEmpty(lu.embed) ? final : lu.embed;
+                return lu.url + "\n" + embUrl;
+            }
+        }
+        catch { }
         string master = SupJavTo.LuluFile(gw);
         if (string.IsNullOrEmpty(master))
             return null;
@@ -464,12 +477,14 @@ public class SupJavController : BaseSisiController
         if (string.IsNullOrEmpty(final)) return null;
         bool isLuc = string.Equals(label?.Trim(), "LUC", StringComparison.OrdinalIgnoreCase);
         var jar = new System.Net.CookieContainer();
-        // LUC: mo trang embed (= final) bang Chrome fingerprint de token
-        // song (xem CurlCffiGet); rot ve duong cu neu thieu python/cffi.
-        string gw = isLuc
-            ? (await SupJavTo.CurlCffiGet(final, pageUrl, 15)
-                ?? await SupJavTo.GetHtmlAsync(final, pageUrl, 25, proxy, init.httpversion))
-            : await SupJavTo.GetHtmlAsync(final, pageUrl, 25, proxy, init.httpversion);
+        // LUC: journey 1-session truoc (token song). That bai moi fetch rieng
+        // cho duong cu (moi request dot quota edge).
+        if (isLuc)
+        {
+            var first = await ResolveLucAsync(null, final, pageUrl);
+            if (!string.IsNullOrEmpty(first)) return first;
+        }
+        string gw = await SupJavTo.GetHtmlAsync(final, pageUrl, 25, proxy, init.httpversion);
         if (string.IsNullOrEmpty(gw) || SupJavTo.IsGatewayShell(gw))
         {
             try
@@ -487,10 +502,9 @@ public class SupJavController : BaseSisiController
         if (string.IsNullOrEmpty(gw)) return null;
         // LUC (LuluStream): unpack -> jwplayer sources file (master m3u8
         // tren *.tnmr.org) -> tach variant nhu JavGuru STREAM LU.
-        // TINH TRANG 2026-10-07: resolve OK (HEAD 200), nhung GET qua
-        // proxy bi edge wkw3dwshigvf.tnmr.org 403 (2 phim) trong khi LU
-        // ben JavGuru 200 voi cung header — gate theo edge/file, can
-        // phien Chrome that. Giu code vi dung khi edge khac.
+        // Do live 2026-10-09: token chi song khi embed->master->variant di
+        // lien 1 session Chrome (tach roi chet tu trong trung); duong 1-session
+        // (LuResolveAsync) chay truoc o tren, day la fallback duong cu.
         if (string.Equals(label?.Trim(), "LUC", StringComparison.OrdinalIgnoreCase))
             return await ResolveLucAsync(gw, final, pageUrl);
         // VAS (Vidara): 302 -> <host>/e/<filecode> -> POST /api/stream -> streaming_url

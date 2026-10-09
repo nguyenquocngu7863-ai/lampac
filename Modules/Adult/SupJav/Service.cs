@@ -403,6 +403,54 @@ public static class SupJavTo
         }
     }
 
+    // LUC: resolve TRON trong 1 session curl_cffi via luresolve.py (ly do nhu
+    // JavGuru LU: token lulu chi song khi embed->master->variant di lien 1
+    // journey). Tra (variant, cao, embed). Rot duong cu neu that bai.
+    public static async Task<(string url, string tag, string embed)> LuResolveAsync(
+        string gatewayUrl, string referer, int maxTime = 8)
+    {
+        if (string.IsNullOrEmpty(gatewayUrl))
+            return (null, null, null);
+        try
+        {
+            string script = System.IO.Path.Combine(ModInit.modpath ?? "", "luresolve.py");
+            if (!System.IO.File.Exists(script))
+                return (null, null, null);
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            PrepCurlEnv(psi);
+            string py = "/data/data/com.termux/files/usr/bin/python3";
+            psi.FileName = System.IO.File.Exists(py) ? py : "python3";
+            psi.ArgumentList.Add(script);
+            psi.ArgumentList.Add(gatewayUrl);
+            psi.ArgumentList.Add(referer ?? "");
+            psi.ArgumentList.Add(Math.Max(5, maxTime).ToString());
+            using var p = System.Diagnostics.Process.Start(psi);
+            if (p == null)
+                return (null, null, null);
+            string stdout = await p.StandardOutput.ReadToEndAsync();
+            await p.WaitForExitAsync();
+            if (p.ExitCode != 0 || string.IsNullOrWhiteSpace(stdout))
+                return (null, null, null);
+            var lines = stdout.Split('\n');
+            string url = lines.Length > 0 ? lines[0].Trim() : "";
+            string tag = lines.Length > 1 && int.TryParse(lines[1].Trim(), out int h) && h > 0 ? h + "p" : "";
+            string emb = lines.Length > 2 ? lines[2].Trim() : "";
+            if (!url.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                return (null, null, null);
+            return (url, tag, emb);
+        }
+        catch
+        {
+            return (null, null, null);
+        }
+    }
+
     // ========== Gateway shell: trang playbutton trung gian (can di ?l= lay session truoc) ==========
     public static bool IsGatewayShell(string html)
     {

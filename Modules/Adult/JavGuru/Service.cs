@@ -531,14 +531,15 @@ public static class JavGuruTo
         }
 
         bool isSbGw = IsSbGateway(gateway);
-        // LU: mo trang player (= embed lulu) bang Chrome fingerprint de token
-        // song; rot ve curl neu thieu python/cffi.
-        bool isLuGw = IsLuGateway(gateway);
+        // LU: resolve TRON 1-session (token song) — rot duong cu neu that bai.
+        if (IsLuGateway(gateway))
+        {
+            var lu = await LuResolveAsync(gateway, referer, 8);
+            if (!string.IsNullOrEmpty(lu.url))
+                return new List<(string, string, string)> { (lu.url, lu.tag, null) };
+        }
         string player = null;
-        if (isLuGw)
-            player = await CurlCffiGet(gateway, referer, isSbGw ? 6 : 4);
-        if (string.IsNullOrEmpty(player))
-            player = await CurlGetRetry(gateway, referer, null, isSbGw ? 6 : 4, isSbGw ? 6 : 4, deadline);
+        player = await CurlGetRetry(gateway, referer, null, isSbGw ? 6 : 4, isSbGw ? 6 : 4, deadline);
         if (IsDeadPlayer(player))
             return res;
 
@@ -1107,11 +1108,60 @@ public static bool IsVoServer(string label)
         }
     }
 
-    // Edge *.tnmr.org cap token theo fingerprint luc mo trang embed (do live
-    // 2026-10-09): token mo bang curl/.NET chet tu trong trung (variant 403
-    // moi stack ngay ca voi Chrome), mo bang Chrome (that/curl_cffi) thi
-    // song. python3+curl_cffi co san tren may (mod khac shell-out curl).
-    // Chi dung cho LU (er=), server khac giu duong cu.
+    // LU: resolve TRON trong 1 session curl_cffi via luresolve.py (do live
+    // 2026-10-09): token lulu chi song khi embed->master->variant di lien 1
+    // journey (cookie/jar chung); tach roi thi token chet tu trong trung.
+    // Dung file .py rieng (test truc tiep duoc), khong ghep string trong C#.
+    // Tra (variant, cao, embed).
+    public static async Task<(string url, string tag, string embed)> LuResolveAsync(
+        string gatewayUrl, string referer, int maxTime = 8)
+    {
+        if (string.IsNullOrEmpty(gatewayUrl))
+            return (null, null, null);
+        try
+        {
+            string script = System.IO.Path.Combine(ModInit.modpath ?? "", "luresolve.py");
+            if (!System.IO.File.Exists(script))
+                return (null, null, null);
+            var psi = new ProcessStartInfo
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            PrepCurlEnv(psi);
+            string py = "/data/data/com.termux/files/usr/bin/python3";
+            psi.FileName = System.IO.File.Exists(py) ? py : "python3";
+            psi.ArgumentList.Add(script);
+            psi.ArgumentList.Add(gatewayUrl);
+            psi.ArgumentList.Add(referer ?? "");
+            psi.ArgumentList.Add(Math.Max(5, maxTime).ToString());
+            using (var p = Process.Start(psi))
+            {
+                if (p == null)
+                    return (null, null, null);
+                string stdout = await p.StandardOutput.ReadToEndAsync();
+                await p.WaitForExitAsync();
+                if (p.ExitCode != 0 || string.IsNullOrWhiteSpace(stdout))
+                    return (null, null, null);
+                var lines = stdout.Split('\n');
+                string url = lines.Length > 0 ? lines[0].Trim() : "";
+                string tag = lines.Length > 1 && int.TryParse(lines[1].Trim(), out int h) && h > 0 ? h + "p" : "";
+                string emb = lines.Length > 2 ? lines[2].Trim() : "";
+                if (!url.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                    return (null, null, null);
+                return (url, tag, emb);
+            }
+        }
+        catch
+        {
+            return (null, null, null);
+        }
+    }
+
+    // Fetch don bang Chrome fingerprint (embed/master le khi can). Journey
+    // tron dung LuResolveAsync o tren.
     public static async Task<string> CurlCffiGet(string url, string referer, int maxTime = 15)
     {
         if (string.IsNullOrEmpty(url))
