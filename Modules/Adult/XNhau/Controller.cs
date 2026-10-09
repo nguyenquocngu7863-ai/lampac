@@ -62,21 +62,23 @@ public class XNhauController : BaseSisiController
         if (rch?.enable == true)
             StatiCacheDisabled = true;
 
-        return PlaylistResult(cache, await MenuAsync());
+        return PlaylistResult(cache, await MenuAsync(search, sort, c, t));
     }
 
-    // Menu khong doi theo `search`/`sort`/`c`/`t` nen 1 key duy nhat.
-    // KHONG chay nen roi tra menu rut gon: app cache response dau cho ca
-    // phien -> the loai khong bao gio hien. `/the-loai/` la trang tinh
-    // (khong can Playwright) nen fetch cho xong roi tra menu that.
-    async Task<List<MenuItem>> MenuAsync()
+    // Menu = head (Tim kiem + Sắp xếp theo context) + base taxonomy cache.
+    // Menu khong con 1 key tinh: dong 2 doi theo search/sort/c/t.
+    async Task<List<MenuItem>> MenuAsync(string search, string sort, string c, string t)
     {
+        var menu = XNhauTo.MenuHead(host, search, sort, c, t);
         string memKey = ipkey("xnhau:menu");
 
         if (hybridCache.TryGetValue(memKey,
             out List<(string name, List<(string slug, string name)> items)> groups)
             && groups != null && groups.Count > 0)
-            return XNhauTo.Menu(host, groups);
+        {
+            menu.AddRange(XNhauTo.Menu(host, groups));
+            return menu;
+        }
 
         string hostLocal = host;
 
@@ -87,14 +89,15 @@ public class XNhauController : BaseSisiController
 
             if (tax.Count > 0)
             {
-                var menu = XNhauTo.Menu(hostLocal, tax);
+                menu.AddRange(XNhauTo.Menu(hostLocal, tax));
                 hybridCache.Set(memKey, tax, cacheTime(720), true);
                 return menu;
             }
         }
         catch { }
 
-        return XNhauTo.Menu(hostLocal, null);
+        menu.AddRange(XNhauTo.Menu(hostLocal, null));
+        return menu;
     }
 
     async Task<string> FetchAsync(string url)
