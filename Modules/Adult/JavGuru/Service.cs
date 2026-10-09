@@ -320,15 +320,7 @@ public static class JavGuruTo
 
         // Master chi 284 byte: cung timeout ngan + nhieu lan thu nhu buoc tren.
         // Them fallback http1.1 cho javclan /stream (treo voi http2).
-        // Rieng *.tnmr.org (LU): lay bang Chrome fingerprint TRUOC (token chi
-        // song khi mo bang Chrome; curl thuong an 403 ngay ca token tuoi —
-        // do live 2026-10-09), rot ve duong cu neu thieu python/cffi.
-        string html = null;
-        if (!string.IsNullOrEmpty(master)
-            && master.IndexOf("tnmr.org", StringComparison.OrdinalIgnoreCase) >= 0)
-            html = await CurlCffiGet(master, referer, Math.Min(10, maxTime));
-        if (string.IsNullOrEmpty(html))
-            html = await CurlGetRetryBoth(master, referer, "#EXT-X-STREAM-INF", 2, 6, deadline);
+        string html = await CurlGetRetryBoth(master, referer, "#EXT-X-STREAM-INF", 2, 6, deadline);
         if (string.IsNullOrEmpty(html))
             return res;
 
@@ -531,7 +523,10 @@ public static class JavGuruTo
         }
 
         bool isSbGw = IsSbGateway(gateway);
-        // LU: resolve TRON 1-session (token song) — rot duong cu neu that bai.
+        // LU: token CDN *.tnmr.org ky theo TLS fingerprint cua ben mint — phai
+        // mint bang Chrome (luresolve.py, curl_cffi chrome124) thi app (Chromium)
+        // moi tai duoc; curl thuong se tao token "ho curl" app an 403.
+        // Rot ve duong cu (curl) neu thieu python/cffi hoac script that bai.
         if (IsLuGateway(gateway))
         {
             var lu = await LuResolveAsync(gateway, referer, 8);
@@ -624,7 +619,8 @@ public static class JavGuruTo
            && Regex.IsMatch(gateway, @"[?&]h[dr]=[0-9a-z]+", RegexOptions.IgnoreCase);
 
     // LU (rtype e: ?ed= trong iframe_url, ?er= sau khi dao) — embed LuluStream
-    // (streamhihi/lulu): token sinh theo fingerprint (xem CurlCffiGet).
+    // (streamhihi). Token CDN *.tnmr.org ky theo TLS fingerprint cua ben mint
+    // (xem LuResolveAsync/luresolve.py) nen resolve rieng bang Chrome.
     public static bool IsLuGateway(string gateway)
         => !string.IsNullOrEmpty(gateway)
            && Regex.IsMatch(gateway, @"[?&]e[dr]=[0-9a-z]+", RegexOptions.IgnoreCase);
@@ -1108,10 +1104,10 @@ public static bool IsVoServer(string label)
         }
     }
 
-    // LU: resolve TRON trong 1 session curl_cffi via luresolve.py (do live
-    // 2026-10-09): token lulu chi song khi embed->master->variant di lien 1
-    // journey (cookie/jar chung); tach roi thi token chet tu trong trung.
-    // Dung file .py rieng (test truc tiep duoc), khong ghep string trong C#.
+    // LU: mint token TRON 1 session curl_cffi (Chrome fingerprint) via
+    // luresolve.py — CDN *.tnmr.org ky token theo TLS cua ben mint nen minh
+    // phai giong Chrome thi app (Chromium) moi tai duoc. Dung file .py rieng
+    // (test truc tiep duoc), khong ghep string trong C#.
     // Tra (variant, cao, embed).
     public static async Task<(string url, string tag, string embed)> LuResolveAsync(
         string gatewayUrl, string referer, int maxTime = 8)
@@ -1157,53 +1153,6 @@ public static bool IsVoServer(string label)
         catch
         {
             return (null, null, null);
-        }
-    }
-
-    // Fetch don bang Chrome fingerprint (embed/master le khi can). Journey
-    // tron dung LuResolveAsync o tren.
-    public static async Task<string> CurlCffiGet(string url, string referer, int maxTime = 15)
-    {
-        if (string.IsNullOrEmpty(url))
-            return null;
-        try
-        {
-            // ChromeUA la static (khong const) nen code phai la string thuong.
-            string code =
-                "import sys\n"
-                + "from curl_cffi import requests as rq\n"
-                + "u=sys.argv[1];ref=sys.argv[2];to=int(sys.argv[3])\n"
-                + "r=rq.get(u,impersonate='chrome124',timeout=to,headers={'User-Agent':'" + ChromeUA + "','Referer':ref})\n"
-                + "sys.stdout.write(r.text)\n";
-            var psi = new ProcessStartInfo
-            {
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
-            PrepCurlEnv(psi);
-            string py = "/data/data/com.termux/files/usr/bin/python3";
-            psi.FileName = System.IO.File.Exists(py) ? py : "python3";
-            psi.ArgumentList.Add("-c");
-            psi.ArgumentList.Add(code);
-            psi.ArgumentList.Add(url);
-            psi.ArgumentList.Add(referer ?? "");
-            psi.ArgumentList.Add(Math.Max(5, maxTime).ToString());
-            using (var p = Process.Start(psi))
-            {
-                if (p == null)
-                    return null;
-                string stdout = await p.StandardOutput.ReadToEndAsync();
-                await p.WaitForExitAsync();
-                if (p.ExitCode != 0 || string.IsNullOrWhiteSpace(stdout))
-                    return null;
-                return stdout;
-            }
-        }
-        catch
-        {
-            return null;
         }
     }
 

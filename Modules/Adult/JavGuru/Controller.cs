@@ -366,19 +366,16 @@ public class JavGuruController : BaseSisiController
         // se lam lan phat thu hai trong 10 phut chet (proxy khong Referer ->
         // CDN 302 sang host chet).
         string streamKey = ipkey($"javguru:stream:{uri}:{srv}");
-        // LU: token song NGAN (~10-25 phut, do chet ngay ca voi Chrome —
-        // 2026-10-09) nen KHONG doc cache (popup mo truoc, bam sau la an
-        // token chet + retry van chet). Resolve tuoi moi lan bam (~2s).
-        bool isLu = srv.IndexOf("LU", StringComparison.OrdinalIgnoreCase) >= 0;
-        if (!isLu && hybridCache.TryGetValue(streamKey, out string cachedRaw) && !string.IsNullOrEmpty(cachedRaw))
+        if (hybridCache.TryGetValue(streamKey, out string cachedRaw) && !string.IsNullOrEmpty(cachedRaw))
         {
             var c = SplitCached(cachedRaw);
             if (!string.IsNullOrEmpty(c.url))
             {
-                // LU (LuluStream): edge *.tnmr.org gate TLS fingerprint —
-                // Chrome that 200, .NET/curl 403 (do 2026-10-09). Tra URL
-                // THO cho app tu tai (y nhu web), khong qua proxy server.
-                if (srv.IndexOf("LU", StringComparison.OrdinalIgnoreCase) >= 0)
+                // LU (CDN *.tnmr.org): edge chi chap nhan Chrome fingerprint
+                // (app = Chromium that, tai truc tiep duoc) — proxy server
+                // (.NET) bi 403 nginx. Tra URL tho cho app tu tai.
+                if (srv.IndexOf("LU", StringComparison.OrdinalIgnoreCase) >= 0
+                    || c.url.IndexOf("tnmr.org", StringComparison.OrdinalIgnoreCase) >= 0)
                     return Redirect(c.url);
                 var pick0 = (await DetailServersAsync(uri))?.FirstOrDefault(x => string.Equals(x.Label, srv, StringComparison.OrdinalIgnoreCase));
                 return Redirect(HostStreamProxy(c.url, httpHeaders(init, JavGuruTo.StreamHeaders(pick0?.Label, c.referer))));
@@ -423,17 +420,6 @@ public class JavGuruController : BaseSisiController
 
         foreach (var s in order)
         {
-            // LU: gateway ed= + token file deu chet theo phut (do live
-            // 2026-10-09) nen KHONG dung PageUrl cache (servers, 15p) —
-            // fetch detail tuoi + journey 1-session moi lan bam.
-            if (s.Label.IndexOf("LU", StringComparison.OrdinalIgnoreCase) >= 0)
-            {
-                string fresh = await ResolveLuFreshAsync(uri, deadline);
-                if (!string.IsNullOrEmpty(fresh))
-                    return Redirect(fresh);
-                continue;
-            }
-
             long sub = Math.Min(deadline, Ms() + 12000);
             string gateway = JavGuruTo.GatewayUrl(s.PageUrl);
             if (string.IsNullOrEmpty(gateway))
@@ -452,15 +438,17 @@ public class JavGuruController : BaseSisiController
             Console.WriteLine($"JavGuru: chon srv={s.Label} tag={best.tag}"
               + $" ref={best.referer} host={new Uri(best.url).Host}");
 
-            // LU di thang (ly do nhu tren): app Chrome that tai duoc, proxy
-            // server (.NET fingerprint) an 403 tu edge. Dung ban fresh
-            // (gateway cache thiu) chu khong dung best tu PageUrl cu.
-            if (s.Label.IndexOf("LU", StringComparison.OrdinalIgnoreCase) >= 0)
+            // LU (CDN *.tnmr.org): edge chi chap nhan Chrome fingerprint —
+            // app (Chromium that) tai truc tiep 200, proxy server (.NET) 403
+            // nginx. Tra URL tho cho app tu tai, khong qua HostStreamProxy.
+            if (s.Label.IndexOf("LU", StringComparison.OrdinalIgnoreCase) >= 0
+                || best.url.IndexOf("tnmr.org", StringComparison.OrdinalIgnoreCase) >= 0)
             {
-                string fresh2 = await ResolveLuFreshAsync(uri, deadline);
-                if (!string.IsNullOrEmpty(fresh2))
-                    return Redirect(fresh2);
-                continue;
+                string rawLu = best.url + "\n" + (best.referer ?? "");
+                hybridCache.Set(
+                    ipkey($"javguru:stream:{uri}:{s.Label}"), rawLu, cacheTime(10));
+                hybridCache.Set(streamKey, rawLu, cacheTime(10));
+                return Redirect(best.url);
             }
 
             // Header theo server: JK (maxstream) can Referer cua no, turbo tra
@@ -482,29 +470,6 @@ public class JavGuruController : BaseSisiController
         }
 
         return OnError("stream_links", refresh_proxy: true);
-    }
-
-    // LU fresh: fetch detail tuoi (khong qua cache servers 15p vi gateway
-    // ed= chet theo phut) -> giai ma PageUrl -> journey 1-session ->
-    // variant tuoi. Tra URL tho de app tu tai, khong cache.
-    async Task<string> ResolveLuFreshAsync(string uri, long deadline)
-    {
-        try
-        {
-            string pageUrl = JavGuruTo.NormalizePageUrl(uri);
-            if (string.IsNullOrEmpty(pageUrl)) return null;
-            string detail = await FetchHtmlAsync(pageUrl, "wp-btn-iframe", 4, 4, Math.Min(deadline, Ms() + 12000));
-            if (string.IsNullOrEmpty(detail)) return null;
-            var pick = JavGuruTo.Servers(detail).FirstOrDefault(x =>
-                x.Label.IndexOf("LU", StringComparison.OrdinalIgnoreCase) >= 0);
-            if (pick == null) return null;
-            string gateway = JavGuruTo.GatewayUrl(pick.PageUrl);
-            if (string.IsNullOrEmpty(gateway)) return null;
-            var lu = await JavGuruTo.LuResolveAsync(gateway, "https://jav.guru/", 8);
-            if (string.IsNullOrEmpty(lu.url)) return null;
-            return lu.url;
-        }
-        catch { return null; }
     }
 
     // Dang phat cua mot server: uu tien ket qua `/vidosik` da do va cache
