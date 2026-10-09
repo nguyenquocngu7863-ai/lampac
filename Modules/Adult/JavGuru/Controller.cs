@@ -372,6 +372,11 @@ public class JavGuruController : BaseSisiController
             var c = SplitCached(cachedRaw);
             if (!string.IsNullOrEmpty(c.url))
             {
+                // LU (LuluStream): edge *.tnmr.org gate TLS fingerprint —
+                // Chrome that 200, .NET/curl 403 (do 2026-10-09). Tra URL
+                // THO cho app tu tai (y nhu web), khong qua proxy server.
+                if (srv.IndexOf("LU", StringComparison.OrdinalIgnoreCase) >= 0)
+                    return Redirect(c.url);
                 var pick0 = (await DetailServersAsync(uri))?.FirstOrDefault(x => string.Equals(x.Label, srv, StringComparison.OrdinalIgnoreCase));
                 return Redirect(HostStreamProxy(c.url, httpHeaders(init, JavGuruTo.StreamHeaders(pick0?.Label, c.referer))));
             }
@@ -432,6 +437,17 @@ public class JavGuruController : BaseSisiController
             var best = streams.OrderByDescending(x => x.tag.Length).First();
             Console.WriteLine($"JavGuru: chon srv={s.Label} tag={best.tag}"
               + $" ref={best.referer} host={new Uri(best.url).Host}");
+
+            // LU di thang (ly do nhu tren): app Chrome that tai duoc, proxy
+            // server (.NET fingerprint) an 403 tu edge.
+            if (s.Label.IndexOf("LU", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                string rawLu = best.url + "\n" + (best.referer ?? "");
+                hybridCache.Set(
+                    ipkey($"javguru:stream:{uri}:{s.Label}"), rawLu, cacheTime(10));
+                hybridCache.Set(streamKey, rawLu, cacheTime(10));
+                return Redirect(best.url);
+            }
 
             // Header theo server: JK (maxstream) can Referer cua no, turbo tra
             // 429 neu thay Referer jav.guru, DD can Referer host embed cua tung

@@ -584,6 +584,12 @@ public class SupJavController : BaseSisiController
                     ("referer", referer)));
                 return Redirect(HostStreamProxy(voe, h2));
             }
+            // LUC (LuluStream): edge *.tnmr.org gate TLS fingerprint —
+            // Chrome that 200, .NET/curl 403 (do 2026-10-09, cung ben JavGuru
+            // STREAM LU). VerifyLink (.NET) se rot oan + proxy server an 403
+            // nen tra URL THO cho app tu tai (y nhu web).
+            if (string.Equals(label?.Trim(), "LUC", StringComparison.OrdinalIgnoreCase))
+                return Redirect(link);
             if (await VerifyLinkAsync(link, referer))
             {
                 IReadOnlyList<HeadersModel> direct;
