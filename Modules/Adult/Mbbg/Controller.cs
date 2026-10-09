@@ -242,19 +242,20 @@ public class MbbgController : BaseSisiController
         if (string.IsNullOrEmpty(nonce) || string.IsNullOrEmpty(sources))
             return null;
 
+        // [1] getplayer — POST dung host cua detail (nonce gan voi host,
+        // do 2026-10-09: POST ve host cu an 400 "0").
+        string ajaxBase = MbbgTo.HostOf(pageUrl);
         var siteHeaders = HeadersModel.Init(
             ("User-Agent", MbbgTo.ChromeUA),
-            ("Referer", MbbgTo.SiteHost + "/"));
+            ("Referer", ajaxBase + "/"));
 
-        // [1] getplayer — server WordPress tu mo embed (host embed la NXDOMAIN)
-        //     va tra ve ma token cua Blogger.
         string form = "action=getplayer"
             + "&source=" + HttpUtility.UrlEncode(sources)
             + "&nonce=" + HttpUtility.UrlEncode(nonce)
             + "&server=1";
 
         string aj = await Http.Post(
-            MbbgTo.SiteHost + "/wp-admin/admin-ajax.php",
+            ajaxBase + "/wp-admin/admin-ajax.php",
             form,
             headers: siteHeaders,
             timeoutSeconds: 15,

@@ -11,7 +11,9 @@ namespace Mbbg;
 
 public static class MbbgTo
 {
-    public static string SiteHost = "https://mbbg.gay";
+    // Site doi .gay -> .hair (do 2026-10-09: list URL da la .hair, nonce
+    // ajax chi hop le dung host -> POST ve .gay an 400 "0").
+    public static string SiteHost = "https://mbbg.hair";
 
     // BẮT BUỘC = `Http.UserAgent` (Chrome/146), KHÔNG tự đặt UA riêng.
     // Đo 2026-10-03 (4/4): URL `googlevideo` bị Google ràng buộc với ĐÚNG UA đã
@@ -395,6 +397,13 @@ public static class MbbgTo
         if (itag == 22) return "720p";
         if (itag == 18) return "360p";
         return "itag " + itag;
+    }
+
+    public static string HostOf(string url)
+    {
+        if (string.IsNullOrEmpty(url)) return SiteHost;
+        if (!System.Uri.TryCreate(url, UriKind.Absolute, out var parsed)) return SiteHost;
+        return parsed.GetLeftPart(System.UriPartial.Authority);
     }
 
     #endregion
