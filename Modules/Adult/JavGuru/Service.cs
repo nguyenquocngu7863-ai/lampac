@@ -320,7 +320,15 @@ public static class JavGuruTo
 
         // Master chi 284 byte: cung timeout ngan + nhieu lan thu nhu buoc tren.
         // Them fallback http1.1 cho javclan /stream (treo voi http2).
-        string html = await CurlGetRetryBoth(master, referer, "#EXT-X-STREAM-INF", 2, 6, deadline);
+        // Rieng *.tnmr.org (LU): lay bang Chrome fingerprint TRUOC (token chi
+        // song khi mo bang Chrome; curl thuong an 403 ngay ca token tuoi —
+        // do live 2026-10-09), rot ve duong cu neu thieu python/cffi.
+        string html = null;
+        if (!string.IsNullOrEmpty(master)
+            && master.IndexOf("tnmr.org", StringComparison.OrdinalIgnoreCase) >= 0)
+            html = await CurlCffiGet(master, referer, Math.Min(10, maxTime));
+        if (string.IsNullOrEmpty(html))
+            html = await CurlGetRetryBoth(master, referer, "#EXT-X-STREAM-INF", 2, 6, deadline);
         if (string.IsNullOrEmpty(html))
             return res;
 
@@ -523,7 +531,14 @@ public static class JavGuruTo
         }
 
         bool isSbGw = IsSbGateway(gateway);
-        string player = await CurlGetRetry(gateway, referer, null, isSbGw ? 6 : 4, isSbGw ? 6 : 4, deadline);
+        // LU: mo trang player (= embed lulu) bang Chrome fingerprint de token
+        // song; rot ve curl neu thieu python/cffi.
+        bool isLuGw = IsLuGateway(gateway);
+        string player = null;
+        if (isLuGw)
+            player = await CurlCffiGet(gateway, referer, isSbGw ? 6 : 4);
+        if (string.IsNullOrEmpty(player))
+            player = await CurlGetRetry(gateway, referer, null, isSbGw ? 6 : 4, isSbGw ? 6 : 4, deadline);
         if (IsDeadPlayer(player))
             return res;
 
@@ -606,6 +621,12 @@ public static class JavGuruTo
     public static bool IsDdGateway(string gateway)
         => !string.IsNullOrEmpty(gateway)
            && Regex.IsMatch(gateway, @"[?&]h[dr]=[0-9a-z]+", RegexOptions.IgnoreCase);
+
+    // LU (rtype e: ?ed= trong iframe_url, ?er= sau khi dao) — embed LuluStream
+    // (streamhihi/lulu): token sinh theo fingerprint (xem CurlCffiGet).
+    public static bool IsLuGateway(string gateway)
+        => !string.IsNullOrEmpty(gateway)
+           && Regex.IsMatch(gateway, @"[?&]e[dr]=[0-9a-z]+", RegexOptions.IgnoreCase);
 
     public static bool IsDdServer(string label)
         => !string.IsNullOrEmpty(label)
@@ -1078,6 +1099,56 @@ public static bool IsVoServer(string label)
                 string stdout = await p.StandardOutput.ReadToEndAsync();
                 await p.WaitForExitAsync();
                 return p.ExitCode == 0 ? stdout : null;
+            }
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    // Edge *.tnmr.org cap token theo fingerprint luc mo trang embed (do live
+    // 2026-10-09): token mo bang curl/.NET chet tu trong trung (variant 403
+    // moi stack ngay ca voi Chrome), mo bang Chrome (that/curl_cffi) thi
+    // song. python3+curl_cffi co san tren may (mod khac shell-out curl).
+    // Chi dung cho LU (er=), server khac giu duong cu.
+    public static async Task<string> CurlCffiGet(string url, string referer, int maxTime = 15)
+    {
+        if (string.IsNullOrEmpty(url))
+            return null;
+        try
+        {
+            // ChromeUA la static (khong const) nen code phai la string thuong.
+            string code =
+                "import sys\n"
+                + "from curl_cffi import requests as rq\n"
+                + "u=sys.argv[1];ref=sys.argv[2];to=int(sys.argv[3])\n"
+                + "r=rq.get(u,impersonate='chrome124',timeout=to,headers={'User-Agent':'" + ChromeUA + "','Referer':ref})\n"
+                + "sys.stdout.write(r.text)\n";
+            var psi = new ProcessStartInfo
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            PrepCurlEnv(psi);
+            string py = "/data/data/com.termux/files/usr/bin/python3";
+            psi.FileName = System.IO.File.Exists(py) ? py : "python3";
+            psi.ArgumentList.Add("-c");
+            psi.ArgumentList.Add(code);
+            psi.ArgumentList.Add(url);
+            psi.ArgumentList.Add(referer ?? "");
+            psi.ArgumentList.Add(Math.Max(5, maxTime).ToString());
+            using (var p = Process.Start(psi))
+            {
+                if (p == null)
+                    return null;
+                string stdout = await p.StandardOutput.ReadToEndAsync();
+                await p.WaitForExitAsync();
+                if (p.ExitCode != 0 || string.IsNullOrWhiteSpace(stdout))
+                    return null;
+                return stdout;
             }
         }
         catch

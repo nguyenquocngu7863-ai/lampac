@@ -263,9 +263,14 @@ public static class SupJavTo
         if (string.IsNullOrEmpty(master))
             return null;
 
+        // Master LU: lay bang Chrome fingerprint truoc (token chet voi curl
+        // thuong — do live 2026-10-09), rot ve curl neu thieu cffi.
+        string cffi = await CurlCffiGet(master, referer, maxTime);
+        if (!string.IsNullOrEmpty(cffi) && !cffi.Contains("#EXT-X-STREAM-INF"))
+            cffi = null;
         foreach (bool h2 in new[] { true, false })
         {
-            string body = await CurlGet(master, referer, maxTime, h2);
+            string body = cffi ?? await CurlGet(master, referer, maxTime, h2);
             if (string.IsNullOrEmpty(body)
                 || !body.Contains("#EXT-X-STREAM-INF"))
                 continue;
@@ -345,6 +350,52 @@ public static class SupJavTo
                 return null;
 
             return string.IsNullOrWhiteSpace(stdout) ? null : stdout;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    // Edge *.tnmr.org cap token theo fingerprint luc mo trang embed (do live
+    // 2026-10-09, cung ben JavGuru STREAM LU): token mo bang curl/.NET chet
+    // tu trong trung, mo bang Chrome (that/curl_cffi) thi song. python3 +
+    // curl_cffi co san tren may. Chi dung cho LUC.
+    public static async Task<string> CurlCffiGet(string url, string referer, int maxTime = 15)
+    {
+        if (string.IsNullOrEmpty(url))
+            return null;
+        try
+        {
+            const string code =
+                "import sys\n"
+                + "from curl_cffi import requests as rq\n"
+                + "u=sys.argv[1];ref=sys.argv[2];to=int(sys.argv[3])\n"
+                + "r=rq.get(u,impersonate='chrome124',timeout=to,headers={'User-Agent':'" + ChromeUA + "','Referer':ref})\n"
+                + "sys.stdout.write(r.text)\n";
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            PrepCurlEnv(psi);
+            string py = "/data/data/com.termux/files/usr/bin/python3";
+            psi.FileName = System.IO.File.Exists(py) ? py : "python3";
+            psi.ArgumentList.Add("-c");
+            psi.ArgumentList.Add(code);
+            psi.ArgumentList.Add(url);
+            psi.ArgumentList.Add(referer ?? "");
+            psi.ArgumentList.Add(Math.Max(5, maxTime).ToString());
+            using var p = System.Diagnostics.Process.Start(psi);
+            if (p == null)
+                return null;
+            string stdout = await p.StandardOutput.ReadToEndAsync();
+            await p.WaitForExitAsync();
+            if (p.ExitCode != 0 || string.IsNullOrWhiteSpace(stdout))
+                return null;
+            return stdout;
         }
         catch
         {

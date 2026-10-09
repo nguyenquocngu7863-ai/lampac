@@ -445,12 +445,8 @@ public class JavGuruController : BaseSisiController
             // server (.NET fingerprint) an 403 tu edge.
             if (s.Label.IndexOf("LU", StringComparison.OrdinalIgnoreCase) >= 0)
             {
-                string rawLu = best.url + "\n" + (best.referer ?? "");
-                // Token NGAN: chi cache 90s cho double-click, khong 10 phut.
-                var ttl = TimeSpan.FromSeconds(90);
-                hybridCache.Set(
-                    ipkey($"javguru:stream:{uri}:{s.Label}"), rawLu, ttl);
-                hybridCache.Set(streamKey, rawLu, ttl);
+                // Token song vai PHUT (do live: token 6 phut tuoi chet ngay
+                // ca voi Chrome) -> KHONG ghi cache, resolve tuoi moi lan.
                 return Redirect(best.url);
             }
 

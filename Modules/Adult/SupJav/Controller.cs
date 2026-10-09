@@ -462,8 +462,14 @@ public class SupJavController : BaseSisiController
         string gateway = SupJavTo.GatewayUrl(link);
         string final = SupJavTo.FinalUrl(link);
         if (string.IsNullOrEmpty(final)) return null;
+        bool isLuc = string.Equals(label?.Trim(), "LUC", StringComparison.OrdinalIgnoreCase);
         var jar = new System.Net.CookieContainer();
-        string gw = await SupJavTo.GetHtmlAsync(final, pageUrl, 25, proxy, init.httpversion);
+        // LUC: mo trang embed (= final) bang Chrome fingerprint de token
+        // song (xem CurlCffiGet); rot ve duong cu neu thieu python/cffi.
+        string gw = isLuc
+            ? (await SupJavTo.CurlCffiGet(final, pageUrl, 15)
+                ?? await SupJavTo.GetHtmlAsync(final, pageUrl, 25, proxy, init.httpversion))
+            : await SupJavTo.GetHtmlAsync(final, pageUrl, 25, proxy, init.httpversion);
         if (string.IsNullOrEmpty(gw) || SupJavTo.IsGatewayShell(gw))
         {
             try
@@ -566,8 +572,10 @@ public class SupJavController : BaseSisiController
             packed = await ResolveOneAsync(pageUrl, pick.label, pick.link);
             if (string.IsNullOrEmpty(packed))
                 return OnError("stream_links", refresh_proxy: true);
-            hybridCache.Set(streamKey, packed,
-                isLuc ? TimeSpan.FromSeconds(90) : cacheTime(10));
+            // LUC token song vai phut (nhu LU) -> KHONG cache, resolve tuoi
+            // moi lan. Server khac giu 10p.
+            if (!isLuc)
+                hybridCache.Set(streamKey, packed, cacheTime(10));
         }
 
         {
