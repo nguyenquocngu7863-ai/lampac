@@ -52,9 +52,16 @@ public class Po85Controller : BaseSisiController
             StatiCacheDisabled = true;
 
         return PlaylistResult(cache,
-            Po85To.Menu(host, search, sort, c, t)
+            await MenuAsync(host, search, sort, c, t)
         );
     }
+
+    // Menu build truc tiep (sort row doi theo search/sort/c/t).
+    // Tags = 27 muc curated tieng Viet (2711 tag /tags/ toan tieng Trung,
+    // khong co count → khong loc top duoc, khong len menu noi).
+    Task<List<MenuItem>> MenuAsync(
+        string host, string search, string sort, string c, string t)
+        => Task.FromResult(Po85To.Menu(host, search, sort, c, t));
 
     async Task<(Dictionary<string, string> links, bool userch)> ResolveLinksAsync(string uri)
     {
