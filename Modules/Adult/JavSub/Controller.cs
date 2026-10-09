@@ -74,7 +74,7 @@ public class JavSubController : BaseSisiController
 
     async Task<List<MenuItem>> MenuBaseAsync()
     {
-        string memKey = ipkey("javsub:menu");
+        string memKey = ipkey("javsub:menu:v2");
         if (hybridCache.TryGetValue(memKey, out List<MenuItem> hit) && hit != null && hit.Count > 0)
             return hit;
         string hostLocal = host;

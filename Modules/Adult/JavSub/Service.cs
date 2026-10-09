@@ -139,7 +139,7 @@ public static class JavSubTo
             if (string.IsNullOrEmpty(name) || !seen.Add(slug)) continue;
             int.TryParse(m.Groups[3].Value, out int count);
             if (count <= 0) continue;
-            res.Add((name, slug, count));
+            res.Add((slug, name, count));
         }
         res.Sort((a, b) => b.count.CompareTo(a.count));
         var out_ = new List<(string, string)>(res.Count);
