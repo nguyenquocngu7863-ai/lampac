@@ -246,32 +246,27 @@ public class JavCtController : BaseSisiController
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
 
-        var links = await ResolveAsync(uri);
-        if (links == null || links.Count == 0)
+        // Get detail page (cached by the controller’s GetPageAsync)
+        string pageUrl = uri.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+            ? uri
+            : JavCtTo.SiteHost + "/" + uri.Trim('/');
+
+        string page = await GetPageAsync(pageUrl);
+        if (string.IsNullOrEmpty(page))
             return OnError("stream_links", refresh_proxy: true);
 
-        // DD (mp4, song dai) len truoc lam mac dinh - app lay phan dau.
-        // Cac nhanh chet da bi loai o Resolve (packed rong).
-        var ordered = links
-            .OrderBy(kv =>
-            {
-                string v = kv.Value;
-                bool isMp4 = !(v.Contains(".m3u8") || v.Contains("/hls/") || v.Contains("master.txt"));
-                return isMp4 ? 0 : 1;
-            })
-            .ThenBy(kv => kv.Key)
-            .ToDictionary(kv => kv.Key, kv => kv.Value);
+        // List servers without resolving
+        var servers = JavCtTo.GetDetailServers(page);
+        if (servers == null)
+            return OnError("stream_links", refresh_proxy: true);
 
-        return Json(ordered.ToDictionary(k => k.Key, k =>
+        var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (label, episode) in servers)
         {
-            // HLS di route .m3u8, mp4 di route .mp4 (lan lon la app bao
-            // "no EXTM3U delimiter"). Playmate tra master .txt (HLS) nen
-            // phai bat ca "/hls/" + "master.txt".
-            string v = k.Value;
-            string route = v.Contains(".m3u8") || v.Contains("/hls/") || v.Contains("master.txt")
-                ? "video.m3u8" : "video.mp4";
-            return $"{host}/javct/{route}?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(k.Key)}";
-        }));
+            // Decide the route – all = /javct/video?uri=…&q=…
+            dict[label] = $"{host}/javct/video?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(label)}";
+        }
+        return Json(dict);
     }
 
     // POST /ajax/player {episode=0, filmId=data-source, pt=__pt} ->
@@ -527,6 +522,15 @@ public class JavCtController : BaseSisiController
         }
         catch { }
 
+        // F4 (f4s.top/f4stream): embed -> data-api -> master m3u8.
+        if (embed.IndexOf("f4s.top", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            embed.IndexOf("f4stream", StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            string f4 = await JavCtTo.F4SourceAsync(embed);
+            if (!string.IsNullOrEmpty(f4))
+                return (f4 + "\n" + embed, nextPt, nextPk);
+        }
+
         // UPN/PP (player.upn.one/#id): API hex + AES (F2).
         if (embed.IndexOf("upn.one", StringComparison.OrdinalIgnoreCase) >= 0 ||
             embed.IndexOf("strp2p.com", StringComparison.OrdinalIgnoreCase) >= 0)
@@ -556,9 +560,39 @@ public class JavCtController : BaseSisiController
         if (await IsRequestBlocked(rch: true))
             return badInitMsg;
 
-        var links = await ResolveAsync(uri);
-        if (links == null || !links.TryGetValue(q, out string packed) || string.IsNullOrEmpty(packed))
+        // Get detail page (cached)
+        string pageUrl = uri.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+            ? uri
+            : JavCtTo.SiteHost + "/" + uri.Trim('/');
+
+        string page = await GetPageAsync(pageUrl);
+        if (string.IsNullOrEmpty(page))
             return OnError("stream_links", refresh_proxy: true);
+
+        // Tokens for the page
+        var (filmId, pt, pk) = JavCtTo.GetDetailTokens(page);
+        if (string.IsNullOrEmpty(filmId) || string.IsNullOrEmpty(pt))
+            return OnError("stream_links", refresh_proxy: true);
+
+        // Servers
+        var servers = JavCtTo.GetDetailServers(page);
+        var pick = servers?.FirstOrDefault(x =>
+            string.Equals(x.label, q, StringComparison.OrdinalIgnoreCase));
+        if (pick == null || string.IsNullOrEmpty(pick.Value.episode))
+            return OnError("stream_links", refresh_proxy: true);
+
+        // Resolve only the chosen server (reuse existing logic)
+        var (packed, nextPt, nextPk) = await ResolveServerAsync(
+            pageUrl, filmId, pick.Value.episode, pt, pk, pick.Value.label);
+
+        if (string.IsNullOrEmpty(packed))
+            return OnError("stream_links", refresh_proxy: true);
+
+        // Cache pack: F4 token song 5 phut (expires_in:300) -> cache 4 phut;
+        // server khac 10 phut.
+        string streamKey = ipkey($"javct:pack:{uri}:{q}");
+        int packMin = q != null && q.StartsWith("F4", StringComparison.OrdinalIgnoreCase) ? 4 : 10;
+        hybridCache.Set(streamKey, packed, cacheTime(packMin), true);
 
         // Cache giu "url\nreferer" (F5): referer per-video, khong gop chung.
         string link = packed, referer = JavCtTo.SiteHost + "/";
