@@ -302,11 +302,10 @@ public class JavGuruController : BaseSisiController
         }
 
         // Warm-up: resolve nen truoc server cham de khi bam an lien (app cat
-        // manifest sau 10s trong khi SB resolve 6-15s). Chi warm SB/LU;
-        // TV/JK/DD nhanh nen bo qua. LU la muc mac dinh nen duoc warm nhat.
+        // manifest sau 10s trong khi SB resolve 6-15s). Chi warm SB; LU
+        // KHONG warm (token NGAN, warm xong de do la chet + phi request).
 
         var warm = servers.Where(x =>
-            x.Label.IndexOf("LU", StringComparison.OrdinalIgnoreCase) >= 0 ||
             x.Label.IndexOf("SB", StringComparison.OrdinalIgnoreCase) >= 0);
 
         _ = Task.Run(async () =>
@@ -367,7 +366,11 @@ public class JavGuruController : BaseSisiController
         // se lam lan phat thu hai trong 10 phut chet (proxy khong Referer ->
         // CDN 302 sang host chet).
         string streamKey = ipkey($"javguru:stream:{uri}:{srv}");
-        if (hybridCache.TryGetValue(streamKey, out string cachedRaw) && !string.IsNullOrEmpty(cachedRaw))
+        // LU: token song NGAN (~10-25 phut, do chet ngay ca voi Chrome —
+        // 2026-10-09) nen KHONG doc cache (popup mo truoc, bam sau la an
+        // token chet + retry van chet). Resolve tuoi moi lan bam (~2s).
+        bool isLu = srv.IndexOf("LU", StringComparison.OrdinalIgnoreCase) >= 0;
+        if (!isLu && hybridCache.TryGetValue(streamKey, out string cachedRaw) && !string.IsNullOrEmpty(cachedRaw))
         {
             var c = SplitCached(cachedRaw);
             if (!string.IsNullOrEmpty(c.url))
@@ -443,9 +446,11 @@ public class JavGuruController : BaseSisiController
             if (s.Label.IndexOf("LU", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 string rawLu = best.url + "\n" + (best.referer ?? "");
+                // Token NGAN: chi cache 90s cho double-click, khong 10 phut.
+                var ttl = TimeSpan.FromSeconds(90);
                 hybridCache.Set(
-                    ipkey($"javguru:stream:{uri}:{s.Label}"), rawLu, cacheTime(10));
-                hybridCache.Set(streamKey, rawLu, cacheTime(10));
+                    ipkey($"javguru:stream:{uri}:{s.Label}"), rawLu, ttl);
+                hybridCache.Set(streamKey, rawLu, ttl);
                 return Redirect(best.url);
             }
 

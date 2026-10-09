@@ -547,7 +547,10 @@ public class SupJavController : BaseSisiController
         // neu da resolve trong 10 phut truoc.
         string streamKey = ipkey($"supjav:stream:{pageUrl}:{label}");
         string packed = null;
-        if (hybridCache.TryGetValue(streamKey, out string cachedRaw) && !string.IsNullOrEmpty(cachedRaw))
+        // LUC: nhu LU ben JavGuru (token NGAN) — KHONG doc cache, resolve tuoi
+        // moi lan bam; chi ghi 90s cho double-click. Server khac giu 10p.
+        bool isLuc = string.Equals(label?.Trim(), "LUC", StringComparison.OrdinalIgnoreCase);
+        if (!isLuc && hybridCache.TryGetValue(streamKey, out string cachedRaw) && !string.IsNullOrEmpty(cachedRaw))
             packed = cachedRaw;
         else
         {
@@ -563,7 +566,8 @@ public class SupJavController : BaseSisiController
             packed = await ResolveOneAsync(pageUrl, pick.label, pick.link);
             if (string.IsNullOrEmpty(packed))
                 return OnError("stream_links", refresh_proxy: true);
-            hybridCache.Set(streamKey, packed, cacheTime(10));
+            hybridCache.Set(streamKey, packed,
+                isLuc ? TimeSpan.FromSeconds(90) : cacheTime(10));
         }
 
         {
