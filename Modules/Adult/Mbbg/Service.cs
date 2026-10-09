@@ -392,6 +392,36 @@ public static class MbbgTo
         return res;
     }
 
+    // Mirror qooglevideo (khi video Blogger goc chet, site doi file sang iframe
+    // mirror — do 2026-10-09): trang embed co san sources:
+    // [{"file":"...hls.m3u8","type":"hls",...},{"file":"...mp4",...}].
+    public static Dictionary<string, string> QoogleSources(string html)
+    {
+        var res = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrEmpty(html))
+            return res;
+        foreach (Match m in Regex.Matches(html,
+            @"\{[^{}]*?""file""\s*:\s*""([^""]+)""[^{}]*?\}",
+            RegexOptions.IgnoreCase))
+        {
+            string block = m.Value;
+            string url = m.Groups[1].Value.Replace("\\/", "/").Trim();
+            if (!url.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                continue;
+            var tm = Regex.Match(block, @"""type""\s*:\s*""([^""]+)""", RegexOptions.IgnoreCase);
+            var lm = Regex.Match(block, @"""label""\s*:\s*""([^""]+)""", RegexOptions.IgnoreCase);
+            string type = tm.Success ? tm.Groups[1].Value : "";
+            bool hls = type.IndexOf("mpegurl", StringComparison.OrdinalIgnoreCase) >= 0
+                || type.IndexOf("hls", StringComparison.OrdinalIgnoreCase) >= 0
+                || url.IndexOf(".m3u8", StringComparison.OrdinalIgnoreCase) >= 0;
+            string label = lm.Success ? HttpUtility.HtmlDecode(lm.Groups[1].Value).Trim() : "";
+            string key = hls ? "HLS" : (string.IsNullOrEmpty(label) ? "MP4" : label);
+            if (!res.ContainsKey(key))
+                res.Add(key, url);
+        }
+        return res;
+    }
+
     static string Label(int itag)
     {
         if (itag == 22) return "720p";
