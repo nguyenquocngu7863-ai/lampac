@@ -423,6 +423,17 @@ public class JavGuruController : BaseSisiController
 
         foreach (var s in order)
         {
+            // LU: gateway ed= + token file deu chet theo phut (do live
+            // 2026-10-09) nen KHONG dung PageUrl cache (servers, 15p) —
+            // fetch detail tuoi + journey 1-session moi lan bam.
+            if (s.Label.IndexOf("LU", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                string fresh = await ResolveLuFreshAsync(uri, deadline);
+                if (!string.IsNullOrEmpty(fresh))
+                    return Redirect(fresh);
+                continue;
+            }
+
             long sub = Math.Min(deadline, Ms() + 12000);
             string gateway = JavGuruTo.GatewayUrl(s.PageUrl);
             if (string.IsNullOrEmpty(gateway))
@@ -442,12 +453,14 @@ public class JavGuruController : BaseSisiController
               + $" ref={best.referer} host={new Uri(best.url).Host}");
 
             // LU di thang (ly do nhu tren): app Chrome that tai duoc, proxy
-            // server (.NET fingerprint) an 403 tu edge.
+            // server (.NET fingerprint) an 403 tu edge. Dung ban fresh
+            // (gateway cache thiu) chu khong dung best tu PageUrl cu.
             if (s.Label.IndexOf("LU", StringComparison.OrdinalIgnoreCase) >= 0)
             {
-                // Token song vai PHUT (do live: token 6 phut tuoi chet ngay
-                // ca voi Chrome) -> KHONG ghi cache, resolve tuoi moi lan.
-                return Redirect(best.url);
+                string fresh2 = await ResolveLuFreshAsync(uri, deadline);
+                if (!string.IsNullOrEmpty(fresh2))
+                    return Redirect(fresh2);
+                continue;
             }
 
             // Header theo server: JK (maxstream) can Referer cua no, turbo tra
@@ -469,6 +482,29 @@ public class JavGuruController : BaseSisiController
         }
 
         return OnError("stream_links", refresh_proxy: true);
+    }
+
+    // LU fresh: fetch detail tuoi (khong qua cache servers 15p vi gateway
+    // ed= chet theo phut) -> giai ma PageUrl -> journey 1-session ->
+    // variant tuoi. Tra URL tho de app tu tai, khong cache.
+    async Task<string> ResolveLuFreshAsync(string uri, long deadline)
+    {
+        try
+        {
+            string pageUrl = JavGuruTo.NormalizePageUrl(uri);
+            if (string.IsNullOrEmpty(pageUrl)) return null;
+            string detail = await FetchHtmlAsync(pageUrl, "wp-btn-iframe", 4, 4, Math.Min(deadline, Ms() + 12000));
+            if (string.IsNullOrEmpty(detail)) return null;
+            var pick = JavGuruTo.Servers(detail).FirstOrDefault(x =>
+                x.Label.IndexOf("LU", StringComparison.OrdinalIgnoreCase) >= 0);
+            if (pick == null) return null;
+            string gateway = JavGuruTo.GatewayUrl(pick.PageUrl);
+            if (string.IsNullOrEmpty(gateway)) return null;
+            var lu = await JavGuruTo.LuResolveAsync(gateway, "https://jav.guru/", 8);
+            if (string.IsNullOrEmpty(lu.url)) return null;
+            return lu.url;
+        }
+        catch { return null; }
     }
 
     // Dang phat cua mot server: uu tien ket qua `/vidosik` da do va cache
