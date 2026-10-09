@@ -210,9 +210,19 @@ public class MbbgController : BaseSisiController
         if (links == null || links.Count == 0)
             return OnError("stream_links", refresh_proxy: true);
 
+        // HLS di route .m3u8, MP4 di route .mp4 (app bao "no EXTM3U delimiter"
+        // neu lan lon).
         return Json(links.ToDictionary(k => k.Key, k =>
-            $"{host}/mbbg/video.mp4?uri={HttpUtility.UrlEncode(uri)}"
-            + $"&q={HttpUtility.UrlEncode(k.Key)}"));
+        {
+            string v = k.Value;
+            int nl = v.IndexOf('\n');
+            if (nl > 0) v = v.Substring(0, nl);
+            string route = v.IndexOf(".m3u8", StringComparison.OrdinalIgnoreCase) >= 0
+                || v.IndexOf("/hls/", StringComparison.OrdinalIgnoreCase) >= 0
+                ? "video.m3u8" : "video.mp4";
+            return $"{host}/mbbg/{route}?uri={HttpUtility.UrlEncode(uri)}"
+                + $"&q={HttpUtility.UrlEncode(k.Key)}";
+        }));
     }
 
     // Cong thuc F14 (skill lampac-deobfuscate):
@@ -264,7 +274,26 @@ public class MbbgController : BaseSisiController
 
         string token = MbbgTo.Token(MbbgTo.FileFrom(aj));
         if (string.IsNullOrEmpty(token))
+        {
+            // [1b] mirror qooglevideo (Blogger goc chet): file la iframe mirror
+            // co san sources (HLS xvideos-cdn + MP4). Do 2026-10-09.
+            string frame = MbbgTo.FileFrom(aj);
+            if (!string.IsNullOrEmpty(frame)
+                && frame.IndexOf("qooglevideo", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                var qh = await GetMirrorAsync(frame, pageUrl);
+                var qs = MbbgTo.QoogleSources(qh ?? "");
+                if (qs.Count > 0)
+                {
+                    var ordered = qs.OrderBy(kv =>
+                        kv.Value.IndexOf(".m3u8", StringComparison.OrdinalIgnoreCase) >= 0 ? 0 : 1)
+                        .ToDictionary(kv => kv.Key, kv => kv.Value + "\n" + frame);
+                    hybridCache.Set(memKey, ordered, cacheTime(5));
+                    return ordered;
+                }
+            }
             return null;
+        }
 
         // [2] batchexecute — doi ma token thanh URL googlevideo (MP4).
         // PHAI dung HTTP thuong: impersonate bi 403 (da do, xem F14).
@@ -289,7 +318,29 @@ public class MbbgController : BaseSisiController
         return links;
     }
 
+    async Task<string> GetMirrorAsync(string url, string referer)
+    {
+        var headers = HeadersModel.Init(
+            ("User-Agent", MbbgTo.ChromeUA),
+            ("Referer", referer));
+        try
+        {
+            string h = await Http.Get(url, timeoutSeconds: 12,
+                headers: headers, httpversion: init.httpversion);
+            if (!string.IsNullOrEmpty(h)) return h;
+        }
+        catch { }
+        try
+        {
+            return await Http.Get(url, timeoutSeconds: 12,
+                headers: headers, proxy: proxy, httpversion: init.httpversion);
+        }
+        catch { return null; }
+    }
+
     [HttpGet]
+    [Route("mbbg/video")]
+    [Route("mbbg/video.m3u8")]
     [Route("mbbg/video.mp4")]
     async public Task<ActionResult> Video(string uri, string q)
     {
@@ -298,12 +349,21 @@ public class MbbgController : BaseSisiController
 
         var links = await ResolveAsync(uri);
         if (links == null || string.IsNullOrEmpty(q)
-            || !links.TryGetValue(q, out string link) || string.IsNullOrEmpty(link))
+            || !links.TryGetValue(q, out string packed) || string.IsNullOrEmpty(packed))
             return OnError("stream_links", refresh_proxy: true);
+
+        // Pack "url\nreferer" (mirror); Blogger cu chi co url tran.
+        string link = packed, referer = "https://www.blogger.com/";
+        int nl = packed.IndexOf('\n');
+        if (nl > 0)
+        {
+            link = packed.Substring(0, nl);
+            referer = packed.Substring(nl + 1);
+        }
 
         var direct = httpHeaders(init, HeadersModel.Init(
             ("User-Agent", MbbgTo.ChromeUA),
-            ("Referer", "https://www.blogger.com/")));
+            ("Referer", referer)));
 
         return Redirect(HostStreamProxy(link, direct));
     }
