@@ -72,7 +72,9 @@ public static class GService
 
                 sourceUrl = Regex.Replace(sourceUrl, "/stream/[^\\?]+", "/stream");
 
-                if (!SafeHttpUrl.IsSafe(sourceUrl) || !Uri.TryCreate(sourceUrl, UriKind.Absolute, out var uri))
+                if (!Uri.TryCreate(sourceUrl, UriKind.Absolute, out var uri) ||
+                    (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps) ||
+                    string.IsNullOrEmpty(uri.Host))
                 {
                     return new(null, "Uri");
                 }

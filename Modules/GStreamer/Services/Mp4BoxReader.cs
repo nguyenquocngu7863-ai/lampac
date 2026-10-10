@@ -3102,7 +3102,10 @@ public sealed class Mp4BoxReader : IDisposable
     {
         _deferredStart = 0;
         Reset(_deferred);
-        _deferred.Capacity = 0;
+        // MemoryStream mac dinh la expandable — Capacity=0 bien no thanh
+        // fixed-size, AppendDeferred sau do nem NotSupportedException va
+        // lam crash process (signal 11). Upstream dung RecyclableMemoryStream
+        // nen set Capacity duoc, local dung MemoryStream thi chi reset.
     }
 
     void KeepDeferred(int length, int consumed)
