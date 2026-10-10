@@ -20,7 +20,10 @@
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.12" />
     <PackageVersion Include="Microsoft.Extensions.DependencyModel" Version="10.0.12" />
     <PackageVersion Include="Microsoft.IO.RecyclableMemoryStream" Version="3.0.1" />
-    <PackageVersion Include="Microsoft.Playwright" Version="1.63.0" />
+    <!-- GIM 1.61.0: 1.63.0 (upstream bump) lam LaunchAsync chet
+         ("timeout: expected float, got undefined") tren stack Termux/proot
+         nay. Mo khoa khi upstream sua driver. -->
+    <PackageVersion Include="Microsoft.Playwright" Version="1.61.0" />
     <PackageVersion Include="MonoTorrent" Version="3.0.2" />
     <PackageVersion Include="NetVips" Version="3.2.0" />
     <PackageVersion Include="NetVips.Native" Version="8.18.7" />
