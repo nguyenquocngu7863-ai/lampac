@@ -448,6 +448,12 @@ public class SupJavController : BaseSisiController
             catch { }
         }
         if (string.IsNullOrEmpty(gw)) return null;
+        // LUC (LuluStream): gateway TRA SAN trang player (*.tnmr.org) — boc
+        // master tu P.A.C.K.E.R (SupJavTo.LuluMaster), khong can fetch them.
+        // Thu truoc VAS/FST/ST vi gw da la trang player LUC.
+        string lucMaster = SupJavTo.LuluMaster(gw);
+        if (!string.IsNullOrEmpty(lucMaster))
+            return lucMaster + "\n" + final;
         // VAS (Vidara): 302 -> <host>/e/<filecode> -> POST /api/stream -> streaming_url
         if (label.IndexOf("VAS", StringComparison.OrdinalIgnoreCase) >= 0)
         {
@@ -544,6 +550,14 @@ public class SupJavController : BaseSisiController
                     ("user-agent", SupJavTo.ChromeUA),
                     ("referer", referer)));
                 return Redirect(HostStreamProxy(voe, h2));
+            }
+            // LUC: redirect thang, khong HEAD-verify — nginx lulu chan HEAD
+            // tu server (403) nhung GET qua proxy thi chay (JavGuru LU cung
+            // host nay khong verify HEAD ma GET playlist truc tiep).
+            if (label.IndexOf("LUC", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                var lucHeaders = httpHeaders(SupJavTo.HostOf(link), HeadersModel.Init(("user-agent", SupJavTo.ChromeUA)));
+                return Redirect(HostStreamProxy(link, lucHeaders));
             }
             if (await VerifyLinkAsync(link, referer))
             {

@@ -231,6 +231,20 @@ public static class SupJavTo
         return res;
     }
 
+    // ========== LUC (LuluStream): packer -> jwplayer setup sources[0].file ==========
+    // Gateway tra thang trang player (*.tnmr.org), link nam trong P.A.C.K.E.R:
+    //   jwplayer("...").setup({ sources: [{ file: "https://<host>/hls2/.../master.m3u8?t=..&s=..&e=..&f=.." }] })
+    // Token nam trong query -> GIU NGUYEN URL, khong strip.
+    public static string LuluMaster(string html)
+    {
+        if (string.IsNullOrEmpty(html)) return null;
+        string src = Unpack(html) ?? html;
+        var m = Regex.Match(src, @"file\s*:\s*[""'](https?://[^""']+?\.m3u8[^""']*)[""']", RegexOptions.IgnoreCase);
+        if (!m.Success) return null;
+        string v = HttpUtility.HtmlDecode(m.Groups[1].Value.Trim());
+        return v.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? v : null;
+    }
+
     // ========== Gateway shell: trang playbutton trung gian (can di ?l= lay session truoc) ==========
     public static bool IsGatewayShell(string html)
     {
