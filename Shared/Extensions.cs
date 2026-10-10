@@ -46,8 +46,66 @@ public static class Extensions
         }
     }
 
-    public static T Invoke<T>(this Engine engine, string propertyName, params object[] arguments) where T : class
+    public static string ToHeaderValue(this string value)
     {
+        if (string.IsNullOrEmpty(value))
+            return value;
+
+        bool safe = true;
+        foreach (char c in value)
+        {
+            if (c < 32 || c > 126)
+            {
+                safe = false;
+                break;
+            }
+        }
+
+        if (safe)
+            return value;
+
+        var sb = new System.Text.StringBuilder(
+            value.Length + 16);
+        foreach (byte b in System.Text.Encoding.UTF8
+            .GetBytes(value))
+        {
+            if (b < 32 || b > 126)
+                sb.Append('%').Append(b.ToString("X2"));
+            else
+                sb.Append((char)b);
+        }
+
+        return sb.ToString();
+    }
+
+    public static string ToDebugHeaderValue(
+        this System.Net.Http.HttpRequestMessage req)
+    {
+        if (req == null)
+            return null;
+
+        var sb = new System.Text.StringBuilder();
+        void append(IEnumerable<KeyValuePair<string,
+            IEnumerable<string>>> headers)
+        {
+            foreach (var h in headers)
+            {
+                if (sb.Length > 0)
+                    sb.Append(" | ");
+                sb.Append(h.Key).Append(": ")
+                    .Append(string.Join(", ", h.Value));
+            }
+        }
+
+        append(req.Headers);
+        if (req.Content?.Headers != null)
+            append(req.Content.Headers);
+        return sb.ToString().ToHeaderValue();
+    }
+
+    public static T Invoke<T>(this Engine engine,
+        string propertyName,
+        params object[] arguments) where T : class    {
         var result = engine.Invoke(propertyName, arguments);
         if (result == null || result.IsNull() || result.IsUndefined())
             return default;
