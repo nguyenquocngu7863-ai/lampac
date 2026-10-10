@@ -25,7 +25,7 @@ set -euo pipefail
 # ─── Config ──────────────────────────────────────────────────────────────────
 NATIVE="$HOME/lampac-native"
 RUN_DIR="$HOME/lampac-run"
-REPO="$HOME/lampac"
+REPO="${LAMPAC_REPO:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)}"
 SRC="$REPO/termux-native"
 R=/data/data/com.termux/files/usr/var/lib/proot-distro/containers/ubuntu/rootfs
 GLIBC_LD="$PREFIX/glibc/bin/ld.so"
