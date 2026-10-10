@@ -8,14 +8,14 @@ namespace Music;
 
 public class AppleMusicDiscoveryProvider : IMusicDiscoveryProvider
 {
-    static readonly HttpClient httpClient = MusicHttp.CreateClient("applemusic");
+    static readonly HttpClient httpClient = FriendlyHttp.CreateHttpClient(useCookies: false);
     static readonly TimeSpan cacheTtl = TimeSpan.FromHours(6);
 
-    public const string ProviderId = "applemusiccharts";
+    const string providerId = "applemusiccharts";
     const string defaultCountry = "us";
     const string userAgent = "LampacNextgenMusic/0.1 (https://github.com/lampac-nextgen/lampac)";
 
-    public string Id => ProviderId;
+    public string Id => providerId;
     public string Name => "Apple Music Charts";
     public bool Enabled => true;
 
@@ -102,58 +102,18 @@ public class AppleMusicDiscoveryProvider : IMusicDiscoveryProvider
         };
     }
 
-    public static bool IsChartAlbum(string provider, string id)
-        => string.Equals(provider, ProviderId, StringComparison.OrdinalIgnoreCase)
-           || (id ?? string.Empty).StartsWith("applecharts:", StringComparison.OrdinalIgnoreCase);
-
-    public Task<MusicAlbum> GetAlbumAsync(string id, CancellationToken cancellationToken = default)
-    {
-        string albumId = (id ?? string.Empty).StartsWith("applecharts:", StringComparison.OrdinalIgnoreCase)
-            ? id["applecharts:".Length..]
-            : id;
-
-        return Regex.IsMatch(albumId ?? string.Empty, "^[0-9]+$")
-            ? AppleMusicSupport.GetCatalogAlbumAsync(CurrentCountry, albumId, cancellationToken)
-            : Task.FromResult<MusicAlbum>(null);
-    }
-
     async Task<List<MusicAlbum>> GetTopAlbumsAsync(CancellationToken cancellationToken)
     {
         string country = GetCountry();
-        var albums = await MusicMetadataCacheService.GetOrCreateAsync(
-            ProviderId,
+
+        return await MusicMetadataCacheService.GetOrCreateAsync(
+            providerId,
             "browse",
             $"{country}:top-albums",
             cacheTtl,
             () => LoadTopAlbumsAsync(country, cancellationToken),
             cancellationToken
         ) ?? new List<MusicAlbum>();
-
-        string resolver = GetAlbumResolver();
-        return albums.Select(album => CopyAlbumForResponse(album, resolver)).ToList();
-    }
-
-    static MusicAlbum CopyAlbumForResponse(MusicAlbum album, string resolver)
-    {
-        return new MusicAlbum
-        {
-            id = album.id,
-            title = album.title,
-            artist_id = album.artist_id,
-            artist_name = album.artist_name,
-            lookup_query = album.lookup_query,
-            lookup_provider = resolver,
-            year = album.year,
-            date = album.date,
-            type = album.type,
-            release_id = album.release_id,
-            description = album.description,
-            search_score = album.search_score,
-            secondary_types = album.secondary_types?.ToList() ?? new List<string>(),
-            images = album.images?.ToList() ?? new List<MusicImage>(),
-            provider_refs = album.provider_refs?.ToList() ?? new List<MusicProviderRef>(),
-            tracks = album.tracks?.ToList() ?? new List<MusicTrack>()
-        };
     }
 
     async Task<List<MusicAlbum>> LoadTopAlbumsAsync(string country, CancellationToken cancellationToken)
@@ -189,14 +149,6 @@ public class AppleMusicDiscoveryProvider : IMusicDiscoveryProvider
         return Regex.IsMatch(country, "^[a-z]{2}$") ? country : defaultCountry;
     }
 
-    public static string CurrentCountry => GetCountry();
-
-    static string GetAlbumResolver()
-    {
-        string resolver = ModInit.conf?.applemusic_album_resolver?.Trim().ToLowerInvariant();
-        return resolver is "applemusic" or "spotify" or "soundcloud" or "musicbrainz" ? resolver : "auto";
-    }
-
     static MusicAlbum ParseAlbum(JsonObject item)
     {
         if (item == null)
@@ -222,7 +174,6 @@ public class AppleMusicDiscoveryProvider : IMusicDiscoveryProvider
             title = title,
             artist_name = artistName,
             lookup_query = lookupQuery,
-            lookup_provider = GetAlbumResolver(),
             date = date,
             year = ParseYear(date),
             type = "Album",
@@ -232,7 +183,7 @@ public class AppleMusicDiscoveryProvider : IMusicDiscoveryProvider
                 : new List<MusicImage> { new() { url = artwork, width = 600, height = 600 } },
             provider_refs = new List<MusicProviderRef>
             {
-                new() { provider = ProviderId, external_id = externalId }
+                new() { provider = providerId, external_id = externalId }
             }
         };
     }
@@ -287,7 +238,7 @@ public class AppleMusicDiscoveryProvider : IMusicDiscoveryProvider
             id = $"browse:genre:{GenreSlug(genre)}",
             title = $"Популярное: {LocalizeGenre(genre)}",
             type = "album",
-            source_provider = ProviderId,
+            source_provider = providerId,
             has_more = hasMore,
             albums = albums
         };

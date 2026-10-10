@@ -17,13 +17,9 @@ public class SefonAudioProvider : IMusicAudioProvider
         {
             return await SefonSupport.SearchAsync(track, cancellationToken);
         }
-        catch (OperationCanceledException)
+        catch
         {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            throw new MusicAudioTransientException(Id, "match", ex);
+            return Array.Empty<MusicAudioMatch>();
         }
     }
 

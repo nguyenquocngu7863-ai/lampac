@@ -9,59 +9,10 @@ namespace Music;
 public static class MusicStreamRelayService
 {
     static readonly HttpClient musicStreamClient = CreateMusicStreamClient();
-    static readonly System.Collections.Concurrent.ConcurrentDictionary<string, ProxyClientEntry> proxyClients = new();
-    static readonly TimeSpan proxyClientIdleTtl = TimeSpan.FromMinutes(30);
-    const int maxProxyClients = 128;
-    static readonly Timer proxyClientCleanupTimer = new(
-        _ => CleanupProxyClients(),
-        null,
-        TimeSpan.FromMinutes(5),
-        TimeSpan.FromMinutes(5)
-    );
+    static readonly System.Collections.Concurrent.ConcurrentDictionary<string, HttpClient> proxyClients = new();
 
-    sealed class ProxyClientEntry
-    {
-        public ProxyClientEntry(HttpClient client)
-        {
-            Client = client;
-            LastUsedUtc = DateTime.UtcNow;
-        }
-
-        public readonly object Sync = new();
-        public HttpClient Client { get; }
-        public DateTime LastUsedUtc { get; set; }
-        public int ActiveRequests { get; set; }
-        public bool Retired { get; set; }
-    }
-
-    sealed class ClientLease : IDisposable
-    {
-        ProxyClientEntry entry;
-
-        public ClientLease(HttpClient client, ProxyClientEntry entry = null)
-        {
-            Client = client;
-            this.entry = entry;
-        }
-
-        public HttpClient Client { get; }
-
-        public void Dispose()
-        {
-            var current = Interlocked.Exchange(ref entry, null);
-            if (current == null)
-                return;
-
-            lock (current.Sync)
-            {
-                current.ActiveRequests = Math.Max(0, current.ActiveRequests - 1);
-                current.LastUsedUtc = DateTime.UtcNow;
-            }
-        }
-    }
-
-    // failOnUpstreamError: не транслировать клиенту мёртвую ссылку или ошибку
-    // прокси, а вернуть null — вызывающий пере-резолвит источник и маршрут.
+    // failOnUpstreamError: не транслировать «мёртвую ссылку» (403/404/410) клиенту,
+    // а вернуть null — вызывающий пере-резолвит источник по fallback-параметрам
     public static async Task<ActionResult> RelayAsync(HttpContext httpContext, MusicPlaybackSource source, bool failOnUpstreamError = false)
     {
         if (httpContext == null || source == null || string.IsNullOrWhiteSpace(source.url))
@@ -83,8 +34,7 @@ public static class MusicStreamRelayService
         if (httpContext.Request.Headers.TryGetValue("Range", out var range) && !string.IsNullOrWhiteSpace(range.ToString()))
             request.Headers.TryAddWithoutValidation("Range", range.ToString());
 
-        using var clientLease = AcquireClient(source);
-        HttpClient client = clientLease.Client;
+        HttpClient client = GetClient(source);
         HttpResponseMessage response;
 
         try
@@ -95,26 +45,14 @@ public static class MusicStreamRelayService
         {
             return new EmptyResult();
         }
-        catch (Exception ex) when (failOnUpstreamError)
+        catch when (failOnUpstreamError)
         {
-            ReportProxyFailure(source, ex);
             return null;
-        }
-        catch (Exception ex)
-        {
-            ReportProxyFailure(source, ex);
-            throw;
         }
 
         using (response)
         {
-            bool proxyFailure = MusicHttp.IsProxyFailureStatus(response.StatusCode);
-            if (proxyFailure)
-                MusicProxyService.ReportFailure(source.proxy_scope);
-            else
-                MusicProxyService.ReportSuccess(source.proxy_scope);
-
-            if (failOnUpstreamError && (IsDeadUpstreamStatus(response.StatusCode) || proxyFailure))
+            if (failOnUpstreamError && IsDeadUpstreamStatus(response.StatusCode))
                 return null;
 
             httpContext.Response.StatusCode = (int)response.StatusCode;
@@ -153,94 +91,35 @@ public static class MusicStreamRelayService
     }
 
     static bool IsDeadUpstreamStatus(HttpStatusCode statusCode)
-        => statusCode is HttpStatusCode.Forbidden
-            or HttpStatusCode.NotFound
-            or HttpStatusCode.Gone
-            or HttpStatusCode.RequestedRangeNotSatisfiable;
+        => statusCode is HttpStatusCode.Forbidden or HttpStatusCode.NotFound or HttpStatusCode.Gone;
 
-    static void ReportProxyFailure(MusicPlaybackSource source, Exception exception)
-    {
-        if (MusicHttp.IsProxyFailure(exception))
-            MusicProxyService.ReportFailure(source?.proxy_scope);
-    }
-
-    static ClientLease AcquireClient(MusicPlaybackSource source)
+    static HttpClient GetClient(MusicPlaybackSource source)
     {
         var proxy = CreateMusicStreamProxy(source);
         if (proxy == null)
-            return new ClientLease(musicStreamClient);
+            return musicStreamClient;
 
         // клиент на прокси кэшируется: без этого каждый range-запрос платит
-        // новый TLS-хендшейк через прокси. Lease не даёт очистке закрыть
-        // HttpClient, пока через него идёт активный stream/range-запрос.
+        // новый TLS-хендшейк через прокси; кардинальность ключей — от конфига
         string key = $"{source.proxy_url}|{source.proxy_username}|{source.proxy_password}";
 
-        while (true)
+        return proxyClients.GetOrAdd(key, _ =>
         {
-            var entry = proxyClients.GetOrAdd(key, _ => new ProxyClientEntry(CreateProxyClient(proxy)));
-
-            lock (entry.Sync)
+            var handler = new HttpClientHandler
             {
-                if (entry.Retired)
-                    continue;
+                AllowAutoRedirect = true,
+                AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate | DecompressionMethods.Brotli,
+                Proxy = proxy,
+                UseProxy = true
+            };
 
-                entry.ActiveRequests++;
-                entry.LastUsedUtc = DateTime.UtcNow;
-                return new ClientLease(entry.Client, entry);
-            }
-        }
-    }
+            handler.ServerCertificateCustomValidationCallback += (_, _, _, _) => true;
 
-    static HttpClient CreateProxyClient(WebProxy proxy)
-    {
-        var handler = new HttpClientHandler
-        {
-            AllowAutoRedirect = true,
-            AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate | DecompressionMethods.Brotli,
-            Proxy = proxy,
-            UseProxy = true
-        };
-
-        handler.ServerCertificateCustomValidationCallback += (_, _, _, _) => true;
-
-        return new HttpClient(handler)
-        {
-            Timeout = Timeout.InfiniteTimeSpan
-        };
-    }
-
-    static void CleanupProxyClients()
-    {
-        try
-        {
-            var now = DateTime.UtcNow;
-            foreach (var item in proxyClients.ToArray().OrderBy(i => i.Value.LastUsedUtc))
+            return new HttpClient(handler)
             {
-                bool overLimit = proxyClients.Count > maxProxyClients;
-                bool expired = now - item.Value.LastUsedUtc >= proxyClientIdleTtl;
-                if (!overLimit && !expired)
-                    continue;
-
-                HttpClient retiredClient = null;
-                lock (item.Value.Sync)
-                {
-                    if (item.Value.Retired || item.Value.ActiveRequests > 0)
-                        continue;
-
-                    if (proxyClients.TryRemove(item.Key, out var removed) && ReferenceEquals(removed, item.Value))
-                    {
-                        item.Value.Retired = true;
-                        retiredClient = item.Value.Client;
-                    }
-                }
-
-                retiredClient?.Dispose();
-            }
-        }
-        catch
-        {
-            // Очистка кэша не должна влиять на активные стримы.
-        }
+                Timeout = Timeout.InfiniteTimeSpan
+            };
+        });
     }
 
     static HttpClient CreateMusicStreamClient()

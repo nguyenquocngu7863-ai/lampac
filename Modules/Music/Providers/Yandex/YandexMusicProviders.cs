@@ -25,7 +25,7 @@ public class YandexMusicAudioProvider : IMusicAudioProvider
 
         try
         {
-            using var http = MusicHttp.CreateClient("yandexmusic");
+            using var http = FriendlyHttp.CreateHttpClient(useCookies: false);
             YandexMusicSupport.ApplyHeaders(http, YandexMusicSupport.CreateApiHeaders(credentials));
 
             string url = $"https://api.music.yandex.net/search?text={HttpUtility.UrlEncode(query)}&type=track&page=0&page-size=12&nocorrect=false";
@@ -129,7 +129,7 @@ public class YandexMusicAudioProvider : IMusicAudioProvider
 
         try
         {
-            using var http = MusicHttp.CreateClient("yandexmusic");
+            using var http = FriendlyHttp.CreateHttpClient(useCookies: false);
             YandexMusicSupport.ApplyHeaders(http, YandexMusicSupport.CreateApiHeaders(credentials));
 
             using var response = await http.GetAsync($"https://api.music.yandex.net/tracks/{match.id}/download-info", cancellationToken);

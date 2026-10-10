@@ -17,13 +17,9 @@ public class SoundCloudAudioProvider : IMusicAudioProvider
         {
             return await SoundCloudSupport.SearchAudioAsync(track, cancellationToken);
         }
-        catch (OperationCanceledException)
+        catch
         {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            throw new MusicAudioTransientException(Id, "match", ex);
+            return Array.Empty<MusicAudioMatch>();
         }
     }
 
@@ -36,13 +32,9 @@ public class SoundCloudAudioProvider : IMusicAudioProvider
         {
             return await SoundCloudSupport.BuildAudioSourcesAsync(match, cancellationToken);
         }
-        catch (OperationCanceledException)
+        catch
         {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            throw new MusicAudioTransientException(Id, "stream", ex);
+            return Array.Empty<MusicPlaybackSource>();
         }
     }
 
@@ -78,10 +70,8 @@ public class SoundCloudAudioProvider : IMusicAudioProvider
 
     public IReadOnlyList<string> GetFallbackProviderIds(MusicTrack track)
     {
-        return new[]
-        {
-            SefonSupport.ProviderId,
-            YouTubeMusicSearchSupport.ProviderId
-        };
+        return SoundCloudSupport.HasExactTrackId(track)
+            ? new[] { YouTubeMusicSearchSupport.ProviderId }
+            : Array.Empty<string>();
     }
 }

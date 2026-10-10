@@ -19,7 +19,7 @@ internal static class SefonSupport
     public const string BaseUrl = "https://sefon.org";
     const int MaxSearchQueries = 3;
 
-    static readonly HttpClient httpClient = MusicHttp.CreateClient("sefon");
+    static readonly HttpClient httpClient = FriendlyHttp.CreateHttpClient(useCookies: false);
 
     static readonly string[] SoftPenaltyWords =
     {
@@ -60,13 +60,13 @@ internal static class SefonSupport
 
         var merged = new Dictionary<string, MusicAudioMatch>(StringComparer.OrdinalIgnoreCase);
         var tasks = queries
-            .Select(query => SearchQueryResultAsync(query, cancellationToken))
+            .Select(query => SearchQuerySafeAsync(query, cancellationToken))
             .ToList();
 
         var batches = await Task.WhenAll(tasks);
         foreach (var batch in batches)
         {
-            foreach (var match in batch.matches)
+            foreach (var match in batch)
             {
                 if (match == null || string.IsNullOrWhiteSpace(match.id))
                     continue;
@@ -75,19 +75,10 @@ internal static class SefonSupport
             }
         }
 
-        var ranked = RankMatches(track, merged.Values)
+        return RankMatches(track, merged.Values)
             .Where(match => IsRelevantMatch(track, match))
             .Take(5)
             .ToList();
-
-        if (ranked.Count == 0)
-        {
-            var failure = batches.FirstOrDefault(i => i.error != null).error;
-            if (failure != null)
-                throw failure;
-        }
-
-        return ranked;
     }
 
     public static async Task<List<MusicTrack>> SearchTracksByQueryAsync(string query, int limit = 10, CancellationToken cancellationToken = default)
@@ -139,12 +130,7 @@ internal static class SefonSupport
         string url = $"{BaseUrl}/song/{Uri.EscapeDataString(query)}";
         using var response = await httpClient.GetAsync(url, cancellationToken);
         if (!response.IsSuccessStatusCode)
-        {
-            if (MusicHttp.IsTransientFailureStatus(response.StatusCode))
-                throw new HttpRequestException($"Sefon returned {(int)response.StatusCode}.", null, response.StatusCode);
-
             return new List<MusicAudioMatch>();
-        }
 
         string html = await response.Content.ReadAsStringAsync(cancellationToken);
         if (string.IsNullOrWhiteSpace(html))
@@ -205,22 +191,6 @@ internal static class SefonSupport
         catch
         {
             return new List<MusicAudioMatch>();
-        }
-    }
-
-    static async Task<(List<MusicAudioMatch> matches, Exception error)> SearchQueryResultAsync(string query, CancellationToken cancellationToken)
-    {
-        try
-        {
-            return (await SearchQueryAsync(query, cancellationToken), null);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            return (new List<MusicAudioMatch>(), ex);
         }
     }
 

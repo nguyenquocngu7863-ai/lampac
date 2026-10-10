@@ -254,7 +254,7 @@ public static partial class SoundCloudSupport
                 continue;
 
             int score = ScoreAudioMatch(expectedTrack, match);
-            if (score < 40)
+            if (score < 35)
                 continue;
 
             match.duration_ms ??= GetInt(candidate, "full_duration") ?? GetInt(candidate, "duration");
@@ -301,7 +301,6 @@ public static partial class SoundCloudSupport
             id = !string.IsNullOrWhiteSpace(urn) ? urn : $"soundcloud:tracks:{trackId}",
             title = title,
             artists = artists,
-            isrc = GetTrackIsrc(track),
             duration_ms = payload.duration_ms,
             payload = MusicJson.Serialize(payload)
         };
@@ -318,20 +317,9 @@ public static partial class SoundCloudSupport
         var expectedArtists = BuildArtistFragments(new[] { expectedTrack.artist_name }.Concat(expectedTrack.artists ?? Enumerable.Empty<string>()));
         var candidateArtists = BuildArtistFragments(candidate.artists);
         string candidateArtist = candidateArtists.FirstOrDefault() ?? NormalizeSearchText(candidate.artists.FirstOrDefault());
-        string expectedIsrc = MusicIsrc.Normalize(expectedTrack.isrc);
-        string candidateIsrc = MusicIsrc.Normalize(candidate.isrc);
+        string candidateText = NormalizeSearchText($"{candidate.title} {string.Join(' ', candidate.artists ?? new List<string>())}");
 
         int score = 0;
-        bool artistMatched = false;
-        bool durationMatched = false;
-
-        if (expectedIsrc != null && candidateIsrc != null)
-        {
-            if (!string.Equals(expectedIsrc, candidateIsrc, StringComparison.Ordinal))
-                return int.MinValue;
-
-            score += 120;
-        }
 
         if (!string.IsNullOrWhiteSpace(expectedTitle) && !string.IsNullOrWhiteSpace(candidateTitle))
         {
@@ -346,46 +334,20 @@ public static partial class SoundCloudSupport
         if (expectedArtists.Count > 0 && candidateArtists.Count > 0)
         {
             if (candidateArtists.Any(a => expectedArtists.Contains(a)))
-            {
                 score += 30;
-                artistMatched = true;
-            }
             else if (candidateArtists.Any(a => expectedArtists.Any(e => a.Contains(e, StringComparison.Ordinal) || e.Contains(a, StringComparison.Ordinal))))
-            {
                 score += 16;
-                artistMatched = true;
-            }
             else
-            {
-                int sharedArtistTokens = expectedArtists.Max(e => candidateArtists.Max(a => CountSharedTokens(e, a)));
-                score += sharedArtistTokens * 6;
-                artistMatched = sharedArtistTokens > 0;
-            }
+                score += expectedArtists.Max(e => candidateArtists.Max(a => CountSharedTokens(e, a))) * 6;
         }
         else if (!string.IsNullOrWhiteSpace(expectedArtist) && !string.IsNullOrWhiteSpace(candidateArtist))
         {
             if (string.Equals(expectedArtist, candidateArtist, StringComparison.Ordinal))
-            {
                 score += 30;
-                artistMatched = true;
-            }
             else if (candidateArtist.Contains(expectedArtist, StringComparison.Ordinal) || expectedArtist.Contains(candidateArtist, StringComparison.Ordinal))
-            {
                 score += 16;
-                artistMatched = true;
-            }
             else
-            {
-                int sharedArtistTokens = CountSharedTokens(expectedArtist, candidateArtist);
-                score += sharedArtistTokens * 6;
-                artistMatched = sharedArtistTokens > 0;
-            }
-        }
-
-        if (!artistMatched && expectedArtists.Any(a => candidateTitle.Contains(a, StringComparison.Ordinal)))
-        {
-            score += 16;
-            artistMatched = true;
+                score += CountSharedTokens(expectedArtist, candidateArtist) * 6;
         }
 
         if (expectedArtists.Count > 1 && candidateArtists.Count > 0)
@@ -401,35 +363,14 @@ public static partial class SoundCloudSupport
         int candidateDuration = candidate.duration_ms ?? 0;
         if (expectedDuration > 0 && candidateDuration > 0)
         {
-            double durationRatio = candidateDuration / (double)expectedDuration;
-            if (durationRatio >= 2d || durationRatio <= 0.5d)
-                return int.MinValue;
-
             int delta = Math.Abs(expectedDuration - candidateDuration);
-            if (delta <= 2_000)
-            {
-                score += 18;
-                durationMatched = true;
-            }
-            else if (delta <= 5_000)
-            {
-                score += 12;
-                durationMatched = true;
-            }
-            else if (delta <= 10_000)
-            {
-                score += 6;
-                durationMatched = true;
-            }
-            else if (durationRatio >= 1.5d || durationRatio <= 0.67d) score -= 54;
-            else if (durationRatio >= 1.2d || durationRatio <= 0.8d) score -= 24;
+            if (delta <= 2_000) score += 18;
+            else if (delta <= 5_000) score += 12;
+            else if (delta <= 10_000) score += 6;
             else if (delta >= 30_000) score -= 12;
         }
 
-        if (expectedArtists.Count > 0 && !artistMatched && !durationMatched)
-            score -= 36;
-
-        score -= ComputeDescriptorPenalty(expectedTitle, candidateTitle);
+        score -= ComputeDescriptorPenalty(expectedTitle, candidateText);
         return score;
     }
 
@@ -468,12 +409,7 @@ public static partial class SoundCloudSupport
         ("bass boosted", 24),
         ("live", 18),
         ("remix", 18),
-        ("remastered", 12),
-        ("1 hour", 72),
-        ("hour version", 72),
-        ("long version", 42),
-        ("extended", 12),
-        ("tiktok", 18)
+        ("remastered", 12)
     ];
 
     static bool HasDescriptor(string text, string descriptor)
