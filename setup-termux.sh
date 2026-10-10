@@ -920,14 +920,14 @@ install_custom_modules() {
         # nguon khong co (an toan duoi set -euo pipefail).
         xnhaubase=\"\${CUSTOM_SOURCE_BASE}/Modules/Adult/XNhau\"
         xnhautarget=/root/lampac/module/Adult/XNhau
-        mkdir -p \"$xnhautarget\"
+        mkdir -p \"\$xnhautarget\"
         for xnhaufile in manifest.json Controller.cs ModInit.cs Service.cs; do
-            if curl -fsSL --retry 3 \"$xnhaubase/$xnhaufile?cb=$syncstamp\" -o \"/tmp/xnhau-$xnhaufile\"; then
-                mv \"/tmp/xnhau-$xnhaufile\" \"$xnhautarget/$xnhaufile\"
-                echo \"  [xnhau] $xnhaufile\"
+            if curl -fsSL --retry 3 \"\$xnhaubase/\$xnhaufile?cb=\$syncstamp\" -o \"/tmp/xnhau-\$xnhaufile\"; then
+                mv \"/tmp/xnhau-\$xnhaufile\" \"\$xnhautarget/\$xnhaufile\"
+                echo \"  [xnhau] \$xnhaufile\"
             else
-                rm -f \"/tmp/xnhau-$xnhaufile\"
-                echo \"  [xnhau] bo qua $xnhaufile - khong co tren nguon\"
+                rm -f \"/tmp/xnhau-\$xnhaufile\"
+                echo \"  [xnhau] bo qua \$xnhaufile - khong co tren nguon\"
             fi
         done
 
@@ -936,14 +936,14 @@ install_custom_modules() {
         # tung file neu nguon khong co (an toan duoi set -euo pipefail).
         v69base=\"\${CUSTOM_SOURCE_BASE}/Modules/Adult/Viet69z\"
         v69target=/root/lampac/module/Adult/Viet69z
-        mkdir -p \"$v69target\"
+        mkdir -p \"\$v69target\"
         for v69file in manifest.json Controller.cs ModInit.cs Service.cs; do
-            if curl -fsSL --retry 3 \"$v69base/$v69file?cb=$syncstamp\" -o \"/tmp/v69-$v69file\"; then
-                mv \"/tmp/v69-$v69file\" \"$v69target/$v69file\"
-                echo \"  [viet69z] $v69file\"
+            if curl -fsSL --retry 3 \"\$v69base/\$v69file?cb=\$syncstamp\" -o \"/tmp/v69-\$v69file\"; then
+                mv \"/tmp/v69-\$v69file\" \"\$v69target/\$v69file\"
+                echo \"  [viet69z] \$v69file\"
             else
-                rm -f \"/tmp/v69-$v69file\"
-                echo \"  [viet69z] bo qua $v69file - khong co tren nguon\"
+                rm -f \"/tmp/v69-\$v69file\"
+                echo \"  [viet69z] bo qua \$v69file - khong co tren nguon\"
             fi
         done
 
@@ -953,14 +953,14 @@ install_custom_modules() {
         # nguon khong co (an toan duoi set -euo pipefail).
         vsbbase=\"\${CUSTOM_SOURCE_BASE}/Modules/Adult/VietSexBlog\"
         vsbtarget=/root/lampac/module/Adult/VietSexBlog
-        mkdir -p \"$vsbtarget\"
+        mkdir -p \"\$vsbtarget\"
         for vsbfile in manifest.json Controller.cs ModInit.cs Service.cs README.md; do
-            if curl -fsSL --retry 3 \"$vsbbase/$vsbfile?cb=$syncstamp\" -o \"/tmp/vsb-$vsbfile\"; then
-                mv \"/tmp/vsb-$vsbfile\" \"$vsbtarget/$vsbfile\"
-                echo \"  [vietsexblog] $vsbfile\"
+            if curl -fsSL --retry 3 \"\$vsbbase/\$vsbfile?cb=\$syncstamp\" -o \"/tmp/vsb-\$vsbfile\"; then
+                mv \"/tmp/vsb-\$vsbfile\" \"\$vsbtarget/\$vsbfile\"
+                echo \"  [vietsexblog] \$vsbfile\"
             else
-                rm -f \"/tmp/vsb-$vsbfile\"
-                echo \"  [vietsexblog] bo qua $vsbfile - khong co tren nguon\"
+                rm -f \"/tmp/vsb-\$vsbfile\"
+                echo \"  [vietsexblog] bo qua \$vsbfile - khong co tren nguon\"
             fi
         done
 
@@ -970,14 +970,14 @@ install_custom_modules() {
         # nguon khong co (an toan duoi set -euo pipefail).
         phe69base=\"\${CUSTOM_SOURCE_BASE}/Modules/Adult/Phe69\"
         phe69target=/root/lampac/module/Adult/Phe69
-        mkdir -p \"$phe69target\"
+        mkdir -p \"\$phe69target\"
         for phe69file in manifest.json Controller.cs ModInit.cs Service.cs README.md; do
-            if curl -fsSL --retry 3 \"$phe69base/$phe69file?cb=$syncstamp\" -o \"/tmp/phe69-$phe69file\"; then
-                mv \"/tmp/phe69-$phe69file\" \"$phe69target/$phe69file\"
-                echo \"  [phe69] $phe69file\"
+            if curl -fsSL --retry 3 \"\$phe69base/\$phe69file?cb=\$syncstamp\" -o \"/tmp/phe69-\$phe69file\"; then
+                mv \"/tmp/phe69-\$phe69file\" \"\$phe69target/\$phe69file\"
+                echo \"  [phe69] \$phe69file\"
             else
-                rm -f \"/tmp/phe69-$phe69file\"
-                echo \"  [phe69] bo qua $phe69file - khong co tren nguon\"
+                rm -f \"/tmp/phe69-\$phe69file\"
+                echo \"  [phe69] bo qua \$phe69file - khong co tren nguon\"
             fi
         done
 
@@ -987,14 +987,14 @@ install_custom_modules() {
         # nguon khong co (an toan duoi set -euo pipefail).
         sexdepbase=\"\${CUSTOM_SOURCE_BASE}/Modules/Adult/SexDep\"
         sexdeptarget=/root/lampac/module/Adult/SexDep
-        mkdir -p \"$sexdeptarget\"
+        mkdir -p \"\$sexdeptarget\"
         for sexdepfile in manifest.json Controller.cs ModInit.cs Service.cs README.md; do
-            if curl -fsSL --retry 3 \"$sexdepbase/$sexdepfile?cb=$syncstamp\" -o \"/tmp/sexdep-$sexdepfile\"; then
-                mv \"/tmp/sexdep-$sexdepfile\" \"$sexdeptarget/$sexdepfile\"
-                echo \"  [sexdep] $sexdepfile\"
+            if curl -fsSL --retry 3 \"\$sexdepbase/\$sexdepfile?cb=\$syncstamp\" -o \"/tmp/sexdep-\$sexdepfile\"; then
+                mv \"/tmp/sexdep-\$sexdepfile\" \"\$sexdeptarget/\$sexdepfile\"
+                echo \"  [sexdep] \$sexdepfile\"
             else
-                rm -f \"/tmp/sexdep-$sexdepfile\"
-                echo \"  [sexdep] bo qua $sexdepfile - khong co tren nguon\"
+                rm -f \"/tmp/sexdep-\$sexdepfile\"
+                echo \"  [sexdep] bo qua \$sexdepfile - khong co tren nguon\"
             fi
         done
 
@@ -1004,14 +1004,14 @@ install_custom_modules() {
         # nguon khong co (an toan duoi set -euo pipefail).
         heovlbase=\"\${CUSTOM_SOURCE_BASE}/Modules/Adult/HeoVl\"
         heovltarget=/root/lampac/module/Adult/HeoVl
-        mkdir -p \"$heovltarget\"
+        mkdir -p \"\$heovltarget\"
         for heovlfile in manifest.json Controller.cs ModInit.cs Service.cs README.md; do
-            if curl -fsSL --retry 3 \"$heovlbase/$heovlfile?cb=$syncstamp\" -o \"/tmp/heovl-$heovlfile\"; then
-                mv \"/tmp/heovl-$heovlfile\" \"$heovltarget/$heovlfile\"
-                echo \"  [heovl] $heovlfile\"
+            if curl -fsSL --retry 3 \"\$heovlbase/\$heovlfile?cb=\$syncstamp\" -o \"/tmp/heovl-\$heovlfile\"; then
+                mv \"/tmp/heovl-\$heovlfile\" \"\$heovltarget/\$heovlfile\"
+                echo \"  [heovl] \$heovlfile\"
             else
-                rm -f \"/tmp/heovl-$heovlfile\"
-                echo \"  [heovl] bo qua $heovlfile - khong co tren nguon\"
+                rm -f \"/tmp/heovl-\$heovlfile\"
+                echo \"  [heovl] bo qua \$heovlfile - khong co tren nguon\"
             fi
         done
 
@@ -1021,14 +1021,14 @@ install_custom_modules() {
         # nguon khong co (an toan duoi set -euo pipefail).
         vlxxbase=\"\${CUSTOM_SOURCE_BASE}/Modules/Adult/Vlxx\"
         vlxxtarget=/root/lampac/module/Adult/Vlxx
-        mkdir -p \"$vlxxtarget\"
+        mkdir -p \"\$vlxxtarget\"
         for vlxxfile in manifest.json Controller.cs ModInit.cs Service.cs README.md; do
-            if curl -fsSL --retry 3 \"$vlxxbase/$vlxxfile?cb=$syncstamp\" -o \"/tmp/vlxx-$vlxxfile\"; then
-                mv \"/tmp/vlxx-$vlxxfile\" \"$vlxxtarget/$vlxxfile\"
-                echo \"  [vlxx] $vlxxfile\"
+            if curl -fsSL --retry 3 \"\$vlxxbase/\$vlxxfile?cb=\$syncstamp\" -o \"/tmp/vlxx-\$vlxxfile\"; then
+                mv \"/tmp/vlxx-\$vlxxfile\" \"\$vlxxtarget/\$vlxxfile\"
+                echo \"  [vlxx] \$vlxxfile\"
             else
-                rm -f \"/tmp/vlxx-$vlxxfile\"
-                echo \"  [vlxx] bo qua $vlxxfile - khong co tren nguon\"
+                rm -f \"/tmp/vlxx-\$vlxxfile\"
+                echo \"  [vlxx] bo qua \$vlxxfile - khong co tren nguon\"
             fi
         done
 
@@ -1169,13 +1169,13 @@ install_custom_modules() {
 
         for adultfull2 in JavCt JavGuru JavHDToday JavSub JavTsunami Mbbg MissAV SexTb Jable PubJav SupJav DuJav JavMoi Javtiful Vjav ClipHotVN SexVietDam Tazzly Tizam TopGai Viet69kz; do
             adultfull2target=\"/root/lampac/module/Adult/\$adultfull2\"
-            mkdir -p \"$adultfull2target\"
+            mkdir -p \"\$adultfull2target\"
             for adultfull2file in manifest.json Controller.cs ModInit.cs Service.cs; do
-                if curl -fSL --retry 3 \"${CUSTOM_SOURCE_BASE}/Modules/Adult/\$adultfull2/\$adultfull2file?cb=\$syncstamp\" -o \"$adultfull2target/\$adultfull2file.tmp\"; then
-                    mv \"$adultfull2target/\$adultfull2file.tmp\" \"$adultfull2target/\$adultfull2file\"
+                if curl -fSL --retry 3 \"${CUSTOM_SOURCE_BASE}/Modules/Adult/\$adultfull2/\$adultfull2file?cb=\$syncstamp\" -o \"\$adultfull2target/\$adultfull2file.tmp\"; then
+                    mv \"\$adultfull2target/\$adultfull2file.tmp\" \"\$adultfull2target/\$adultfull2file\"
                     echo \"  [adult] \$adultfull2/\$adultfull2file\"
                 else
-                    rm -f \"$adultfull2target/\$adultfull2file.tmp\"
+                    rm -f \"\$adultfull2target/\$adultfull2file.tmp\"
                 fi
             done
         done
