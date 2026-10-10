@@ -486,6 +486,26 @@ public partial class GStask
 
                 DrainSubtitles(ct, readGeneration);
 
+                // Drain deferred before pull so each Gst buffer is ingested once
+                // (upstream d5741199: dung stash ca buffer khi segment-complete
+                // lam _deferred phinh vo han khi xem HLS).
+                if (mp4Reader.TryProcessDeferred())
+                {
+                    if (activeSegmentStoreFailed)
+                        return false;
+
+                    if (index < 0 && InitMp4Ready)
+                        return true;
+
+                    if (index >= 0 && SegmentFileReady(segmentIndex))
+                    {
+                        DrainSubtitles(ct, readGeneration);
+                        return true;
+                    }
+
+                    continue;
+                }
+
                 // 100 ms
                 using var sample = sink.TryPullSample(100_000_000UL);
 
@@ -502,15 +522,8 @@ public partial class GStask
                     if (!IsEos)
                         continue;
 
-                    // в _deferred может лежать полный segment
-                    if (mp4Reader.TryProcessDeferred())
-                    {
-                        if (activeSegmentStoreFailed)
-                            return false;
-
-                        if (index >= 0 && SegmentFileReady(segmentIndex))
-                            return true;
-                    }
+                    // Deferred da duoc drain truoc pull o tren (upstream
+                    // d5741199) nen khong TryProcessDeferred o day nua.
 
                     // Последний fragment может быть неполным:
                     // только moof, только часть mdat либо fragment одной дорожки

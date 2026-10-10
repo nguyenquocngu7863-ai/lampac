@@ -357,11 +357,9 @@ public sealed class Mp4BoxReader : IDisposable
         if (size <= 0)
             return;
 
-        if (TryProcessDeferred())
-        {
-            AppendGstBufferToDeferred(buffer, 0, size);
-            return;
-        }
+        // Caller drains TryProcessDeferred() before Push (GStask.Producer);
+        // khong stash ca buffer o day khi segment-complete (upstream
+        // d5741199: cho nay lam _deferred phinh vo han khi xem HLS).
 
         int sourceOffset = 0;
 
@@ -3104,6 +3102,7 @@ public sealed class Mp4BoxReader : IDisposable
     {
         _deferredStart = 0;
         Reset(_deferred);
+        _deferred.Capacity = 0;
     }
 
     void KeepDeferred(int length, int consumed)

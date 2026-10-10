@@ -94,7 +94,7 @@
 
         if (
             /\/dlna\/stream(?:\?|$)/i.test(url) &&
-            /[?&]path=[^&#]*\.mkv(?:[&#]|$)/i.test(url)
+            /[?&]path=[^&#]*\.(?:mkv|avi)(?:[&#]|$)/i.test(url)
         ) {
             return true;
         }
@@ -323,8 +323,10 @@
 
                 function addSource() {
                     // 4K/HDR probe + first segment can take well over a minute.
+                    // timeout la METHOD cua Lampa.Reguest (upstream 0d53bc73),
+                    // gan property thi khong co tac dung.
                     var network = new Lampa.Reguest();
-                    network.timeout = 120000;
+                    network.timeout(120000);
 
                     network.native(account('{localhost}/gst/add?linkencode=' + encodeURIComponent(Lampa.Base64.encode(src))), function (response) {
                         Lampa.Loading.stop();
@@ -434,7 +436,7 @@
     function handlePlayerDestroy() {
         if (taskId != null) {
             var network = new Lampa.Reguest();
-            network.timeout = 5000;
+            network.timeout(5000);
             network.native('{localhost}/gst/remove?id=' + taskId, function (response) { }, function (error) { });
             taskId = null;
         }
