@@ -818,6 +818,18 @@ sync_latest_modules() {
                 pull Modules/AdminPanel/index.html \"\$admin/index.html\"
             fi
         done
+        for adultfull in JavCt JavGuru JavHDToday JavSub JavTsunami Mbbg MissAV SexTb Jable PubJav SupJav DuJav JavMoi Javtiful Vjav ClipHotVN SexVietDam Tazzly Tizam TopGai Viet69kz; do
+            adultfulltarget=/root/lampac/module/Adult/\$adultfull
+            mkdir -p \"$adultfulltarget\"
+            for adultfullfile in manifest.json Controller.cs ModInit.cs Service.cs; do
+                if curl -fsSL --retry 3 \"$base/Modules/Adult/\$adultfull/\$adultfullfile?cb=\$stamp\" -o \"/tmp/adultfull-\$adultfull-\$adultfullfile\"; then
+                    mv \"/tmp/adultfull-\$adultfull-\$adultfullfile\" \"$adultfulltarget/\$adultfullfile\"
+                    echo \"  [sync] adult/\$adultfull/\$adultfullfile\"
+                else
+                    rm -f \"/tmp/adultfull-\$adultfull-\$adultfullfile\"
+                fi
+            done
+        done
     "
 
     ok "Latest patch files applied"
@@ -1154,6 +1166,19 @@ install_custom_modules() {
                 mv \"\$chaturbatetarget/\$file.tmp\" \"\$chaturbatetarget/\$file\"
             done
         fi
+
+        for adultfull2 in JavCt JavGuru JavHDToday JavSub JavTsunami Mbbg MissAV SexTb Jable PubJav SupJav DuJav JavMoi Javtiful Vjav ClipHotVN SexVietDam Tazzly Tizam TopGai Viet69kz; do
+            adultfull2target=\"/root/lampac/module/Adult/\$adultfull2\"
+            mkdir -p \"$adultfull2target\"
+            for adultfull2file in manifest.json Controller.cs ModInit.cs Service.cs; do
+                if curl -fSL --retry 3 \"${CUSTOM_SOURCE_BASE}/Modules/Adult/\$adultfull2/\$adultfull2file?cb=\$syncstamp\" -o \"$adultfull2target/\$adultfull2file.tmp\"; then
+                    mv \"$adultfull2target/\$adultfull2file.tmp\" \"$adultfull2target/\$adultfull2file\"
+                    echo \"  [adult] \$adultfull2/\$adultfull2file\"
+                else
+                    rm -f \"$adultfull2target/\$adultfull2file.tmp\"
+                fi
+            done
+        done
 
         for adultmodinit in BongaCams Runetki Spankbang Ebalovo; do
             adulttarget=\"/root/lampac/module/Adult/\$adultmodinit\"
