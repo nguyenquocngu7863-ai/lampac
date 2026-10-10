@@ -54,6 +54,10 @@ export LAMPAC_DATA="$HOME/lampac-run"
 # glibc node for module-spawned JS (Po85 resolver, DevFetch sniff);
 # bionic $PREFIX/bin/node reports platform=android and breaks playwright
 export LAMPAC_NODE="$NATIVE/node-bin/node"
+# Playwright driver (1.63) bundle node linux-arm64 voi interpreter /lib/ld-linux
+# (khong co tren bionic) -> CreateAsync bao "No such file". Ep driver dung
+# node glibc cua native. PLAYWRIGHT_NODEJS_PATH la env chinh thuc cua driver.
+export PLAYWRIGHT_NODEJS_PATH="$NATIVE/node-bin/node"
 # cap managed heap so spikes get GC'd instead of growing into swap (tune freely)
 export DOTNET_GCHeapHardLimit="${DOTNET_GCHeapHardLimit:-600000000}"
 
