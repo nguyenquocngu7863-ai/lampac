@@ -57,7 +57,7 @@ public partial class ProxyAPI
 
         string servUri = decryptLink?.uri;
 
-        if (string.IsNullOrEmpty(servUri) || !servUri.StartsWith("http"))
+        if (!SafeProxyUri(servUri))
         {
             httpContext.Response.StatusCode = StatusCodes.Status400BadRequest;
             return;
@@ -65,7 +65,7 @@ public partial class ProxyAPI
         #endregion
 
         if (init.showOrigUri)
-            httpContext.Response.Headers["PX-Orig"] = servUri;
+            httpContext.Response.Headers["PX-Orig"] = servUri.ToHeaderValue();
 
         #region proxyHandler
         HttpClientHandler proxyHandler = null;
@@ -98,7 +98,7 @@ public partial class ProxyAPI
         }
 
         if (cacheStream.uriKey != null && init.showOrigUri)
-            httpContext.Response.Headers["PX-CacheStream"] = cacheStream.uriKey;
+            httpContext.Response.Headers["PX-CacheStream"] = cacheStream.uriKey.ToHeaderValue();
 
         if (cacheStream.uriKey != null)
         {
@@ -270,7 +270,10 @@ public partial class ProxyAPI
                             ctsHttp.CancelAfter(TimeSpan.FromSeconds(30));
 
                             if (init.showOrigUri)
-                                httpContext.Response.Headers["PX-Req"] = request.RequestUri.ToString();
+                            {
+                                httpContext.Response.Headers["PX-Req"] = request.RequestUri.AbsoluteUri;
+                                httpContext.Response.Headers["PX-ReqHeaders"] = request.ToDebugHeaderValue();
+                            }
 
                             using (var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ctsHttp.Token).ConfigureAwait(false))
                             {
@@ -280,13 +283,18 @@ public partial class ProxyAPI
                                 if (response.Headers.Location != null)
                                 {
                                     Uri location = response.Headers.Location;
-                                    string next = location.IsAbsoluteUri
-                                        ? location.AbsoluteUri
-                                        : new Uri(reqUri, location).AbsoluteUri;
+                                    if (location != null && !location.IsAbsoluteUri && request.RequestUri != null)
+                                        location = new Uri(request.RequestUri, location);
+
+                                    if (location == null || !location.IsAbsoluteUri || !SafeHttpUrl.IsSafe(location.AbsoluteUri))
+                                    {
+                                        httpContext.Response.StatusCode = StatusCodes.Status502BadGateway;
+                                        return;
+                                    }
 
                                     httpContext.Response.Redirect(
                                         ProxyLink.Encrypt(
-                                            next,
+                                            location.AbsoluteUri,
                                             decryptLink,
                                             prefix: [CoreInit.Host(httpContext), "/proxy/"]
                                         )
@@ -353,5 +361,17 @@ public partial class ProxyAPI
             if (CoreInit.conf.serilog)
                 Serilog.Log.Error(ex, "CatchId={CatchId}", "id_1wmuzgfc");
         }
+    }
+
+    static bool SafeProxyUri(string uri)
+    {
+        if (string.IsNullOrEmpty(uri))
+            return false;
+
+        int i = uri.IndexOf(" or ", StringComparison.Ordinal);
+        if (i < 0)
+            return SafeHttpUrl.IsSafe(uri);
+
+        return SafeHttpUrl.IsSafe(uri[..i].Trim()) && SafeHttpUrl.IsSafe(uri[(i + 4)..].Trim());
     }
 }

@@ -7136,7 +7136,7 @@
             Select.show({
               title: 'Вы уверены?',
               items: [{
-                title: 'Потверждаю',
+                title: 'Подтверждаю',
                 "export": true,
                 selected: true
               }, {
@@ -9298,7 +9298,7 @@
       VideoQuality.add(json.results);
     }, status.error.bind(status));
     get$6('?sort=latest', params, function (json) {
-      append('Последнее добавление', 's2', json);
+      append('Последние добавления', 's2', json);
     }, status.error.bind(status));
     get$6('movie/now', params, function (json) {
       append('Фильмы', 's3', json);
@@ -9383,7 +9383,7 @@
       if (show) VideoQuality.add(json.results);
     }, status.error.bind(status));
     get$6('?cat=' + params.url + '&sort=latest', params, function (json) {
-      append('Последнее добавление', 's4', json);
+      append('Последние добавления', 's4', json);
     }, status.error.bind(status));
     get$6('?cat=' + params.url + '&sort=now', params, function (json) {
       append('Новинки этого года', 's5', json);
@@ -9456,7 +9456,7 @@
       url: '?cat=' + params.action + '&sort=top'
     });
     menu.push({
-      title: 'Последнее добавление',
+      title: 'Последние добавления',
       url: '?cat=' + params.action + '&sort=latest'
     });
     menu.push({
@@ -9656,7 +9656,7 @@
         element.MagnetUri = 'magnet:' + math[1];
         oncomplite();
       } else {
-        onerror('Неудалось получить magnet ссылку');
+        onerror('Не удалось получить magnet-ссылку');
       }
     }, function (a, c) {
       onerror(network$3.errorDecode(a, c));
@@ -12355,7 +12355,7 @@
 
     this.create = function () {
       html = Template.get('items_line', {
-        title: 'Коментарии'
+        title: 'Комментарии'
       });
       scroll = new create$p({
         horizontal: true
@@ -14343,7 +14343,7 @@
       };
 
       if (results.Results.length) this.showResults();else {
-        this.empty('Не удалось получить результатов');
+        this.empty('Не удалось получить результаты');
       }
     };
 
@@ -15548,7 +15548,7 @@
     }, {
       time: '2021-09-27 15:00',
       title: 'Исправлен парсер',
-      descr: 'В парсере была выявлена ошибка, из за которой jac.red не выдавал результаты'
+      descr: 'В парсере была выявлена ошибка, из-за которой jac.red не выдавал результаты'
     }, {
       time: '2021-09-26 17:00',
       title: 'Добро пожаловать!',
@@ -18055,7 +18055,7 @@
     this.loading = function () {
       scroll.clear();
       scroll.reset();
-      scroll.append($('<div><div class="broadcast__text">Идет поиск...</div><div class="broadcast__scan"><div></div></div></div>'));
+      scroll.append($('<div><div class="broadcast__text">Идёт поиск...</div><div class="broadcast__scan"><div></div></div></div>'));
     };
 
     this.search = function (value) {

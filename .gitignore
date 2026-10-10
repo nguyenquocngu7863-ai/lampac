@@ -374,3 +374,9 @@ healthchecksdb
 
 # Local scratch test page for online-compact plugin
 /.test-compact/
+# GitHub Pages static site (override global mkdocs /site ignore)
+!/site/
+!/site/**
+site/node_modules/
+site/dist/
+site/.astro/

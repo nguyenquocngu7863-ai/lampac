@@ -82,7 +82,7 @@ public class ProxyImg
 
         string href = decryptLink?.uri;
 
-        if (string.IsNullOrEmpty(href) || !href.StartsWith("http"))
+        if (!SafeProxyHref(href))
         {
             httpContext.Response.StatusCode = 404;
             return;
@@ -97,7 +97,7 @@ public class ProxyImg
 
                 httpContext.Response.Headers[HeaderNames.CacheControl] = "public,max-age=86400,immutable"; // 1 day
                 if (CoreInit.conf.serverproxy.showOrigUri)
-                    httpContext.Response.Headers["PX-Orig"] = href;
+                    httpContext.Response.Headers["PX-Orig"] = href.ToHeaderValue();
 
                 #region width / height
                 int width = 0;
@@ -135,7 +135,7 @@ public class ProxyImg
                             if (newKey != null)
                             {
                                 if (CoreInit.conf.serverproxy.showOrigUri)
-                                    httpContext.Response.Headers["PX-Md5key"] = newKey;
+                                    httpContext.Response.Headers["PX-Md5key"] = newKey.ToHeaderValue();
 
                                 fnvhash = Fnv1a.Hash(newKey);
                                 break;
@@ -281,6 +281,9 @@ public class ProxyImg
                             bool useDefaultHeaders = ShouldUseDefaultHeaders(decryptLink?.headers);
 
                             Http.DefaultRequestHeaders(href, req, null, null, decryptLink?.headers, useDefaultHeaders: useDefaultHeaders, prefixCacheHeader: decryptLink.plugin);
+
+                            if (CoreInit.conf.serverproxy.showOrigUri)
+                                httpContext.Response.Headers["PX-ReqHeaders"] = req.ToDebugHeaderValue();
 
                             try
                             {
@@ -772,6 +775,18 @@ public class ProxyImg
             return "image/webp";
 
         return contentType;
+    }
+
+    static bool SafeProxyHref(string href)
+    {
+        if (string.IsNullOrEmpty(href))
+            return false;
+
+        int i = href.IndexOf(" or ", StringComparison.Ordinal);
+        if (i < 0)
+            return SafeHttpUrl.IsSafe(href);
+
+        return SafeHttpUrl.IsSafe(href[..i].Trim()) && SafeHttpUrl.IsSafe(href[(i + 4)..].Trim());
     }
     #endregion
 }

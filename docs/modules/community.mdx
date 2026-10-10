@@ -1,0 +1,59 @@
+---
+title: "Community: Telegram-авторизация в Lampac"
+sidebarTitle: "Community"
+description: "Обзор модулей TelegramAuth, TelegramAuthBot и QRAuth: вход в Lampac через Telegram вместо пароля."
+keywords: ["TelegramAuth", "TelegramAuthBot", "QRAuth", "Lampac Telegram", "accsdb"]
+---
+
+Папка `Modules/Community/` содержит модули входа в Lampac через Telegram. Есть два независимых варианта: связка TelegramAuth + TelegramAuthBot и самостоятельный модуль QRAuth.
+
+## TelegramAuth и TelegramAuthBot
+
+Связка из двух подмодулей. Вместе они заменяют стандартную модалку пароля/CUB на полноэкранный Telegram-гейт.
+
+<Note>
+  Оба модуля по умолчанию находятся в `BaseModule.SkipModules` и имеют `"enable": false` в `manifest.json`.
+</Note>
+
+<Columns cols={2}>
+  <Card title="TelegramAuth" href="/modules/telegram-auth" icon="key-round">
+    Хранилище пользователей, HTTP API `/tg/auth/*` и синхронизация UID в accsdb
+  </Card>
+  <Card title="TelegramAuthBot" href="/modules/telegram-auth-bot" icon="bot">
+    Telegram-бот: привязка UID, устройства и админ-команды
+  </Card>
+</Columns>
+
+### Включить оба модуля
+
+<Steps>
+  <Step title="Скопируйте секции в init.conf">
+    Возьмите структуру из `Modules/Community/TelegramAuth/init.merge.example.json` и `TelegramAuthBot/init.merge.example.json`.
+  </Step>
+  <Step title="Задайте одинаковый secrets">
+    `mutations_api_secret` должен совпадать в обоих модулях и быть ненулевым в проде.
+  </Step>
+  <Step title="Включите манифесты">
+    В `manifest.json` каждого модуля установите `"enable": true` (через копию в `mods/`).
+  </Step>
+  <Step title="Уберите из SkipModules">
+    Удалите `TelegramAuth` и `TelegramAuthBot` из `BaseModule.SkipModules`.
+  </Step>
+  <Step title="Включите TelegramAuth.enable">
+    `TelegramAuth.enable: true` поднимает `accsdb.enable` и синхронизирует UID в `users.json`.
+  </Step>
+</Steps>
+
+API-таблицы: [справочник Telegram](/api/telegram). Уведомления бота: [SeriesNotify](/modules/series-notify).
+
+## QRAuth
+
+Самостоятельная альтернатива связке выше. Не зависит от TelegramAuth и TelegramAuthBot, работает поверх `accsdb` и общего `users.json`.
+
+<Card title="QRAuth" href="/modules/qr-auth" icon="qr-code" horizontal>
+  Экран входа с QR-кодом и фоном из постеров, собственный Telegram-бот: вход на ТВ без пароля, заявки на доступ, бан и разбан из Telegram
+</Card>
+
+<Note>
+  QRAuth выключен по умолчанию: `"enable": false` в `manifest.json`. Не включайте его вместе с Telegram-гейтом (`LampaWeb.telegramAuthGate`): гейт подменяет `deny.js`, и экран QRAuth не показывается.
+</Note>

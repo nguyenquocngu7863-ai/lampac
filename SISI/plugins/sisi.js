@@ -23,6 +23,14 @@
     }
   });
 
+  function escapeHtml(text) {
+    return $('<div></div>').text(text == null ? '' : text).html();
+  }
+
+  function escapeAttr(text) {
+    return escapeHtml(text).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
   var network = new Lampa.Reguest();
   var preview_timer, preview_video;
   var SISI_SOURCE = 'sisi_lampac';
@@ -128,8 +136,8 @@
 
         if (recomends.length) {
           recomends.forEach(function(a) {
-            a.title = Lampa.Utils.shortText(a.name, 50);
-            a.icon = '<img class="size-youtube" src="' + a.picture + '" />';
+            a.title = escapeHtml(Lampa.Utils.shortText(a.name, 50));
+            a.icon = '<img class="size-youtube" src="' + escapeAttr(a.picture) + '" />';
             a.template = 'selectbox_icon';
 
             a.url = function(call) {
@@ -356,19 +364,25 @@
     };
   }
 
+  function sisiApplyGridParams(target) {
+    target.params = target.params || {};
+    Lampa.Arrays.extend(target.params, {
+      items: {
+        mapping: 'grid',
+        cols: 3,
+        view: 3,
+        align_left: true
+      }
+    });
+    return target;
+  }
+
   function mapPlaylistLine(line) {
     var handlers = sisiCardHandlers();
 
     line.url = line.url || '';
     Utils.fixCards(line.results);
-
-    line.params = {
-      items: {
-        mapping: 'grid',
-        cols: 3,
-        align_left: true
-      }
-    };
+    sisiApplyGridParams(line);
 
     line.results.forEach(function (element) {
       element.source = SISI_SOURCE;
@@ -396,13 +410,7 @@
     json.total_pages = json.total_pages || 30;
     delete json.list;
     Utils.fixCards(json.results);
-
-    json.params = {
-      items: {
-        mapping: 'grid',
-        cols: 3
-      }
-    };
+    sisiApplyGridParams(json);
 
     var handlers = sisiCardHandlers();
 
@@ -881,7 +889,6 @@
         Api.main(
           object,
           function (data) {
-            for (var i = 0; i < data.length; i++) data[i] = mapPlaylistLine(data[i]);
             this.build(Lampa.Utils.addSource(data, SISI_SOURCE));
           }.bind(this),
           function (er) {
@@ -910,6 +917,8 @@
   }
 
   function View(object) {
+    sisiApplyGridParams(object);
+
     var menu;
     var comp = Lampa.Maker.make('Category', object, function (module) {
       module.toggle(Lampa.Maker.module('Category').MASK.base, 'Pagination');

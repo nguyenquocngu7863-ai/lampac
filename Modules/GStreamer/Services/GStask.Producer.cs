@@ -22,7 +22,7 @@ public partial class GStask
     #region Seek
     public bool Seek(int seconds)
     {
-        // берем на conf.segment_seconds ниже позиции, что бы браузер не вернулся на -1 сегмент
+        // берём на conf.segment_seconds ниже позиции, чтобы браузер не вернулся на -1 сегмент
         ulong ns = SecondsToClockTime(seconds - conf.segment_seconds);
         return SeekClockTime(ns);
     }
@@ -123,16 +123,24 @@ public partial class GStask
 
                 if (ret == StateChangeReturn.Async)
                 {
-                    // ждём завершение команды в pipeline
+                    // ждём завершение команды в pipeline.
+                    // Новый pipeline (Defrost) до preroll не имеет mq.src_0, куда уходит seek:
+                    // pad появляется, когда demuxer прочитал заголовок источника. TorrServer
+                    // после простоя открывает раздачу дольше 5 с, поэтому ждём как EnsureSegment.
+                    ulong prerollTimeoutNs = reusePipeline
+                        ? 5_000_000_000UL
+                        : 45 * GstSecond;
+
                     using var msg = bus.TimedPopFiltered(
-                        5_000_000_000UL,
+                        prerollTimeoutNs,
                         MessageType.AsyncDone | MessageType.Error | MessageType.Eos
                     );
 
                     uint type = BusReader.GetType(msg);
 
                     if (type == BusReader.Error ||
-                        type == BusReader.Eos)
+                        type == BusReader.Eos ||
+                        (!reusePipeline && type != BusReader.AsyncDone))
                     {
                         LogTaskError(
                             "SeekClockTime",
@@ -478,6 +486,24 @@ public partial class GStask
 
                 DrainSubtitles(ct, readGeneration);
 
+                // Drain deferred before pull so each Gst buffer is ingested once.
+                if (mp4Reader.TryProcessDeferred())
+                {
+                    if (activeSegmentStoreFailed)
+                        return false;
+
+                    if (index < 0 && InitMp4Ready)
+                        return true;
+
+                    if (index >= 0 && SegmentFileReady(segmentIndex))
+                    {
+                        DrainSubtitles(ct, readGeneration);
+                        return true;
+                    }
+
+                    continue;
+                }
+
                 // 100 ms
                 using var sample = sink.TryPullSample(100_000_000UL);
 
@@ -493,16 +519,6 @@ public partial class GStask
                 {
                     if (!IsEos)
                         continue;
-
-                    // в _deferred может лежать полный segment
-                    if (mp4Reader.TryProcessDeferred())
-                    {
-                        if (activeSegmentStoreFailed)
-                            return false;
-
-                        if (index >= 0 && SegmentFileReady(segmentIndex))
-                            return true;
-                    }
 
                     // Последний fragment может быть неполным:
                     // только moof, только часть mdat либо fragment одной дорожки

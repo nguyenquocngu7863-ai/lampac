@@ -34,6 +34,7 @@ public class ModInit : IModuleLoaded, IModuleOnline
     {
         EventListener.UpdateInitFile -= updateConf;
         EventListener.OnlineApiQuality -= onlineApiQuality;
+        FlixCdnBrowserResolver.Dispose();
     }
 
     void updateConf()

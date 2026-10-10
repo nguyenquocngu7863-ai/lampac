@@ -96,6 +96,7 @@ public class Chromium : PlaywrightBase, IDisposable
                     {
                         case Architecture.X86:
                         case Architecture.X64:
+                        case Architecture.Arm64:
                             {
                                 executablePath = File.Exists(".playwright/chrome-linux/chrome")
                                     ? ".playwright/chrome-linux/chrome"
@@ -208,16 +209,11 @@ public class Chromium : PlaywrightBase, IDisposable
                 var kpc = await browser.NewContextAsync(baseContextOptions);
                 await kpc.NewPageAsync();
 
-                try
-                {
-                    _ = keepopen_context.CloseAsync().ConfigureAwait(false);
-                }
-                catch (Exception ex)
-                {
-                    Log.Error(ex, "CatchId={CatchId}", "id_0fjttjws");
-                }
-
+                var old = keepopen_context;
                 keepopen_context = kpc;
+                _ = Task.Delay(TimeSpan.FromSeconds(20))
+                    .ContinueWith(t => old?.CloseAsync())
+                    .ConfigureAwait(false);
             }
 
             if (pages_keepopen.Count > 0 && pages_keepopen.Count > init.context.min)

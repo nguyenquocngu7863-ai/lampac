@@ -26,7 +26,9 @@ public class TorrServerController : BaseController
     #region HttpClient
     private static readonly HttpClient httpClient = new HttpClient(new SocketsHttpHandler
     {
-        AllowAutoRedirect = true,
+        // HttpClient drops the Authorization header on redirect, so TorrServer answers 401.
+        // Redirects are passed to the client instead, see CopyProxyHttpResponse.
+        AllowAutoRedirect = false,
         AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate,
         SslOptions = { RemoteCertificateValidationCallback = (sender, cert, chain, sslPolicyErrors) => true },
         MaxConnectionsPerServer = 100
@@ -125,12 +127,6 @@ public class TorrServerController : BaseController
     {
         string path = HttpContext.Request.Path.Value;
 
-        if (path.StartsWith("/shutdown", StringComparison.OrdinalIgnoreCase))
-        {
-            HttpContext.Response.StatusCode = 404;
-            return;
-        }
-
         if (CoreInit.conf.accsdb.enable)
         {
             bool isStream = Regex.IsMatch(path, "^/ts/(stream|playlist|play/|download/|gst/)", RegexOptions.IgnoreCase);
@@ -185,7 +181,16 @@ public class TorrServerController : BaseController
 
     async public Task TorAPI(AccsUser user = null)
     {
-        string pathRequest = Regex.Replace(HttpContext.Request.Path.Value, "^/ts", "");
+        string rawPath = HttpContext.Request.Path.Value ?? "";
+        if (rawPath.Equals("/ts/shutdown", StringComparison.OrdinalIgnoreCase)
+            || rawPath.StartsWith("/ts/shutdown/", StringComparison.OrdinalIgnoreCase))
+        {
+            HttpContext.Response.StatusCode = 404;
+            return;
+        }
+
+        string pathRequest = Regex.Replace(rawPath, "^/ts", "");
+
         string servUri = $"http://{CoreInit.conf.listen.localhost}:{ModInit.conf.tsport}{Regex.Replace(pathRequest, "[^a-zA-Z0-9\\./]", "") + HttpContext.Request.QueryString.Value}";
 
         using (var ctsHttp = CancellationTokenSource.CreateLinkedTokenSource(HttpContext.RequestAborted))
@@ -212,10 +217,15 @@ public class TorrServerController : BaseController
                         await rs.Content.CopyToAsync(HttpContext.Response.Body, HttpContext.RequestAborted).ConfigureAwait(false);
                         return;
                     }
-                    else if (!ModInit.conf.rdb || requestInfo.IP == "127.0.0.1" || requestInfo.IP.StartsWith("192.168."))
+                    else if (Shared.Services.Utilities.IPNetwork.IsLocalIp(requestInfo.IP, forced: true))
                     {
                         var data = new StringContent(requestJson, Encoding.UTF8, "application/json");
                         await httpClient.PostAsync("/settings", data, ctsHttp.Token).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        HttpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
+                        return;
                     }
 
                     await HttpContext.Response.WriteAsync(string.Empty, ctsHttp.Token).ConfigureAwait(false);
@@ -325,6 +335,13 @@ public class TorrServerController : BaseController
 
         UpdateHeaders(responseMessage.Headers);
         UpdateHeaders(responseMessage.Content?.Headers);
+
+        if (responseMessage.Headers.NonValidated.TryGetValues("Location", out var location))
+        {
+            string path = location.ToString();
+            if (path.StartsWith('/') && !path.StartsWith("//"))
+                response.Headers.Location = "/ts" + path;
+        }
 
         await using (var responseStream = await responseMessage.Content.ReadAsStreamAsync(context.RequestAborted).ConfigureAwait(false))
         {
