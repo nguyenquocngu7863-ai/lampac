@@ -150,6 +150,11 @@ public class Chromium : PlaywrightBase, IDisposable
                 Headless = init.Headless,
                 ExecutablePath = executablePath,
                 Args = init.Args,
+                // Driver (1.61.x) bat buoc timeout kieu float trong launch params;
+                // client .NET bo trong (null) thi driver bao
+                // "timeout: expected float, got undefined" va launch chet.
+                // Gui ro 180s (bang default cua driver) de tuong thich.
+                Timeout = 180000,
                 //Devtools = init.Devtools
             });
 
