@@ -361,6 +361,9 @@ public class JavGuruController : BaseSisiController
         if (string.IsNullOrEmpty(srv))
             srv = q;
 
+        // Log moi request /video: biet app thuc su xin server nao.
+        Console.WriteLine($"JavGuru: [video] srv={srv}");
+
         // Cache resolve: an ngay neu da resolve trong 10 phut truoc. Giu ca
         // REFERER cung URL — DoodStream bat buoc co Referer, cache rieng URL
         // se lam lan phat thu hai trong 10 phut chet (proxy khong Referer ->
