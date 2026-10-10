@@ -1,0 +1,16 @@
+#!/data/data/com.termux/files/usr/bin/bash
+set -euo pipefail
+
+root="/data/data/com.termux/files/home/lampac-native/dotnet-host"
+export DOTNET_ROOT="$root"
+
+# SDK version hardcode bi tu lai khi dotnet-host len ban moi (10.0.400 ->
+# 10.0.401) => `Csc` task fail "command or file was not found".
+# Tu do theo thu muc sdk hien co.
+csc_dll="$(ls -1 "$root"/sdk/*/Roslyn/bincore/csc.dll 2>/dev/null | sort -V | tail -1)"
+if [ -z "$csc_dll" ]; then
+  echo "csc shim: khong tim thay Roslyn/csc.dll trong $root/sdk" >&2
+  exit 1
+fi
+
+exec "$root/dotnet" "$csc_dll" "$@"

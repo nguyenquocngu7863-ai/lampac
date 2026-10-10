@@ -31,6 +31,11 @@ export OCL_ICD_FILENAMES="$NATIVE/opencl/adreno.icd"
 export DOTNET_ROOT="$R/opt/dotnet"
 export DOTNET_CLI_TELEMETRY_OPTOUT=1
 export DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
+# Build (dotnet wrapper) resolve NuGet tu cache cua proot Ubuntu — runtime
+# phai dung chung cache do, neu khong package nao duoc bump (vd Playwright
+# 1.61 -> 1.63) se khong tim thay luc chay (default ~/.nuget chi co ban cu)
+# va module Chrome tạch ("timeout: expected float, got undefined").
+export NUGET_PACKAGES="$R/root/.nuget/packages"
 export PLAYWRIGHT_BROWSERS_PATH="$R/root/.cache/ms-playwright"
 # Playwright's driver builds an artifacts dir with mkdtemp(os.tmpdir()+...).
 # Node falls back to /tmp when TMPDIR is unset — but Android has no /tmp, so
