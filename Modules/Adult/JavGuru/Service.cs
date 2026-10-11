@@ -809,8 +809,12 @@ public static bool IsVoServer(string label)
                     catch { }
                 };
 
-                int ms = (int)Math.Max(3000,
-                    Math.Min(11000, sub - Environment.TickCount64));
+                // TOI THIEU 8s chu khong phai 3s: lan truoc `sub` con 3s thi
+                // Math.Max(3000, ...) khep dung vao 3s nen Chrome goto treo
+                // dung 3s roi nem `Timeout 3000ms exceeded` dù trang VOE van
+                // song. Chrome khoi dong + JW Player hydrate can 5-8s.
+                int ms = (int)Math.Max(8000,
+                    Math.Min(20000, sub - Environment.TickCount64));
                 await page.GotoAsync(pageUrl,
                     new Microsoft.Playwright.PageGotoOptions
                     {

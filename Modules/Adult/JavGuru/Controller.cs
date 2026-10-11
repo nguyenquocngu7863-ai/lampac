@@ -226,23 +226,28 @@ public class JavGuruController : BaseSisiController
     // 0 = tot nhat. Thu tu nay KHONG chi dung de fallback: `/vidosik` phat
     // dict theo thu tu nay va app Lampa lay **phan dau** lam muc mac dinh
     // player => doi o day la doi muc mac dinh cua ca module.
-    //   LU  - user do nhanh nhat nen lam mac dinh.
-    //   DD  - DoodStream, ben nhung nhat trong 5 server.
+    //   SB  - StreamHG. ON DINH NHAT trong 6 server: do qua `/proxy` ra 200
+    //         san playlist nhieu variant (hls4/hls3/hls2) nen chon duoc
+    //         bitrate cao, khong ton thoi gian resolve.
+    //   LU  - lulu, truoc day dat mac dinh do user do nhanh, nhung 2026-10
+    //         bi chan, chi lai duoc mot lan ("mo sang hom"). Nen ha xuong
+    //         sau SB de mac dinh khong phu thuoc host dang chet.
+    //   DD  - DoodStream, ben nhung nhat trong 6 server.
     //   TV  - gateway /searcho hay 520, cham/chop -> sau DD.
-    //   JK  - maxstream on dinh nhung cham hon LU.
-    //   SB  - streamhg ~26KB/s, khong tua duoc -> gan cuoi.
-    //   VO  - CHUA xu ly, LUON o cuoi cho den khi lam.
+    //   JK  - maxstream, token gan voi lan tai browser nen `/proxy` hay 403.
+    //   VO  - phao cuu sinh, di Chrome nen 5-8s, chi thu khi 5 server kia
+    //         chet het.
     static int Priority(string label)
     {
-        if (label.IndexOf("LU", StringComparison.OrdinalIgnoreCase) >= 0)
+        if (label.IndexOf("SB", StringComparison.OrdinalIgnoreCase) >= 0)
             return 0;
         if (JavGuruTo.IsDdServer(label))
             return 1;
-        if (label.IndexOf("TV", StringComparison.OrdinalIgnoreCase) >= 0)
+        if (label.IndexOf("LU", StringComparison.OrdinalIgnoreCase) >= 0)
             return 2;
-        if (label.IndexOf("JK", StringComparison.OrdinalIgnoreCase) >= 0)
+        if (label.IndexOf("TV", StringComparison.OrdinalIgnoreCase) >= 0)
             return 3;
-        if (label.IndexOf("SB", StringComparison.OrdinalIgnoreCase) >= 0)
+        if (label.IndexOf("JK", StringComparison.OrdinalIgnoreCase) >= 0)
             return 4;
         return 5;
     }
@@ -341,8 +346,8 @@ public class JavGuruController : BaseSisiController
     }
 
     // Resolve server theo `srv` roi chuyen tiep sang link phat; server do chet
-    // thi TU THU cac server con lai theo `Priority` (LU -> DD -> TV -> JK ->
-    // SB -> VO) — cung co che chuoi du phong nhu JavTsunami. Moi server mot
+    // thi TU THU cac server con lai theo `Priority` (SB -> DD -> LU -> TV ->
+    // JK -> VO) — cung co che chuoi du phong nhu JavTsunami. Moi server mot
     // `sub-deadline` nen ca chuoi van duoi tran 30s cua client.
     //
     // NGOAI LE: app Lampa cho manifest ~10s (manifestLoadTimeout) trong khi SB
@@ -384,7 +389,7 @@ public class JavGuruController : BaseSisiController
         if (servers == null || servers.Count == 0)
             return OnError("stream_links", refresh_proxy: true);
 
-        // `servers` da sap xep theo `Priority` (LU > DD > TV > JK > SB > VO).
+        // `servers` da sap xep theo `Priority` (SB > DD > LU > TV > JK > VO).
         // Thu server nguoi dung BAM truoc; no chet thi tu thu phan con lai
         // theo cung thu tu — dung ma JavTsunami. Host cua tung server chet
         // ngau nhien (gateway /searcho 520, CDN StreamHG, DoodStream 302 sang
@@ -418,7 +423,18 @@ public class JavGuruController : BaseSisiController
 
         foreach (var s in order)
         {
-            long sub = Math.Min(deadline, Ms() + 12000);
+            // VO di qua Chrome (VoSourceAsync): mat 5-8s moi hydrate xong JW
+            // Player, lan duoi gap deadline chung thi con 3s nen Chrome treo
+            // va tra n=0 dù host VOE van song (do duoc: `voe loi Timeout
+            // 3000ms exceeded` → `n=0`, nhung lan khac ra duoc
+            // `cloudwindow-route.com`). Cho VO deadline rieng 20s va thu them
+            // 1 lan neu lan dau that bai — VO la phao cuu sinh, so lan thu
+            // it khong ton nhieu so voi 5 server kia da chet.
+            bool isVo = JavGuruTo.IsVoServer(s.Label);
+            long sub = isVo
+                ? Ms() + 20000
+                : Math.Min(deadline, Ms() + 12000);
+
             string gateway = JavGuruTo.GatewayUrl(s.PageUrl);
             if (string.IsNullOrEmpty(gateway))
                 continue;
@@ -426,6 +442,17 @@ public class JavGuruController : BaseSisiController
             long tr = Ms();
             var streams = await JavGuruTo.Streams(gateway,
                 "https://jav.guru/", sub, JavGuruTo.ServerReferer(s.Label));
+
+            if (streams.Count == 0 && isVo)
+            {
+                Console.WriteLine($"JavGuru: {s.Label} that bai lan 1,"
+                  + $" thu lai ({Ms() - tr}ms)");
+                tr = Ms();
+                streams = await JavGuruTo.Streams(gateway,
+                    "https://jav.guru/", Ms() + 20000,
+                    JavGuruTo.ServerReferer(s.Label));
+            }
+
             Console.WriteLine($"JavGuru: srv={s.Label} n={streams.Count}"
               + $" ({Ms() - tr}ms)");
             if (streams.Count == 0)
