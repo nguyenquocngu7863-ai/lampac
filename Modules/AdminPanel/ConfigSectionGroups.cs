@@ -99,7 +99,7 @@ public static class ConfigSectionGroups
                 "NextHUB",
                 "BongaCams", "Chaturbate", "Ebalovo", "Eporner", "HQporner", "Po85", "PornHub",
                 "PornHubPremium", "Porntrex", "Runetki", "Spankbang", "Tizam",
-                "TopGai", "Vlxx", "HeoVl", "SexDep", "Phe69",
+                "TopGai", "Vlxx", "HeoVl", "SexDep", "Phe69", "VNsexTop1",
                 "Xhamster", "Xnxx", "XNhau", "Xvideos", "XvideosRED",
                 "xasiat", "porn4days", "pornobolt"
             }),
