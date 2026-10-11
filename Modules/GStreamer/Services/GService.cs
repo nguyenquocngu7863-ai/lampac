@@ -4,6 +4,7 @@ using Shared.Services.Hybrid;
 using Shared.Services.Utilities;
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -21,6 +22,14 @@ public static class GService
     static ConcurrentDictionary<ulong, GStask> tasks = new();
     static readonly ConcurrentDictionary<ulong, TaskCompletionSource<bool>> waiters = new();
     static readonly ConcurrentDictionary<string, Lazy<Task<ProbeResult>>> probeWaiters = new(StringComparer.Ordinal);
+
+    // Query dinh danh file tren cac source stream (torrserver /stream?link=&index=,
+    // pidtor tsid=...). Cac query con lai (auth uid/token, flag play/preload/...)
+    // khong doi theo file nen cat bo de cache hit.
+    static readonly FrozenSet<string> ProbeFileQueryKeys = new HashSet<string>(
+        new[] { "link", "index", "tsid", "id", "hash", "file", "path" },
+        StringComparer.OrdinalIgnoreCase
+    ).ToFrozenSet(StringComparer.OrdinalIgnoreCase);
     static readonly object taskAddLock = new();
 
     static int cleanupRunning;
@@ -108,6 +117,10 @@ public static class GService
                 // KHONG dung URL truoc redirect — vd mọi file AIO đều
                 // chung path /lite/aiostreams/file.mkv, cache sai file
                 // (mo file A thay track file B).
+                // Rieng cac source stream gop chung mot path cho moi file
+                // (torrserver /stream?link=&index=, pidtor tsid=...),
+                // giu lai query dinh danh file (ProbeKeyFor), cat cac
+                // query con lai.
                 string probeKey;
                 {
                     if (!Uri.TryCreate(sourceUrl, UriKind.Absolute, out var finalUri) ||
@@ -117,7 +130,7 @@ public static class GService
                         return new(null, "Uri");
                     }
 
-                    probeKey = $"ProbeInfo:{finalUri.GetLeftPart(UriPartial.Path)}";
+                    probeKey = ProbeKeyFor(finalUri);
                 }
 
                 var probeResult = await GetProbeInfo(probeKey, sourceUrl).ConfigureAwait(false);
@@ -269,6 +282,33 @@ public static class GService
     }
     #endregion
 
+    static string ProbeKeyFor(Uri uri)
+    {
+        string fileQuery = string.Empty;
+
+        if (!string.IsNullOrEmpty(uri.Query) && uri.Query.Length > 1)
+        {
+            var kept = new List<string>();
+            foreach (string pair in uri.Query.Substring(1).Split('&', StringSplitOptions.RemoveEmptyEntries))
+            {
+                int eq = pair.IndexOf('=');
+                string name = eq >= 0 ? pair.Substring(0, eq) : pair;
+                if (!ProbeFileQueryKeys.Contains(name))
+                    continue;
+
+                kept.Add(eq >= 0 ? $"{name}={pair.Substring(eq + 1)}" : name);
+            }
+
+            if (kept.Count > 0)
+            {
+                kept.Sort(StringComparer.Ordinal);
+                fileQuery = "?" + string.Join("&", kept);
+            }
+        }
+
+        return $"ProbeInfo:{uri.GetLeftPart(UriPartial.Path)}{fileQuery}";
+    }
+
     static bool TryGetReusableTask(ulong id, out GStask task)
     {
         task = null;
@@ -347,7 +387,7 @@ public static class GService
         }
 
         sourceUrl = uri.AbsoluteUri;
-        string probeKey = $"ProbeInfo:{uri.GetLeftPart(UriPartial.Path)}";
+        string probeKey = ProbeKeyFor(uri);
 
         return await GetProbeInfo(probeKey, sourceUrl).ConfigureAwait(false);
     }
