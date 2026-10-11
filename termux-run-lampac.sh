@@ -44,7 +44,10 @@ export PLAYWRIGHT_BROWSERS_PATH="$R/root/.cache/ms-playwright"
 # startup does not depend on who launched the server.
 #   Repro: env -u TMPDIR node -e 'require("fs").mkdtempSync("/tmp/z-")'  → ENOENT
 export TMPDIR="$NATIVE/tmp"; export TMP="$TMPDIR"; export TEMP="$TMPDIR"
-mkdir -p "$TMPDIR"
+# mkdir la binary bionic: phai xoa LD_LIBRARY_PATH/LD_PRELOAD glibc keo theo,
+# neu khong linker se gap $PREFIX/glibc/lib/libc.so (linker script, khong phai
+# ELF) va bao "has bad ELF magic".
+LD_LIBRARY_PATH= LD_PRELOAD= mkdir -p "$TMPDIR"
 # GStreamer (Ubuntu plugins via rootfs sysroot, patchelf'd scanner)
 export GST_PLUGIN_SYSTEM_PATH="$R/usr/lib/aarch64-linux-gnu/gstreamer-1.0"
 export GST_PLUGIN_SCANNER="$NATIVE/gst-plugin-scanner"
