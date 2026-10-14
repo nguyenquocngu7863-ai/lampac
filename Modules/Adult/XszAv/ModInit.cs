@@ -120,7 +120,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
     {
         conf = ModuleInvoke.Init("XszAv", new SisiSettings("XszAv", XszAvTo.SiteHost)
         {
-            displayindex = 34,
+            displayindex = 20,
             streamproxy = true,
             httpversion = 2,
             httptimeout = 25,
