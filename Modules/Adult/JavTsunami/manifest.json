@@ -4,6 +4,6 @@
   "version": "1.0.0",
   "author": "opencode",
   "site": "https://javtsunami.com",
-  "enable": true,
+  "enable": false,
   "dynamic": true
 }

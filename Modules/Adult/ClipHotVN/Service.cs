@@ -10,7 +10,11 @@ namespace ClipHotVN;
 
 public static class ClipHotVNTo
 {
-    public static readonly string SiteHost = "https://cliphotvn.forum";
+    // 2026-10-12: site chuyen host thuc sang cliphotvn.bond (cliphotvn.forum
+    // 301 ve bond; href/tag/nav deu la bond; player go.qooglevideo van song).
+    // Whitelist giu ca 2 de uri cu van chay. Menu nav id doi menu-home ->
+    // menu-main-menu; anh lazyload data-src; tag href tuyet doi host bond.
+    public static readonly string SiteHost = "https://cliphotvn.bond";
     public const string ChromeUA = "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
     public const string EmbHost = "https://emb.cd-vs.com";
 
@@ -53,7 +57,9 @@ public static class ClipHotVNTo
         else if (value.StartsWith("/")) value = SiteHost + value;
         else if (!value.StartsWith("http", StringComparison.OrdinalIgnoreCase)) value = SiteHost + "/" + value;
         if (!System.Uri.TryCreate(value, UriKind.Absolute, out var parsed)) return null;
-        if (!parsed.Host.Equals("cliphotvn.forum", StringComparison.OrdinalIgnoreCase) &&
+        if (!parsed.Host.Equals("cliphotvn.bond", StringComparison.OrdinalIgnoreCase) &&
+            !parsed.Host.EndsWith(".cliphotvn.bond", StringComparison.OrdinalIgnoreCase) &&
+            !parsed.Host.Equals("cliphotvn.forum", StringComparison.OrdinalIgnoreCase) &&
             !parsed.Host.EndsWith(".cliphotvn.forum", StringComparison.OrdinalIgnoreCase))
             return null;
         return value;
@@ -82,8 +88,12 @@ public static class ClipHotVNTo
             if (string.IsNullOrEmpty(href) || !seen.Add(href)) continue;
             var titleM = Regex.Match(m.Value, @"title=[""']([^""']+)[""']", RegexOptions.IgnoreCase);
             string name = titleM.Success ? WebUtility.HtmlDecode(titleM.Groups[1].Value).Trim() : "";
-            var imgM = Regex.Match(m.Value, @"src=[""']([^""']+)(?:\?\d+)?[""']", RegexOptions.IgnoreCase);
+            var imgM = Regex.Match(m.Value, @"data-src=[""']([^""']+)[""']", RegexOptions.IgnoreCase);
+            if (!imgM.Success)
+                imgM = Regex.Match(m.Value, @"src=[""']([^""']+)[""']", RegexOptions.IgnoreCase);
             string pic = NormalizeMediaUrl(imgM.Success ? imgM.Groups[1].Value : null);
+            if (!string.IsNullOrEmpty(pic) && pic.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+                pic = null;
             list.Add(new PlaylistItem
             {
                 video = uri + "?uri=" + HttpUtility.UrlEncode(href),
@@ -111,7 +121,9 @@ public static class ClipHotVNTo
     {
         var res = new List<(string, string)>();
         if (string.IsNullOrWhiteSpace(html)) return res;
-        int idx = html.IndexOf("id=\"menu-home\"", StringComparison.OrdinalIgnoreCase);
+        int idx = html.IndexOf("menu-main-menu", StringComparison.OrdinalIgnoreCase);
+        if (idx < 0)
+            idx = html.IndexOf("id=\"menu-home\"", StringComparison.OrdinalIgnoreCase);
         if (idx < 0) return res;
         string slice = html.Substring(idx, Math.Min(8000, html.Length - idx));
         foreach (Match m in Regex.Matches(slice, @"<li[^>]*class=[""'][^""']*menu-item[^""']*[""'][^>]*>\s*<a[^>]*href=[""']([^""']+)[""'][^>]*>([^<]*)</a>", RegexOptions.IgnoreCase))
@@ -132,7 +144,7 @@ public static class ClipHotVNTo
         var res = new List<(string, string)>();
         if (string.IsNullOrWhiteSpace(html)) return res;
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (Match m in Regex.Matches(html, @"<a[^>]*href=[""'](?:https?://cliphotvn\.forum)?/tag/([^""'/]+)/?[""'][^>]*>([^<]*)</a>", RegexOptions.IgnoreCase))
+        foreach (Match m in Regex.Matches(html, @"<a[^>]*href=[""'](?:https?://(?:cliphotvn\.bond|cliphotvn\.forum))?/tag/([^""'/]+)/?[""'][^>]*>([^<]*)</a>", RegexOptions.IgnoreCase))
         {
             string slug = m.Groups[1].Value.Trim();
             if (string.IsNullOrEmpty(slug) || !seen.Add(slug)) continue;

@@ -10,7 +10,11 @@ namespace Viet69kz;
 
 public static class Viet69kzTo
 {
-    public static readonly string SiteHost = "https://viet69link.net";
+    // 2026-10-12: site chuyen host thuc sang sexviet69x.net (viet69link.net
+    // van mo nhung href/canonical/api deu tro ve sexviet69x.net, con
+    // viet69link.net/api/player tra 404 HTML). Whitelist giu ca 2 de
+    // bookmark/uri cu van chay.
+    public static readonly string SiteHost = "https://sexviet69x.net";
     public const string ChromeUA = "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
 
     public static string PlayerApi => SiteHost + "/api/player";
@@ -101,7 +105,9 @@ public static class Viet69kzTo
         if (!System.Uri.TryCreate(value, UriKind.Absolute, out var parsed))
             return null;
 
-        if (!parsed.Host.Equals("viet69link.net", StringComparison.OrdinalIgnoreCase) &&
+        if (!parsed.Host.Equals("sexviet69x.net", StringComparison.OrdinalIgnoreCase) &&
+            !parsed.Host.EndsWith(".sexviet69x.net", StringComparison.OrdinalIgnoreCase) &&
+            !parsed.Host.Equals("viet69link.net", StringComparison.OrdinalIgnoreCase) &&
             !parsed.Host.EndsWith(".viet69link.net", StringComparison.OrdinalIgnoreCase))
             return null;
 
