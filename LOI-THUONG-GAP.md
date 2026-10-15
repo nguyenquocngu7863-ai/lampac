@@ -141,13 +141,44 @@ Luồng đúng: Lampa gửi link → lampac `/jackett/resolve` đổi link `.tor
 ## 6. Nguồn phim / module
 
 - **VidCore**: để tiếng Anh (ENG); **UhdMovies**: đã ẩn (controller gỡ).
+- **5 module Adult mới** đã nằm trong cả 2 hàm sync (từ 2026-10-15): **XszAv, Manko, SexVnMe, TangThon, VNsexTop1** — `--sync` kéo full 4 file (manifest/Controller/ModInit/Service).
+- `--sync` nay cũng cập nhật **Eporner** và **Chaturbate** (trước đây chỉ có ở `--sync-all`).
 - **Stripchat**, **OneJav**: đã gỡ hoàn toàn, không hồi sinh.
 - Nguồn RUS mới đồng bộ: **Gencit, Videoseed, FlixCDN** — `setup-termux.sh --sync-all` tự kéo; nếu thiếu sau khi sync, kiểm tra log `[sync] rus/...`.
 - Muốn thêm nguồn kiểu MoviesHub: sửa `manifest.json` (mục tree) trong repo, không cần sửa script.
 
 ---
 
-## 7. Quy trình an toàn mỗi khi sửa bản vá
+## 7. Bẫy escape trong `setup-termux.sh` (guest script nằm trong `bash -c "…"`)
+
+Toàn bộ guest script của `sync_latest_modules` / `install_custom_modules` nằm trong **chuỗi double-quote của host**, nên:
+
+- Quên `\` trước `$` → host mở rộng biến lúc chạy; biến không có ở host thì thành **chuỗi rỗng** → `mkdir -p ""`, URL mất tiền tố `https://…`.
+- Quên `\` trước `"` — **kể cả trong comment** → chuỗi đóng sớm, guest script bị **cắt ngắn** mà host vẫn chạy "êm".
+- Biến chỉ có ở host (`CUSTOM_SOURCE_BASE`) thì guest **không thấy**; viết `\${CUSTOM_SOURCE_BASE}` trong guest là lỗi `set -u` trừ khi guest tự định nghĩa lại.
+
+| Triệu chứng | Nguyên nhân |
+|---|---|
+| `--sync` dừng ở `mkdir: cannot create directory ''` | thiếu `\` trước `$` (đã từng dính: VaPlayer/RusTrio/adultfull) |
+| `--sync-all` / `--install` chạy xong mà **không cài gì** | chuỗi bị cắt do `"` chưa escape (đã từng dính: comment `"thu nghiem"` cắt guest từ 27 KB còn 1,7 KB) |
+| `CUSTOM_SOURCE_BASE: unbound variable` | guest dùng biến host mà chưa định nghĩa trong guest |
+
+Kiểm tra trước khi push: `bash -n setup-termux.sh` **không** bắt được các lỗi này. Cách chắc ăn là giả `proot-distro` để hứng guest script rồi soi:
+
+```bash
+mkdir -p /tmp/fb
+printf '%s\n' '#!/usr/bin/env bash' 'printf "%s" "${@: -1}" > "${CAPTURE_FILE:-/tmp/guest.sh}"' > /tmp/fb/proot-distro
+chmod +x /tmp/fb/proot-distro
+# (nguồn 2 hàm từ setup-termux.sh rồi gọi với CAPTURE_FILE trỏ ra 2 file, xem mục 6.3)
+bash -n /tmp/guest.sh                 # syntax
+grep -n 'mkdir -p ""' /tmp/guest.sh   # biến bị host ăn mất
+```
+
+Guest script nhận được phải là **1 argument** (khi capture, `argc` của lệnh `proot-distro login ubuntu -- bash -c …` = 6). Nếu `argc` > 6 là chuỗi đã bị cắt.
+
+---
+
+## 8. Quy trình an toàn mỗi khi sửa bản vá
 
 1. Sửa trong repo, push nhánh `arena/01a06710-lampac` (không push `main`, không tạo PR).
 2. Termux: `lampac stop`.

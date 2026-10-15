@@ -480,7 +480,9 @@ sync_latest_modules() {
                /root/lampac/mods/OnlineENG/Mapple4K \
                /root/lampac/mods/OnlineENG/OpenDirectory \
                /root/lampac/module/Adult/OneJav \
-               /root/lampac/mods/Adult/OneJav
+               /root/lampac/mods/Adult/OneJav \
+               /root/lampac/module/Adult/Stripchat \
+               /root/lampac/mods/Adult/Stripchat
         rm -f /root/lampac/module/NextHUB/sites/85po.yaml \
               /root/lampac/mods/NextHUB/sites/85po.yaml \
               /root/lampac/module/LampaWeb/plugins/player-landscape.js \
@@ -529,14 +531,14 @@ sync_latest_modules() {
         # VaPlayer (streamdata.vaplayer.ru, ENG): JSON thang, m3u8 da chat
         # luong 480p/720p/1080p, H.264+AAC, imdb-based, khong can Playwright.
         vaplayertarget=/root/lampac/module/OnlineENG/VaPlayer
-        mkdir -p \"$vaplayertarget\"
+        mkdir -p \"\$vaplayertarget\"
         for vaplayerfile in manifest.json Controller.cs ModInit.cs; do
-            if curl -fsSL --retry 3 \"$base/Modules/OnlineENG/VaPlayer/$vaplayerfile?cb=$stamp\" -o \"/tmp/vaplayer-$vaplayerfile\"; then
-                mv \"/tmp/vaplayer-$vaplayerfile\" \"$vaplayertarget/$vaplayerfile\"
-                echo \"  [sync] vaplayer/$vaplayerfile\"
+            if curl -fsSL --retry 3 \"\$base/Modules/OnlineENG/VaPlayer/\$vaplayerfile?cb=\$stamp\" -o \"/tmp/vaplayer-\$vaplayerfile\"; then
+                mv \"/tmp/vaplayer-\$vaplayerfile\" \"\$vaplayertarget/\$vaplayerfile\"
+                echo \"  [sync] vaplayer/\$vaplayerfile\"
             else
-                rm -f \"/tmp/vaplayer-$vaplayerfile\"
-                echo \"  [sync] vaplayer: bo qua $vaplayerfile (nguon khong co)\"
+                rm -f \"/tmp/vaplayer-\$vaplayerfile\"
+                echo \"  [sync] vaplayer: bo qua \$vaplayerfile (nguon khong co)\"
             fi
         done
 
@@ -598,14 +600,14 @@ sync_latest_modules() {
         # RusTrio (gop Mirage/Spectre/Phantom, RUS): hoi song song 3 nguon qua
         # localhost roi gop the, khong sua code 3 nguon goc.
         rustriotarget=/root/lampac/module/OnlineRUS/RusTrio
-        mkdir -p \"$rustriotarget\"
+        mkdir -p \"\$rustriotarget\"
         for rustriofile in manifest.json Controller.cs ModInit.cs; do
-            if curl -fsSL --retry 3 \"$base/Modules/OnlineRUS/RusTrio/$rustriofile?cb=$stamp\" -o \"/tmp/rustrio-$rustriofile\"; then
-                mv \"/tmp/rustrio-$rustriofile\" \"$rustriotarget/$rustriofile\"
-                echo \"  [sync] rustrio/$rustriofile\"
+            if curl -fsSL --retry 3 \"\$base/Modules/OnlineRUS/RusTrio/\$rustriofile?cb=\$stamp\" -o \"/tmp/rustrio-\$rustriofile\"; then
+                mv \"/tmp/rustrio-\$rustriofile\" \"\$rustriotarget/\$rustriofile\"
+                echo \"  [sync] rustrio/\$rustriofile\"
             else
-                rm -f \"/tmp/rustrio-$rustriofile\"
-                echo \"  [sync] rustrio: bo qua $rustriofile (nguon khong co)\"
+                rm -f \"/tmp/rustrio-\$rustriofile\"
+                echo \"  [sync] rustrio: bo qua \$rustriofile (nguon khong co)\"
             fi
         done
 
@@ -679,19 +681,6 @@ sync_latest_modules() {
             else
                 rm -f \"/tmp/phe69sync-\$phe69syncfile\"
                 echo \"  [sync] phe69: bo qua \$phe69syncfile (nguon khong co)\"
-            fi
-        done
-
-        # Stripchat (livecam): xac minh 2026-09-05 (list 90, potok ra hlsProxy).
-        scsynctarget=/root/lampac/module/Adult/Stripchat
-        mkdir -p \"\$scsynctarget\"
-        for scsyncfile in manifest.json Controller.cs ModInit.cs Service.cs; do
-            if curl -fsSL --retry 3 \"\$base/Modules/Adult/Stripchat/\$scsyncfile?cb=\$stamp\" -o \"/tmp/scsync-\$scsyncfile\"; then
-                mv \"/tmp/scsync-\$scsyncfile\" \"\$scsynctarget/\$scsyncfile\"
-                echo \"  [sync] stripchat/\$scsyncfile\"
-            else
-                rm -f \"/tmp/scsync-\$scsyncfile\"
-                echo \"  [sync] stripchat: bo qua \$scsyncfile (nguon khong co)\"
             fi
         done
 
@@ -818,18 +807,49 @@ sync_latest_modules() {
                 pull Modules/AdminPanel/index.html \"\$admin/index.html\"
             fi
         done
-        for adultfull in JavCt JavGuru JavHDToday JavSub JavTsunami Mbbg MissAV SexTb Jable PubJav SupJav DuJav JavMoi Javtiful Vjav ClipHotVN SexVietDam Tazzly Tizam TopGai Viet69kz; do
+        for adultfull in JavCt JavGuru JavHDToday JavSub JavTsunami Mbbg MissAV SexTb Jable PubJav SupJav DuJav JavMoi Javtiful Vjav ClipHotVN SexVietDam Tazzly Tizam TopGai Viet69kz XszAv Manko SexVnMe TangThon VNsexTop1; do
             adultfulltarget=/root/lampac/module/Adult/\$adultfull
-            mkdir -p \"$adultfulltarget\"
+            mkdir -p \"\$adultfulltarget\"
             for adultfullfile in manifest.json Controller.cs ModInit.cs Service.cs; do
-                if curl -fsSL --retry 3 \"$base/Modules/Adult/\$adultfull/\$adultfullfile?cb=\$stamp\" -o \"/tmp/adultfull-\$adultfull-\$adultfullfile\"; then
-                    mv \"/tmp/adultfull-\$adultfull-\$adultfullfile\" \"$adultfulltarget/\$adultfullfile\"
+                if curl -fsSL --retry 3 \"\$base/Modules/Adult/\$adultfull/\$adultfullfile?cb=\$stamp\" -o \"/tmp/adultfull-\$adultfull-\$adultfullfile\"; then
+                    mv \"/tmp/adultfull-\$adultfull-\$adultfullfile\" \"\$adultfulltarget/\$adultfullfile\"
                     echo \"  [sync] adult/\$adultfull/\$adultfullfile\"
                 else
                     rm -f \"/tmp/adultfull-\$adultfull-\$adultfullfile\"
+                    echo \"  [sync] adult/\$adultfull: bo qua \$adultfullfile (nguon khong co)\"
                 fi
             done
         done
+
+        # Eporner: CDN doi Referer/Origin, phai giu ban moi co proxy trong Lampac.
+        epornersynctarget=/root/lampac/module/Adult/Eporner
+        if [ -d \"\$epornersynctarget\" ]; then
+            mkdir -p \"\$epornersynctarget\"
+            for epornerfile in Controller.cs ModInit.cs Service.cs; do
+                if curl -fsSL --retry 3 \"\$base/Modules/Adult/Eporner/\$epornerfile?cb=\$stamp\" -o \"/tmp/eporner-\$epornerfile\"; then
+                    mv \"/tmp/eporner-\$epornerfile\" \"\$epornersynctarget/\$epornerfile\"
+                    echo \"  [sync] eporner/\$epornerfile\"
+                else
+                    rm -f \"/tmp/eporner-\$epornerfile\"
+                    echo \"  [sync] eporner: bo qua \$epornerfile (nguon khong co)\"
+                fi
+            done
+        fi
+
+        # Chaturbate: giu ca resolver (Controller/ModInit) lan Service.cs da dich.
+        chaturbatesynctarget=/root/lampac/module/Adult/Chaturbate
+        if [ -d \"\$chaturbatesynctarget\" ]; then
+            mkdir -p \"\$chaturbatesynctarget\"
+            for chaturbatefile in Controller.cs ModInit.cs Service.cs; do
+                if curl -fsSL --retry 3 \"\$base/Modules/Adult/Chaturbate/\$chaturbatefile?cb=\$stamp\" -o \"/tmp/chaturbate-\$chaturbatefile\"; then
+                    mv \"/tmp/chaturbate-\$chaturbatefile\" \"\$chaturbatesynctarget/\$chaturbatefile\"
+                    echo \"  [sync] chaturbate/\$chaturbatefile\"
+                else
+                    rm -f \"/tmp/chaturbate-\$chaturbatefile\"
+                    echo \"  [sync] chaturbate: bo qua \$chaturbatefile (nguon khong co)\"
+                fi
+            done
+        fi
     "
 
     ok "Latest patch files applied"
@@ -840,6 +860,7 @@ install_custom_modules() {
 
     proot-distro login ubuntu -- bash -c "
         set -euo pipefail
+        CUSTOM_SOURCE_BASE=\"${CUSTOM_SOURCE_BASE}\"
 
         # Remove retired providers and stale site definitions so the dynamic
         # module loader cannot load them from an earlier installation.
@@ -851,7 +872,9 @@ install_custom_modules() {
                /root/lampac/mods/OnlineENG/Mapple4K \
                /root/lampac/mods/OnlineENG/OpenDirectory \
                /root/lampac/module/Adult/OneJav \
-               /root/lampac/mods/Adult/OneJav
+               /root/lampac/mods/Adult/OneJav \
+               /root/lampac/module/Adult/Stripchat \
+               /root/lampac/mods/Adult/Stripchat
         rm -f /root/lampac/module/NextHUB/sites/85po.yaml \
               /root/lampac/mods/NextHUB/sites/85po.yaml
 
@@ -864,7 +887,7 @@ install_custom_modules() {
         # manifest.json; dung [ -d ] nhu module co san thi se bi bo qua mai mai.
         # (used for modules that already exist in the release) would skip it
         # Tu 2026-08-31 module con nam trong sync nhe (sync_latest_modules), da xac minh
-        # chay duoc tren thiet bi nen khong con la "thu nghiem" nua.
+        # chay duoc tren thiet bi nen khong con la thu nghiem nua.
         # (sync_latest_modules), vi da xac minh chay duoc tren thiet bi.
         #
         # Comment quy tắc trong khoi nay: khong duoc dung backtick cung nhu dau
@@ -1032,20 +1055,6 @@ install_custom_modules() {
             fi
         done
 
-        # Stripchat (livecam): xac minh 2026-09-05 (list 90, potok ra proxy 206).
-        scbase=\"\${CUSTOM_SOURCE_BASE}/Modules/Adult/Stripchat\"
-        sctarget=/root/lampac/module/Adult/Stripchat
-        mkdir -p \"\$sctarget\"
-        for scfile in manifest.json Controller.cs ModInit.cs Service.cs; do
-            if curl -fsSL --retry 3 \"\$scbase/\$scfile?cb=\$syncstamp\" -o \"/tmp/sc-\$scfile\"; then
-                mv \"/tmp/sc-\$scfile\" \"\$sctarget/\$scfile\"
-                echo \"  [stripchat] \$scfile\"
-            else
-                rm -f \"/tmp/sc-\$scfile\"
-                echo \"  [stripchat] bo qua \$scfile - khong co tren nguon\"
-            fi
-        done
-
         kkbase=\"${CUSTOM_SOURCE_BASE}/Modules/OnlineVN/KKPhim\"
         kktarget=/root/lampac/module/OnlineVN/KKPhim
         mkdir -p \"\$kktarget\"
@@ -1167,7 +1176,7 @@ install_custom_modules() {
             done
         fi
 
-        for adultfull2 in JavCt JavGuru JavHDToday JavSub JavTsunami Mbbg MissAV SexTb Jable PubJav SupJav DuJav JavMoi Javtiful Vjav ClipHotVN SexVietDam Tazzly Tizam TopGai Viet69kz; do
+        for adultfull2 in JavCt JavGuru JavHDToday JavSub JavTsunami Mbbg MissAV SexTb Jable PubJav SupJav DuJav JavMoi Javtiful Vjav ClipHotVN SexVietDam Tazzly Tizam TopGai Viet69kz XszAv Manko SexVnMe TangThon VNsexTop1; do
             adultfull2target=\"/root/lampac/module/Adult/\$adultfull2\"
             mkdir -p \"\$adultfull2target\"
             for adultfull2file in manifest.json Controller.cs ModInit.cs Service.cs; do
