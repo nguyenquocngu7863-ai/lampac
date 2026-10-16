@@ -4,6 +4,6 @@
   "version": "1.0.0",
   "author": "Lampac",
   "site": "https://viet69link.net",
-  "enable": true,
+  "enable": false,
   "dynamic": true
 }
