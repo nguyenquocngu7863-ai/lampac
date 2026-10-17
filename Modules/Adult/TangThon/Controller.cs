@@ -88,11 +88,10 @@ public class TangThonController : BaseSisiController
                 if (string.IsNullOrEmpty(pageHtml))
                     return (null, false);
 
-                string embedId = TangThonTo.GetEmbedId(pageHtml);
-                if (string.IsNullOrEmpty(embedId))
+                string embedUrl = TangThonTo.GetEmbedUrl(pageHtml);
+                if (string.IsNullOrEmpty(embedUrl))
                     return (null, false);
 
-                string embedUrl = $"https://embed.tangthon.com/embed/{embedId}/p1?logo=9";
                 string embedHtml = null;
                 await httpHydra.GetSpan(embedUrl, span =>
                 {
@@ -102,7 +101,7 @@ public class TangThonController : BaseSisiController
                     ("Referer", pageUrl)
                 ));
 
-                string stream = TangThonTo.GetStreamPath(embedHtml);
+                string stream = TangThonTo.GetStreamPath(embedHtml, embedUrl);
                 if (string.IsNullOrEmpty(stream))
                     return (null, false);
 
@@ -157,7 +156,7 @@ public class TangThonController : BaseSisiController
             return OnError("stream_links", refresh_proxy: true);
 
         var direct = httpHeaders(init, HeadersModel.Init(
-            ("referer", "https://embed.tangthon.com/")
+            ("referer", TangThonTo.RefererOf(link))
         ));
         return Redirect(HostStreamProxy(link, direct));
     }
@@ -180,7 +179,7 @@ public class TangThonController : BaseSisiController
             return OnError("link");
 
         var direct = httpHeaders(init, HeadersModel.Init(
-            ("referer", "https://embed.tangthon.com/")
+            ("referer", TangThonTo.RefererOf(link))
         ));
         return Redirect(HostStreamProxy(link, direct));
     }

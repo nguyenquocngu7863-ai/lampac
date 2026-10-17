@@ -104,35 +104,63 @@ public static class TangThonTo
         return playlists;
     }
 
-    public static string GetEmbedId(string html)
+    /// <summary>
+    /// Lấy URL iframe embed từ trang detail. Host embed đổi theo domain của site
+    /// (tung la embed.tangthon.com, nay la embed.billygreyguitar.com) nen KHONG duoc
+    /// hardcode host — bam theo chinh src cua iframe.
+    /// </summary>
+    public static string GetEmbedUrl(string html)
     {
         if (string.IsNullOrEmpty(html))
             return null;
 
-        var m = Regex.Match(html, @"embed\.tangthon\.com/embed/([A-Za-z0-9]+)/p\d+");
+        var m = Regex.Match(html, @"(?:https?:)?//[A-Za-z0-9.\-]+/embed/[A-Za-z0-9]+/p\d+", RegexOptions.IgnoreCase);
         if (!m.Success)
             return null;
 
-        return m.Groups[1].Value;
+        string url = HttpUtility.HtmlDecode(m.Value).Trim();
+        if (url.StartsWith("//"))
+            url = "https:" + url;
+
+        return url;
     }
 
-    public static string GetStreamPath(string embedHtml)
+    /// <summary>
+    /// m3u8_file_url trong embed la duong dan relative -> noi vao host cua chinh embed.
+    /// </summary>
+    public static string GetStreamPath(string embedHtml, string embedUrl)
     {
         if (string.IsNullOrEmpty(embedHtml))
             return null;
 
-        var m = Regex.Match(embedHtml, @"m3u8_file_url\s*=\s*'([^']+)'");
+        var m = Regex.Match(embedHtml, @"m3u8_file_url\s*=\s*['""]([^'""]+)['""]");
         if (!m.Success)
             return null;
 
-        string path = m.Groups[1].Value.Replace("\\/", "/").Replace("&amp;", "&").Trim();
+        string path = HttpUtility.HtmlDecode(m.Groups[1].Value).Replace("\\/", "/").Trim();
         if (string.IsNullOrEmpty(path))
             return null;
 
-        if (path.StartsWith("/"))
-            return "https://embed.tangthon.com" + path;
+        if (path.StartsWith("http"))
+            return path;
 
-        return path;
+        string baseHost = SiteHost;
+        if (!string.IsNullOrEmpty(embedUrl) && System.Uri.TryCreate(embedUrl, UriKind.Absolute, out System.Uri u))
+            baseHost = u.Scheme + "://" + u.Host;
+
+        if (path.StartsWith("//"))
+            return "https:" + path;
+
+        return baseHost + (path.StartsWith("/") ? path : "/" + path);
+    }
+
+    /// <summary>Referer = host cua URL (player CDN doi hoi phai co Referer, thieu la 403).</summary>
+    public static string RefererOf(string url)
+    {
+        if (!string.IsNullOrEmpty(url) && System.Uri.TryCreate(url, UriKind.Absolute, out System.Uri u))
+            return u.Scheme + "://" + u.Host + "/";
+
+        return SiteHost + "/";
     }
 
     public static List<Shared.Models.SISI.Base.MenuItem> Menu(string host)
