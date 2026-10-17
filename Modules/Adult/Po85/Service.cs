@@ -29,7 +29,7 @@ public static class Po85To
         bool legacy = IsLegacySort(sort);
 
         url.Append(host);
-        url.Append("/");
+        url.Append("/en/");   // 2026-10-17: site chuyen sang locale /en/
 
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -56,28 +56,28 @@ public static class Po85To
             url.Append("tags/");
             url.Append(t);
             url.Append("/");
-            string tq = string.IsNullOrEmpty(s) ? "" : "?sort_by=" + s;
+            // 2026-10-17: ?from= DA CHET -> phan trang bang path /{pg}/
             if (pg > 1)
             {
-                url.Append(tq.Length == 0 ? "?from=" : tq + "&from=");
                 url.Append(pg);
+                url.Append("/");
             }
-            else if (tq.Length > 0)
-                url.Append(tq);
+            if (!string.IsNullOrEmpty(s))
+                url.Append("?sort_by=" + s);
         }
         else if (!string.IsNullOrEmpty(c))
         {
             url.Append("categories/");
             url.Append(c);
             url.Append("/");
-            string cq = string.IsNullOrEmpty(s) ? "" : "?sort_by=" + s;
+            // 2026-10-17: ?from= DA CHET -> phan trang bang path /{pg}/
             if (pg > 1)
             {
-                url.Append(cq.Length == 0 ? "?from=" : cq + "&from=");
                 url.Append(pg);
+                url.Append("/");
             }
-            else if (cq.Length > 0)
-                url.Append(cq);
+            if (!string.IsNullOrEmpty(s))
+                url.Append("?sort_by=" + s);
         }
         else if (legacy)
         {
@@ -87,19 +87,17 @@ public static class Po85To
                 url.Append("latest-updates/");
             }
             else if (sort == "top-rated")
-            {
-                url.Append("top-rated/?from=");
-                url.Append(pg);
-            }
+                url.Append("top-rated/");
             else if (sort == "most-popular")
-            {
-                url.Append("most-popular/?from=");
-                url.Append(pg);
-            }
+                url.Append("most-popular/");
             else if (sort == "latest-updates")
+                url.Append("latest-updates/");
+
+            // 2026-10-17: ?from= DA CHET -> path /{pg}/
+            if (pg > 1)
             {
-                url.Append("latest-updates/?from=");
                 url.Append(pg);
+                url.Append("/");
             }
         }
         else if (!string.IsNullOrEmpty(s))
@@ -117,10 +115,10 @@ public static class Po85To
         {
             if (pg > 1)
             {
-                // trang chu "Dang xem" tren web khong phan trang bang ?from= (lap)
-                // dung latest-updates de trang 2+ ra phim moi nhat, offset KVS 60/ph
-                int from = (pg - 1) * 60 + 1;
-                url.Append($"latest-updates/?from={from}");
+                // 2026-10-17: ?from= DA CHET -> path /{pg}/ (do duoc: /latest-updates/2/ khac 20/26 phim)
+                url.Append("latest-updates/");
+                url.Append(pg);
+                url.Append("/");
             }
         }
 
@@ -143,13 +141,13 @@ public static class Po85To
 
         foreach (var row in rx.Rows())
         {
-            var g = row.Groups("<a\\s+href=\"(https://www\\.85po\\.com/video/([0-9]+)/([^\"]+))\"\\s+title=\"([^\"]+)\"");
-            if (string.IsNullOrWhiteSpace(g[1].Value) || string.IsNullOrWhiteSpace(g[4].Value))
+            var g = row.Groups("<a\\s+href=\"(https?://[^\"]+/v/([0-9]+)\\.html)\"\\s+title=\"([^\"]+)\"");
+            if (string.IsNullOrWhiteSpace(g[1].Value) || string.IsNullOrWhiteSpace(g[3].Value))
                 continue;
 
-            string href = "/video/" + g[2].Value + "/" + g[3].Value.Trim('/') + "/";
+            string href = g[1].Value;      // URL trang video tuyet doi do site tra ve (dang /en/v/{id}.html)
             string vid = g[2].Value;
-            string name = HttpUtility.HtmlDecode(g[4].Value.Trim());
+            string name = HttpUtility.HtmlDecode(g[3].Value.Trim());
 
             // Extract poster from data-original
             string picture = "";
@@ -440,7 +438,7 @@ public static class Po85To
                 return uri;
 
             // Lấy video ID từ URL (pattern: /video/{id}/)
-            var m = System.Text.RegularExpressions.Regex.Match(uri, @"/video/([0-9]+)/");
+            var m = System.Text.RegularExpressions.Regex.Match(uri, @"/(?:video|v)/([0-9]+)(?:/|\.html)");
             if (m.Success)
                 return $"https://www.85po.com/embed/{m.Groups[1].Value}/";
 

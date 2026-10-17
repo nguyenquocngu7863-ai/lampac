@@ -48,20 +48,44 @@ Nhãn trên card (2K, 4K) là site tự gắn, không phản ánh file thật. D
 
 Theo mẫu `Modules/Adult/Porntrex` (cùng engine KVS): `Controller.cs` (3 routes), `Service.cs` (Uri/Playlist/Menu/StreamLinks), `ModInit.cs` (`SisiSettings` + `headers_stream` Referer), `manifest.json` (`dynamic: true`, tree 3 file). Lampac biên dịch lúc khởi động (`compilation Po85`), không cần build tay — copy file vào `module/Adult/Po85/` rồi restart là test được. Deploy qua `setup-termux.sh --sync` (block Po85 trong cả `sync_latest_modules` và `install_custom_modules`).
 
-## Redesign 2026-09 (web doi giao dien, giu engine KVS)
+## Redesign 2026-09 (web đổi giao diện, giữ engine KVS)
 
 - List: `<div class="item` + link `/video/{id}/{slug}/`, poster `data-original`,
   quality `is-4k/is-2k/is-hd`, duration `<div class="duration">`.
-- Trang `/video/` chi co template; player + flashvars chuyen sang `/embed/{id}/`
-  (`EmbedPage()` doi sang). Bo dropdown download.
-- `video_alt_url2/3` co the la URL trang locale (khong phai file) — `AltPages()`
-  mo tiep trang do lay flashvars day du (1080p/2160p). Noi dung KHAC nhau theo
-  locale (`/en/` vs `/ja/`) — thieu quality thi quet ca 2.
-- File `*_2160p.mp4` co san trong flashvars thi parse thang, khong can resolver.
-- Sort `/4k/` chet (404) — bo khoi menu. Category moi theo vung
-  (ri-ben/zhong-guo/tai-wan/ma-lai-xi-ya/xin-jia-po/xiang-gang).
-- Phan trang KVS moi: AJAX `{page}?mode=async&function=get_block&block_id={id}&...&from=N`
-  (`?from=` tra 404, `?page=` bi lo). Xem chi tiet trong skill `devfetch-proxy`.
-- `/strem` GIU buoc theo-redirect cu (GetLocation + RCH neu bat): link get_file la
-  route trung gian, proxy thang route thi curl van 200 nhung app hong.
-- Recon qua module tam `DevFetch` (`/devfetch?url=&re=`) khi CF chan IP ngoai.
+- Trang `/video/` chỉ có template; player + flashvars chuyển sang `/embed/{id}/`
+  (`EmbedPage()` dò sang). Bỏ dropdown download.
+- `video_alt_url2/3` có thể là URL trang locale (không phải file) — `AltPages()`
+  mở tiếp trang đó lấy flashvars đầy đủ (1080p/2160p).
+- Sort `/4k/` chết (404) — bỏ khỏi menu. Category mới theo vùng.
+- Phân trang KVS: AJAX `{page}?mode=async&function=get_block&block_id={id}&...&from=N`.
+
+## Redesign 2026-10-17 (locale /en/ + link mới + bỏ flashvars)
+
+Đo lại toàn bộ — site đổi **6 chỗ**:
+
+| chỗ | cũ (2026-09) | mới (2026-10-17) |
+|---|---|---|
+| locale | không prefix | **`/en/`** (path cũ vẫn 200, nhưng canonical có `/en/`) |
+| link video | `https://www.85po.com/video/{id}/{slug}/` | **`https://www.85po.com/en/v/{id}.html`** |
+| phân trang | `?from=N` | **path `/{pg}/`** — vd `/en/latest-updates/2/` |
+| tag | `/tags/{slug}/` | `/en/tags/{slug}/` |
+| category | `/categories/{slug}/` | `/en/categories/{slug}/` |
+| player | `flashvars` ở `/embed/{id}/` | **`var <tên-ngẫu-nhiên> = { video_url: '…', video_alt_url: '…' }`** truyền vào `kt_player()` — KVS **v15.8.3**, `flashvars` = **0** |
+
+- `video_url` giờ có **`?v-acctoken=<base64>`** — dùng nguyên xi URL đó (đo: 206, `ftyp`,
+  `video/mp4`, chỉ cần `Referer: https://www.85po.com/`).
+- Config nằm **cả trên trang video lẫn `/en/embed/{id}`** → `EmbedPage()` dò id bằng
+  `/(?:video|v)/(\d+)(?:/|\.html)`.
+- Phân trang path ăn cho **tag / category / latest-updates / top-rated / most-popular**
+  (đo: trùng 6/26 với trang 1 — 6 id đầu là **block ghim lặp** trên mọi trang, phần còn lại khác).
+- `?sort_by=X` trên home **vẫn sống**, và **`&from=N` vẫn ăn** (đo: trùng 17/41) → nhánh sort_by giữ nguyên.
+- Search `/en/search/{kw}/` OK; trang 2+ vẫn dùng AJAX `get_block` (đo: 24 card).
+- `/en/4k/` vẫn 404 → vẫn rơi về `latest-updates/`.
+- `/tags/` có 2765 slug; category slug theo vùng (ri-ben, han-guo, tai-wan, hong-king…).
+- **Danh sách quality có nhiều nhãn cho cùng độ phân giải** (`720p`, `720p 2`,
+  `MP4 720p, 16.04 Mb`) — đây là **link xem** (`video_url`/`video_alt_url`) và **link download**
+  là hai nguồn khác nhau, **không phải trùng lặp** → để nguyên.
+
+**Verify 2026-10-17 (qua module):** `/po85` 36 item; pg1/pg2/pg3 = 36/24/24
+(trùng 1·2 = 1, 2·3 = 0); sort newest/4k/top-rated 24, sort_by 36; tag 24;
+category ri-ben 24 / han-guo 1; `vidosik` 6 nhãn (xem + download); `strem` → **206 `ftyp` `video/mp4`**.
