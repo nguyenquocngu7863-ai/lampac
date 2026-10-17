@@ -410,4 +410,39 @@
       lampainit_invc.first_initiale();
 
   }
+
+  // === hls.js: nâng timeout cho CDN chậm (7mmtv VH ~30–145 KB/s) ===
+  // hls.js mặc định bỏ fragment ở 20 s (fragLoadingTimeOut), manifest/level ở 10 s,
+  // trong khi segment chậm nhất chỉ vừa ~20 s còn proxy server vẫn cho tới 30 s.
+  // Patch Hls.DefaultConfig TRƯỚC khi new Hls() -> áp cho mọi player, không cần sửa Core.
+  // (Cùng cách Modules/GStreamer/plugins/gst.js đang làm.)
+  try {
+    var hlsTune = function () {
+      var H = (typeof window !== 'undefined' && window.Hls) || (typeof Hls !== 'undefined' && Hls) || null;
+      if (!H || !H.DefaultConfig)
+        return false;
+
+      var c = H.DefaultConfig;
+      c.manifestLoadingTimeOut = 60000;
+      c.manifestLoadingMaxRetryTimeout = 60000;
+      c.levelLoadingTimeOut = 60000;
+      c.levelLoadingMaxRetryTimeout = 60000;
+      c.fragLoadingTimeOut = 120000;
+      c.fragLoadingMaxRetry = 8;
+      c.fragLoadingRetryDelay = 1000;
+      c.fragLoadingMaxRetryTimeout = 120000;
+      return true;
+    };
+
+    if (!hlsTune()) {
+      // hls.js có thể được nạp sau khi init này chạy -> thử lại trong ~30 s
+      var hlsTuneAttempt = 0;
+      var hlsTuneTimer = setInterval(function () {
+        if (hlsTune() || ++hlsTuneAttempt >= 120) {
+          clearInterval(hlsTuneTimer);
+          hlsTuneTimer = null;
+        }
+      }, 250);
+    }
+  } catch (hlsTuneError) { }
 })();
