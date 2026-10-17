@@ -1,55 +1,73 @@
 # Javtiful (javtiful.com)
 
-Module Adult route `javtiful`, displayindex 19. Nhóm SISI
-chuẩn static-parse (khung Vlxx): `httpHydra` + regex,
-**không Playwright, không hook global**.
+Module Adult route `javtiful`, displayindex 19. Nhóm SISI chuẩn static-parse (khuôn Vlxx):
+`httpHydra` + regex, **không Playwright, không hook global**.
+Công thức player: skill `lampac-deobfuscate` (MP4 direct, không cần giải mã).
 
-## Vì sao nhóm chuẩn ăn ngay
+## Route
 
-- curl thường đã 200 (0.5-1.5s), không CF challenge.
-- HTML render sẵn server, tile tĩnh trong
-  `<article class="front-video-card">`.
-- Stream là MP4 direct trong `<source>`, không unpack.
+| route | việc |
+|---|---|
+| `javtiful?c=<path>&pg=N&sort=X` | danh sách + menu (mặc định feed `/vn/foryou`) |
+| `javtiful?search=<kw>` | tìm kiếm (`GET /vn/search?q=<slug lowercase>`) |
+| `javtiful/vidosik?uri=<detailUrl>` | liệt kê server (`json=true` → `{MP4: url}`) |
+| `javtiful/video?uri=<detailUrl>&q=MP4` | proxy stream (thiếu `q` → 503 sạch, không 500) |
 
-## URLs (prefix `/vn` = tiêu đề Việt)
+## Cấu trúc site
 
-- Home: `https://javtiful.com/vn` — **không phân trang**
-  (`?page=` bị bỏ qua, trang 2 trùng trang 1) → home mặc
-  định dùng feed `/vn/foryou` (23/trang, overlap 0).
-- Section listing (có nút Xem thêm, đều `?page=N`):
-  `/vn/foryou`, `/vn/censored`, `/vn/uncensored`,
-  `/vn/reducing-mosaic`.
-- Category: `/vn/category/{slug}?page=N` (+ `sort=popular`,
-  `added_today/week/month`, `video_type`).
-- Search: `GET /vn/search?q={slug}` — slug lowercase
-  (query HOA từng trả 502 một lần).
+- Home `/vn` **không phân trang** (`?page=` bị bỏ qua) → module dùng feed `/vn/foryou`.
+- Section (đều `?page=N`): `/vn/foryou`, `/vn/censored`, `/vn/uncensored`, `/vn/reducing-mosaic`.
+- Category: `/vn/category/{slug}?page=N` (+ `sort=popular|popular_today|popular_week|popular_month|most_viewed|most_liked`).
+- Kênh: `/vn/channel/{slug}?page=N`; danh sách kênh `/vn/channels?page=N` (14 trang).
+- Search: `/vn/search?q={slug}` — **slug lowercase** (query HOA từng trả 502).
 - Video: `/vn/video/{id}/{slug}`.
-- Menu: Tìm kiếm + Mới nhất + Có che / Không che /
-  Giảm mosaic + Thể loại (21 genre: affair, amateur,
-  big-tits, cosplay...).
 
-## Tile parse
+### ⚠️ Đổi cơ chế 2026-10-17 — site thay design system, class cũ = 0
 
-- Trong mỗi article: thumb
-  `<a href="/vn/video/..." class="front-video-thumb">`,
-  poster `data-front-lazy-src` (relative → prefix host),
-  duration `front-duration-tag`, title `front-video-title`.
-- Preview mp4 (`data-front-video-preview-src`) map vào
-  `PlaylistItem.preview`.
-- Bookmark site=`javtiful`.
+| cũ (hỏng) | mới |
+|---|---|
+| `<article class="front-video-card">` | `<article class="video-card" data-recommendation-id=…>` |
+| `a.front-video-thumb` | `a.video-card__thumbnail` |
+| `a.front-video-title` | `a.video-card__title` (title vẫn là **text trong thẻ**, không phải attr) |
+| `a.front-collection-card-link` + `strong.front-collection-title` | `a.directory-card__link` + `strong.directory-card__name` |
 
-## Player
+- `data-front-lazy-src` (poster) và `data-front-video-preview-src` (preview mp4) **giữ nguyên**.
+- **Mới: thẻ quảng cáo** `<article class="video-card video-card--partner">` — `href` ra ngoài
+  (`t.fluxtrck.site`) → tách article theo `<article class="` rồi lọc bằng href `/vn/video/`.
+- Trang list còn có container `data-endpoint="/vn/foryou/impressions"` + `data-token` (feed gợi ý
+  phía client) — **không cần**, server vẫn render + phân trang bình thường.
 
-- `<source src="https://fast-stream.jav.si/p/...">` =
-  **MP4 direct** (HEAD: 200, HTTP/2, hỗ trợ Range).
-- 1 quality duy nhất → dict `{MP4: ...}` →
-  `/javtiful/video` → `HostStreamProxy` kèm referer javtiful.
-- Cover video: `poster` của thẻ `<video>` (relative).
+## Danh mục
 
-## Cache & Build
+- `Thể loại`: **hardcode 21 genre** (`?c=category/{slug}`) — không phụ thuộc parse, không hỏng khi site đổi class.
+- `Kênh`: lấy động từ `/vn/channels` (314 kênh / 14 trang), cắt trang nếu > 20.
+- `Kiểm duyệt`: Có che / Không che / Giảm mosaic; `Danh sách khác`: Mới nhất / JAVMost.
 
-- List cache 10p, resolve cache 20p (hybridCache).
-- Copy `.cs` vào `/root/lampac/module/Adult/Javtiful/`
-  + restart, không cần `dotnet build`.
-- Verify: `/javtiful` ~39 items, `javtiful/vidosik?uri=`
-  ra MP4, `/javtiful/video` 200 OK, foryou p1/p2 overlap 0.
+## Server + player
+
+- `<source src="https://fast-stream.jav.si/p/…">` = **MP4 direct** (HEAD: 200, hỗ trợ `Range`).
+- 1 quality duy nhất → `{MP4: url}` → `/javtiful/video` → `HostStreamProxy` kèm
+  `Referer: https://javtiful.com/` + `Origin`.
+- Poster: `poster` của thẻ `<video>` (relative → prefix host).
+
+## Số đo (2026-10-17, sau khi site đổi design)
+
+| thứ | giá trị |
+|---|---|
+| item/trang | **23 phim + 1 thẻ QC** (mọi nguồn: foryou, censored, uncensored, category, channel, search) |
+| `/vn/channels` | 24 kênh/trang, **14 trang**, tổng 314 |
+| foryou p1/p2 (site raw) | overlap **0** |
+| foryou p1/p2 (qua module) | overlap **~1** — p1 đã nằm cache 10p còn p2 vừa fetch, feed gợi ý **trôi** giữa 2 thời điểm. Không phải lỗi parse (cache key có `pg`) |
+| player | `GET /javtiful/video?…&q=MP4` → 200, magic `ftypisom`, `video/mp4` |
+
+## Đã biết là lỗi site / lỗi vận hành
+
+- Gọi dồn dập → site trả **503 `playlists`** ở module (raw vẫn 200) hoặc **SSL abort** ở curl.
+  Chờ vài phút là hết; không phải lỗi parse.
+- Thiếu `q` ở `/javtiful/video` trước đây ném exception → **500**; đã guard thành 503.
+
+## Vận hành
+
+- List cache 10p, resolve cache 20p (`hybridCache`), cache key `javtiful:{search}:{c}:{sort}:{pg}`.
+- Copy `.cs` vào `~/lampac-run/module/Adult/Javtiful/` + restart, **không cần `dotnet build`**.
+- Verify: `/javtiful` 23 item, `/javtiful?c=censored` 23, `vidosik` ra `MP4`, `/video?q=MP4` 200 `ftyp`.

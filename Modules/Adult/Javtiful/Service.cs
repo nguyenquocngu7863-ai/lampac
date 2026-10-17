@@ -82,18 +82,20 @@ public static class JavtifulTo
             return playlists;
 
         var seen = new HashSet<string>();
-        foreach (string raw in html.Split(new[] { "<article class=\"front-video-card\">" }, StringSplitOptions.None))
+        // Tach theo class chung "article class=": the phim la "video-card", the QC la
+        // "video-card video-card--partner" (href ra ngoai site) -> loc tiep bang href /vn/video/.
+        foreach (string raw in html.Split(new[] { "<article class=\"" }, StringSplitOptions.None))
         {
             string b = raw.Length > 5000 ? raw.Substring(0, 5000) : raw;
 
-            var hm = Regex.Match(b, @"<a\s+href=""(/vn/video/[^""]+)""\s+class=""front-video-thumb""");
+            var hm = Regex.Match(b, @"<a\s+href=""(/vn/video/[^""]+)""\s+class=""video-card__thumbnail""");
             if (!hm.Success)
                 continue;
             string href = SiteHost + hm.Groups[1].Value;
             if (!seen.Add(href))
                 continue;
 
-            var tm = Regex.Match(b, @"class=""front-video-title"">([^<]{4,200})<");
+            var tm = Regex.Match(b, @"class=""video-card__title""[^>]*>([^<]{4,300})<");
             if (!tm.Success)
                 continue;
             string name = HttpUtility.HtmlDecode(tm.Groups[1].Value.Trim());
@@ -177,7 +179,7 @@ public static class JavtifulTo
             return list;
 
         foreach (Match m in Regex.Matches(html,
-            "<a class=\"front-collection-card-link\" "
+            "<a class=\"directory-card__link\" "
             + "href=\"/vn/channel/([a-z0-9\\-]+)\">(.*?)</a>",
             RegexOptions.Singleline))
         {
@@ -186,7 +188,7 @@ public static class JavtifulTo
                 continue;
 
             var tm = Regex.Match(m.Groups[2].Value,
-                "<strong class=\"front-collection-title\">"
+                "<strong class=\"directory-card__name\">"
                 + "([^<]{1,80})</strong>");
             string name = tm.Success
                 ? HttpUtility.HtmlDecode(tm.Groups[1].Value.Trim())

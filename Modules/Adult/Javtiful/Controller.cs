@@ -194,6 +194,9 @@ public class JavtifulController : BaseSisiController
         if (await IsRequestBlocked(rch: true))
             return badInitMsg;
 
+        if (string.IsNullOrEmpty(q))
+            return OnError("stream_links", refresh_proxy: true);
+
         var links = await ResolveLinksAsync(uri);
         if (links == null || !links.TryGetValue(q, out string link) || string.IsNullOrEmpty(link))
             return OnError("stream_links", refresh_proxy: true);
