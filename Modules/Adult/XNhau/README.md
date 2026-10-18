@@ -28,3 +28,17 @@ Module Adult cho nguồn xnhau.limo (Việt).
 ## Còn lại
 - Plugin người đăng (`online-compact.js`) đang đợi test trên app
 - Server cần restart để load DLL mới
+
+## Domain (cap nhat 2026-10-18)
+
+Site **doi domain lien tuc**: `xnhau.cab` -> `xnhau.limo` -> `xnhau.free` -> **`xnhau.pub`**.
+`xnhau.free` gio tra **301 Moved Permanently** (body 162 byte, khong co card) va fetch cua module
+**khong di theo redirect** -> parse ra 0 item -> app bao 503 `playlists`.
+
+Da sua 5 cho (het `.free` -> `.pub`):
+- `ModInit.cs`: `SisiSettings(..., host)` + 2 `referer` + fallback `?? "https://xnhau.pub"`
+- `Service.cs`: `SiteHost`
+
+Cach do khi nghi doi domain (khong can sua gi): lay HTML that roi chay regex card cua module —
+neu regex khop ma module van 0 item thi loi o **fetch/host**, khong phai parser.
+Vi du 2026-10-18: regex khop **40 card** tren HTML `.pub` nhung module 0 item.
