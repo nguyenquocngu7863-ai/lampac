@@ -71,3 +71,31 @@ Công thức player: skill `lampac-deobfuscate` (MP4 direct, không cần giải
 - List cache 10p, resolve cache 20p (`hybridCache`), cache key `javtiful:{search}:{c}:{sort}:{pg}`.
 - Copy `.cs` vào `~/lampac-run/module/Adult/Javtiful/` + restart, **không cần `dotnet build`**.
 - Verify: `/javtiful` 23 item, `/javtiful?c=censored` 23, `vidosik` ra `MP4`, `/video?q=MP4` 200 `ftyp`.
+
+## Player moi (2026-10-21) - lazy playback + ticket
+
+Site bo `<source src>` khoi HTML. Trang chi con JSON config trong `<script>`:
+
+```json
+"playback": { "endpoint": "/vn/video/114252/playback", "ticket": "p1.114252.0.<ts>.<hex>.<hex>" }
+```
+
+Client `/assets/front/js/watch-player.js` lam dung 1 request:
+
+```
+POST {endpoint}
+Content-Type: application/x-www-form-urlencoded;charset=UTF-8
+Accept: application/json
+X-Requested-With: XMLHttpRequest
+body: ticket=<urlencode>
+```
+
+-> `{success:true, sources:[{src,type,size}]}`. Ticket **dung 1 lan**; het han ->
+`409 {"renewTicket":"..."}` -> doi ticket roi POST lai (retry 1 lan).
+
+Module: `JavtifulTo.Playback(html)` (endpoint+ticket), `JavtifulTo.SourceUrls(json)` (lay `src`),
+`JavtifulTo.RenewTicket(json)`; `Controller.ResolveLinksAsync` POST roi fallback 1 lan.
+Khong co CSRF/token khac - chi can UA + Referer/Origin + `X-Requested-With`.
+
+Do 2026-10-21: `/javtiful/vidosik` -> 200 `{"MP4": ...}`; `/javtiful/video?...&q=MP4` -> 302 proxy
+-> 206 `video/mp4`, `ftypisom`.

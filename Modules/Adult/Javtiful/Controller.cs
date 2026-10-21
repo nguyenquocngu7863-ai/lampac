@@ -141,6 +141,21 @@ public class JavtifulController : BaseSisiController
             pageUrl = "https://javtiful.com" + pageUrl;
 
         var links = new Dictionary<string, string>();
+        var seenUrls = new HashSet<string>();
+
+        void AddLink(string u)
+        {
+            if (string.IsNullOrWhiteSpace(u) || !seenUrls.Add(u))
+                return;
+
+            string label = u.Contains(".m3u8") ? "HLS" : "MP4";
+            string key = label;
+            int n = 2;
+            while (links.ContainsKey(key))
+                key = label + " " + (n++);
+
+            links.TryAdd(key, u);
+        }
 
         string pageHtml = null;
         await httpHydra.GetSpan(pageUrl, span =>
@@ -154,14 +169,46 @@ public class JavtifulController : BaseSisiController
         if (!string.IsNullOrEmpty(pageHtml))
         {
             foreach (var u in JavtifulTo.StreamUrls(pageHtml))
+                AddLink(u);
+        }
+
+        // Player moi (2026-10): trang khong con <source>, chi co
+        // "playback":{"endpoint":"/vn/video/{id}/playback","ticket":"p1..."}
+        // -> POST ticket=... (X-Requested-With) -> {sources:[{src}]}
+        if (links.Count == 0 && !string.IsNullOrEmpty(pageHtml))
+        {
+            var (endpoint, ticket) = JavtifulTo.Playback(pageHtml);
+            if (!string.IsNullOrEmpty(endpoint) && !string.IsNullOrEmpty(ticket))
             {
-                string label = u.Contains(".m3u8") ? "HLS" : "MP4";
-                string key = label;
-                int n = 2;
-                while (links.ContainsKey(key))
-                    key = label + " " + (n++);
-                if (!links.ContainsValue(u))
-                    links.TryAdd(key, u);
+                string playUrl = endpoint.StartsWith("http") ? endpoint : "https://javtiful.com" + endpoint;
+                var playHeaders = HeadersModel.Init(
+                    ("User-Agent", JavtifulTo.ChromeUA),
+                    ("Referer", pageUrl),
+                    ("Origin", "https://javtiful.com"),
+                    ("Accept", "application/json"),
+                    ("X-Requested-With", "XMLHttpRequest")
+                );
+
+                // ticket dung 1 lan: 409 + renewTicket -> doi roi POST lai (1 lan)
+                for (int attempt = 0; attempt < 2 && links.Count == 0; attempt++)
+                {
+                    string body = null;
+                    await httpHydra.PostSpan(playUrl, "ticket=" + HttpUtility.UrlEncode(ticket), span =>
+                    {
+                        body = span.ToString();
+                    }, addheaders: playHeaders, statusCodeOK: false);
+
+                    foreach (var u in JavtifulTo.SourceUrls(body))
+                        AddLink(u);
+
+                    if (links.Count == 0)
+                    {
+                        string renew = JavtifulTo.RenewTicket(body);
+                        if (string.IsNullOrEmpty(renew))
+                            break;
+                        ticket = renew;
+                    }
+                }
             }
         }
 

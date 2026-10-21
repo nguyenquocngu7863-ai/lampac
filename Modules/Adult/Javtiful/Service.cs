@@ -156,6 +156,65 @@ public static class JavtifulTo
         return urls;
     }
 
+    // ===== player moi (2026-10): trang KHONG con <source> =====
+    // Trang chi co JSON config:
+    //   "playback":{"endpoint":"/vn/video/{id}/playback","ticket":"p1.114252.0.1792592631.<hex>.<hex>"}
+    // Client /assets/front/js/watch-player.js lam dung 1 buoc:
+    //   POST {endpoint}   body: ticket=<urlencode>
+    //   headers: X-Requested-With: XMLHttpRequest, Accept: application/json,
+    //            Content-Type: application/x-www-form-urlencoded;charset=UTF-8
+    //   -> {success:true, sources:[{src,type,size}]}
+    //   409 {renewTicket:"..."} -> doi ticket roi POST lai (ticket dung 1 lan).
+    public static (string endpoint, string ticket) Playback(string html)
+    {
+        if (string.IsNullOrEmpty(html))
+            return (null, null);
+
+        var cfg = Regex.Match(html, @"""playback""\s*:\s*\{([^}]*)\}");
+        if (!cfg.Success)
+            return (null, null);
+
+        var ep = Regex.Match(cfg.Groups[1].Value, @"""endpoint""\s*:\s*""([^""]+)""");
+        var tk = Regex.Match(cfg.Groups[1].Value, @"""ticket""\s*:\s*""([^""]+)""");
+        if (!ep.Success || !tk.Success)
+            return (null, null);
+
+        return (HttpUtility.HtmlDecode(ep.Groups[1].Value), HttpUtility.HtmlDecode(tk.Groups[1].Value));
+    }
+
+    // JSON cua /playback: {"sources":[{"src":"https://...","type":"video/mp4","size":123}]}
+    // Cung doc luon dang {url:"..."} phong khi site doi ten truong.
+    public static List<string> SourceUrls(string json)
+    {
+        var urls = new List<string>();
+        if (string.IsNullOrEmpty(json))
+            return urls;
+
+        foreach (Match m in Regex.Matches(json, @"""(?:src|file|url)""\s*:\s*""([^""]+)"""))
+        {
+            string u = Regex.Unescape(m.Groups[1].Value).Trim();
+            if (u.StartsWith("//"))
+                u = "https:" + u;
+            else if (u.StartsWith("/"))
+                u = SiteHost + u;
+
+            if (!u.StartsWith("http"))
+                continue;
+            if (!urls.Contains(u))
+                urls.Add(u);
+        }
+
+        return urls;
+    }
+
+    public static string RenewTicket(string json)
+    {
+        if (string.IsNullOrEmpty(json))
+            return null;
+        var m = Regex.Match(json, @"""renewTicket""\s*:\s*""([^""]+)""");
+        return m.Success ? HttpUtility.HtmlDecode(m.Groups[1].Value) : null;
+    }
+
     public static string VideoPoster(string html)
     {
         if (string.IsNullOrEmpty(html))
