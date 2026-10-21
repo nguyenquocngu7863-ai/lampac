@@ -445,4 +445,46 @@
       }, 250);
     }
   } catch (hlsTuneError) { }
+
+  // === Lampa: bam Back khi controller da bi destroy -> "Cannot read properties of null (reading 'length')" ===
+  // Line (khoi "Bộ mở rộng"/extensions) destroy() dat this.items = null nhung van de lai
+  // controller 'extensions_line' trong Lampa.Controller. Bam Back -> Controller.toggle(name) ->
+  // toggle() doc this.items.length -> TypeError -> man hinh loi xanh (app.min.js:35912).
+  // Patch: neu toggle nem dung loi nay thi focus ve 'content' cua activity dang mo (khong hien loi).
+  (function () {
+    var tries = 0;
+
+    function patch() {
+      var C = (typeof Lampa !== 'undefined' && Lampa.Controller) || null;
+      if (!C || typeof C.toggle !== 'function') return false;
+      if (C.__lampacDeadGuard) return true;
+
+      var origToggle = C.toggle;
+
+      C.toggle = function (name) {
+        try {
+          return origToggle.apply(this, arguments);
+        } catch (e) {
+          // chi bat dung loi "doc .length cua null" (component da bi destroy)
+          if (!e || !/reading 'length'/.test(String(e.message || ''))) throw e;
+
+          try {
+            return origToggle.call(this, 'content');
+          } catch (e2) {
+            if (window.console && console.warn)
+              console.warn('[lampac] bo qua toggle controller da destroy:', name, e);
+          }
+        }
+      };
+
+      C.__lampacDeadGuard = true;
+      return true;
+    }
+
+    if (patch()) return;
+
+    var timer = setInterval(function () {
+      if (patch() || ++tries >= 240) clearInterval(timer);
+    }, 250);
+  })();
 })();
