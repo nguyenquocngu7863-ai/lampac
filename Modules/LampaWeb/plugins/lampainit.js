@@ -446,6 +446,28 @@
     }
   } catch (hlsTuneError) { }
 
+  // === Lampa player: "Cannot redefine property: enabled" (buildLevels chay 2 lan) ===
+  // buildLevels$1 (app.min.js ~13772) dinh nghia Object.defineProperty(level,'enabled',{set,get})
+  // KHONG co configurable; 'loadeddata' ban lai (hls recover/gan lai) -> lan 2 nem TypeError,
+  // danh sach level (menu chon chat luong) khong duoc gui. Chi nuot dung loi nay.
+  try {
+    (function () {
+      var dp = Object.defineProperty;
+      if (dp.__lampacDpGuard) return;
+
+      Object.defineProperty = function (obj, prop, desc) {
+        try {
+          return dp.call(Object, obj, prop, desc);
+        } catch (e) {
+          if (prop === 'enabled' && /Cannot redefine property/i.test(String((e && e.message) || '')))
+            return obj;
+          throw e;
+        }
+      };
+      Object.defineProperty.__lampacDpGuard = true;
+    })();
+  } catch (e) {}
+
   // === Lampa: bam Back khi controller da bi destroy -> "Cannot read properties of null (reading 'length')" ===
   // Line (khoi "Bộ mở rộng"/extensions) destroy() dat this.items = null nhung van de lai
   // controller 'extensions_line' trong Lampa.Controller. Bam Back -> Controller.toggle(name) ->
