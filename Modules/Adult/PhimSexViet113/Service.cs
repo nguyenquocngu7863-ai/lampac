@@ -235,7 +235,7 @@ public static class PhimSexViet113To
     public static List<MenuItem> MenuHead(string host, string search)
     {
         host = host.TrimEnd('/');
-        string root = host;
+        string root = host + "/phimsexviet113";
         return new List<MenuItem>(1)
         {
             new MenuItem(){ title = "Tìm kiếm", search_on = "search_on", playlist_url = root }
@@ -245,8 +245,9 @@ public static class PhimSexViet113To
     public static List<MenuItem> Menu(string host, List<(string slug, string name)> hotTags)
     {
         host = host.TrimEnd('/');
-        string url(string c) => host + "?c=" + HttpUtility.UrlEncode(c);
-        var root = new List<MenuItem>(3)
+        string root = host + "/phimsexviet113";
+        string url(string c) => root + "?c=" + HttpUtility.UrlEncode(c);
+        var rootList = new List<MenuItem>(3)
         {
             // Moi muc root phai co submenu (muc tran bam vao chi hien lai bo loc).
             new MenuItem(){ title = "Danh sách", playlist_url = "submenu", submenu = new List<MenuItem>(){
@@ -266,19 +267,19 @@ public static class PhimSexViet113To
                 for (int i = 0; i < hotTags.Count; i += 300)
                 {
                     var chunk = hotTags.Skip(i).Take(300)
-                        .Select(x => new MenuItem(x.name, host + "?c=" + HttpUtility.UrlEncode("tag/" + x.slug))).ToList();
+                        .Select(x => new MenuItem(x.name, root + "?c=" + HttpUtility.UrlEncode("tag/" + x.slug))).ToList();
                     n++;
-                    root.Add(new MenuItem() { title = $"Tag hot ({n})", playlist_url = "submenu", submenu = chunk });
+                    rootList.Add(new MenuItem() { title = $"Tag hot ({n})", playlist_url = "submenu", submenu = chunk });
                 }
             }
-            else root.Add(new MenuItem()
+            else rootList.Add(new MenuItem()
             {
                 title = "Tag hot",
                 playlist_url = "submenu",
-                submenu = hotTags.Select(x => new MenuItem(x.name, host + "?c=" + HttpUtility.UrlEncode("tag/" + x.slug))).ToList()
+                submenu = hotTags.Select(x => new MenuItem(x.name, root + "?c=" + HttpUtility.UrlEncode("tag/" + x.slug))).ToList()
             });
         }
-        return root;
+        return rootList;
     }
 
     // THE HOT: <a href="/tag/<slug>/">Name</a> o footer. Dedup + strip FEFF.
