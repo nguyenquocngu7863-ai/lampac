@@ -65,6 +65,12 @@
     <None Update="plugins\adminpanel.js">
       <CopyToPublishDirectory>Always</CopyToPublishDirectory>
     </None>
+    <None Update="plugins\aioeppick.js">
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+    </None>
+    <None Update="plugins\fasthide.js">
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+    </None>
     <None Update="plugins\stremiosub.js">
       <CopyToPublishDirectory>Always</CopyToPublishDirectory>
     </None>

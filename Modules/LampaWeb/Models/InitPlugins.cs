@@ -71,6 +71,12 @@ public class InitPlugins
     /// <summary>Loads the in-Lampa Admin Panel (password once, no WebView).</summary>
     public bool adminpanel { get; set; } = true;
 
+    /// <summary>Loads AIOEpPick — popup chọn nguồn cho tập phim AIOStreams.</summary>
+    public bool aioeppick { get; set; } = true;
+
+    /// <summary>Loads FastHide — ẩn control player nhanh hơn mặc định của Lampa.</summary>
+    public bool fasthide { get; set; } = true;
+
     /// <summary>Loads the GStreamer player helper when the GStreamer module is installed.</summary>
     public bool gst { get; set; } = true;
 }

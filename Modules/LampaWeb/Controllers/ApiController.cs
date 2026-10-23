@@ -866,6 +866,12 @@ public class ApiController : BaseController
             if (ModInit.conf.initPlugins.adminpanel)
                 plugins.Add(new("{localhost}/adminpanel.js", 1, "Admin Panel", "lampac"));
 
+            if (ModInit.conf.initPlugins.aioeppick)
+                plugins.Add(new("{localhost}/aioeppick.js", 1, "AIOEpPick — chọn nguồn AIOStreams", "lampac"));
+
+            if (ModInit.conf.initPlugins.fasthide)
+                plugins.Add(new("{localhost}/fasthide.js", 1, "FastHide — ẩn control nhanh", "lampac"));
+
             if (ModInit.conf.initPlugins.jackett)
                 plugins.Add(new("{localhost}/jackett.js", 1, "Jackett local", "lampac"));
 
