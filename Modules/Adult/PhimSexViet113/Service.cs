@@ -11,11 +11,11 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Web;
 
-namespace SexVnMe;
+namespace PhimSexViet113;
 
-public static class SexVnMeTo
+public static class PhimSexViet113To
 {
-    public static string SiteHost = "https://sexvnme.com";
+    public static string SiteHost = "https://phimsexviet113.com";
     public const string ChromeUA = "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
 
     static readonly char[] Hidden = { '\uFEFF', '\u200B', '\u200C', '\u200D', '\u200E', '\u200F' };
@@ -26,14 +26,11 @@ public static class SexVnMeTo
     }
 
     // ========== Uri ==========
-    // Home: / (trang 1), /trang/N/ (N>1). Do that tren site 12/10/2026:
-    //   /trang/2/ tra 28 phim khac trang 1.
-    // Category: /phim-sex-viet-nam/ + /phim-sex-viet-nam/trang/2/ (105 trang).
-    //   5 chuyen muc tron menu nav: phim-sex-viet-nam / nhat-ban / trung-quoc /
-    //   chau-au / vietsub. Home = Sex Viet Nam.
-    // Search: /search/<slug>/ (slugify tieng Viet, vd "Em gai ban" ->
-    //   /search/em-gai-ban/). Search KHONG co phan trang (trang 2 tra 0 item).
-    // Tag: /tag/<slug>/ (tag list lay dong tu footer "THE HOT" ~50 muc).
+    // Home: / (trang 1), /trang/N/ (N>1).
+    // Category: /phim-sex-viet-nam/ + /phim-sex-viet-nam/trang/2/
+    //   5 chuyen muc: phim-sex-viet-nam / nhat-ban / trung-quoc / chau-au / vietsub. Home = Sex Viet Nam.
+    // Search: /search/<slug>/ (slugify tieng Viet). Search khong co phan trang (trang 2 tra 0 item).
+    // Tag: /tag/<slug>/ (tag list lay o footer "THE HOT" va trang chi tiet).
     public static string Uri(string host, string search, string c, int pg)
     {
         if (string.IsNullOrWhiteSpace(host)) host = SiteHost;
@@ -66,12 +63,12 @@ public static class SexVnMeTo
     {
         if (string.IsNullOrWhiteSpace(s)) return "";
         s = s.Trim().ToLowerInvariant();
-        s = Regex.Replace(s, "[àáạảãâầấậẩẫăằắặẳẵ]", "a");
-        s = Regex.Replace(s, "[èéẹẻẽêềếệểễ]", "e");
-        s = Regex.Replace(s, "[ìíịỉĩ]", "i");
-        s = Regex.Replace(s, "[òóọỏõôồốộổỗơờớợởỡ]", "o");
-        s = Regex.Replace(s, "[ùúụủũưừứựửữ]", "u");
-        s = Regex.Replace(s, "[ỳýỵỷỹ]", "y");
+        s = Regex.Replace(s, @"[àáạảãâầấậẩẫăằắặẳẵ]", "a");
+        s = Regex.Replace(s, @"[èéẹẻẽêềếệểễ]", "e");
+        s = Regex.Replace(s, @"[ìíịỉĩ]", "i");
+        s = Regex.Replace(s, @"[òóọỏõôồốộổỗơờớợởỡ]", "o");
+        s = Regex.Replace(s, @"[ùúụủũưừứựửữ]", "u");
+        s = Regex.Replace(s, @"[ỳýỵỷỹ]", "y");
         s = s.Replace("đ", "d");
         s = Regex.Replace(s, @"\s+", "-");
         s = Regex.Replace(s, @"[^a-z0-9\-]", "");
@@ -80,8 +77,6 @@ public static class SexVnMeTo
     }
 
     // ========== Pages ==========
-    // Home co 145 trang, cat Viet co 105 trang (do tu link /trang/N lon
-    // nhat). Search/tag: khong thay link phan trang -> 1 trang.
     public static int Pages(string html)
     {
         if (string.IsNullOrWhiteSpace(html)) return 0;
@@ -106,7 +101,7 @@ public static class SexVnMeTo
         else if (value.StartsWith("/")) value = SiteHost + value;
         else if (!value.StartsWith("http", StringComparison.OrdinalIgnoreCase)) value = SiteHost + "/" + value;
         if (!System.Uri.TryCreate(value, UriKind.Absolute, out var parsed)) return null;
-        if (!parsed.Host.EndsWith("sexvnme.com", StringComparison.OrdinalIgnoreCase))
+        if (!parsed.Host.EndsWith("phimsexviet113.com", StringComparison.OrdinalIgnoreCase))
             return null;
         return value;
     }
@@ -153,15 +148,13 @@ public static class SexVnMeTo
                 name = string.IsNullOrEmpty(label) ? name : label + " " + name,
                 picture = poster,
                 json = true,
-                bookmark = new Bookmark() { site = "sexvnme", href = pageUrl, image = poster }
+                bookmark = new Bookmark() { site = "phimsexviet113", href = pageUrl, image = poster }
             });
         }
         return list;
     }
 
     // ========== Detail: #video[data-video-id] + .video-server[data-server-id] ==========
-    // Do that 12/10/2026: hien tai moi phim chi co 1 server (id=1). Giu dang
-    // list de sau site them server thi an ngay, khong phai sua code.
     public static string VideoId(string html)
     {
         if (string.IsNullOrEmpty(html)) return null;
@@ -192,8 +185,7 @@ public static class SexVnMeTo
         => "id=" + System.Uri.EscapeDataString(videoId ?? "")
          + "&server=" + System.Uri.EscapeDataString(serverId ?? "1");
 
-    // Tra (link, referer). jwplayer -> sources[0].file (m3u8 ?cdn=tt, giu
-    // nguyen query). iframe -> source. Nguon da do: domain113.com direct 200.
+    // Tra (link, referer). jwplayer -> sources[0].file (m3u8). iframe -> source.
     public static (string link, string referer) ParsePlayerJson(string json, string pageUrl)
     {
         if (string.IsNullOrWhiteSpace(json)) return (null, null);
@@ -240,13 +232,10 @@ public static class SexVnMeTo
     }
 
     // ========== Menu (chuan 2 tang, §9a) ==========
-    // Chuyen muc lay tu nav site (5 muc that). THE HOT lay dong tu footer
-    // (~50 tag, cap 2 chunk cho nhe). Search khong phan trang nen chi can
-    // 1 muc Tim kiem.
     public static List<MenuItem> MenuHead(string host, string search)
     {
         host = host.TrimEnd('/');
-        string root = host + "/sexvnme";
+        string root = host;
         return new List<MenuItem>(1)
         {
             new MenuItem(){ title = "Tìm kiếm", search_on = "search_on", playlist_url = root }
@@ -256,15 +245,12 @@ public static class SexVnMeTo
     public static List<MenuItem> Menu(string host, List<(string slug, string name)> hotTags)
     {
         host = host.TrimEnd('/');
-        string url(string c) => host + "/sexvnme?c=" + HttpUtility.UrlEncode(c);
+        string url(string c) => host + "?c=" + HttpUtility.UrlEncode(c);
         var root = new List<MenuItem>(3)
         {
-            // §9c: moi muc root phai co submenu (muc tran bam vao chi hien
-            // lai bo loc, khong ra list - sisi.js onSelect). Home = Sex VN
-            // nen gop "Moi nhat" chung submenu voi 5 chuyen muc (mau SupJav
-            // "Bang xep hang"). Van dung 2 tang.
+            // Moi muc root phai co submenu (muc tran bam vao chi hien lai bo loc).
             new MenuItem(){ title = "Danh sách", playlist_url = "submenu", submenu = new List<MenuItem>(){
-                new("Mới nhất", host + "/sexvnme"),
+                new("Mới nhất", host),
                 new("Sex Việt Nam", url("phim-sex-viet-nam")),
                 new("Sex Nhật Bản", url("phim-sex-nhat-ban")),
                 new("Sex Trung Quốc", url("phim-sex-trung-quoc")),
@@ -280,7 +266,7 @@ public static class SexVnMeTo
                 for (int i = 0; i < hotTags.Count; i += 300)
                 {
                     var chunk = hotTags.Skip(i).Take(300)
-                        .Select(x => new MenuItem(x.name, host + "/sexvnme?c=" + HttpUtility.UrlEncode("tag/" + x.slug))).ToList();
+                        .Select(x => new MenuItem(x.name, host + "?c=" + HttpUtility.UrlEncode("tag/" + x.slug))).ToList();
                     n++;
                     root.Add(new MenuItem() { title = $"Tag hot ({n})", playlist_url = "submenu", submenu = chunk });
                 }
@@ -289,7 +275,7 @@ public static class SexVnMeTo
             {
                 title = "Tag hot",
                 playlist_url = "submenu",
-                submenu = hotTags.Select(x => new MenuItem(x.name, host + "/sexvnme?c=" + HttpUtility.UrlEncode("tag/" + x.slug))).ToList()
+                submenu = hotTags.Select(x => new MenuItem(x.name, host + "?c=" + HttpUtility.UrlEncode("tag/" + x.slug))).ToList()
             });
         }
         return root;
@@ -344,7 +330,7 @@ public static class SexVnMeTo
                 ("Accept", "application/json, text/plain, */*"),
                 ("X-Requested-With", "XMLHttpRequest")
             );
-            return await Http.Post(SiteHost + "/api/player", content,
+            return await Http.Post(new Uri(new Uri(SiteHost), "/api/player").ToString(), content,
                 timeoutSeconds: timeoutSeconds, headers: headers,
                 proxy: proxy, httpversion: httpversion, disposeData: true);
         }

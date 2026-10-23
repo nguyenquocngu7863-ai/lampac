@@ -7,7 +7,7 @@ using Shared.Models.SISI.Base;
 using Shared.Services;
 using System.Collections.Generic;
 
-namespace SexVnMe;
+namespace PhimSexViet113;
 
 public class ModInit : IModuleLoaded, IModuleSisi
 {
@@ -18,7 +18,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
     {
         return new List<SisiModuleItem>()
         {
-            new("SexVnMe", conf, "sexvnme")
+            new("PhimSexViet113", conf, "phimsexviet113")
         };
     }
 
@@ -36,23 +36,23 @@ public class ModInit : IModuleLoaded, IModuleSisi
 
     void updateConf()
     {
-        // sexvnme.com: HTML tinh (khong CSR), fetch direct duoc.
-        // Stream m3u8 tren domain113.com (cdn=tt) direct duoc (200 mpegurl).
-        conf = ModuleInvoke.Init("SexVnMe", new SisiSettings("SexVnMe", "https://sexvnme.com")
+        // phimsexviet113.com: HTML tinh (khong CSR), fetch direct duoc.
+        // Stream m3u8 tra ve tu /api/player (jwplayer sources hoac iframe).
+        conf = ModuleInvoke.Init("PhimSexViet113", new SisiSettings("PhimSexViet113", "https://phimsexviet113.com")
         {
-            displayindex = 21,
+            displayindex = 22,
             streamproxy = true,
             httpversion = 1,
             httptimeout = 25,
             rch_access = "apk",
             stream_access = "apk",
             headers_stream = HeadersModel.Init(
-                ("User-Agent", SexVnMeTo.ChromeUA),
-                ("Referer", "https://sexvnme.com/")
+                ("User-Agent", PhimSexViet113To.ChromeUA),
+                ("Referer", "https://phimsexviet113.com/")
             ).ToDictionary(),
             headers_image = HeadersModel.Init(
-                ("User-Agent", SexVnMeTo.ChromeUA),
-                ("Referer", "https://sexvnme.com/")
+                ("User-Agent", PhimSexViet113To.ChromeUA),
+                ("Referer", "https://phimsexviet113.com/")
             ).ToDictionary()
         });
     }

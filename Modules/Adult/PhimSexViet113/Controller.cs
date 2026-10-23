@@ -11,16 +11,16 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Web;
 
-namespace SexVnMe;
+namespace PhimSexViet113;
 
-public class SexVnMeController : BaseSisiController
+public class PhimSexViet113Controller : BaseSisiController
 {
     static readonly SemaphoreSlim menuLock = new(1, 1);
     const int MenuFetchBudget = 10000;
-    public SexVnMeController() : base(ModInit.conf) { }
+    public PhimSexViet113Controller() : base(ModInit.conf) { }
 
     [HttpGet, Staticache(manually: true)]
-    [Route("sexvnme")]
+    [Route("phimsexviet113")]
     async public Task<ActionResult> Index(string search, string c, int pg = 1)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
@@ -33,17 +33,17 @@ public class SexVnMeController : BaseSisiController
         var menuTask = MenuAsync(search);
 
         var cache = await InvokeCacheResult<(List<PlaylistItem> playlists, int total_pages)>(
-            ipkey($"sexvnme:v1:{search}:{c}:{pg}"), 10, async e =>
+            ipkey($"phimsexviet113:v1:{search}:{c}:{pg}"), 10, async e =>
         {
-            string html = await GetPageAsync(SexVnMeTo.Uri(init.host, search, c, pg));
-            var playlists = SexVnMeTo.Playlist("sexvnme/vidosik", html ?? "");
+            string html = await GetPageAsync(PhimSexViet113To.Uri(init.host, search, c, pg));
+            var playlists = PhimSexViet113To.Playlist("phimsexviet113/vidosik", html ?? "");
             if (playlists == null || playlists.Count == 0)
             {
                 if (!string.IsNullOrWhiteSpace(search) || pg > 1)
                     return e.Success((new List<PlaylistItem>(), 0));
                 return e.Fail("playlists", refresh_proxy: true);
             }
-            return e.Success((playlists, SexVnMeTo.Pages(html)));
+            return e.Success((playlists, PhimSexViet113To.Pages(html)));
         });
 
         if (rch?.enable == true)
@@ -62,7 +62,7 @@ public class SexVnMeController : BaseSisiController
 
     async Task<List<MenuItem>> MenuAsync(string search)
     {
-        var menu = SexVnMeTo.MenuHead(host, search);
+        var menu = PhimSexViet113To.MenuHead(host, search);
         var baseGroups = await MenuBaseAsync();
         if (baseGroups != null && baseGroups.Count > 0)
             menu.AddRange(baseGroups);
@@ -71,19 +71,19 @@ public class SexVnMeController : BaseSisiController
 
     async Task<List<MenuItem>> MenuBaseAsync()
     {
-        string memKey = ipkey("sexvnme:menu");
+        string memKey = ipkey("phimsexviet113:menu");
         if (hybridCache.TryGetValue(memKey, out List<MenuItem> hit) && hit != null && hit.Count > 0)
             return hit;
         string hostLocal = host;
         if (!await menuLock.WaitAsync(2000))
-            return SexVnMeTo.Menu(hostLocal, null);
+            return PhimSexViet113To.Menu(hostLocal, null);
         try
         {
             if (hybridCache.TryGetValue(memKey, out List<MenuItem> hit2) && hit2 != null && hit2.Count > 0)
                 return hit2;
             var build = BuildMenuAsync(hostLocal, memKey);
             if (build != await Task.WhenAny(build, Task.Delay(MenuFetchBudget)))
-                return SexVnMeTo.Menu(hostLocal, null);
+                return PhimSexViet113To.Menu(hostLocal, null);
             return await build;
         }
         finally { menuLock.Release(); }
@@ -93,16 +93,16 @@ public class SexVnMeController : BaseSisiController
     {
         try
         {
-            string html = await GetPageAsync(SexVnMeTo.SiteHost + "/");
-            var tags = SexVnMeTo.HotTags(html ?? "");
-            var menu = SexVnMeTo.Menu(hostLocal, tags);
+            string html = await GetPageAsync(PhimSexViet113To.SiteHost + "/");
+            var tags = PhimSexViet113To.HotTags(html ?? "");
+            var menu = PhimSexViet113To.Menu(hostLocal, tags);
             if (tags.Count > 0)
                 hybridCache.Set(memKey, menu, cacheTime(720), true);
-            Console.WriteLine($"SexVnMe: menu hottags={tags.Count}");
+            Console.WriteLine($"PhimSexViet113: menu hottags={tags.Count}");
             return menu;
         }
         catch { }
-        return SexVnMeTo.Menu(hostLocal, null);
+        return PhimSexViet113To.Menu(hostLocal, null);
     }
 
     async Task<string> GetPageAsync(string url)
@@ -124,8 +124,8 @@ public class SexVnMeController : BaseSisiController
     {
         string a = null, b = null;
         var headers = HeadersModel.Init(
-            ("User-Agent", SexVnMeTo.ChromeUA),
-            ("Referer", SexVnMeTo.SiteHost + "/"),
+            ("User-Agent", PhimSexViet113To.ChromeUA),
+            ("Referer", PhimSexViet113To.SiteHost + "/"),
             ("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"));
         var t1 = Task.Run(async () =>
         {
@@ -152,22 +152,20 @@ public class SexVnMeController : BaseSisiController
         return !string.IsNullOrEmpty(b) ? b : null;
     }
 
-    // ========== PLAYER: POST /api/player (lazy-resolve, chuan SupJav §11c2) ==========
-    // /vidosik KHONG resolve: chi fetch detail lay video-id + server list,
-    // /video resolve DUNG 1 server user bam + cache 10p.
+    // ========== PLAYER: POST /api/player (lazy-resolve) ==========
     async Task<(string videoId, List<(string id, string num)> servers)> DetailAsync(string uri)
     {
         if (string.IsNullOrWhiteSpace(uri))
             return (null, null);
-        string pageUrl = uri.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? uri : SexVnMeTo.SiteHost + "/" + uri.Trim('/');
-        string memKey = ipkey($"sexvnme:detail:{pageUrl}");
+        string pageUrl = uri.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? uri : PhimSexViet113To.SiteHost + "/" + uri.Trim('/');
+        string memKey = ipkey($"phimsexviet113:detail:{pageUrl}");
         if (hybridCache.TryGetValue(memKey, out (string videoId, List<(string id, string num)> servers) cached)
             && cached.servers != null && cached.servers.Count > 0)
             return cached;
         string page = await GetPageAsync(pageUrl);
         if (string.IsNullOrEmpty(page)) return (null, null);
-        string vid = SexVnMeTo.VideoId(page);
-        var servers = SexVnMeTo.Servers(page);
+        string vid = PhimSexViet113To.VideoId(page);
+        var servers = PhimSexViet113To.Servers(page);
         if (string.IsNullOrEmpty(vid) || servers.Count == 0) return (null, null);
         var res = (vid, servers);
         hybridCache.Set(memKey, res, cacheTime(15));
@@ -175,7 +173,7 @@ public class SexVnMeController : BaseSisiController
     }
 
     [HttpGet, Staticache(manually: true)]
-    [Route("sexvnme/vidosik")]
+    [Route("phimsexviet113/vidosik")]
     async public Task<ActionResult> Vidosik(string uri)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
@@ -190,7 +188,7 @@ public class SexVnMeController : BaseSisiController
             if (dict.ContainsKey(label))
                 continue;
             dict[label] =
-                $"{host}/sexvnme/video.m3u8"
+                $"{host}/phimsexviet113/video.m3u8"
               + $"?uri={HttpUtility.UrlEncode(uri)}&srv={HttpUtility.UrlEncode(id)}";
         }
         return Json(dict);
@@ -198,18 +196,18 @@ public class SexVnMeController : BaseSisiController
 
     async Task<string> ResolveOneAsync(string pageUrl, string videoId, string serverId)
     {
-        string api = await SexVnMeTo.PostPlayerAsync(pageUrl, videoId, serverId, proxy, init.httpversion, Math.Max(15, init.httptimeout));
+        string api = await PhimSexViet113To.PostPlayerAsync(pageUrl, videoId, serverId, proxy, init.httpversion, Math.Max(15, init.httptimeout));
         if (string.IsNullOrEmpty(api))
-            api = await SexVnMeTo.PostPlayerAsync(pageUrl, videoId, serverId, null, init.httpversion, 15);
-        var (link, referer) = SexVnMeTo.ParsePlayerJson(api ?? "", pageUrl);
+            api = await PhimSexViet113To.PostPlayerAsync(pageUrl, videoId, serverId, null, init.httpversion, 15);
+        var (link, referer) = PhimSexViet113To.ParsePlayerJson(api ?? "", pageUrl);
         if (string.IsNullOrEmpty(link)) return null;
         return link + "\n" + (referer ?? pageUrl);
     }
 
     [HttpGet]
-    [Route("sexvnme/video")]
-    [Route("sexvnme/video.m3u8")]
-    [Route("sexvnme/video.mp4")]
+    [Route("phimsexviet113/video")]
+    [Route("phimsexviet113/video.m3u8")]
+    [Route("phimsexviet113/video.mp4")]
     async public Task<ActionResult> Video(string uri, string q, string srv = null)
     {
         if (await IsRequestBlocked(rch: true))
@@ -219,9 +217,9 @@ public class SexVnMeController : BaseSisiController
             serverId = serverId.Substring(7).Trim();
         if (string.IsNullOrEmpty(serverId))
             return OnError("stream_links", refresh_proxy: true);
-        string pageUrl = uri.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? uri : SexVnMeTo.SiteHost + "/" + (uri ?? "").Trim('/');
+        string pageUrl = uri.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? uri : PhimSexViet113To.SiteHost + "/" + (uri ?? "").Trim('/');
 
-        string streamKey = ipkey($"sexvnme:stream:{pageUrl}:{serverId}");
+        string streamKey = ipkey($"phimsexviet113:stream:{pageUrl}:{serverId}");
         string packed = null;
         if (hybridCache.TryGetValue(streamKey, out string cachedRaw) && !string.IsNullOrEmpty(cachedRaw))
             packed = cachedRaw;
@@ -265,7 +263,7 @@ public class SexVnMeController : BaseSisiController
     {
         if (string.IsNullOrEmpty(link)) return false;
         var headers = HeadersModel.Init(
-            ("User-Agent", SexVnMeTo.ChromeUA),
+            ("User-Agent", PhimSexViet113To.ChromeUA),
             ("Referer", referer));
         try
         {
