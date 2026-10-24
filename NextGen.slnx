@@ -37,6 +37,7 @@
     <Project Path="Modules/Adult/PornHub/PornHub.csproj" />
     <Project Path="Modules/Adult/Porntrex/Porntrex.csproj" />
     <Project Path="Modules/Adult/Runetki/Runetki.csproj" />
+    <Project Path="Modules/Adult/Sexgenz2/Sexgenz2.csproj" />
     <Project Path="Modules/Adult/Spankbang/Spankbang.csproj" />
     <Project Path="Modules/Adult/Tizam/Tizam.csproj" />
     <Project Path="Modules/Adult/Xhamster/Xhamster.csproj" />

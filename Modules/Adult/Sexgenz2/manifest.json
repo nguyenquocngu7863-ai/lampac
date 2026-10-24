@@ -1,0 +1,1 @@
+{"name":"sexgenz2","description":"Sexgenz2 - bản sao module SexGenZ đang chạy (route sgz) để đối chiếu","version":"1.0.0","author":"Kilo","site":"https://x.sexgenz.blog","enable":true,"dynamic":true,"tree":["Controller.cs","ModInit.cs","Service.cs"]}
