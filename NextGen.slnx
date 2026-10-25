@@ -44,6 +44,7 @@
     <Project Path="Modules/Adult/Xnxx/Xnxx.csproj" />
     <Project Path="Modules/Adult/Xvideos/Xvideos.csproj" />
     <Project Path="Modules/Adult/XvideosRED/XvideosRED.csproj" />
+    <Project Path="Modules/Adult/PhimSexVi/PhimSexVi.csproj" />
   </Folder>
   <Folder Name="/Modules/Community/">
     <Project Path="Modules/Community/TelegramAuth/TelegramAuth.csproj" />
