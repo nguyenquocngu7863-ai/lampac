@@ -1,0 +1,9 @@
+{
+  "name": "PhimSexVi",
+  "description": "PhimSexVi - Sex Việt Nam HD",
+  "version": "1.0.0",
+  "author": "Lampac",
+  "site": "https://phimsexvi.com",
+  "enable": true,
+  "dynamic": true
+}
