@@ -9,8 +9,8 @@ using System.Web;
 namespace PhimSexVi;
 public static class PhimSexViTo
 {
-    public static string SiteHost = "https://phimsexvi.com";
-    public static string EmbedHost = "https://embed.phimsexvi.com";
+    public static string SiteHost = "https://kidayteknoloji.com";
+    public static string EmbedHost = "https://embed.kidayteknoloji.com";
     public static string ChromeUA = "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36";
 
     public static string Origin(string url)
@@ -123,7 +123,7 @@ public static class PhimSexViTo
     // Trang chi tiet /video/<slug> co iframe embed:
     //   <iframe src="https://embed.phimsexvi.com/embed/<id>/p1?...">
     static readonly Regex _embedRe = new Regex(
-        "embed\\.phimsexvi\\.com/embed/(?<id>[a-zA-Z0-9]+)/p1",
+        "embed\\.kidayteknoloji\\.com/embed/(?<id>[a-zA-Z0-9]+)/p1",
         RegexOptions.IgnoreCase);
     public static string ExtractVideoId(string html)
     {
