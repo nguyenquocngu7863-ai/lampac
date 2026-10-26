@@ -101,7 +101,8 @@ public static class PhimSexViet113To
         else if (value.StartsWith("/")) value = SiteHost + value;
         else if (!value.StartsWith("http", StringComparison.OrdinalIgnoreCase)) value = SiteHost + "/" + value;
         if (!System.Uri.TryCreate(value, UriKind.Absolute, out var parsed)) return null;
-        if (!parsed.Host.EndsWith("phimsexviet113.com", StringComparison.OrdinalIgnoreCase))
+        if (!parsed.Host.EndsWith("phimsexviet113.com", StringComparison.OrdinalIgnoreCase)
+            && !parsed.Host.EndsWith("sexvietclub.com", StringComparison.OrdinalIgnoreCase))
             return null;
         return value;
     }
@@ -180,7 +181,17 @@ public static class PhimSexViet113To
         return res;
     }
 
-    // ========== POST /api/player {id, server} -> {status,data:{type,sources}} ==========
+    // ========== POST {origin-of-page}/api/player {id, server} -> {status,data:{type,sources}} ==========
+    // API nam tren host cua trang detail (sexvietclub.com), KHONG phai SiteHost.
+    public static string PlayerApiUrl(string pageUrl)
+    {
+        string origin = SiteHost;
+        if (!string.IsNullOrWhiteSpace(pageUrl)
+            && System.Uri.TryCreate(pageUrl, UriKind.Absolute, out var parsed))
+            origin = parsed.GetLeftPart(UriPartial.Authority);
+        return origin.TrimEnd('/') + "/api/player";
+    }
+
     public static string PlayerBody(string videoId, string serverId)
         => "id=" + System.Uri.EscapeDataString(videoId ?? "")
          + "&server=" + System.Uri.EscapeDataString(serverId ?? "1");
@@ -324,14 +335,15 @@ public static class PhimSexViet113To
                 ["id"] = videoId,
                 ["server"] = serverId
             });
+            string api = PlayerApiUrl(pageUrl);
             var headers = HeadersModel.Init(
                 ("User-Agent", ChromeUA),
                 ("Referer", pageUrl),
-                ("Origin", SiteHost),
+                ("Origin", api.Replace("/api/player", "").TrimEnd('/')),
                 ("Accept", "application/json, text/plain, */*"),
                 ("X-Requested-With", "XMLHttpRequest")
             );
-            return await Http.Post(new Uri(new Uri(SiteHost), "/api/player").ToString(), content,
+            return await Http.Post(api, content,
                 timeoutSeconds: timeoutSeconds, headers: headers,
                 proxy: proxy, httpversion: httpversion, disposeData: true);
         }
