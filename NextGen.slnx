@@ -29,6 +29,7 @@
     <Project Path="Modules/Telemetry/Telemetry.csproj" />
   </Folder>
   <Folder Name="/Modules/Adult/">
+    <Project Path="Modules/Adult/JAVSnap/JAVSnap.csproj" />
     <Project Path="Modules/Adult/BongaCams/BongaCams.csproj" />
     <Project Path="Modules/Adult/Chaturbate/Chaturbate.csproj" />
     <Project Path="Modules/Adult/Ebalovo/Ebalovo.csproj" />
@@ -38,6 +39,7 @@
     <Project Path="Modules/Adult/Porntrex/Porntrex.csproj" />
     <Project Path="Modules/Adult/Runetki/Runetki.csproj" />
     <Project Path="Modules/Adult/Sexgenz2/Sexgenz2.csproj" />
+    <Project Path="Modules/Adult/Sieusex/Sieusex.csproj" />
     <Project Path="Modules/Adult/Spankbang/Spankbang.csproj" />
     <Project Path="Modules/Adult/Tizam/Tizam.csproj" />
     <Project Path="Modules/Adult/Xhamster/Xhamster.csproj" />
