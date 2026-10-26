@@ -29,6 +29,7 @@
     <Project Path="Modules/Telemetry/Telemetry.csproj" />
   </Folder>
   <Folder Name="/Modules/Adult/">
+    <Project Path="Modules/Adult/XHeoVL/XHeoVL.csproj" />
     <Project Path="Modules/Adult/JAVSnap/JAVSnap.csproj" />
     <Project Path="Modules/Adult/BongaCams/BongaCams.csproj" />
     <Project Path="Modules/Adult/Chaturbate/Chaturbate.csproj" />
