@@ -11,9 +11,9 @@ namespace Tazzly;
 
 public static class TazzlyTo
 {
-    public static readonly string SiteHost = "https://phimsexmoi1.com";
-    public static readonly string EmbedHost = "https://embed.phimsexmoi1.com";
-    public static readonly string StaticHost = "https://static.phimsexmoi1.com";
+    public static readonly string SiteHost = "https://singapore-packaging.com";
+    public static readonly string EmbedHost = "https://embed.singapore-packaging.com";
+    public static readonly string StaticHost = "https://static.singapore-packaging.com";
 
     public const string ChromeUA = "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
     public const int PerPage = 32;
@@ -93,9 +93,9 @@ public static class TazzlyTo
         if (!System.Uri.TryCreate(value, UriKind.Absolute, out var parsed))
             return null;
 
-        // Site doi host: tazzly.com 301 sang phimsexmoi1.com. Chap nhan ca
-        // hai (URI cu tu cache/API van ve host cu), neu khong BuildItem tra
-        // null het va category trang trong.
+        // Site doi host 2 lan: tazzly.com -> phimsexmoi1.com -> singapore-packaging.com.
+        // Chap nhan ca 3 (URI cu tu cache/API van ve host cu), neu khong BuildItem
+        // tra null het va category trang trong.
         if (!IsSiteHost(parsed.Host))
             return null;
 
@@ -110,7 +110,9 @@ public static class TazzlyTo
         return host.Equals("tazzly.com", StringComparison.OrdinalIgnoreCase)
             || host.EndsWith(".tazzly.com", StringComparison.OrdinalIgnoreCase)
             || host.Equals("phimsexmoi1.com", StringComparison.OrdinalIgnoreCase)
-            || host.EndsWith(".phimsexmoi1.com", StringComparison.OrdinalIgnoreCase);
+            || host.EndsWith(".phimsexmoi1.com", StringComparison.OrdinalIgnoreCase)
+            || host.Equals("singapore-packaging.com", StringComparison.OrdinalIgnoreCase)
+            || host.EndsWith(".singapore-packaging.com", StringComparison.OrdinalIgnoreCase);
     }
 
     public static string NormalizeCover(string value)
