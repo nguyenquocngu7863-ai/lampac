@@ -51,7 +51,7 @@ public class XHeoVLController : BaseSisiController
         var menu = new List<MenuItem>(XHeoVLTo.MenuHead(host, search))
         {
             // menu 2 tầng: Tìm kiếm + Danh mục (mới nhất, girl xinh, ...)
-            new MenuItem(){ title = "Danh mục", playlist_url = "submenu", submenu = XHeoVLTo.Categories() }
+            new MenuItem(){ title = "Danh mục", playlist_url = "submenu", submenu = XHeoVLTo.Categories(host) }
         };
 
         return PlaylistResult(

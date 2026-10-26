@@ -128,13 +128,15 @@ public static class XHeoVLTo
     }
 
     // Categories cho menu 2 tầng (site có sẵn /the-loai/<slug>).
-    public static List<MenuItem> Categories()
+    // host = proxy host (ví dụ http://127.0.0.1:9118) để category URL đi qua app, không trực tiếp ra site.
+    public static List<MenuItem> Categories(string host)
     {
-        string root = SiteHost + "/xheovl";
+        host = host.TrimEnd('/');
+        string root = host + "/xheovl";
         string url(string c) => root + "?c=" + HttpUtility.UrlEncode(c);
         return new List<MenuItem>
         {
-            new("Mới nhất", SiteHost),
+            new("Mới nhất", root),
             new("Gái Xinh", url("/the-loai/gai-xinh")),
             new("Sinh Viên", url("/the-loai/sinh-vien")),
             new("Cô Giáo", url("/the-loai/co-giao")),
@@ -154,7 +156,7 @@ public static class XHeoVLTo
         string url(string c) => root + "?c=" + HttpUtility.UrlEncode(c);
         return new List<MenuItem>(1)
         {
-            new MenuItem(){ title = "Danh mục", playlist_url = "submenu", submenu = Categories() }
+            new MenuItem(){ title = "Danh mục", playlist_url = "submenu", submenu = Categories(host) }
         };
     }
     public static string NormalizePageUrl(string value)
