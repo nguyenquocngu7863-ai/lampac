@@ -94,20 +94,12 @@ thì so `len(slug)` và so HTML thô vs DOM trước khi đụng vào parser pla
 | `vidosik` item category (avcl) | 200 → route `.mp4`; CDN 404 (bẫy 3) |
 
 ## Check / deploy
-- `check.sh` mặc định **không** có ref Playwright → thêm 2 ref khi check module này:
+- Check compile (tự ref Playwright + Bcl.AsyncInterfaces, không cần thêm ref tay):
 
 ```bash
-cd ~/lampac-clean && HOST=$HOME/lampac-native/dotnet-host
-NETREF=$(ls -d "$HOST"/packs/Microsoft.NETCore.App.Ref/*/ref/net10.0 | sort -V | tail -1)
-ASPREF=$(ls -d "$HOST"/packs/Microsoft.AspNetCore.App.Ref/*/ref/net10.0 | sort -V | tail -1)
-refs=(); for f in "$NETREF"/*.dll "$ASPREF"/*.dll; do refs+=("-r:$f"); done
-env -u LD_PRELOAD -u LD_LIBRARY_PATH "$HOME/lampac-native/csc/csc" -nologo \
-  -target:library -nullable:enable -langversion:latest "${refs[@]}" \
-  -r:$HOME/lampac-run/Shared.dll \
-  -r:$HOME/lampac-run/runtimes/references/Microsoft.Playwright.dll \
-  -r:$HOME/lampac-run/runtimes/references/Microsoft.Bcl.AsyncInterfaces.dll \
-  Modules/Adult/XHeoVL/*.cs -out:"$PREFIX/tmp/xheovl-check.dll"
+~/lampac-native/csc/check.sh ~/lampac-clean/Modules/Adult/XHeoVL
 ```
+
 - Deploy: copy 4 file (`Controller.cs`, `ModInit.cs`, `Service.cs`, `manifest.json`) sang
   `~/lampac-run/module/Adult/XHeoVL/` (không copy csproj) → restart → log phải có
   `loaded module: XHeoVL`, không có `error CS`.

@@ -79,6 +79,22 @@ tại, `VNsexTop1` không có `.csproj` — khiến build toàn repo fail với
 
 ## 4. Build — BẮT BUỘC khi có `.csproj`, không được rào "không có môi trường"
 
+**Check nhanh trước mọi thứ (~1–2 s, không bin/obj, không proot):**
+
+```bash
+~/lampac-native/csc/check.sh ~/lampac-clean/Modules/Adult/<Name>
+```
+
+- Tự ref ref-pack net10.0 + `Shared.dll` của runtime + mọi dll trong
+  `~/lampac-run/runtimes/references` (Playwright, Bcl.AsyncInterfaces, HtmlAgilityPack…)
+  ⇒ module dùng thư viện ngoài không báo oan CS0234/CS0012.
+- Exit 0 = sạch · 1 = có `error CS` (in dòng lỗi) · 2 = thiếu môi trường.
+- Không đọc `.csproj`: lỗi csproj (CS5001 thiếu `OutputType=Library`…) phải qua proot build.
+- Source of truth: repo `termux-check.sh`. Cài lại `lampac-native` thì deploy lại:
+  `cp ~/lampac-clean/termux-check.sh ~/lampac-native/csc/check.sh`
+
+**Build thật (khi có `.csproj` — cũng là bước duy nhất kiểm tra được csproj):**
+
 ```bash
 dotnet build Modules/Adult/<Name>/<Name>.csproj --nologo 2>&1 | tail -5
 ```
