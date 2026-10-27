@@ -30,6 +30,15 @@ public static class XHeoVLTo
 
     public static async Task<string> RenderPageAsync(string url)
     {
+        // 1) Site đã SSR: HTML thô chứa đủ card + href slug ĐẦY ĐỦ (đúng dữ liệu server).
+        //    Không phụ thuộc DOM sau JS → tránh biến thể slug bị cắt (44 ký tự) từng làm
+        //    item category 404 dù trang chủ vẫn phát được. Nhanh hơn render rất nhiều.
+        string raw = await GetHtml(url, SiteHost + "/", null, 1, 20);
+        if (!string.IsNullOrEmpty(raw) && raw.Length > 5000 &&
+            (raw.Contains("vb-card") || raw.Contains("/video/")))
+            return raw;
+
+        // 2) Fallback: site quay lại CSR thì mới render bằng Playwright.
         if (!await _renderLock.WaitAsync(TimeSpan.FromSeconds(30))) return null;
         try
         {
@@ -144,7 +153,7 @@ public static class XHeoVLTo
             new("Ngoại Tình", url("/the-loai/ngoai-tinh")),
             new("Tập thể", url("/the-loai/tap-the")),
             new("Âu Mỹ", url("/the-loai/au-my")),
-            new("JAV", url("/the-loai/jav")),
+            new("Cưỡi Ngựa", url("/the-loai/cuoi-ngua")),
             new("Hack Cam", url("/the-loai/hack-cam")),
         };
     }
@@ -174,20 +183,32 @@ public static class XHeoVLTo
     // ============================================================
     // STREAM — thuần HTTP, không cần Playwright.
     //
-    // Flow (đã verify ngoài module, 2026-10-26):
-    //   1. GET /video/<slug> (SSR) → JSON-LD "embedUrl":"https://player.vstream.uk/e/<uuid>"
-    //      fallback: <iframe src="/play/?token=...">  → fetch /play/?token → "const url = "..."
-    //   2. GET embed page → <link rel="preload" as="fetch" href="https://player.vstream.uk/hls/<token>">
-    //   3. m3u8 đó là MEDIA playlist, segments S3 signed → client fetch trực tiếp.
-    //      Host vstream.uk 200 mà KHÔNG cần referer/origin (đã thử None).
+    // Flow (verify 2026-10-26, cập nhật 2026-10-27):
+    //   1. GET /video/<slug> (SSR) → JSON-LD "embedUrl": (có thể bị escape \u0026)
+    //        - https://player.vstream.uk/e/<uuid>   → HLS
+    //        - https://play.avcl.uk/zpic/?id=...    → MP4 (ArtPlayer, host mới site đang chuyển)
+    //      fallback: <iframe src="/play/?token=..."> → fetch /play/ → "const url = "..."
+    //   2. GET embed page → <link rel=preload href=".../hls/..."> (vstream)
+    //      hoặc "const url = \"...mp4\"" (avcl) — cả 2 đều trả thẳng, không cần render JS.
+    //   3. m3u8 (vstream) là MEDIA playlist, segments S3 signed → client fetch trực tiếp;
+    //      vstream.uk 200 KHÔNG cần referer/origin. MP4 avcl: CDN zpicdn.xyz (2026-10-27
+    //      vhost còn rỗng, chưa có file → các video dùng player này chưa phát được ở đâu cả).
     // ============================================================
+
+    // JSON trong HTML có thể escape: \u0026 (&), \u002f (/), \/ (/) — phải bỏ trước khi dùng URL
+    static string JsonUnescape(string s)
+    {
+        if (string.IsNullOrEmpty(s)) return s;
+        return s.Replace("\\u0026", "&").Replace("\\u002f", "/").Replace("\\u003d", "=")
+                .Replace("\\u003a", ":").Replace("\\/", "/");
+    }
 
     static string EmbedUrl(string detailHtml)
     {
-        // 1) JSON-LD (đường tắt, luôn có trên SSR)
-        string p1 = @"""embedUrl"":\s*:""(https://player\.vstream\.uk/e/[^""]+)""";
-        var m = Regex.Match(detailHtml, p1);
-        if (m.Success) return m.Groups[1].Value;
+        // 1) JSON-LD (đường tắt, luôn có trên SSR). Chấp nhận MỌI player host:
+        //    player.vstream.uk (HLS) lẫn play.avcl.uk/zpic (MP4, ArtPlayer) — site đổi host liên tục.
+        var m = Regex.Match(detailHtml, @"""embedUrl"":\s*""(https?://[^""]+)""");
+        if (m.Success) return JsonUnescape(m.Groups[1].Value);
         // 2) iframe /play/?token=... trên detail
         m = Regex.Match(detailHtml, @"<iframe[^>]*src=""(/play/\?token=[^""]+)""");
         if (m.Success)
@@ -200,11 +221,20 @@ public static class XHeoVLTo
 
     static string HlsUrlFromEmbed(string embedHtml)
     {
-        // 1) <link rel="preload" as="fetch" href=".../hls/...">
-        var m = Regex.Match(embedHtml, @"<link[^>]*rel=""preload""[^>]*href=""(https://player\.vstream\.uk/hls/[^""]+)""");
+        // 1) vstream: <link rel="preload" as="fetch" href=".../hls/...">
+        var m = Regex.Match(embedHtml, @"<link[^>]*rel=""preload""[^>]*href=""(https?://[^""]+/hls/[^""]+)""");
         if (m.Success) return m.Groups[1].Value;
-        // 2) fallback: const url / hls proxy / raw hls link
-        m = Regex.Match(embedHtml, @"(https://player\.vstream\.uk/hls/[A-Za-z0-9+/=_-]+)");
+        // 2) const url = "..." (vstream HLS hoặc avcl MP4) — đúng biến mà artconfig.js/player dùng
+        m = Regex.Match(embedHtml, @"const\s+url\s*=\s*""([^""]+)""");
+        if (m.Success)
+        {
+            string u = JsonUnescape(m.Groups[1].Value);
+            if (u.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return u;
+        }
+        // 3) fallback cuối: link m3u8/mp4 trực tiếp (loại URL quảng cáo tvc trên chính site)
+        m = Regex.Match(embedHtml, @"(https?://[^""'\s]+\.m3u8)");
+        if (m.Success) return m.Groups[1].Value;
+        m = Regex.Match(embedHtml, @"(https?://(?!xheovl\.site)[^""'\s]+\.mp4)");
         if (m.Success) return m.Groups[1].Value;
         return null;
     }
@@ -236,9 +266,10 @@ public static class XHeoVLTo
         {
             string ph = await GetHtml(embed, pageUrl, proxy, httpversion, timeoutSeconds);
             if (string.IsNullOrEmpty(ph)) return null;
-            var mm = Regex.Match(ph, @"const\s+url\s*=\s*""(https://player\.vstream\.uk/e/[^""]+)""");
+            // const url = "https://player.vstream.uk/e/..." HOẶC "https://play.avcl.uk/zpic/?id=..."
+            var mm = Regex.Match(ph, @"const\s+url\s*=\s*""(https?://[^""]+)""");
             if (!mm.Success) return null;
-            embed = mm.Groups[1].Value;
+            embed = JsonUnescape(mm.Groups[1].Value);
         }
 
         string pageHtml = await GetHtml(embed, pageUrl, proxy, httpversion, timeoutSeconds);
