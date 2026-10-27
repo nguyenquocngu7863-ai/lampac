@@ -21,12 +21,19 @@ Mẫu chuẩn: `Modules/Adult/SupJav/` — 5 file:
 
 ```
 Modules/Adult/<Name>/
-  <Name>.csproj      ← BẮT BUỘC, xem §3
+  <Name>.csproj      ← TUỲ CHỌN — chỉ để dotnet build/proot; runtime KHÔNG cần (xem §3)
   manifest.json      ← name, site, enable:true, dynamic:true
   ModInit.cs         ← IModuleLoaded + IModuleSisi, SisiSettings
   Service.cs         ← Uri(), Playlist(), Pages(), Menu() — hàm thuần
   Controller.cs      ← kế thừa BaseSisiController
 ```
+
+> **Runtime không đọc `.csproj` và không đọc `NextGen.slnx`.** Core tự compile `*.cs`
+> của module lúc khởi động (Roslyn, đối chiếu `Shared.dll`/`runtimes/references` của
+> app đang chạy) — `manifest.json` có `dynamic: true` là đủ.
+> Đo 2026-10-27: **56 module Adult, chỉ 24 có `.csproj`** ⇒ 32 module không csproj vẫn
+> `loaded module: <Name>` bình thường; `~/lampac-run/module/Adult/HeoVl/` chỉ có
+> 4 file `.cs` + `manifest.json`.
 
 Namespace = `<Name>`, route = tên module lowercase (`hornyjav`).
 
