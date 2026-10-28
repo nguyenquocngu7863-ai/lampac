@@ -139,6 +139,7 @@ const log = (...a) => console.error('[netspy]', ...a);
   }
 
   fs.writeFileSync(OUT, JSON.stringify({ url: URL_ARG, title, cookies, inlineLinks, domMedia, requests: hits }, null, 1));
+  if (process.env.NETSPY_DUMP_HTML) fs.writeFileSync(OUT + '.html', docHtml || '');
   console.log(JSON.stringify({
     ok: true, title, out: OUT,
     inlineLinks,
