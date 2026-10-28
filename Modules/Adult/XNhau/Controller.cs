@@ -111,7 +111,8 @@ public class XNhauController : BaseSisiController
             html = span.ToString();
         }, addheaders: HeadersModel.Init(
             ("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"),
-            ("Referer", init.host + "/")));
+            ("Referer", init.host + "/"),
+            ("Cookie", init.cookie)));
 
         return html;
     }
@@ -160,7 +161,10 @@ public class XNhauController : BaseSisiController
                 await httpHydra.GetSpan(url, span =>
                 {
                     cache.links = XNhauTo.StreamLinks(span);
-                });
+                }, addheaders: HeadersModel.Init(
+                    ("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"),
+                    ("Referer", init.host + "/"),
+                    ("Cookie", init.cookie)));
 
                 if (cache.links == null || cache.links.Count == 0)
                     return (null, false);
@@ -237,7 +241,10 @@ public class XNhauController : BaseSisiController
                         ["member"] = murl
                     };
                 }
-            });
+            }, addheaders: HeadersModel.Init(
+                ("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"),
+                ("Referer", init.host + "/"),
+                ("Cookie", init.cookie)));
 
             if (info == null)
                 return OnError("uploader");

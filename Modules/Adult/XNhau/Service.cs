@@ -487,18 +487,47 @@ public static class XNhauTo
         if (stream_links.Count == 0)
         {
             var iframe = System.Text.RegularExpressions.Regex.Match(s, "<iframe[^>]+src=[\"']([^\"']+)[\"']");
-            if (iframe.Success)
-                stream_links.TryAdd("stream", iframe.Groups[1].Value);
-            else
+            string cand = iframe.Success ? iframe.Groups[1].Value : null;
+
+            if (string.IsNullOrEmpty(cand))
             {
                 var source = System.Text.RegularExpressions.Regex.Match(s, "<source[^>]+src=[\"']([^\"']+)[\"']");
                 if (source.Success)
-                    stream_links.TryAdd("stream", source.Groups[1].Value);
+                    cand = source.Groups[1].Value;
             }
+
+            // Bỏ qua video quảng cáo của site (/static/media/pc-*.mp4) và trang /embed/ (HTML, không phát được).
+            // Trước đây fallback này bắt trúng ads => MỌI video private đều trả cùng 1 URL ads
+            // (URL tương đối) => proxy 400 => player báo "no supported source".
+            if (!string.IsNullOrEmpty(cand) && !IsAdsOrPage(cand))
+                stream_links.TryAdd("stream", AbsUrl(cand));
         }
 
         return stream_links.OrderByDescending(kv => StreamQualityRank(kv.Key + " " + kv.Value))
             .ToDictionary(k => k.Key, v => v.Value);
+    }
+    #endregion
+
+    #region Ads / Url helpers
+    static bool IsAdsOrPage(string u)
+    {
+        string l = u.ToLowerInvariant();
+        if (l.Contains("/static/media/") || l.StartsWith("/static/") || l.Contains("/static/images/"))
+            return true;
+        if (l.Contains("/embed/"))
+            return true;
+        return false;
+    }
+
+    static string AbsUrl(string u)
+    {
+        if (string.IsNullOrEmpty(u))
+            return u;
+        if (u.StartsWith("http"))
+            return u;
+        if (u.StartsWith("//"))
+            return "https:" + u;
+        return u.StartsWith("/") ? SiteHost + u : SiteHost + "/" + u;
     }
     #endregion
 
