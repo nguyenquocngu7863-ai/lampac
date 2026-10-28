@@ -78,3 +78,72 @@ Da sua 5 cho (het `.free` -> `.pub`):
 Cach do khi nghi doi domain (khong can sua gi): lay HTML that roi chay regex card cua module —
 neu regex khop ma module van 0 item thi loi o **fetch/host**, khong phai parser.
 Vi du 2026-10-18: regex khop **40 card** tren HTML `.pub` nhung module 0 item.
+
+## Tự đăng nhập bằng Chrome — ĐO THẬT 2026-10-28 (không khả thi khi headless)
+
+Thiết bị **có** Chrome thật: `~/lampac-native/chrome/chrome-run.sh` (Google Chrome 155),
+Lampac bật qua `init.conf` → `chromium.executablePath`. Kiểm tra sống/chết:
+`curl -s http://127.0.0.1:9118/api/chromium/ping` → `pong`.
+
+### Bug thật đã fix: Chrome crash vì fontconfig
+
+Trước fix, **mọi** trang có chữ Việt (dấu) làm Chrome chết ngay:
+
+```
+FATAL:third_party/skia/src/ports/SkFontMgr_FontConfigInterface.cpp:163] Not implemented.
+```
+
+→ Playwright chỉ báo `TargetClosedException: Target page, context or browser has been closed`,
+rất dễ đoán sai là "site chặn". Nguyên nhân: Chrome chạy **native (ngoài proot)** nên
+`/etc/fonts/fonts.conf` của Ubuntu trỏ `/usr/share/fonts` (không tồn tại) ⇒ fontconfig trả
+**0 font** ⇒ Skia chết khi gặp ký tự cần fallback.
+
+Fix nằm trong `termux-native/chrome-run.sh`: tự sinh `~/lampac-native/fonts.conf`
+(trỏ font của rootfs Ubuntu + `/system/fonts` của Android, cache `~/lampac-native/fontcache`)
+và `export FONTCONFIG_FILE`. Deploy:
+`cp termux-native/chrome-run.sh ~/lampac-native/chrome/chrome-run.sh && chmod +x …`
+
+### Vì sao KHÔNG tự đăng nhập được
+
+Luồng login đã chạy tới đúng chỗ: mở popup → điền `saunhung`/mk → **POST `/login/` thật sự
+được gửi**. Site trả:
+
+```json
+{"status":"failure","errors":[{"code":"required","field":"code","block":"logon",
+ "message":"Ô này là bắt buộc"}]}
+```
+
+`code` = token **Cloudflare Turnstile** (widget `data-recaptcha-key=0x4AAAAAADyqkzaFHEUCkKsz`,
+render trong shadow DOM, `input[name=cf-turnstile-response]`). Token **luôn rỗng** vì headless
+bị chặn. Đã thử, tất cả đều thất bại:
+
+| Thử | Kết quả |
+|---|---|
+| `turnstile.render()` thủ công vào div có sẵn / div mới | `already rendered`, vẫn 0 iframe, 0 token |
+| click chuột theo toạ độ checkbox (Playwright `mouse.click`) | checkbox không tick |
+| Enter/Space sau khi focus widget | không tick |
+| spoof `navigator.webdriver=false`, plugins=5, languages, hardwareConcurrency, `window.chrome` | token vẫn 0 |
+| WebGL swiftshader (`--enable-unsafe-swiftshader --use-angle=swiftshader`) | token vẫn 0 |
+| **Chrome thường + CDP thuần** (không Playwright, `--remote-debugging-port`, click bằng `Input.dispatchMouseEvent`) | token vẫn 0 |
+
+⇒ Site chỉ cho login khi captcha được giải bởi trình duyệt **headful** (có màn hình, người thật
+tick). Không có root, không đọc được cookie Firefox của máy (`/data/data/org.mozilla.firefox`
+không truy cập được).
+
+### Endpoint tiện dụng
+
+| URL | Việc |
+|---|---|
+| `/xnhau/check` | `{"cookie":"alive|dead|missing", "member":true, "chromium":"headless"}` |
+| `/xnhau/login` | thử tự login bằng Chrome; fail → trả message rõ ràng (Turnstile chặn headless) |
+
+### Cách làm mới cookie (khi `/xnhau/check` = `dead`)
+
+1. Firefox (điện thoại) → `xnhau.pub` → **đăng nhập, tick "Ghi nhớ đăng nhập"** (session sống lâu hơn).
+2. DevTools/extension Cookie-Editor → copy `PHPSESSID` (HttpOnly, bookmarklet không đọc được).
+3. Dán vào `~/lampac-run/init.conf` → `"XNhau".cookie` → khởi động lại app.
+4. Kiểm tra: `curl -s http://127.0.0.1:9118/xnhau/check` → `"cookie":"alive"`.
+
+`PHPSESSID` là session cookie: chết khi logout, xoá cookie, hoặc server dọn session
+(không dùng vài giờ → 1 ngày). Mỗi request tới site server set lại `kt_member=1; Max-Age=86400`
+nên **dùng app đều đặn thì session được gia hạn**; bỏ lâu là mất.
