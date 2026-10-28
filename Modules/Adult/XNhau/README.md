@@ -182,3 +182,26 @@ Chỉ gửi `PHPSESSID` → trang video trả `.no-player` "Chỉ có thành vi�
 `PHPSESSID` là session cookie: chết khi logout, xoá cookie, hoặc server dọn session. Mỗi request
 tới site server set lại `kt_member=1; Max-Age=86400` nên **dùng app đều đặn thì session tự gia hạn**;
 chết thì script login lại (cold path ~90 s, lần đầu sau đó nhanh vì profile nhớ phiên).
+
+## Relay Cloudflare (`XNHAU_RELAY`)
+
+**Triệu chứng:** app quay vòng mãi ở trang list (log trả `503 {"msg":"playlists"}`), bấm video thì
+player trắng/không phát. Đo trực tiếp: TLS từ IP máy tới `xnhau.pub` bị reset liên tục
+(`SSL: UNEXPECTED_EOF_WHILE_READING`) ⇒ HTML về rỗng (parse 0 item) và `/proxy/<token>` trả
+`200` + **0 byte** sau ~15 s. Không phải băng thông — cùng lúc đó qua Cloudflare Worker: `200`, 278 KB, 0.83 s.
+
+**Cách chạy:** Worker `termux-native/cf-relay/` (deploy bằng `deploy.py`, **không** dùng wrangler —
+`workerd` không có bản Android arm64). Module đọc env `XNHAU_RELAY`; có thì:
+
+| Đường | Đi qua relay? |
+|---|---|
+| list / search / menu / taxonomy / uploader | ✅ |
+| trang detail (resolve stream) | ✅ |
+| media (`/proxy/<token>`) | ✅ (forward `Range` → 206) |
+| login / Turnstile / cookie | ❌ đi trực tiếp (giữ domain) |
+
+`run-lampac.sh` export sẵn URL worker. Tắt: `XNHAU_RELAY=''`. Đo sau khi bật (1 video):
+`vidosik` 0.3–0.4 s, `strem` 0.13–0.38 s (trước 8–21 s), `/proxy` 206 + byte thật 0.2–0.9 s/256 KB.
+
+**Nếu media nằm host khác** (CDN riêng): worker trả `403 host not allowed: <host>` → thêm host đó vào
+allowlist rồi deploy lại: `python3 deploy.py --test-host "xnhau.pub,<cdn-host>"`.

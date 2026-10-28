@@ -19,6 +19,32 @@ public class XNhauController : BaseSisiController
 {
     static readonly HttpClient httpClient = FriendlyHttp.CreateHttpClient();
 
+    /// <summary>
+    /// Relay media qua Cloudflare Worker (egress CF) — bật bằng env XNHAU_RELAY=https://worker.workers.dev
+    /// Trang HTML/cookie vẫn đi trực tiếp (giữ domain cho cookie + Turnstile), chỉ media đi qua relay.
+    /// </summary>
+    static readonly string relayBase = System.Environment.GetEnvironmentVariable("XNHAU_RELAY")?.TrimEnd('/');
+
+    static string Relay(string url)
+    {
+        if (string.IsNullOrEmpty(relayBase) || string.IsNullOrEmpty(url) || !url.StartsWith("http"))
+            return url;
+
+        // GetLocation co the tra ve chinh URL cua relay (redirect da follow) -> khong wrap lan 2
+        if (url.StartsWith(relayBase, System.StringComparison.OrdinalIgnoreCase))
+            return url;
+
+        try
+        {
+            var u = new System.Uri(url);
+            return $"{relayBase}/{u.Host}{u.PathAndQuery}";
+        }
+        catch
+        {
+            return url;
+        }
+    }
+
     public XNhauController() : base(ModInit.conf) { }
 
     [HttpGet, Staticache(manually: true)]
@@ -36,7 +62,7 @@ public class XNhauController : BaseSisiController
 
             List<PlaylistItem> playlists = null;
 
-            string dbgUrl = XNhauTo.Uri(init.host, search, sort, c, t, pg);
+            string dbgUrl = Relay(XNhauTo.Uri(init.host, search, sort, c, t, pg));
             await httpHydra.GetSpan(dbgUrl, span =>
             {
                 string h = span.ToString();
@@ -413,7 +439,7 @@ public class XNhauController : BaseSisiController
             httpHydra.RegisterHttp(httpClient);
 
         string html = null;
-        await httpHydra.GetSpan(url, span =>
+        await httpHydra.GetSpan(Relay(url), span =>
         {
             html = span.ToString();
         }, addheaders: HeadersModel.Init(
@@ -465,7 +491,10 @@ public class XNhauController : BaseSisiController
                 if (url == null)
                     return (null, false);
 
-                await httpHydra.GetSpan(url, span =>
+                // XNHAU_RELAY: TLS từ IP máy hay bị reset (SSL EOF) → lấy trang qua Worker
+                string fetchUrl = Relay(url);
+
+                await httpHydra.GetSpan(fetchUrl, span =>
                 {
                     cache.links = XNhauTo.StreamLinks(span);
                 }, addheaders: HeadersModel.Init(
@@ -481,7 +510,7 @@ public class XNhauController : BaseSisiController
 
                     if (ok)
                     {
-                        await httpHydra.GetSpan(url, span =>
+                        await httpHydra.GetSpan(fetchUrl, span =>
                         {
                             cache.links = XNhauTo.StreamLinks(span);
                         }, addheaders: HeadersModel.Init(
@@ -586,7 +615,7 @@ public class XNhauController : BaseSisiController
         if (!hybridCache.TryGetValue(memKey, out Dictionary<string, string> info))
         {
             info = null;
-            await httpHydra.GetSpan(url, span =>
+            await httpHydra.GetSpan(Relay(url), span =>
             {
                 var m = System.Text.RegularExpressions.Regex.Match(span.ToString(),
                     @"<a class=""avatar"" href=""((?:https?://[^/]+)?/members/[0-9]+/)""[^>]*title=""([^""]+)""");
@@ -669,7 +698,7 @@ public class XNhauController : BaseSisiController
                 }
                 else
                 {
-                    location = await Http.GetLocation(init.cors(link, headers, requestInfo), timeoutSeconds: init.httptimeout, httpversion: init.httpversion, proxy: proxy, headers: headers);
+                    location = await Http.GetLocation(init.cors(Relay(link), headers, requestInfo), timeoutSeconds: init.httptimeout, httpversion: init.httpversion, proxy: proxy, headers: headers);
                 }
 
                 if (string.IsNullOrEmpty(location) || link == location)
@@ -679,14 +708,14 @@ public class XNhauController : BaseSisiController
                         ("referer", init.host + "/")
                     ));
                     hybridCache.Set(memKey, link, cacheTime(40));
-                    return Redirect(HostStreamProxy(link, direct));
+                    return Redirect(HostStreamProxy(Relay(link), direct));
                 }
 
                 proxyManager?.Success();
                 hybridCache.Set(memKey, location, cacheTime(40));
             }
 
-            return Redirect(HostStreamProxy(location));
+            return Redirect(HostStreamProxy(Relay(location)));
         }
         finally
         {

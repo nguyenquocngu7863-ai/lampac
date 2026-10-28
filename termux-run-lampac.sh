@@ -68,6 +68,11 @@ export LAMPAC_NODE="$NATIVE/node-bin/node"
 export PLAYWRIGHT_NODEJS_PATH="$NATIVE/node-bin/node"
 # cap managed heap so spikes get GC'd instead of growing into swap (tune freely)
 export DOTNET_GCHeapHardLimit="${DOTNET_GCHeapHardLimit:-600000000}"
+# XNhau: day trang + media qua Cloudflare Worker (egress CF). Ly do: TLS tu IP
+# may toi xnhau.pub hay bi reset (SSL EOF) -> list rong (503 playlists) va media
+# 0 byte sau ~15s. Worker: termux-native/cf-relay/ (deploy bang deploy.py).
+# Tat relay: doi thanh XNHAU_RELAY=''  (dau '-' khong co ':' nen rong van thang).
+export XNHAU_RELAY="${XNHAU_RELAY-https://xn-relay.nguyenquocngu7863.workers.dev}"
 
 PORT=$(grep -o '"port": *[0-9]*' "$LAMPAC_DIR/init.conf" 2>/dev/null | head -1 | grep -o '[0-9]*' || echo 9118)
 echo ""

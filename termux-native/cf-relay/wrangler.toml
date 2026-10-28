@@ -1,0 +1,7 @@
+name = "xn-relay"
+main = "src/index.js"
+compatibility_date = "2026-01-01"
+
+# chỉ relay cho host này (đổi bằng: wrangler deploy --var ALLOW:"xnhau.pub,cdn.example")
+[vars]
+ALLOW = "xnhau.pub"
