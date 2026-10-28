@@ -149,9 +149,13 @@ def cmd_check():
     return 0
 
 
-def cmd_reset(host=None):
+def cmd_reset(host=None, all_=False):
     if not BUD.exists():
         return 0
+    if not host and not all_:
+        say("TỪ CHỐI: reset không kèm host sẽ xoá bộ đếm của MỌI phiên đang chạy.")
+        say("  → `site.sh reset <host>` để xoá 1 host, hoặc `site.sh reset --all` nếu chắc chắn.")
+        return 2
     for suffix in (".count", ".blocked"):
         for p in BUD.glob(f"{host or '*'}{suffix}"):
             p.unlink()
@@ -164,7 +168,8 @@ def usage():
 
   site.sh get <url> [out] [--force] [--limit N] [--referer URL] [--impersonate NAME]
   site.sh check                 # xem đã dùng bao nhiêu request / host
-  site.sh reset [host]          # xoá bộ đếm + cờ blocked
+  site.sh reset <host>          # xoá bộ đếm + cờ blocked của 1 host
+  site.sh reset --all           # xoá TẤT CẢ (cẩn thận: dùng chung giữa các phiên)
 
 Mặc định: 45 request/host (env SITE_MAX), lưu ở ~/lampac-native/tmp/capture/<host>/
 URL đã tải thì không tải lại (trừ --force). 403/429/503 → đánh dấu chặn, nhắc dùng x.sh.""")
@@ -179,7 +184,8 @@ def main(argv):
     if cmd == "check":
         return cmd_check()
     if cmd == "reset":
-        return cmd_reset(rest[0] if rest else None)
+        only = [a for a in rest if not a.startswith("--")]
+        return cmd_reset(only[0] if only else None, all_="--all" in rest)
     if cmd != "get" or not rest:
         return usage()
 
