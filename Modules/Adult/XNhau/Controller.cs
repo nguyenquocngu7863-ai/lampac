@@ -109,7 +109,54 @@ public class XNhauController : BaseSisiController
     /// Cookie lấy được từ phiên login do module tự mở (ưu tiên hơn init.cookie)
     static string cookieCache;
 
+    /// <summary>
+    /// File cookie do script login ghi ra (mặc định: ~/lampac-run/xnhau.cookie).
+    /// Module đọc lại khi mtime đổi ⇒ refresh cookie KHÔNG cần restart app.
+    /// </summary>
+    static readonly string CookieFile = System.IO.Path.Combine(System.AppContext.BaseDirectory, "xnhau.cookie");
+    static System.DateTime cookieFileStamp;
+    static string cookieFileValue;
+
+    /// <summary>Chống gọi login liên tục khi cookie chết (tối đa 1 lần / 5 phút)</summary>
+    static System.DateTime lastLoginAttemptUtc;
+
+    /// <summary>Script login headful (Chrome trên Xvnc) — xem termux-native/xnhau-login.sh</summary>
+    static readonly string LoginScript = System.Environment.GetEnvironmentVariable("XNHAU_LOGIN_SCRIPT")
+        ?? System.IO.Path.Combine(
+            System.Environment.GetEnvironmentVariable("HOME") ?? "/data/data/com.termux/files/home",
+            "lampac-native", "xnhau-login.sh");
+
     bool CanLogin => !string.IsNullOrWhiteSpace(init.login) && !string.IsNullOrWhiteSpace(init.passwd);
+
+    /// <summary>
+    /// Cookie đang dùng, thứ tự ưu tiên: file xnhau.cookie (mới nhất) → cookieCache → init.cookie.
+    /// </summary>
+    string Cookie
+    {
+        get
+        {
+            try
+            {
+                var fi = new System.IO.FileInfo(CookieFile);
+                if (fi.Exists && fi.LastWriteTimeUtc != cookieFileStamp)
+                {
+                    string text = System.IO.File.ReadAllText(CookieFile).Trim();
+                    if (!string.IsNullOrEmpty(text))
+                    {
+                        cookieFileValue = text;
+                        cookieCache = text;
+                        init.cookie = text;
+                        cookieFileStamp = fi.LastWriteTimeUtc;
+                    }
+                }
+            }
+            catch { }
+
+            return !string.IsNullOrEmpty(cookieFileValue) ? cookieFileValue
+                 : !string.IsNullOrEmpty(cookieCache) ? cookieCache
+                 : init.cookie;
+        }
+    }
 
     /// Token Turnstile (compat=recaptcha → 2 input ẩn). Rỗng = chưa giải xong.
     static async Task<string> GetTurnstileTokenAsync(IPage page)
@@ -126,30 +173,133 @@ public class XNhauController : BaseSisiController
     }
 
     /// <summary>
+    /// Làm mới cookie đăng nhập, ưu tiên script headful `~/lampac-native/xnhau-login.sh`
+    /// (Chrome headful trên X server ảo Xvnc) vì Turnstile chỉ giải được ở chế độ đó.
+    /// Fallback: Playwright trong app (chỉ thành công nếu có display / site tắt captcha).
+    /// </summary>
+    async Task<(bool ok, string msg)> LoginAsync(bool force)
+    {
+        if (!force && !string.IsNullOrEmpty(Cookie))
+            return (true, "đã có cookie từ phiên login trước");
+
+        if (!CanLogin)
+            return (false, "init.conf thiếu login/passwd cho XNhau");
+
+        if (!await loginLock.WaitAsync(System.TimeSpan.FromSeconds(90)))
+            return (false, "đang có phiên login khác chạy");
+
+        try
+        {
+            lastLoginAttemptUtc = System.DateTime.UtcNow;
+
+            if (System.IO.File.Exists(LoginScript))
+                return await LoginViaScriptAsync();
+
+            if (Chromium.Status == PlaywrightStatus.disabled)
+                return (false, $"Chromium disabled và không thấy script login ({LoginScript})");
+
+            return await LoginViaPlaywrightAsync();
+        }
+        finally
+        {
+            loginLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Chạy script login headful (Chrome + Xvnc) rồi đọc lại file cookie.
+    /// Script tự bật Xvnc :1, tự đăng nhập, tự ghi ~/lampac-run/xnhau.cookie.
+    /// </summary>
+    async Task<(bool ok, string msg)> LoginViaScriptAsync()
+    {
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "bash",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false
+            };
+            psi.ArgumentList.Add(LoginScript);
+
+            // App chạy bằng dotnet-host glibc: LD_LIBRARY_PATH/LD_PRELOAD của cha làm
+            // bash Termux không link được (libdl.so) ⇒ phải xoá, trả PATH về Termux.
+            string prefix = System.Environment.GetEnvironmentVariable("PREFIX")
+                ?? "/data/data/com.termux/files/usr";
+            psi.Environment.Remove("LD_LIBRARY_PATH");
+            psi.Environment.Remove("LD_PRELOAD");
+            psi.Environment["PREFIX"] = prefix;
+            psi.Environment["PATH"] = $"{prefix}/bin:/system/bin:/system/xbin";
+
+            // truyền qua env, không qua argv (tránh lộ mật khẩu trong `ps`)
+            psi.Environment["XNHAU_USER"] = init.login ?? "";
+            psi.Environment["XNHAU_PASS"] = init.passwd ?? "";
+            psi.Environment["XNHAU_COOKIE"] = CookieFile;
+
+            using var p = System.Diagnostics.Process.Start(psi);
+            if (p == null)
+                return (false, "không chạy được script login");
+
+            var stdoutTask = p.StandardOutput.ReadToEndAsync();
+            var stderrTask = p.StandardError.ReadToEndAsync();
+
+            using var cts = new System.Threading.CancellationTokenSource(System.TimeSpan.FromMinutes(4));
+            try
+            {
+                await p.WaitForExitAsync(cts.Token);
+            }
+            catch (System.OperationCanceledException)
+            {
+                try { p.Kill(true); } catch { }
+                return (false, "script login quá 4 phút");
+            }
+
+            string stdout = (await stdoutTask).Trim();
+            string stderr = (await stderrTask).Trim();
+            System.Console.WriteLine($"XNhau login script rc={p.ExitCode} out={Trunc(stdout)} err={Trunc(stderr.Replace('\n', ' '))}");
+
+            cookieFileStamp = default;              // buộc đọc lại file
+            string cookie = Cookie;
+
+            bool scriptOk = stdout.Contains("\"ok\":true");
+            if (!scriptOk)
+                return (false, $"script login lỗi (rc={p.ExitCode}): {Trunc(stdout.Length > 0 ? stdout : stderr)}");
+
+            if (string.IsNullOrEmpty(cookie))
+                return (false, "script login không ghi cookie");
+
+            string html = await FetchAsync(init.host + "/");
+            if (html == null || !(html.Contains("data-member=\"2\"") || html.Contains("Đăng xuất")))
+                return (false, "script chạy xong nhưng site báo chưa phải thành viên");
+
+            return (true, "ok (headful script)");
+        }
+        catch (System.Exception ex)
+        {
+            return (false, $"{ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    static string Trunc(string s)
+        => string.IsNullOrEmpty(s) ? "" : (s.Length > 200 ? s[..200] : s);
+
+    /// <summary>
     /// Tự đăng nhập xnhau.pub bằng Chrome thật (Playwright) để lấy PHPSESSID.
     ///
     /// ĐO TRÊN MÁY NÀY (2026-10-28): Cloudflare Turnstile KHÔNG giải được khi
     /// Chrome chạy headless — widget vẽ ra checkbox nhưng không bao giờ trả token
     /// (đã thử click chuột theo toạ độ, Enter/Space, turnstile.execute(), spoof
     /// navigator.webdriver/plugins/languages, WebGL swiftshader → token vẫn rỗng).
-    /// Vì vậy hàm này chỉ thành công khi Chrome chạy HEADFUL (có màn hình/X11)
-    /// hoặc khi site tắt captcha. Nếu fail, module vẫn dùng init.cookie như cũ.
+    /// Headful (Xvnc) + UA thật + --disable-blink-features=AutomationControlled
+    /// thì widget TỰ GIẢI, token ~730 ký tự ⇒ đường chuẩn là LoginViaScriptAsync().
     ///
     /// Chỉ trang detail cần cookie; file mp4 đã có v-acctoken ký sẵn trong URL.
     /// </summary>
-    async Task<(bool ok, string msg)> LoginAsync(bool force)
+    async Task<(bool ok, string msg)> LoginViaPlaywrightAsync()
     {
-        if (!force && !string.IsNullOrEmpty(cookieCache))
-            return (true, "đã có cookie từ phiên login trước");
-
-        if (!CanLogin)
-            return (false, "init.conf thiếu login/passwd cho XNhau");
-
         if (Chromium.Status == PlaywrightStatus.disabled)
             return (false, "Chromium disabled (init.conf: chromium.enable / executablePath)");
-
-        if (!await loginLock.WaitAsync(System.TimeSpan.FromSeconds(90)))
-            return (false, "đang có phiên login khác chạy");
 
         try
         {
@@ -244,17 +394,15 @@ public class XNhauController : BaseSisiController
             if (sess == null)
                 return (false, "không thấy cookie PHPSESSID sau khi đăng nhập");
 
-            cookieCache = $"PHPSESSID={sess.Value}; kt_tcookie=1";
+            // kt_member=1 (HttpOnly) mới là cookie quyết định "thành viên xem được video"
+            var km = cookies.FirstOrDefault(c => c.Name == "kt_member" && !string.IsNullOrWhiteSpace(c.Value));
+            cookieCache = $"PHPSESSID={sess.Value}; kt_member={(km == null ? "1" : km.Value)}; kt_tcookie=1";
             init.cookie = cookieCache;
             return (true, "ok");
         }
         catch (System.Exception ex)
         {
             return (false, $"{ex.GetType().Name}: {ex.Message}");
-        }
-        finally
-        {
-            loginLock.Release();
         }
     }
     #endregion
@@ -271,7 +419,7 @@ public class XNhauController : BaseSisiController
         }, addheaders: HeadersModel.Init(
             ("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"),
             ("Referer", init.host + "/"),
-            ("Cookie", init.cookie)));
+            ("Cookie", Cookie)));
 
         return html;
     }
@@ -323,10 +471,11 @@ public class XNhauController : BaseSisiController
                 }, addheaders: HeadersModel.Init(
                     ("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"),
                     ("Referer", init.host + "/"),
-                    ("Cookie", init.cookie)));
+                    ("Cookie", Cookie)));
 
                 // Video "chỉ thành viên mới xem": cookie chết/hết hạn → tự login lại bằng Chrome rồi thử lại
-                if ((cache.links == null || cache.links.Count == 0) && CanLogin && string.IsNullOrEmpty(cookieCache))
+                if ((cache.links == null || cache.links.Count == 0) && CanLogin
+                    && (System.DateTime.UtcNow - lastLoginAttemptUtc).TotalMinutes > 5)
                 {
                     var (ok, _) = await LoginAsync(force: false);
 
@@ -338,7 +487,7 @@ public class XNhauController : BaseSisiController
                         }, addheaders: HeadersModel.Init(
                             ("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"),
                             ("Referer", init.host + "/"),
-                            ("Cookie", init.cookie)));
+                            ("Cookie", Cookie)));
                     }
                 }
 
@@ -367,16 +516,25 @@ public class XNhauController : BaseSisiController
         string html = await FetchAsync(init.host + "/");
         bool member = html != null && (html.Contains("data-member=\"2\"") || html.Contains("Đăng xuất"));
 
+        System.DateTime cookieFileAt;
+        try { cookieFileAt = System.IO.File.Exists(CookieFile) ? System.IO.File.GetLastWriteTimeUtc(CookieFile) : default; }
+        catch { cookieFileAt = default; }
+
         return Json(new
         {
-            cookie = string.IsNullOrEmpty(init.cookie) ? "missing" : (member ? "alive" : "dead"),
+            cookie = string.IsNullOrEmpty(Cookie) ? "missing" : (member ? "alive" : "dead"),
             member,
             login = CanLogin ? "da-cau-hinh" : "chua-cau-hinh",
+            script = System.IO.File.Exists(LoginScript) ? "co" : "khong",
+            cookieFile = cookieFileAt == default ? null : cookieFileAt.ToString("yyyy-MM-dd HH:mm:ss") + " UTC",
             chromium = Chromium.Status.ToString()
         });
     }
 
-    /// <summary>Đăng nhập lại bằng Chrome, dùng khi cookie hết hạn. Mở /xnhau/login để gọi.</summary>
+    /// <summary>
+    /// Refresh cookie: chạy script headful (Chrome + Xvnc) rồi xác minh với site.
+    /// Mở /xnhau/login để gọi thủ công; module cũng tự gọi khi gặp video members-only.
+    /// </summary>
     [HttpGet, Staticache(manually: true)]
     [Route("xnhau/login")]
     async public Task<ActionResult> Login()
@@ -446,7 +604,7 @@ public class XNhauController : BaseSisiController
             }, addheaders: HeadersModel.Init(
                 ("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"),
                 ("Referer", init.host + "/"),
-                ("Cookie", init.cookie)));
+                ("Cookie", Cookie)));
 
             if (info == null)
                 return OnError("uploader");

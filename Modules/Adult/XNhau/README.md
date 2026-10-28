@@ -79,7 +79,7 @@ Cach do khi nghi doi domain (khong can sua gi): lay HTML that roi chay regex car
 neu regex khop ma module van 0 item thi loi o **fetch/host**, khong phai parser.
 Vi du 2026-10-18: regex khop **40 card** tren HTML `.pub` nhung module 0 item.
 
-## Tự đăng nhập bằng Chrome — ĐO THẬT 2026-10-28 (không khả thi khi headless)
+## Tự đăng nhập — CHẠY ĐƯỢC (đo thật 2026-10-28): Chrome HEADFUL trên X server ảo
 
 Thiết bị **có** Chrome thật: `~/lampac-native/chrome/chrome-run.sh` (Google Chrome 155),
 Lampac bật qua `init.conf` → `chromium.executablePath`. Kiểm tra sống/chết:
@@ -103,47 +103,82 @@ Fix nằm trong `termux-native/chrome-run.sh`: tự sinh `~/lampac-native/fonts.
 và `export FONTCONFIG_FILE`. Deploy:
 `cp termux-native/chrome-run.sh ~/lampac-native/chrome/chrome-run.sh && chmod +x …`
 
-### Vì sao KHÔNG tự đăng nhập được
+### Turnstile: bảng đo (3 biến, chỉ 1 tổ hợp qua)
 
-Luồng login đã chạy tới đúng chỗ: mở popup → điền `saunhung`/mk → **POST `/login/` thật sự
-được gửi**. Site trả:
+Login cần token Cloudflare Turnstile (`div[data-recaptcha-key=0x4AAAAAADyqkzaFHEUCkKsz]`,
+render trong shadow DOM, đổ vào `input[name=cf-turnstile-response]`). Thiếu token → site trả
+`{"status":"failure","errors":[{"code":"required","field":"code","block":"logon"…}]}`.
 
-```json
-{"status":"failure","errors":[{"code":"required","field":"code","block":"logon",
- "message":"Ô này là bắt buộc"}]}
+| Tổ hợp | token |
+|---|---|
+| headless + spoof `navigator.webdriver=false` + UA Windows + plugins/WebGL spoof | 0 |
+| headless + CDP thuần (`--remote-debugging-port`, `Input.dispatchMouseEvent`) | 0 |
+| headful + Playwright mặc định (`navigator.webdriver=true`) | 0 |
+| **headful + `--disable-blink-features=AutomationControlled` + UA THẬT (không override)** | **730 ký tự ✅** |
+
+⇒ **Cả hai điều kiện đều bắt buộc**: có display thật (headful) **và** `webdriver=false`.
+Spoof UA Windows/Linux-đè lên platform thật còn làm CF nghi hơn — đừng đổi UA.
+
+### Hạ tầng X: Xvnc :1 + X11 qua TCP
+
+`termux-x11` cần app Android để hiện hình; không cần — dùng **tigervnc** (`pkg install tigervnc`):
+
+```
+Xvnc :1 -geometry 1280x900 -depth 24 -rfbport 5901 -SecurityTypes None -ac -AlwaysShared -listen tcp
 ```
 
-`code` = token **Cloudflare Turnstile** (widget `data-recaptcha-key=0x4AAAAAADyqkzaFHEUCkKsz`,
-render trong shadow DOM, `input[name=cf-turnstile-response]`). Token **luôn rỗng** vì headless
-bị chặn. Đã thử, tất cả đều thất bại:
+- Chrome là binary glibc của rootfs ⇒ libX11 tìm socket ở `/tmp/.X11-unix` (Android không có)
+  → phải đi **TCP**: `DISPLAY=127.0.0.1:1` (X11 cổng 6001).
+- Không cần VNC viewer: ai muốn nhìn thì mở VNC `127.0.0.1:5901`, còn script chạy không cần màn hình thật.
 
-| Thử | Kết quả |
+### Script auto-login (nguồn: `termux-native/`)
+
+| File | Việc |
 |---|---|
-| `turnstile.render()` thủ công vào div có sẵn / div mới | `already rendered`, vẫn 0 iframe, 0 token |
-| click chuột theo toạ độ checkbox (Playwright `mouse.click`) | checkbox không tick |
-| Enter/Space sau khi focus widget | không tick |
-| spoof `navigator.webdriver=false`, plugins=5, languages, hardwareConcurrency, `window.chrome` | token vẫn 0 |
-| WebGL swiftshader (`--enable-unsafe-swiftshader --use-angle=swiftshader`) | token vẫn 0 |
-| **Chrome thường + CDP thuần** (không Playwright, `--remote-debugging-port`, click bằng `Input.dispatchMouseEvent`) | token vẫn 0 |
+| `termux-native/xnhau-login.sh` | bật Xvnc nếu chưa có, set env (LD_LIBRARY_PATH glibc, FONTCONFIG_FILE, DISPLAY), chạy node |
+| `termux-native/xnhau-login.js` | Playwright persistent profile `~/lampac-native/xnhau-profile`; **fast path**: profile còn phiên → xuất cookie ngay; hết phiên → mở popup, điền user/pass, bấm widget (4 lần, cách 8 s), chờ token, submit, chờ "Đăng xuất" |
 
-⇒ Site chỉ cho login khi captcha được giải bởi trình duyệt **headful** (có màn hình, người thật
-tick). Không có root, không đọc được cookie Firefox của máy (`/data/data/org.mozilla.firefox`
-không truy cập được).
+Deploy + dùng:
+
+```bash
+cp termux-native/xnhau-login.sh termux-native/xnhau-login.js ~/lampac-native/
+chmod +x ~/lampac-native/xnhau-login.sh
+~/lampac-native/xnhau-login.sh saunhung 'matkhau'     # in JSON, ghi ~/lampac-run/xnhau.cookie
+```
+
+Đo được: **fast path 4 s** (profile còn phiên), **cold path ~90 s** (profile trắng → giải
+Turnstile → login). Exit code: 0 ok, 2 thiếu user/pass, 3 Turnstile không token, 4 sai mật khẩu.
+
+### Cookie: cần `PHPSESSID` **và** `kt_member`
+
+`kt_member=1` (HttpOnly, `Max-Age=86400`) mới là cookie quyết định quyền xem video members-only.
+Chỉ gửi `PHPSESSID` → trang video trả `.no-player` "Chỉ có thành viên mới có thể xem" dù
+`data-member="2"`. Cookie chuẩn: `PHPSESSID=…; kt_member=1; kt_tcookie=1`.
+
+### Module đọc cookie thế nào
+
+- Ưu tiên `~/lampac-run/xnhau.cookie` (script ghi) → `cookieCache` → `init.conf` `XNhau.cookie`.
+- File đọc lại **khi mtime đổi** ⇒ refresh cookie **không cần restart app**.
+- `/xnhau/login` → chạy `~/lampac-native/xnhau-login.sh` (Process.Start, user/pass truyền qua
+  env, không qua argv), xác minh lại bằng trang chủ rồi trả `ok`.
+  *Lưu ý*: app chạy bằng dotnet-host glibc nên process con phải **xoá `LD_LIBRARY_PATH`/`LD_PRELOAD`
+  và trả `PATH` về Termux**, nếu không `bash` báo `cannot find "libdl.so"`.
+- Video members-only mà `links` rỗng → tự gọi login (throttle **1 lần/5 phút**) rồi fetch lại.
 
 ### Endpoint tiện dụng
 
 | URL | Việc |
 |---|---|
-| `/xnhau/check` | `{"cookie":"alive|dead|missing", "member":true, "chromium":"headless"}` |
-| `/xnhau/login` | thử tự login bằng Chrome; fail → trả message rõ ràng (Turnstile chặn headless) |
+| `/xnhau/check` | `{"cookie":"alive|dead|missing","member":true,"login":"da-cau-hinh","script":"co","cookieFile":"… UTC","chromium":"headless"}` |
+| `/xnhau/login` | chạy script headful → `{"ok":true,"msg":"ok (headful script)"}` hoặc message lỗi cụ thể |
 
-### Cách làm mới cookie (khi `/xnhau/check` = `dead`)
+### Fallback thủ công (khi script/Chrome hỏng)
 
-1. Firefox (điện thoại) → `xnhau.pub` → **đăng nhập, tick "Ghi nhớ đăng nhập"** (session sống lâu hơn).
-2. DevTools/extension Cookie-Editor → copy `PHPSESSID` (HttpOnly, bookmarklet không đọc được).
-3. Dán vào `~/lampac-run/init.conf` → `"XNhau".cookie` → khởi động lại app.
-4. Kiểm tra: `curl -s http://127.0.0.1:9118/xnhau/check` → `"cookie":"alive"`.
+1. Firefox (điện thoại) → `xnhau.pub` → đăng nhập, tick "Ghi nhớ đăng nhập".
+2. DevTools/Cookie-Editor → copy `PHPSESSID` (HttpOnly, bookmarklet không đọc được).
+3. Dán `PHPSESSID=…; kt_member=1; kt_tcookie=1` vào `~/lampac-run/xnhau.cookie`.
+4. `curl -s http://127.0.0.1:9118/xnhau/check` → `"cookie":"alive"`.
 
-`PHPSESSID` là session cookie: chết khi logout, xoá cookie, hoặc server dọn session
-(không dùng vài giờ → 1 ngày). Mỗi request tới site server set lại `kt_member=1; Max-Age=86400`
-nên **dùng app đều đặn thì session được gia hạn**; bỏ lâu là mất.
+`PHPSESSID` là session cookie: chết khi logout, xoá cookie, hoặc server dọn session. Mỗi request
+tới site server set lại `kt_member=1; Max-Age=86400` nên **dùng app đều đặn thì session tự gia hạn**;
+chết thì script login lại (cold path ~90 s, lần đầu sau đó nhanh vì profile nhớ phiên).
