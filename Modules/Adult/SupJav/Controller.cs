@@ -240,18 +240,83 @@ public class SupJavController : BaseSisiController
         return SupJavTo.Menu(hostLocal, null, null, null);
     }
 
+    /// <summary>
+    /// Cầu dao khi Cloudflare bật challenge ("Just a moment"). Cào dồn dập làm CF
+    /// càng siết (2026-10-28: bật challenge cho TOÀN site, cả jina/Chrome cũng dính).
+    /// Gặp challenge → nghỉ 20 phút, mọi request SupJav trả lỗi ngay, không retry.
+    /// </summary>
+    static DateTime cfBlockedUntil = DateTime.MinValue;
+
+    static bool CfCooling => DateTime.UtcNow < cfBlockedUntil;
+
+    /// RaceGetAsync thấy trang challenge → bật cờ cho GetPageAsync
+    static bool cfSeen;
+
     async Task<string> GetPageAsync(string url)
     {
+        if (CfCooling)
+            return null;
+
+        var hdr = HeadersModel.Init(
+            ("User-Agent", SupJavTo.ChromeUA),
+            ("Referer", SupJavTo.SiteHost + "/"),
+            ("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"));
+
+        // 1) Probe 1 request: CF challenge trả 403/503 + "Just a moment" ⇒ nghỉ luôn.
+        //    Đừng để RaceGetAsync xoay 30s rồi mới bỏ — càng gọi càng nuôi block.
+        try
+        {
+            var probe = await Http.BaseGet(url, timeoutSeconds: 15, headers: hdr,
+                statusCodeOK: false, proxy: proxy, httpversion: init.httpversion);
+
+            int code = (int)(probe.response?.StatusCode ?? 0);
+            string body = probe.content ?? "";
+
+            if (body.Contains("Just a moment") || code == 403 || code == 503)
+            {
+                cfBlockedUntil = DateTime.UtcNow.AddMinutes(20);
+                Console.WriteLine($"SupJav: Cloudflare chan (HTTP {code}) → nghi 20 phut");
+                return null;
+            }
+
+            if (code == 200 && body.Length >= 5000)
+                return body;
+        }
+        catch { }
+
+        // 2) Chưa rõ (200 nhưng thiếu nội dung) → thử race như cũ
+        bool challenge = false;
         var deadline = DateTime.UtcNow.AddSeconds(30);
         while (DateTime.UtcNow < deadline)
         {
             double left = (deadline - DateTime.UtcNow).TotalSeconds;
             if (left < 2) break;
             string page = await RaceGetAsync(url, (int)Math.Ceiling(Math.Min(6, left)));
-            if (!string.IsNullOrEmpty(page) && page.Length >= 5000 && !page.Contains("Just a moment"))
-                return page;
+            if (!string.IsNullOrEmpty(page) && page.Length >= 5000)
+            {
+                if (!page.Contains("Just a moment"))
+                    return page;
+
+                challenge = true;
+                break;
+            }
+
+            if (cfSeen)
+            {
+                cfSeen = false;
+                challenge = true;
+                break;
+            }
+
             await Task.Delay(1500);
         }
+
+        if (challenge)
+        {
+            cfBlockedUntil = DateTime.UtcNow.AddMinutes(20);
+            Console.WriteLine($"SupJav: Cloudflare challenge → nghi 20 phut");
+        }
+
         return null;
     }
 
@@ -284,7 +349,14 @@ public class SupJavController : BaseSisiController
             await Task.Delay(300);
         }
         if (!string.IsNullOrEmpty(a) && !a.Contains("Just a moment")) return a;
-        return !string.IsNullOrEmpty(b) && !b.Contains("Just a moment") ? b : null;
+        if (!string.IsNullOrEmpty(b) && !b.Contains("Just a moment")) return b;
+
+        // Có nội dung nhưng là trang challenge ⇒ báo cho GetPageAsync nghỉ
+        if ((!string.IsNullOrEmpty(a) && a.Contains("Just a moment")) ||
+            (!string.IsNullOrEmpty(b) && b.Contains("Just a moment")))
+            cfSeen = true;
+
+        return null;
     }
 
     // ========== PLAYER DA SERVER: LAZY-RESOLVE (chuan 2026-10-07) ==========
