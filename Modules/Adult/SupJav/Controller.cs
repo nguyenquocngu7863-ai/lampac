@@ -7,6 +7,7 @@ using Shared.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Web;
@@ -551,14 +552,11 @@ public class SupJavController : BaseSisiController
                     ("referer", referer)));
                 return Redirect(HostStreamProxy(voe, h2));
             }
-            // LUC: redirect thang, khong HEAD-verify — nginx lulu chan HEAD
-            // tu server (403) nhung GET qua proxy thi chay (JavGuru LU cung
-            // host nay khong verify HEAD ma GET playlist truc tiep).
+            // LUC (LuluStream): CDN tnmr.org tra 403 cho /proxy cua Lampac va cho
+            // curl_cffi, nhung 200 voi stack Http cua module ⇒ KHONG redirect ra CDN,
+            // ma relay HLS ngay trong module (client chi thay 127.0.0.1).
             if (label.IndexOf("LUC", StringComparison.OrdinalIgnoreCase) >= 0)
-            {
-                var lucHeaders = httpHeaders(SupJavTo.HostOf(link), HeadersModel.Init(("user-agent", SupJavTo.ChromeUA)));
-                return Redirect(HostStreamProxy(link, lucHeaders));
-            }
+                return Redirect(RelayLink(link, referer, playlist: true));
             if (await VerifyLinkAsync(link, referer))
             {
                 var direct = httpHeaders(init, HeadersModel.Init(("referer", referer)));
@@ -567,6 +565,163 @@ public class SupJavController : BaseSisiController
         }
         return OnError("stream_links", refresh_proxy: true);
     }
+
+    #region LUC relay (HLS) — client khong cham CDN
+
+    // Vi sao can: master *.tnmr.org (LuluStream) tra 200 cho stack Http cua module
+    // nhung 403 cho /proxy cua Lampac va cho curl_cffi (do 2026-10-22). Token
+    // KHONG phai one-time ⇒ khac biet nam o fingerprint cua stack gui request.
+    // Giai phap: module tu fetch playlist/segment bang stack dang 200 roi tra lai
+    // client, rewrite moi URI ve chinh module ⇒ CDN khong bao gio thay client.
+
+    const char RelSep = '\u0001';
+
+    static string RelayPayload(string url, string referer) => url + RelSep + (referer ?? "");
+
+    string RelayLink(string url, string referer, bool playlist)
+    {
+        string enc = HttpUtility.UrlEncode(EncryptQuery(RelayPayload(url, referer)));
+        return accsArgs($"{host}/supjav/relay{(playlist ? ".m3u8" : ".seg")}?uri={enc}");
+    }
+
+    [HttpGet]
+    [Route("supjav/relay")]
+    [Route("supjav/relay.m3u8")]
+    [Route("supjav/relay.seg")]
+    async public Task<ActionResult> Relay(string uri)
+    {
+        if (await IsRequestBlocked(rch: true))
+            return badInitMsg;
+
+        string payload = null;
+        try { payload = DecryptQuery(uri); } catch { }
+        int nl = payload == null ? -1 : payload.IndexOf(RelSep);
+        if (nl < 0)
+        {
+            Console.WriteLine($"SupJav: relay token fail uriLen={uri?.Length} payloadLen={payload?.Length}");
+            return OnError("relay", refresh_proxy: false);
+        }
+
+        string url = payload.Substring(0, nl);
+        string referer = payload.Substring(nl + 1);
+        if (!url.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            return OnError("relay", refresh_proxy: false);
+
+        string refHdr = string.IsNullOrWhiteSpace(referer) ? url : referer;
+        var headers = HeadersModel.Init(
+            ("User-Agent", SupJavTo.ChromeUA),
+            ("Referer", refHdr),
+            ("Accept", "*/*"));
+
+        string range = null;
+        if (Request.Headers.TryGetValue("Range", out var rv) && rv.Count > 0)
+        {
+            range = rv.ToString();
+            headers.Add(new HeadersModel("Range", range));
+        }
+
+        // Playlist: dùng đúng stack Http.Get (đường đã đo là 200 với tnmr.org),
+        // KHÔNG dùng BaseDownload để giữ nguyên header mặc định như lúc đo.
+        if (url.Contains(".m3u8", StringComparison.OrdinalIgnoreCase))
+        {
+            string pl = null;
+            try
+            {
+                pl = await Http.Get(url, timeoutSeconds: 25, headers: headers,
+                    proxy: proxy, httpversion: init.httpversion);
+            }
+            catch { }
+
+            if (!string.IsNullOrEmpty(pl) && pl.TrimStart().StartsWith("#EXTM3U", StringComparison.Ordinal))
+                return Content(RewritePlaylist(pl, url, referer), "application/vnd.apple.mpegurl");
+        }
+
+        byte[] bytes = null;
+        HttpResponseMessage resp = null;
+        try
+        {
+            (bytes, resp) = await Http.BaseDownload(url, referer: refHdr, timeoutSeconds: 25,
+                headers: headers, proxy: proxy, statusCodeOK: false);
+        }
+        catch { }
+
+        if (bytes == null || bytes.Length == 0)
+        {
+            Console.WriteLine($"SupJav: relay fail {SupJavTo.HostOf(url)}");
+            return OnError("relay", refresh_proxy: false);
+        }
+
+        string ct = resp?.Content?.Headers?.ContentType?.MediaType ?? "";
+        if (url.Contains(".m3u8", StringComparison.OrdinalIgnoreCase) || ct.Contains("mpegurl", StringComparison.OrdinalIgnoreCase))
+        {
+            string text = System.Text.Encoding.UTF8.GetString(bytes);
+            if (text.TrimStart().StartsWith("#EXTM3U", StringComparison.Ordinal))
+                return Content(RewritePlaylist(text, url, referer), "application/vnd.apple.mpegurl");
+        }
+
+        return File(bytes, string.IsNullOrEmpty(ct) ? "application/octet-stream" : ct);
+    }
+
+    string RewritePlaylist(string playlist, string sourceUrl, string referer)
+    {
+        var sb = new System.Text.StringBuilder(playlist.Length * 2);
+        var baseUri = new Uri(sourceUrl);
+        bool nextIsPlaylist = false;
+
+        foreach (string rawLine in playlist.Replace("\r", "").Split('\n'))
+        {
+            string line = rawLine.Trim();
+            if (line.Length == 0)
+            {
+                sb.Append('\n');
+                continue;
+            }
+
+            if (line[0] == '#')
+            {
+                if (line.StartsWith("#EXT-X-STREAM-INF", StringComparison.OrdinalIgnoreCase))
+                    nextIsPlaylist = true;
+
+                sb.Append(RewriteTagUris(line, baseUri, referer)).Append('\n');
+                continue;
+            }
+
+            bool nested = nextIsPlaylist || line.Contains(".m3u8", StringComparison.OrdinalIgnoreCase);
+            nextIsPlaylist = false;
+            sb.Append(MapUri(baseUri, line, referer, nested)).Append('\n');
+        }
+
+        return sb.ToString();
+    }
+
+    string RewriteTagUris(string line, Uri baseUri, string referer)
+    {
+        if (!line.Contains("URI=", StringComparison.OrdinalIgnoreCase))
+            return line;
+
+        bool isKey = line.StartsWith("#EXT-X-KEY", StringComparison.OrdinalIgnoreCase)
+                  || line.StartsWith("#EXT-X-SESSION-KEY", StringComparison.OrdinalIgnoreCase)
+                  || line.StartsWith("#EXT-X-MAP", StringComparison.OrdinalIgnoreCase);
+
+        return System.Text.RegularExpressions.Regex.Replace(line, "URI=\"([^\"]+)\"", m =>
+        {
+            string value = m.Groups[1].Value;
+            bool playlist = !isKey && (value.Contains(".m3u8", StringComparison.OrdinalIgnoreCase)
+                || line.StartsWith("#EXT-X-MEDIA", StringComparison.OrdinalIgnoreCase)
+                || line.StartsWith("#EXT-X-I-FRAME", StringComparison.OrdinalIgnoreCase)
+                || line.StartsWith("#EXT-X-STREAM-INF", StringComparison.OrdinalIgnoreCase));
+            return $"URI=\"{MapUri(baseUri, value, referer, playlist)}\"";
+        }, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+    }
+
+    string MapUri(Uri baseUri, string value, string referer, bool playlist)
+    {
+        if (!Uri.TryCreate(baseUri, value, out Uri uri) || (uri.Scheme != "http" && uri.Scheme != "https"))
+            return value;
+
+        return RelayLink(uri.AbsoluteUri, referer, playlist);
+    }
+    #endregion
 
     // HEAD kiem tra link song truoc khi redirect (6s, khong tai body).
     // Yeu cau content-type media (video/*, mpegurl, octet-stream): ST tra
