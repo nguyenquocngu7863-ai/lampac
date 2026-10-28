@@ -659,6 +659,14 @@ public class SupJavController : BaseSisiController
                 return Content(RewritePlaylist(text, url, referer), "application/vnd.apple.mpegurl");
         }
 
+        // Client xin Range (mp4 progressive) → giữ đúng 206 + Content-Range
+        if (resp != null && (int)resp.StatusCode == 206 && resp.Content?.Headers?.ContentRange != null)
+        {
+            Response.StatusCode = 206;
+            Response.Headers["Content-Range"] = resp.Content.Headers.ContentRange.ToString();
+            Response.Headers["Accept-Ranges"] = "bytes";
+        }
+
         return File(bytes, string.IsNullOrEmpty(ct) ? "application/octet-stream" : ct);
     }
 
