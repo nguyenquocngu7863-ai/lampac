@@ -16,7 +16,7 @@ public static class XNhauTo
     // host hien tai (ModInit.updateConf gan = conf.host moi lan reload)
     // Domain doi lien tuc: .cab -> .limo -> .free (301 Moved) -> .pub (2026-10-18).
     // Site doi tiep thi sua o day + ModInit (host/referer).
-    public static string SiteHost = "https://xnhau.pub";
+    public static string SiteHost = "https://xnhau.band";
 
     #region Uri
     public static string Uri(string host, string search, string sort, string c, string t, int pg)

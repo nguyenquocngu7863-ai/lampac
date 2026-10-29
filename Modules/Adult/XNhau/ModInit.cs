@@ -37,7 +37,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
 
     void updateConf()
     {
-        conf = ModuleInvoke.Init("XNhau", new SisiSettings("XNhau", "https://xnhau.pub")
+        conf = ModuleInvoke.Init("XNhau", new SisiSettings("XNhau", "https://xnhau.band")
         {
             displayindex = 10,
             streamproxy = true,
@@ -52,6 +52,6 @@ public class ModInit : IModuleLoaded, IModuleSisi
             ).ToDictionary()
         });
 
-        XNhauTo.SiteHost = conf.host?.TrimEnd('/') ?? "https://xnhau.pub";
+        XNhauTo.SiteHost = conf.host?.TrimEnd('/') ?? "https://xnhau.band";
     }
 }

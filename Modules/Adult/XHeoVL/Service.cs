@@ -221,20 +221,23 @@ public static class XHeoVLTo
 
     static string HlsUrlFromEmbed(string embedHtml)
     {
+        if (string.IsNullOrEmpty(embedHtml)) return null;
+        // URL trong trang JWPlayer co the bi escape slash (`https:\/\/`) -> unescape truoc khi regex.
+        string src = embedHtml.Replace("\\/", "/");
         // 1) vstream: <link rel="preload" as="fetch" href=".../hls/...">
-        var m = Regex.Match(embedHtml, @"<link[^>]*rel=""preload""[^>]*href=""(https?://[^""]+/hls/[^""]+)""");
+        var m = Regex.Match(src, @"<link[^>]*rel=""preload""[^>]*href=""(https?://[^""]+/hls/[^""]+)""");
         if (m.Success) return m.Groups[1].Value;
-        // 2) const url = "..." (vstream HLS hoặc avcl MP4) — đúng biến mà artconfig.js/player dùng
-        m = Regex.Match(embedHtml, @"const\s+url\s*=\s*""([^""]+)""");
+        // 2) const url = "..." (vstream HLS hoac avcl MP4) — dung bien ma artconfig.js/player dung
+        m = Regex.Match(src, @"const\s+url\s*=\s*""([^""]+)""");
         if (m.Success)
         {
             string u = JsonUnescape(m.Groups[1].Value);
             if (u.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return u;
         }
-        // 3) fallback cuối: link m3u8/mp4 trực tiếp (loại URL quảng cáo tvc trên chính site)
-        m = Regex.Match(embedHtml, @"(https?://[^""'\s]+\.m3u8)");
+        // 3) fallback cuoi: link m3u8/mp4 truc tiep (loai URL quang cao tvc tren chinh site)
+        m = Regex.Match(src, @"(https?://[^""'\s]+\.m3u8)");
         if (m.Success) return m.Groups[1].Value;
-        m = Regex.Match(embedHtml, @"(https?://(?!xheovl\.site)[^""'\s]+\.mp4)");
+        m = Regex.Match(src, @"(https?://(?!xheovl\.site)[^""'\s]+\.mp4)");
         if (m.Success) return m.Groups[1].Value;
         return null;
     }
