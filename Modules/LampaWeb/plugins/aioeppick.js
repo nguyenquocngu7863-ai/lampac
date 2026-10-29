@@ -1,16 +1,18 @@
-/* AIOEpPick — popup chọn nguồn cho tập phim AIOStreams.
+/* AIOEpPick — popup chọn nguồn (file) cho tập phim AIOStreams.
  *
- * MÓC Ở `$.ajax` (không phải Lampa.Request):
- *   Lampa.Request gán method lên TỪNG instance (`this.get = function…`, `this["native"] = …`)
- *   — không có method nào trên prototype. Component "Trực tuyến" lại tạo `new Request()`
- *   bằng biến module-scoped, nên thay `Lampa.Request` bằng Proxy KHÔNG bắt được request
- *   của Lampa (popup im lặng biến mất).
- *   Mọi request của Lampa đều đi qua jQuery: `Request.quiet/silent/get/native` → `go()` →
- *   `request()` → `$.ajax(data)` (app.min.js ~33500). Hook `$.ajax` là điểm duy nhất phủ hết.
+ * MÓC Ở `Lampa.Player.play` (KHÔNG phải $.ajax, KHÔNG phải Lampa.Request):
+ *   - Online plugin (module/Online/plugin.js → /online.js) lấy JSON tập phim bằng
+ *     network['native'](...). Trên APK Android, Request.native rơi vào
+ *     Android.httpReq (bridge native) → KHÔNG đi qua jQuery → hook $.ajax chết,
+ *     popup không hiện. Hook Lampa.Request cũng không bắt được vì Request gán
+ *     method lên TỪNG instance (this.get = …, this["native"] = …).
+ *   - Mọi đường phát (web lẫn APK) đều kết thúc ở Lampa.Player.play(element) với
+ *     element.quality = { "<nhãn file>": "<endpoint>" } do server dựng từ
+ *     json.quality. Hook ở đây phủ cả hai nền tảng, không phụ thuộc request.
  *
- * Luồng: bấm tập → Lampa gọi `/lite/aiostreams/episode?...&s=&e=` → JSON có `quality`
- * (mỗi FILE một dòng) → hiện Lampa.Select. Bấm dòng nào thì phát link dòng đó
- * (đặt `json.url` + `json.quality`), Back thì chọn mặc định. URL khác cho qua.
+ * Luồng: bấm tập → server trả JSON quality (mỗi FILE một dòng) → popup
+ * Lampa.Select liệt kê từng file → chọn dòng nào phát link dòng đó; Back phát
+ * link đầu tiên. Chỉ đụng tới URL có /lite/aiostreams/ nên module khác không bị ảnh hưởng.
  */
 (function() {
   'use strict';
@@ -18,114 +20,188 @@
   if (window.__aioEpPickLoaded) return;
   window.__aioEpPickLoaded = true;
 
+  var AIO_PATH = '/lite/aiostreams/';
+
   function log() {
     var args = ['[AIOEpPick]'].concat(Array.prototype.slice.call(arguments));
     try { console.log.apply(console, args); } catch (e) {}
   }
 
-  function isEpisodeUrl(url) {
-    return typeof url === 'string'
-      && url.indexOf('lite/aiostreams') >= 0
-      && /[?&]s=\d+/.test(url)
-      && /[?&]e=\d+/.test(url);
+  function isAioUrl(url) {
+    return typeof url === 'string' && url.indexOf(AIO_PATH) !== -1;
   }
 
-  function mapOf(json) {
-    if (!json || typeof json !== 'object') return null;
+  // Trả về [{title, url}] khi data.quality là dict >= 2 file AIOStreams, ngược lại null.
+  function qualityItems(data) {
+    if (!data || typeof data !== 'object') return null;
 
-    // AIOStreams: link nằm trong json.quality
-    if (json.quality && typeof json.quality === 'object') {
-      var qk = Object.keys(json.quality);
-      if (qk.length) {
-        return qk.map(function (k) {
-          return { title: k, url: json.quality[k] };
-        });
-      }
+    var quality = data.quality;
+    if (!quality || typeof quality !== 'object') return null;
+
+    var keys = Object.keys(quality);
+    if (keys.length < 2) return null;
+
+    var items = [];
+
+    for (var i = 0; i < keys.length; i++) {
+      var title = keys[i];
+      var value = quality[title];
+      var url = typeof value === 'string'
+        ? value
+        : (value && typeof value === 'object' ? value.url : '');
+
+      if (!isAioUrl(url)) return null;
+      items.push({ title: title, url: url });
     }
 
-    return null;
+    return items.length >= 2 ? items : null;
   }
 
-  function pickAndGo(json, success) {
+  // Hiện popup. callbacks: { select(item), back() }
+  function showPick(items, callbacks) {
+    if (typeof Lampa === 'undefined' || !Lampa.Select || typeof Lampa.Select.show !== 'function')
+      return false;
+
     try {
-      if (!json || typeof json !== 'object') { success(json); return; }
+      if (Lampa.Loading && typeof Lampa.Loading.stop === 'function')
+        Lampa.Loading.stop();
+    } catch (e) {}
 
-      // Một response chỉ hỏi một lần (tránh 2 popup nếu nhiều hook cùng thấy).
-      if (json.__aioPicked) { success(json); return; }
-
-      var items = mapOf(json);
-      if (!items || items.length < 2) { success(json); return; }
-      if (typeof Lampa === 'undefined' || !Lampa.Select || !Lampa.Select.show) {
-        success(json);
-        return;
-      }
-      try {
-        if (Lampa.Loading && typeof Lampa.Loading.stop === 'function') Lampa.Loading.stop();
-      } catch (e) {}
+    try {
       Lampa.Select.show({
         title: 'Chọn nguồn',
         items: items,
-        onSelect: function(it) {
-          try {
-            // giữ nguyên hình dạng Lampa đọc: đặt url và quality khoá lại
-            json.url = it.url;
-            json.quality = {};
-            json.quality[it.title] = it.url;
-          } catch (e) {}
-          json.__aioPicked = true;
-          success(json);
+        onSelect: function(item) {
+          try { callbacks.select(item); } catch (e) { log('select error', e && e.message); }
         },
         onBack: function() {
-          json.__aioPicked = true;
-          success(json);
+          try { callbacks.back(); } catch (e) { log('back error', e && e.message); }
         }
       });
+      return true;
     } catch (e) {
-      success(json);
+      log('Select.show error', e && e.message);
+      return false;
     }
   }
 
-  // Hook jQuery: mọi request của Lampa đi qua đây.
-  function hookAjax() {
-    var $ = window.jQuery || window.$;
-    if (!$ || typeof $.ajax !== 'function') return false;
-    if ($.ajax.__aioWrapped) return true;
+  // Phát với nguồn đã chọn: bỏ quality để Lampa không tự đổi link theo
+  // video_quality_default (getUrlQuality sẽ ghi đè lựa chọn của người dùng).
+  function applyChoice(data, url) {
+    try {
+      data.url = url;
+      delete data.quality;
+    } catch (e) {}
+  }
 
-    var orig = $.ajax;
+  function hookPlayer() {
+    if (typeof Lampa === 'undefined' || !Lampa.Player || typeof Lampa.Player.play !== 'function')
+      return false;
+    if (Lampa.Player.play.__aioWrapped) return true;
 
-    function wrap(opts) {
-      var ok = opts.success;
-      opts.success = function(json) {
-        try {
-          pickAndGo(json, function(final) {
-            if (typeof ok === 'function') ok(final);
-          });
-        } catch (e) {
-          if (typeof ok === 'function') ok(json);
-        }
-      };
-      return orig.call($, opts);
-    }
+    var orig = Lampa.Player.play;
 
-    $.ajax = function(first, second) {
+    Lampa.Player.play = function(data) {
       try {
-        var opts = (typeof first === 'string')
-          ? $.extend({ url: first }, second || {})
-          : first;
-
-        if (opts && isEpisodeUrl(opts.url) && typeof opts.success === 'function')
-          return wrap(opts);
-      } catch (e) {}
-      return orig.apply($, arguments);
+        if (data && !data.__aioPicked) {
+          var items = qualityItems(data);
+          if (items) {
+            var self = this;
+            var args = arguments;
+            var playDefault = function() {
+              data.__aioPicked = true;
+              applyChoice(data, items[0].url);
+              orig.apply(self, args);
+            };
+            var shown = showPick(items, {
+              select: function(item) {
+                data.__aioPicked = true;
+                applyChoice(data, item.url);
+                orig.apply(self, args);
+              },
+              back: playDefault
+            });
+            if (shown) {
+              log('popup', items.length, 'nguồn:', data.title || data.url);
+              return;
+            }
+          }
+        }
+      } catch (e) {
+        log('play hook error', e && e.message);
+      }
+      return orig.apply(this, arguments);
     };
 
-    $.ajax.__aioWrapped = true;
-    log('plugin ready ($.ajax hooked)');
+    Lampa.Player.play.__aioWrapped = true;
+    log('plugin ready (Player.play hooked)');
+    return true;
+  }
+
+  // Tập kế tiếp trong player: playlist item có url là hàm (Online plugin gọi
+  // getFileUrl bên trong). Bọc lại để chọn nguồn rồi mới trả url cho player.
+  function hookPlaylist() {
+    if (typeof Lampa === 'undefined' || !Lampa.Player || typeof Lampa.Player.playlist !== 'function')
+      return false;
+    if (Lampa.Player.playlist.__aioWrapped) return true;
+
+    var orig = Lampa.Player.playlist;
+
+    Lampa.Player.playlist = function(list) {
+      try {
+        if (list && typeof list.length === 'number') {
+          for (var i = 0; i < list.length; i++) {
+            var item = list[i];
+            if (!item || typeof item.url !== 'function' || item.url.__aioWrapped) continue;
+
+            (function(entry) {
+              var resolve = entry.url;
+              entry.url = function(done) {
+                var self = this;
+                resolve.call(self, function() {
+                  try {
+                    if (!entry.__aioPicked) {
+                      var items = qualityItems(entry);
+                      if (items) {
+                        entry.__aioPicked = true;
+                        var fallback = function() {
+                          applyChoice(entry, items[0].url);
+                          done();
+                        };
+                        var shown = showPick(items, {
+                          select: function(chosen) {
+                            applyChoice(entry, chosen.url);
+                            done();
+                          },
+                          back: fallback
+                        });
+                        if (shown) return;
+                      }
+                    }
+                  } catch (e) {
+                    log('playlist pick error', e && e.message);
+                  }
+                  done();
+                });
+              };
+              entry.url.__aioWrapped = true;
+            })(item);
+          }
+        }
+      } catch (e) {
+        log('playlist hook error', e && e.message);
+      }
+      return orig.apply(this, arguments);
+    };
+
+    Lampa.Player.playlist.__aioWrapped = true;
     return true;
   }
 
   function start() {
-    if (hookAjax()) return;
+    var ok = hookPlayer();
+    if (ok) hookPlaylist();
+    if (ok && hookPlaylist()) return;
     setTimeout(start, 300);
   }
 
