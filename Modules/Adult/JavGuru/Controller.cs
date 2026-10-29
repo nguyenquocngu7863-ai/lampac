@@ -26,10 +26,11 @@ public class JavGuruController : BaseSisiController
     {
         long tr = Ms();
         string html = null;
+        string fetchUrl = JavGuruTo.Relay(url);
 
         try
         {
-            await httpHydra.GetSpan(url, span =>
+            await httpHydra.GetSpan(fetchUrl, span =>
             {
                 html = span.ToString();
             }, addheaders: HeadersModel.Init(
@@ -45,7 +46,7 @@ public class JavGuruController : BaseSisiController
             return html;
 
         tr = Ms();
-        string body = await JavGuruTo.CurlGetRetry(url, "https://jav.guru/", marker, attempts, maxTime, deadline);
+        string body = await JavGuruTo.CurlGetRetry(fetchUrl, "https://jav.guru/", marker, attempts, maxTime, deadline);
         Console.WriteLine($"JavGuru: curl ({Ms() - tr}ms) len={body?.Length ?? 0}");
 
         return body;
@@ -279,7 +280,7 @@ public class JavGuruController : BaseSisiController
         long kindDl = Ms() + 6000;
 
         for (int i = 0; i < total; i++)
-            gateways[i] = JavGuruTo.GatewayUrl(servers[i].PageUrl);
+            gateways[i] = JavGuruTo.Relay(JavGuruTo.GatewayUrl(servers[i].PageUrl));
 
         async Task Probe(int i)
         {
@@ -332,8 +333,8 @@ public class JavGuruController : BaseSisiController
                 string gw = JavGuruTo.GatewayUrl(s.PageUrl);
                 if (string.IsNullOrEmpty(gw))
                     return;
-                var st = await JavGuruTo.Streams(gw, "https://jav.guru/",
-                    Ms() + 25000, JavGuruTo.ServerReferer(s.Label));
+                var st = await JavGuruTo.Streams(JavGuruTo.Relay(JavGuruTo.GatewayUrl(s.PageUrl)),
+                    "https://jav.guru/", Ms() + 25000, JavGuruTo.ServerReferer(s.Label));
                 if (st.Count == 0)
                     return;
                 var b = st.OrderByDescending(x => x.tag.Length).First();
@@ -435,7 +436,7 @@ public class JavGuruController : BaseSisiController
                 ? Ms() + 20000
                 : Math.Min(deadline, Ms() + 12000);
 
-            string gateway = JavGuruTo.GatewayUrl(s.PageUrl);
+            string gateway = JavGuruTo.Relay(JavGuruTo.GatewayUrl(s.PageUrl));
             if (string.IsNullOrEmpty(gateway))
                 continue;
 

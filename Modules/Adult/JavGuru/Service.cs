@@ -22,6 +22,31 @@ public static class JavGuruTo
 
     public static string ChromeUA = "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36";
 
+    // Relay HTML qua Cloudflare Worker (egress CF) — bật bằng env JAVGURU_RELAY
+    // (fallback XNHAU_RELAY nếu chung worker với XNhau). Chỉ wrap host jav.guru
+    // de tránh wrap CDN/turbosplayer/maxstream/lulu/voe/vide0 (Worker tra 403
+    // host not allowed voi host khac). Env chua set -> tra url nguyen (chay curl
+    // nhu cu, khong su dung relay).
+    static readonly string relayBase = System.Environment.GetEnvironmentVariable("JAVGURU_RELAY")?.TrimEnd('/')
+        ?? System.Environment.GetEnvironmentVariable("XNHAU_RELAY")?.TrimEnd('/');
+
+    public static string Relay(string url)
+    {
+        if (string.IsNullOrEmpty(relayBase) || string.IsNullOrEmpty(url)
+            || !url.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            return url;
+        if (url.StartsWith(relayBase, StringComparison.OrdinalIgnoreCase))
+            return url;
+        try
+        {
+            var u = new Uri(url);
+            if (!u.Host.EndsWith("jav.guru", StringComparison.OrdinalIgnoreCase))
+                return url;
+            return $"{relayBase}/{u.Host}{u.PathAndQuery}";
+        }
+        catch { return url; }
+    }
+
     // Segment HLS cua server 1 nam o turbosplayer/turboviplay/lh3.googleusercontent.
     // GUI them Referer hoac Origin cua jav.guru thi CDN doi 429 (chan hotlink) —
     // da do: UA bat ky deu 206, chi can co Referer jav.guru la 429. Stream vi
