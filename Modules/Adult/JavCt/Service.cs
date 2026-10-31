@@ -3,6 +3,8 @@ using Shared.Models.SISI.Base;
 using Shared.Services;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -248,6 +250,13 @@ public static class JavCtTo
             if (string.IsNullOrEmpty(label))
                 label = "S" + (servers.Count + 1);
 
+            // Nut VIP (👑 VI / VIP) chi mo cho tai khoan VIP -> bo khoi danh sach,
+            // bam vao chi ton 1 request roi 503.
+            if (label.IndexOf("128081", StringComparison.OrdinalIgnoreCase) >= 0
+                || label.IndexOf("\uD83D\uDC51", StringComparison.Ordinal) >= 0
+                || label.StartsWith("VIP", StringComparison.OrdinalIgnoreCase))
+                continue;
+
             string key = label;
             int dup = 2;
             while (servers.Exists(s => s.label == key))
@@ -442,6 +451,22 @@ public static class JavCtTo
         return new string(chars);
     }
 
+    // Do 2026-10-31: server DD (dood) co luc khong tra iframe ma tra thang
+    // <video ...><source src="...mp4"> — truoc day EmbedUrl (chi regex iframe) tra null
+    // nen app bao "no supported source". Lay src truc tiep tu video/source.
+    public static string MediaUrl(string html)
+    {
+        if (string.IsNullOrEmpty(html)) return null;
+        var m = Regex.Match(html, @"<(?:source|video)\b[^>]*\bsrc\s*=\s*[""']([^""']+)[""']", RegexOptions.IgnoreCase);
+        if (!m.Success) return null;
+        string u = m.Groups[1].Value.Trim();
+        if (u.StartsWith("//")) u = "https:" + u;
+        if (!u.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return null;
+        if (u.IndexOf(".m3u8", StringComparison.OrdinalIgnoreCase) < 0 && u.IndexOf(".mp4", StringComparison.OrdinalIgnoreCase) < 0)
+            return null;
+        return u;
+    }
+
     public static string EmbedUrl(string playerHtml)
     {
         if (string.IsNullOrEmpty(playerHtml))
@@ -468,19 +493,23 @@ public static class JavCtTo
         if (string.IsNullOrEmpty(embedUrl))
             return (null, null);
 
-        string body;
-        try
+        // cffi truoc (nhanh ~1 s); Http.Get toi host dood hay treo 10 s -> app timeout manifest 10 s.
+        string body = await CffiGet(embedUrl, SiteHost + "/", Math.Min(6, timeoutSeconds));
+        if (string.IsNullOrEmpty(body) || !body.Contains("pass_md5"))
         {
-            body = await Http.Get(
-                embedUrl,
-                timeoutSeconds: timeoutSeconds,
-                headers: HeadersModel.Init(
-                    ("User-Agent", ChromeUA),
-                    ("Referer", SiteHost + "/")));
-        }
-        catch
-        {
-            return (null, null);
+            try
+            {
+                body = await Http.Get(
+                    embedUrl,
+                    timeoutSeconds: Math.Min(6, timeoutSeconds),
+                    headers: HeadersModel.Init(
+                        ("User-Agent", ChromeUA),
+                        ("Referer", SiteHost + "/")));
+            }
+            catch
+            {
+                return (null, null);
+            }
         }
 
         var m = Regex.Match(body ?? "", @"(pass_md5/[A-Za-z0-9_\-]+/[A-Za-z0-9]+)");
@@ -569,13 +598,21 @@ public static class JavCtTo
 
     public static string StreamHgMaster(string embedHtml, string referer)
     {
+        var lst = StreamHgMasters(embedHtml, referer);
+        return lst.Count > 0 ? lst[0] : null;
+    }
+
+    // Do 2026-10-31: hls3 (*.site/*.shop/*.cyou) tra 403 "Website Access Blocked" theo IP,
+    // hls2 (cdn-centaurus) van 200 -> tra ca danh sach de ben goi probe #EXTM3U, uu tien hls2.
+    // hls4 khong token, phu thuoc cookie + IP -> hay 403/timeout, de cuoi.
+    public static List<string> StreamHgMasters(string embedHtml, string referer)
+    {
+        var res = new List<string>();
         string plain = Unpack(embedHtml);
         if (string.IsNullOrEmpty(plain))
-            return null;
+            return res;
 
-        // uu tien hls3 (master.txt) > hls2 (cdn token) > hls4 (/stream/ can cookie).
-        // hls4 khong token, phu thuoc cookie + IP -> hay 403/timeout.
-        foreach (var key in new[] { "hls3", "hls2", "hls4" })
+        foreach (var key in new[] { "hls2", "hls3", "hls4" })
         {
             var m = Regex.Match(plain, "\"" + key + "\"\\s*:\\s*\"([^\"]+)\"",
                 RegexOptions.IgnoreCase);
@@ -585,16 +622,97 @@ public static class JavCtTo
             string url = m.Groups[1].Value.Replace("\\/", "/");
             if (url.StartsWith("//"))
                 url = "https:" + url;
-            if (url.StartsWith("http"))
-                return url;
+            if (url.StartsWith("http") && !res.Contains(url))
+                res.Add(url);
         }
 
-        return null;
+        return res;
     }
 
     // UPN/PP (F2 skill lampac-deobfuscate): iframe `player.upn.one/#id`
     // -> GET /api/v1/video?id= -> hex -> AES-128-CBC -> JSON 17 khoa,
     // lay cfNative (master signed, 200 khong can cookie).
+    // Ca chuoi F4 (embed -> data-api -> api?ab=0 -> /v/ 302 -> master CDN) trong 1 session,
+    // kem Origin https://f4scdn.com (thieu la 403 nginx) va kiem tra #EXTM3U truoc khi tra.
+    public static Task<string> CffiF4Async(string embedUrl, int maxTime = 10)
+    {
+        if (string.IsNullOrEmpty(embedUrl))
+            return Task.FromResult<string>(null);
+        try
+        {
+            string script = Path.Combine(Path.GetTempPath(), "javct_f4.py");
+            if (!File.Exists(script) || new FileInfo(script).Length < 200)
+                File.WriteAllText(script, F4PySource);
+            var psi = new ProcessStartInfo
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            psi.Environment.Remove("LD_PRELOAD");
+            psi.Environment.Remove("LD_LIBRARY_PATH");
+            string py = "/data/data/com.termux/files/usr/bin/python3";
+            psi.FileName = File.Exists(py) ? py : "python3";
+            psi.ArgumentList.Add(script);
+            psi.ArgumentList.Add(embedUrl);
+            psi.ArgumentList.Add(Math.Max(6, maxTime).ToString());
+            using var p = Process.Start(psi);
+            if (p == null)
+                return Task.FromResult<string>(null);
+            string stdout = p.StandardOutput.ReadToEnd();
+            string stderr = p.StandardError.ReadToEnd();
+            p.WaitForExit();
+            stdout = stdout?.Trim();
+            if (p.ExitCode != 0 || string.IsNullOrEmpty(stdout))
+            {
+                Console.WriteLine($"[JavCt/DBG] py f4 fail: exit={p.ExitCode} err={stderr?.Trim()}");
+                return Task.FromResult<string>(null);
+            }
+            return Task.FromResult(stdout);
+        }
+        catch
+        {
+            return Task.FromResult<string>(null);
+        }
+    }
+
+    const string F4PySource = """
+import sys, re, json
+from curl_cffi import requests as rq
+
+embed, to = sys.argv[1], int(sys.argv[2])
+origin = re.match(r'(https?://[^/]+)', embed).group(1)
+
+def run():
+    s = rq.Session(impersonate='chrome124')
+    h = s.get(embed, timeout=to, headers={'Referer': 'https://javct.net/'}).text
+    m = re.search(r'data-api\s*=\s*"([^"]+)"', h)
+    if not m:
+        raise RuntimeError('no_data_api')
+    api = m.group(1)
+    if api.startswith('/'):
+        api = origin + api
+    api += ('&' if '?' in api else '?') + 'ab=0'
+    j = json.loads(s.get(api, timeout=to, headers={'Referer': embed}).text)
+    u = j.get('url', '')
+    if not u:
+        raise RuntimeError('no_url')
+    if u.startswith('/'):
+        u = origin + u
+    # CDN edge (*.f4scdn.com) tra 403 neu thieu Origin: https://f4scdn.com
+    r = s.get(u, timeout=to, headers={'Referer': embed, 'Origin': origin}, allow_redirects=True)
+    if r.status_code != 200 or not r.text.lstrip().startswith('#EXTM3U'):
+        raise RuntimeError('master_%d' % r.status_code)
+    print(r.url)
+
+try:
+    run()
+except Exception as e:
+    print('ERR:' + str(e)[:120], file=sys.stderr)
+    sys.exit(5)
+""";
+
     public const string UpnKey = "kiemtienmua911ca";
     public const string UpnIv = "1234567890oiuytr";
 
@@ -687,6 +805,15 @@ public static class JavCtTo
                 cf.ValueKind == System.Text.Json.JsonValueKind.String &&
                 cf.GetString().StartsWith("http"))
                 return (cf.GetString(), host + "/");
+
+            // Do 2026-10-31: api khong con tra cfNative, chi con hlsVideoTiktok (path tuong doi).
+            if (root.TryGetProperty("hlsVideoTiktok", out var tk) &&
+                tk.ValueKind == System.Text.Json.JsonValueKind.String)
+            {
+                string tku = tk.GetString();
+                if (!string.IsNullOrEmpty(tku))
+                    return (tku.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? tku : host + tku, host + "/");
+            }
         }
         catch { }
 
@@ -774,7 +901,7 @@ public static class JavCtTo
                 "import sys\n"
                 + "from curl_cffi import requests as rq\n"
                 + "u=sys.argv[1];ref=sys.argv[2];to=int(sys.argv[3])\n"
-                + "r=rq.get(u,impersonate='chrome124',timeout=to,headers={'User-Agent':'" + ChromeUA + "','Referer':ref})\n"
+                + "r=rq.get(u,impersonate='chrome124',timeout=to,headers={'Referer':ref})\n"
                 + "sys.stdout.write(r.text)\n";
             var psi = new System.Diagnostics.ProcessStartInfo
             {
@@ -820,7 +947,7 @@ public static class JavCtTo
                 "import sys\n"
                 + "from curl_cffi import requests as rq\n"
                 + "u=sys.argv[1];ref=sys.argv[2];to=int(sys.argv[3])\n"
-                + "r=rq.get(u,impersonate='chrome124',timeout=to,headers={'User-Agent':'" + ChromeUA + "','Referer':ref})\n"
+                + "r=rq.get(u,impersonate='chrome124',timeout=to,headers={'Referer':ref})\n"
                 + "sys.stdout.write('@@URL@@'+r.url+'\\n'+r.text)\n";
             var psi = new System.Diagnostics.ProcessStartInfo
             {

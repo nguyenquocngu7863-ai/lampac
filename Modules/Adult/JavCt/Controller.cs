@@ -436,6 +436,7 @@ public class JavCtController : BaseSisiController
         }
 
 
+        Console.WriteLine($"[JavCt/DBG] POST player: {(api?.Length ?? 0)}b raw={(api?.Length > 120 ? api.Substring(0, 120) : api)}");
         string playerHtml = null, nextPt = null, nextPk = null;
         try
         {
@@ -476,8 +477,15 @@ public class JavCtController : BaseSisiController
         }
 
         string embed = JavCtTo.EmbedUrl(playerHtml);
+        Console.WriteLine($"[JavCt/DBG] playerHtml={(playerHtml?.Length ?? 0)}b embed={embed}");
         if (string.IsNullOrEmpty(embed))
+        {
+            // DD tra thang <video><source src=...> thay vi iframe -> dung luon.
+            string media = JavCtTo.MediaUrl(playerHtml);
+            if (!string.IsNullOrEmpty(media))
+                return (media + "\n" + pageUrl, nextPt, nextPk);
             return (null, nextPt, nextPk);
+        }
 
         // DoodStream: embed -> mp4 + referer per-video (F5). Link mp4 phai
         // di route video.mp4 (tra qua .m3u8 la "no EXTM3U delimiter").
@@ -499,9 +507,19 @@ public class JavCtController : BaseSisiController
                     ("Referer", pageUrl)),
                 httpversion: init.httpversion);
 
-            string master = JavCtTo.StreamHgMaster(embedHtml, pageUrl);
-            if (!string.IsNullOrEmpty(master))
-                return (master + "\n" + embed, nextPt, nextPk);
+            var masters = JavCtTo.StreamHgMasters(embedHtml, pageUrl);
+            // Probe lan luot: hls3 (*.site/*.shop) 403 "Website Access Blocked" theo IP,
+            // hls2 (cdn-centaurus) van 200 -> giu cai dau tien that su tra #EXTM3U.
+            foreach (string m in masters)
+            {
+                string probe = await JavCtTo.CffiGet(m, embed, 6);
+                if (string.IsNullOrEmpty(probe) || probe.IndexOf("#EXTM3U", StringComparison.OrdinalIgnoreCase) < 0)
+                {
+                    Console.WriteLine($"[JavCt/DBG] StreamHg master dead: {m}");
+                    continue;
+                }
+                return (m + "\n" + embed, nextPt, nextPk);
+            }
 
             try
             {
@@ -522,11 +540,17 @@ public class JavCtController : BaseSisiController
         }
         catch { }
 
-        // F4 (f4s.top/f4stream): embed -> data-api -> master m3u8.
+        // F4 (f4s.top/f4stream/f4scdn): embed -> data-api -> master m3u8.
+        // Do 2026-10-31: site tra embed f4scdn.com (truoc chi check f4s.top/f4stream
+        // nen nhanh F4 bi bo qua -> 503), va CDN edge 403 neu thieu Origin f4scdn.com.
         if (embed.IndexOf("f4s.top", StringComparison.OrdinalIgnoreCase) >= 0 ||
-            embed.IndexOf("f4stream", StringComparison.OrdinalIgnoreCase) >= 0)
+            embed.IndexOf("f4stream", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            embed.IndexOf("f4scdn", StringComparison.OrdinalIgnoreCase) >= 0)
         {
-            string f4 = await JavCtTo.F4SourceAsync(embed);
+            string f4 = await JavCtTo.CffiF4Async(embed, Math.Min(10, init.httptimeout));
+            if (string.IsNullOrEmpty(f4))
+                f4 = await JavCtTo.F4SourceAsync(embed);
+            Console.WriteLine($"[JavCt/DBG] F4 result={(f4?.Length > 0 ? f4.Substring(0, Math.Min(140, f4.Length)) : "NULL")}");
             if (!string.IsNullOrEmpty(f4))
                 return (f4 + "\n" + embed, nextPt, nextPk);
         }
@@ -603,9 +627,10 @@ public class JavCtController : BaseSisiController
             referer = packed.Substring(nl + 1);
         }
 
-        var direct = httpHeaders(init, HeadersModel.Init(
-            ("referer", referer)
-        ));
+        // CDN F4 (*.f4scdn.com) 403 neu thieu Origin (do 2026-10-31).
+        var direct = link.IndexOf("f4scdn.com", StringComparison.OrdinalIgnoreCase) >= 0
+            ? httpHeaders(init, HeadersModel.Init(("referer", referer), ("origin", "https://f4scdn.com")))
+            : httpHeaders(init, HeadersModel.Init(("referer", referer)));
         return Redirect(HostStreamProxy(link, direct));
     }
 }
