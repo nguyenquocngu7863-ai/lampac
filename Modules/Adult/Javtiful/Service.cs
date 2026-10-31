@@ -51,12 +51,12 @@ public static class JavtifulTo
             string slug = SlugifyVi(search);
             if (string.IsNullOrEmpty(slug))
                 slug = HttpUtility.UrlEncode(search);
-            return host + "/vn/search?q=" + slug;
+            return host + "/vi/search?q=" + slug;
         }
 
         if (!string.IsNullOrEmpty(c))
         {
-            string url = c.StartsWith("http") ? c : host + "/vn/" + c.Trim('/');
+            string url = c.StartsWith("http") ? c : host + "/vi/" + c.Trim('/');
             string q = pg > 1 ? (url.Contains("?") ? "&" : "?") + "page=" + pg : "";
 
             // Sort cua site la QUERY `?sort=popular_week|popular_month|
@@ -72,7 +72,7 @@ public static class JavtifulTo
         if (!string.IsNullOrWhiteSpace(sort))
             sq += (sq.Length == 0 ? "?" : "&") + "sort=" + sort.Trim();
 
-        return host + "/vn/foryou" + sq;
+        return host + "/vi/foryou" + sq;
     }
 
     public static List<Shared.Models.SISI.Base.PlaylistItem> Playlist(string uri, string html)
@@ -88,7 +88,7 @@ public static class JavtifulTo
         {
             string b = raw.Length > 5000 ? raw.Substring(0, 5000) : raw;
 
-            var hm = Regex.Match(b, @"<a\s+href=""(/vn/video/[^""]+)""\s+class=""video-card__thumbnail""");
+            var hm = Regex.Match(b, @"<a\s+href=""(/(?:vi|vn|en)/video/[^""]+)""\s+class=""video-card__thumbnail""");
             if (!hm.Success)
                 continue;
             string href = SiteHost + hm.Groups[1].Value;
@@ -239,7 +239,7 @@ public static class JavtifulTo
 
         foreach (Match m in Regex.Matches(html,
             "<a class=\"directory-card__link\" "
-            + "href=\"/vn/channel/([a-z0-9\\-]+)\">(.*?)</a>",
+            + "href=\"/(?:vi|vn|en)/channel/([a-z0-9\\-]+)\">(.*?)</a>",
             RegexOptions.Singleline))
         {
             string slug = m.Groups[1].Value;
@@ -269,7 +269,7 @@ public static class JavtifulTo
 
         int max = 1;
         foreach (Match m in Regex.Matches(html,
-            "/vn/channels\\?page=(\\d+)"))
+            "/(?:vi|vn|en)/channels\\?page=(\\d+)"))
         {
             if (int.TryParse(m.Groups[1].Value, out int p)
                 && p > max)
@@ -330,11 +330,9 @@ public static class JavtifulTo
         if (string.IsNullOrWhiteSpace(c)) return null;         // /vn/foryou    -> khong sort
 
         string cc = c;
-        if (cc.StartsWith("http", StringComparison.OrdinalIgnoreCase))
-        {
-            int i = cc.IndexOf("/vn/", StringComparison.OrdinalIgnoreCase);
-            cc = i >= 0 ? cc.Substring(i + 4) : cc;
-        }
+        var pm = Regex.Match(cc, @"/(?:vi|vn|en)/(.*)$", RegexOptions.IgnoreCase);
+        if (pm.Success)
+            cc = pm.Groups[1].Value;
         cc = cc.Trim('/');
 
         foreach (var x in SortFullCs)

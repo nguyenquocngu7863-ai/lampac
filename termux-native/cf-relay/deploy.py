@@ -17,7 +17,7 @@ import uuid
 API = "https://api.cloudflare.com/client/v4"
 HERE = pathlib.Path(__file__).parent
 NAME = "xn-relay"
-SCRIPT = HERE / "src" / "index.js"
+SCRIPT = HERE / "index.js"
 
 
 def token():

@@ -90,7 +90,7 @@ public class JavtifulController : BaseSisiController
             || chans == null || chans.Count == 0)
         {
             string first = await FetchHtmlAsync(
-                JavtifulTo.SiteHost + "/vn/channels");
+                JavtifulTo.SiteHost + "/vi/channels");
 
             var seen = new HashSet<string>(
                 StringComparer.OrdinalIgnoreCase);
@@ -113,7 +113,7 @@ public class JavtifulController : BaseSisiController
                 var tasks = new List<Task<string>>();
                 for (int p = 2; p <= pages; p++)
                     tasks.Add(FetchHtmlAsync(JavtifulTo.SiteHost
-                        + "/vn/channels?page=" + p));
+                        + "/vi/channels?page=" + p));
 
                 foreach (var html in await Task.WhenAll(tasks))
                     Add(html);
