@@ -7,6 +7,7 @@ using Shared.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -229,6 +230,10 @@ public class SexTbController : BaseSisiController
         }
         if (dict.Count == 0)
             return OnError("stream_links", refresh_proxy: true);
+        // Warm embed ngay khi user mo trang phim (1 GET + n POST trong 1 session) de luc bam
+        // play la cache hit — resolve luc bam tung treo > 10 s.
+        string warmUrl = uri.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? uri : SexTbTo.SiteHost + "/" + uri.Trim('/');
+        _ = Task.Run(() => EmbedsAsync(warmUrl));
         return Json(dict);
     }
 
@@ -280,62 +285,71 @@ public class SexTbController : BaseSisiController
         return (filmId, pt, pk ?? "", auth);
     }
 
+    // 1 lan python cho ca 5 server, cache 30 phut, single-flight de 5 request song song
+    // khong mo 5 session cung luc (site siet TLS).
+    static readonly SemaphoreSlim embedsLock = new(1, 1);
+    async Task<Dictionary<string, string>> EmbedsAsync(string pageUrl)
+    {
+        string key = ipkey($"sextb:embeds:{pageUrl}");
+        if (hybridCache.TryGetValue(key, out string raw) && !string.IsNullOrEmpty(raw))
+            return ParseEmbeds(raw);
+        await embedsLock.WaitAsync();
+        try
+        {
+            if (hybridCache.TryGetValue(key, out raw) && !string.IsNullOrEmpty(raw))
+                return ParseEmbeds(raw);
+            raw = await SexTbTo.CffiEmbedsAsync(pageUrl, 10);
+            var res = ParseEmbeds(raw);
+            // Cache ca khi that bai (60 s): 5 server duoc bam lien tiep se khong moi cai
+            // mo 1 session moi — chinh viec do lam site siet IP.
+            hybridCache.Set(key, res.Count > 0 ? raw : "{}", cacheTime(res.Count > 0 ? 30 : 1));
+            return res;
+        }
+        finally { embedsLock.Release(); }
+    }
+
+    static Dictionary<string, string> ParseEmbeds(string raw)
+    {
+        var res = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrEmpty(raw)) return res;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(raw);
+            foreach (var p in doc.RootElement.EnumerateObject())
+                if (p.Value.ValueKind == System.Text.Json.JsonValueKind.String)
+                    res[p.Name] = p.Value.GetString();
+        }
+        catch { }
+        return res;
+    }
+
     async Task<(string packed, string nextPt, string nextPk)> ResolveServerAsync(string pageUrl, string filmId, string episode, string pt, string pk, string auth, string label)
     {
-        string api;
-        try
-        {
-            using var content = new FormUrlEncodedContent(new Dictionary<string, string>()
-            {
-                ["episode"] = episode,
-                ["filmId"] = filmId,
-                ["pt"] = pt
-            });
-            var headers = HeadersModel.Init(
-                ("User-Agent", SexTbTo.ChromeUA),
-                ("Referer", pageUrl),
-                ("Origin", SexTbTo.SiteHost),
-                ("Accept", "application/json, text/plain, */*"),
-                ("X-Requested-With", "XMLHttpRequest")
-            );
-            if (!string.IsNullOrEmpty(auth))
-                headers = HeadersModel.Init(
-                    ("User-Agent", SexTbTo.ChromeUA),
-                    ("Referer", pageUrl),
-                    ("Origin", SexTbTo.SiteHost),
-                    ("Accept", "application/json, text/plain, */*"),
-                    ("X-Requested-With", "XMLHttpRequest"),
-                    ("Authorization", "Basic " + auth)
-                );
-            api = await Http.Post(SexTbTo.PlayerApi, content, timeoutSeconds: Math.Max(15, init.httptimeout), headers: headers, proxy: proxy, httpversion: init.httpversion, statusCodeOK: true, disposeData: true);
-        }
-        catch { return (null, null, null); }
-        if (string.IsNullOrEmpty(api)) return (null, null, null);
-        string playerHtml = null, nextPt = null, nextPk = null;
-        try
-        {
-            var doc = System.Text.Json.JsonDocument.Parse(api);
-            var root = doc.RootElement;
-            if (root.TryGetProperty("error", out var err) && err.ValueKind != System.Text.Json.JsonValueKind.Null && err.ToString().Length > 0)
-            {
-                // try extract next_pt/pk even on error? but skip
-            }
-            if (root.TryGetProperty("next_pt", out var npt) && npt.ValueKind == System.Text.Json.JsonValueKind.String) nextPt = npt.GetString();
-            if (root.TryGetProperty("next_pk", out var npk) && npk.ValueKind == System.Text.Json.JsonValueKind.String) nextPk = npk.GetString();
-            if (root.TryGetProperty("player_enc", out var enc) && enc.ValueKind == System.Text.Json.JsonValueKind.String && enc.GetString().Length > 0)
-                playerHtml = SexTbTo.XorDecrypt(enc.GetString(), pk);
-            else if (root.TryGetProperty("player", out var pl))
-                playerHtml = pl.ToString();
-        }
-        catch { return (null, nextPt, nextPk); }
-        string embed = SexTbTo.IframeUrl(playerHtml);
+        // /ajax/player doi cookie phien cua trang detail + Authorization: Basic b64(_token:_socket)
+        // (thieu cookie -> 403 E_TOK_MISS; thieu Authorization -> 403 E_XHR). GET va POST phai dung
+        // CHUNG CookieContainer, va pt/pk/auth phai lay tu chinh page vua GET — cap truyen vao tu lan
+        // /vidosik truoc co the da het han.
+        string nextPt = null, nextPk = null;
+        // Embed cua CA 5 server lay trong 1 session (CffiEmbedsAsync) va cache 30 phut.
+        // Resolve le tung server = 1 process python + 1 session moi: cham > 10 s nen player
+        // bao manifestLoadTimeout, va de bi site siet vi mo nhieu session lien tiep.
+        string embed = null;
+        var embeds = await EmbedsAsync(pageUrl);
+        embeds.TryGetValue(label, out embed);
+        if (string.IsNullOrEmpty(embed))
+            embed = await SexTbTo.CffiEmbedAsync(pageUrl, episode, 10);
+        Console.WriteLine($"[SexTb/DBG] embed[{label}]={embed}");
         if (string.IsNullOrEmpty(embed)) return (null, nextPt, nextPk);
         // try resolve by kind
         try
         {
             if (embed.IndexOf("f4scdn.com", StringComparison.OrdinalIgnoreCase) >= 0 || embed.IndexOf("f4stream.com", StringComparison.OrdinalIgnoreCase) >= 0)
             {
-                string f4 = await SexTbTo.F4SourceAsync(embed, Math.Min(10, init.httptimeout), proxy, init.httpversion);
+                Console.WriteLine($"[SexTb/DBG] F4 embed: {embed}");
+                string f4 = await SexTbTo.CffiF4Async(embed, Math.Min(10, init.httptimeout));
+                if (string.IsNullOrEmpty(f4))
+                    f4 = await SexTbTo.F4SourceAsync(embed, Math.Min(10, init.httptimeout), proxy, init.httpversion);
+                Console.WriteLine($"[SexTb/DBG] F4SourceAsync result: {(f4 != null ? f4.Substring(0, Math.Min(200, f4.Length)) : "NULL")}");
                 if (!string.IsNullOrEmpty(f4))
                     return (f4 + "\n" + embed, nextPt, nextPk);
             }
@@ -349,22 +363,38 @@ public class SexTbController : BaseSisiController
                 // CDN hls (ryderjet/vibuxer) sinh token theo IP - phai dung cung IP voi stream (direct).
                 // Truoc dung proxy o day nhung stream lai direct -> token lech -> 403.
                 // Dood cung chi mo khi direct (proxy tra captcha 5k). Giua nguyen direct cho ca embed lan stream.
-                string html = await Http.Get(player, timeoutSeconds: 12, headers: HeadersModel.Init(("User-Agent", SexTbTo.ChromeUA), ("Referer", pageUrl)), httpversion: init.httpversion);
+                string html = await SexTbTo.CffiGet(player, pageUrl, 10);
+                if (string.IsNullOrEmpty(html))
+                    html = await Http.Get(player, timeoutSeconds: 8, headers: HeadersModel.Init(("User-Agent", SexTbTo.ChromeUA), ("Referer", pageUrl)), httpversion: init.httpversion);
                 var masters = SexTbTo.StreamHgMasters(html, player);
-                if (masters.Count > 0)
+                if (masters.Count == 0)
                 {
-                    string master = masters[0];
-                    return (master + "\n" + player, nextPt, nextPk);
+                    // fallback: thu qua proxy neu direct khong ra (truong hop CDN chan VN)
+                    try
+                    {
+                        string html2 = await Http.Get(player, timeoutSeconds: 12, headers: HeadersModel.Init(("User-Agent", SexTbTo.ChromeUA), ("Referer", pageUrl)), proxy: proxy, httpversion: init.httpversion);
+                        masters = SexTbTo.StreamHgMasters(html2, player);
+                    }
+                    catch { }
                 }
-                // fallback: thu qua proxy neu direct khong ra (truong hop CDN chan VN)
-                try
+                // Khong lay masters[0]: hls3 (*.careercoachingtips.site) tra 403
+                // "Website Access Blocked" theo IP, trong khi hls2 (cdn-centaurus) van 200.
+                // Thu lan luot, giu cai dau tien that su tra #EXTM3U.
+                foreach (string m in masters)
                 {
-                    string html2 = await Http.Get(player, timeoutSeconds: 12, headers: HeadersModel.Init(("User-Agent", SexTbTo.ChromeUA), ("Referer", pageUrl)), proxy: proxy, httpversion: init.httpversion);
-                    var masters2 = SexTbTo.StreamHgMasters(html2, player);
-                    if (masters2.Count > 0)
-                        return (masters2[0] + "\n" + player, nextPt, nextPk);
+                    // probe bang cffi (nhanh ~1 s); Http.Get hay treo 10 s voi host CDN chan IP
+                    string probe = await SexTbTo.CffiGet(m, player, 6);
+                    if (string.IsNullOrEmpty(probe))
+                    {
+                        try { probe = await Http.Get(m, timeoutSeconds: 6, headers: HeadersModel.Init(("User-Agent", SexTbTo.ChromeUA), ("Referer", player)), httpversion: init.httpversion); } catch { }
+                    }
+                    if (string.IsNullOrEmpty(probe) || probe.IndexOf("#EXTM3U", StringComparison.OrdinalIgnoreCase) < 0)
+                    {
+                        Console.WriteLine($"[SexTb/DBG] StreamHg master dead: {m}");
+                        continue;
+                    }
+                    return (m + "\n" + player, nextPt, nextPk);
                 }
-                catch { }
             }
         }
         catch { }
@@ -406,13 +436,17 @@ public class SexTbController : BaseSisiController
             string stHtml = null;
             if (SexTbTo.IsStreamtape(embed))
             {
-                try
+                stHtml = await SexTbTo.CffiGet(embed, pageUrl, 10);
+                if (string.IsNullOrEmpty(stHtml))
                 {
-                    stHtml = await Http.Get(embed, timeoutSeconds: 12,
-                        headers: HeadersModel.Init(("User-Agent", SexTbTo.ChromeUA), ("Referer", pageUrl)),
-                        httpversion: init.httpversion);
+                    try
+                    {
+                        stHtml = await Http.Get(embed, timeoutSeconds: 8,
+                            headers: HeadersModel.Init(("User-Agent", SexTbTo.ChromeUA), ("Referer", pageUrl)),
+                            httpversion: init.httpversion);
+                    }
+                    catch { }
                 }
-                catch { }
                 if (string.IsNullOrEmpty(stHtml) || stHtml.IndexOf("robotlink", StringComparison.OrdinalIgnoreCase) < 0)
                 {
                     try
@@ -424,8 +458,7 @@ public class SexTbController : BaseSisiController
                     catch { }
                 }
             }
-            else if (!string.IsNullOrEmpty(playerHtml) && playerHtml.IndexOf("robotlink", StringComparison.OrdinalIgnoreCase) >= 0)
-                stHtml = playerHtml;
+            // (playerHtml khong con: phan giai ma player da chuyen sang python/CffiEmbedAsync)
 
             string stApi = SexTbTo.StreamtapeMp4(stHtml);
             if (!string.IsNullOrEmpty(stApi))
@@ -477,7 +510,10 @@ public class SexTbController : BaseSisiController
         string link = packed, referer = SexTbTo.SiteHost + "/";
         int nl = packed.IndexOf('\n');
         if (nl > 0) { link = packed.Substring(0, nl); referer = packed.Substring(nl + 1); }
-        var direct = httpHeaders(init, HeadersModel.Init(("referer", referer)));
+        // f4scdn tra 403 nginx neu thieu Origin (do 2026-10-31: Origin https://f4scdn.com -> 200).
+        var direct = link.IndexOf("f4scdn.com", StringComparison.OrdinalIgnoreCase) >= 0
+            ? httpHeaders(init, HeadersModel.Init(("referer", referer), ("origin", "https://f4scdn.com")))
+            : httpHeaders(init, HeadersModel.Init(("referer", referer)));
         return Redirect(HostStreamProxy(link, direct));
     }
 }

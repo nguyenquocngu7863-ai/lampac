@@ -493,7 +493,9 @@ public static class SexTbTo
         string baseHost=HostOf(playerUrl);
         // uu tien hls3 (xxx.space/master.txt) > hls2 (cdn token) > hls4 (/stream/ can cookie file_id).
         // hls4 khong token, phu thuoc cookie -> Http.Get khong giu cookie de 403 lech IP.
-        foreach(string key in new[]{"hls3","hls2","hls4"})
+        // hls3 (*.site/*.shop/*.cyou) tra 403 "Website Access Blocked" theo IP (do 2026-10-31),
+        // con hls2 (cdn-centaurus) van 200 -> uu tien hls2 de khoi ton 1 lan probe timeout.
+        foreach(string key in new[]{"hls2","hls3","hls4"})
         {
             if(!kv.TryGetValue(key,out string v)||string.IsNullOrEmpty(v)) continue;
             if(v.StartsWith("/") && !string.IsNullOrEmpty(baseHost)) v=baseHost.TrimEnd('/')+v;
@@ -502,6 +504,297 @@ public static class SexTbTo
         return res;
     }
     public static string StreamHgMaster(string embedHtml,string referer){ var lst=StreamHgMasters(embedHtml,referer); return lst.Count>0?lst[0]:null; }
+
+    // ---- /ajax/player: cookie phien + Authorization la BAT BUOC ----
+    // Do 2026-10-31: POST thieu cookie cua trang detail -> 403 E_TOK_MISS;
+    // co cookie nhung thieu Authorization: Basic b64(_token:_socket) -> 403 E_XHR.
+    // Nen GET (lay cookie, pt, pk, auth) va POST phai nam trong CUNG mot session,
+    // va pk dung de giai ma phai la cap vua doc tu chinh page do.
+    // curl_cffi giu TLS Chrome: KHONG tu them header User-Agent (lech fingerprint
+    // -> handshake reset/timeout, subprocess exit 1 -> chuoi rong).
+    static string cffiEmbedPy;
+    public static async Task<string> CffiEmbedAsync(string pageUrl, string episode, int maxTime = 15)
+    {
+        if (string.IsNullOrEmpty(pageUrl) || string.IsNullOrEmpty(episode))
+            return null;
+        try
+        {
+            string script = Path.Combine(Path.GetTempPath(), "sextb_player.py");
+            if (cffiEmbedPy == null || !File.Exists(script) || new FileInfo(script).Length < 200)
+            {
+                cffiEmbedPy = CffiEmbedSource;
+                File.WriteAllText(script, cffiEmbedPy);
+            }
+            var psi = new ProcessStartInfo
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            psi.Environment.Remove("LD_PRELOAD");
+            psi.Environment.Remove("LD_LIBRARY_PATH");
+            string py = "/data/data/com.termux/files/usr/bin/python3";
+            psi.FileName = File.Exists(py) ? py : "python3";
+            psi.ArgumentList.Add(script);
+            psi.ArgumentList.Add(pageUrl);
+            psi.ArgumentList.Add(episode);
+            psi.ArgumentList.Add(Math.Max(8, maxTime).ToString());
+            using var p = Process.Start(psi);
+            if (p == null)
+                return null;
+            string stdout = await p.StandardOutput.ReadToEndAsync();
+            string stderr = await p.StandardError.ReadToEndAsync();
+            await p.WaitForExitAsync();
+            stdout = stdout?.Trim();
+            if (p.ExitCode != 0 || string.IsNullOrEmpty(stdout))
+            {
+                Console.WriteLine($"[SexTb/DBG] cffi embed fail: exit={p.ExitCode} err={stderr?.Trim()}");
+                return null;
+            }
+            return stdout;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    // Chay 1 script python trong 1 process (spawn python ~0.6 s/lan, nen gop chuoi request
+    // vao cung 1 script thay vi goi nhieu lan tu C#).
+    static async Task<string> RunPyScript(string name, string source, params string[] args)
+    {
+        try
+        {
+            string script = Path.Combine(Path.GetTempPath(), name);
+            if (!File.Exists(script) || new FileInfo(script).Length < 200)
+                File.WriteAllText(script, source);
+            var psi = new ProcessStartInfo
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            psi.Environment.Remove("LD_PRELOAD");
+            psi.Environment.Remove("LD_LIBRARY_PATH");
+            string py = "/data/data/com.termux/files/usr/bin/python3";
+            psi.FileName = File.Exists(py) ? py : "python3";
+            psi.ArgumentList.Add(script);
+            foreach (var a in args)
+                psi.ArgumentList.Add(a);
+            using var p = Process.Start(psi);
+            if (p == null)
+                return null;
+            string stdout = await p.StandardOutput.ReadToEndAsync();
+            string stderr = await p.StandardError.ReadToEndAsync();
+            await p.WaitForExitAsync();
+            stdout = stdout?.Trim();
+            if (p.ExitCode != 0 || string.IsNullOrEmpty(stdout))
+            {
+                Console.WriteLine($"[SexTb/DBG] py {name} fail: exit={p.ExitCode} err={stderr?.Trim()}");
+                return null;
+            }
+            return stdout;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    // Ca chuoi F4 (embed -> data-api -> api?ab=0 -> /v/ 302 -> master CDN) trong 1 session:
+    // 3 lan spawn python rieng le ton ~11-13 s, player app timeout manifest sau 10 s.
+    public static Task<string> CffiF4Async(string embedUrl, int maxTime = 10)
+        => string.IsNullOrEmpty(embedUrl)
+            ? Task.FromResult<string>(null)
+            : RunPyScript("sextb_f4.py", F4PySource, embedUrl, Math.Max(6, maxTime).ToString());
+
+    const string F4PySource = """
+import sys, re, json
+from curl_cffi import requests as rq
+
+embed, to = sys.argv[1], int(sys.argv[2])
+origin = re.match(r'(https?://[^/]+)', embed).group(1)
+
+def run():
+    s = rq.Session(impersonate='chrome124')
+    h = s.get(embed, timeout=to, headers={'Referer': 'https://sextb.net/'}).text
+    m = re.search(r'data-api\s*=\s*"([^"]+)"', h)
+    if not m:
+        raise RuntimeError('no_data_api')
+    api = m.group(1)
+    if api.startswith('/'):
+        api = origin + api
+    api += ('&' if '?' in api else '?') + 'ab=0'
+    j = json.loads(s.get(api, timeout=to, headers={'Referer': embed}).text)
+    u = j.get('url', '')
+    if not u:
+        raise RuntimeError('no_url')
+    if u.startswith('/'):
+        u = origin + u
+    # CDN edge (*.f4scdn.com) tra 403 neu thieu Origin: https://f4scdn.com
+    r = s.get(u, timeout=to, headers={'Referer': embed, 'Origin': origin}, allow_redirects=True)
+    if r.status_code != 200 or not r.text.lstrip().startswith('#EXTM3U'):
+        raise RuntimeError('master_%d' % r.status_code)
+    print(r.url)
+
+try:
+    run()
+except Exception as e:
+    print('ERR:' + str(e)[:120], file=sys.stderr)
+    sys.exit(5)
+""";
+
+    // Lay embed cua TAT CA server trong 1 session (1 GET + n POST). Resolve rieng le tung
+    // server = 1 process python + 1 session moi: vua cham (player timeout 10 s) vua de bi
+    // site siet. Tra JSON {"F4":"https://...","SW":"..."}.
+    public static async Task<string> CffiEmbedsAsync(string pageUrl, int maxTime = 12)
+    {
+        if (string.IsNullOrEmpty(pageUrl))
+            return null;
+        try
+        {
+            string script = Path.Combine(Path.GetTempPath(), "sextb_embeds.py");
+            if (!File.Exists(script) || new FileInfo(script).Length < 200)
+                File.WriteAllText(script, CffiEmbedsSource);
+            var psi = new ProcessStartInfo
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            psi.Environment.Remove("LD_PRELOAD");
+            psi.Environment.Remove("LD_LIBRARY_PATH");
+            string py = "/data/data/com.termux/files/usr/bin/python3";
+            psi.FileName = File.Exists(py) ? py : "python3";
+            psi.ArgumentList.Add(script);
+            psi.ArgumentList.Add(pageUrl);
+            psi.ArgumentList.Add(Math.Max(8, maxTime).ToString());
+            using var p = Process.Start(psi);
+            if (p == null)
+                return null;
+            string stdout = await p.StandardOutput.ReadToEndAsync();
+            string stderr = await p.StandardError.ReadToEndAsync();
+            await p.WaitForExitAsync();
+            stdout = stdout?.Trim();
+            if (p.ExitCode != 0 || string.IsNullOrEmpty(stdout))
+            {
+                Console.WriteLine($"[SexTb/DBG] cffi embeds fail: exit={p.ExitCode} err={stderr?.Trim()}");
+                return null;
+            }
+            return stdout;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    const string CffiEmbedsSource = """
+import sys, re, json, base64, time
+from curl_cffi import requests as rq
+
+page, to = sys.argv[1], int(sys.argv[2])
+origin = re.match(r'(https?://[^/]+)', page).group(1)
+
+def run():
+    s = rq.Session(impersonate='chrome124')
+    h = s.get(page, timeout=to).text
+    tok  = re.search(r'name="_token"[^>]*value="([^"]+)"', h)
+    sock = re.search(r'name="_socket"[^>]*value="([^"]+)"', h)
+    pt   = re.search(r'window\.__pt\s*=\s*"([^"]+)"', h)
+    pk   = re.search(r'window\.__pk\s*=\s*"([^"]+)"', h)
+    fid  = re.search(r'var filmId\s*=\s*(\d+)', h)
+    if not (tok and sock and pt and pk and fid):
+        raise RuntimeError('page_tokens')
+    auth = base64.b64encode((tok.group(1) + ':' + sock.group(1)).encode()).decode()
+    pat = r'data-source="' + fid.group(1) + r'"[^>]*data-id="(\d+)"[^>]*>\s*(?:<i[^>]*>.*?</i>\s*)?([A-Za-z0-9]{1,4})\s*<'
+    btns = re.findall(pat, h, re.I)
+    out = {}
+    key = pk.group(1)
+    cur = pt.group(1)
+    for ep, label in btns:
+        r = s.post(origin + '/ajax/player',
+                   data={'episode': ep, 'filmId': fid.group(1), 'pt': cur},
+                   headers={'Referer': page, 'Origin': origin,
+                            'Accept': 'application/json, text/plain, */*',
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'Authorization': 'Basic ' + auth},
+                   timeout=to)
+        try:
+            item = json.loads(r.text)
+        except Exception:
+            continue
+        if item.get('error'):
+            continue
+        d = base64.b64decode(item['player_enc'])
+        html = ''.join(chr(d[i] ^ ord(key[i % len(key)])) for i in range(len(d)))
+        m = re.search(r'<iframe[^>]*\bsrc\s*=\s*"([^"]+)"', html, re.I)
+        if m:
+            out[label] = m.group(1)
+        cur = item.get('next_pt', cur)
+        key = item.get('next_pk', key)
+    return out
+
+last = None
+for attempt in range(1):
+    try:
+        print(json.dumps(run()))
+        sys.exit(0)
+    except Exception as e:
+        last = e
+print('ERR:' + str(last)[:150], file=sys.stderr)
+sys.exit(5)
+""";
+
+    const string CffiEmbedSource = """
+import sys, re, json, base64, time
+from curl_cffi import requests as rq
+
+page, ep, to = sys.argv[1], sys.argv[2], int(sys.argv[3])
+origin = re.match(r'(https?://[^/]+)', page).group(1)
+
+def run():
+    s = rq.Session(impersonate='chrome124')
+    h = s.get(page, timeout=to).text
+    tok  = re.search(r'name="_token"[^>]*value="([^"]+)"', h)
+    sock = re.search(r'name="_socket"[^>]*value="([^"]+)"', h)
+    pt   = re.search(r'window\.__pt\s*=\s*"([^"]+)"', h)
+    pk   = re.search(r'window\.__pk\s*=\s*"([^"]+)"', h)
+    fid  = re.search(r'var filmId\s*=\s*(\d+)', h)
+    if not (tok and sock and pt and pk and fid):
+        raise RuntimeError('page_tokens')
+    auth = base64.b64encode((tok.group(1) + ':' + sock.group(1)).encode()).decode()
+    r = s.post(origin + '/ajax/player',
+               data={'episode': ep, 'filmId': fid.group(1), 'pt': pt.group(1)},
+               headers={'Referer': page, 'Origin': origin,
+                        'Accept': 'application/json, text/plain, */*',
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Authorization': 'Basic ' + auth},
+               timeout=to)
+    item = json.loads(r.text)
+    if item.get('error'):
+        raise RuntimeError('api:' + str(item.get('code') or item.get('error')))
+    d = base64.b64decode(item['player_enc'])
+    k = pk.group(1)
+    html = ''.join(chr(d[i] ^ ord(k[i % len(k)])) for i in range(len(d)))
+    m = re.search(r'<iframe[^>]*\bsrc\s*=\s*"([^"]+)"', html, re.I)
+    if not m:
+        raise RuntimeError('no_iframe')
+    return m.group(1)
+
+last = None
+for attempt in range(1):
+    try:
+        print(run())
+        sys.exit(0)
+    except Exception as e:
+        last = e
+print('ERR:' + str(last)[:150], file=sys.stderr)
+sys.exit(5)
+""";
 
     // ========== F4 ==========
     // F4 (f4s.top/f4stream/f4scdn deu phuc vu embed giong nhau): iframe
@@ -523,7 +816,7 @@ public static class SexTbTo
                 "import sys\n"
                 + "from curl_cffi import requests as rq\n"
                 + "u=sys.argv[1];ref=sys.argv[2];to=int(sys.argv[3])\n"
-                + "r=rq.get(u,impersonate='chrome124',timeout=to,headers={'User-Agent':'" + ChromeUA + "','Referer':ref})\n"
+                + "r=rq.get(u,impersonate='chrome124',timeout=to,headers={'Referer':ref})\n"
                 + "sys.stdout.write(r.text)\n";
             var psi = new ProcessStartInfo
             {
@@ -556,6 +849,52 @@ public static class SexTbTo
         }
     }
 
+    // POST qua curl_cffi (fallback khi .NET HttpClient bi TLS reset).
+    // body = key=value&key2=value2 (form-urlencoded).
+    public static async Task<string> CffiPost(string url, string body, string referer, int maxTime = 10)
+    {
+        if (string.IsNullOrEmpty(url))
+            return null;
+        try
+        {
+            string code =
+                "import sys\n"
+                + "from curl_cffi import requests as rq\n"
+                + "u=sys.argv[1];b=sys.argv[2];ref=sys.argv[3];to=int(sys.argv[4])\n"
+                + "r=rq.post(u,impersonate='chrome124',timeout=to,headers={'Referer':ref,'Content-Type':'application/x-www-form-urlencoded'},data=b)\n"
+                + "sys.stdout.write(r.text)\n";
+            var psi = new ProcessStartInfo
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            psi.Environment.Remove("LD_PRELOAD");
+            psi.Environment.Remove("LD_LIBRARY_PATH");
+            string py = "/data/data/com.termux/files/usr/bin/python3";
+            psi.FileName = File.Exists(py) ? py : "python3";
+            psi.ArgumentList.Add("-c");
+            psi.ArgumentList.Add(code);
+            psi.ArgumentList.Add(url);
+            psi.ArgumentList.Add(body ?? "");
+            psi.ArgumentList.Add(referer ?? "");
+            psi.ArgumentList.Add(Math.Max(5, maxTime).ToString());
+            using var p = Process.Start(psi);
+            if (p == null)
+                return null;
+            string stdout = await p.StandardOutput.ReadToEndAsync();
+            await p.WaitForExitAsync();
+            if (p.ExitCode != 0 || string.IsNullOrWhiteSpace(stdout))
+                return null;
+            return stdout;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     // Nhu CffiGet nhung tra ca URL cuoi cung sau redirect (lay master CDN
     // tu /v/<token>). Dong dau stdout = final URL.
     static async Task<(string body, string finalUrl)> CffiGetFinal(
@@ -569,7 +908,7 @@ public static class SexTbTo
                 "import sys\n"
                 + "from curl_cffi import requests as rq\n"
                 + "u=sys.argv[1];ref=sys.argv[2];to=int(sys.argv[3])\n"
-                + "r=rq.get(u,impersonate='chrome124',timeout=to,headers={'User-Agent':'" + ChromeUA + "','Referer':ref})\n"
+                + "r=rq.get(u,impersonate='chrome124',timeout=to,headers={'Referer':ref})\n"
                 + "sys.stdout.write('@@URL@@'+r.url+'\\n'+r.text)\n";
             var psi = new ProcessStartInfo
             {
@@ -614,11 +953,13 @@ public static class SexTbTo
         if(string.IsNullOrEmpty(embedUrl)) return null;
         string host;
         try { var u = new System.Uri(embedUrl); host = u.GetLeftPart(System.UriPartial.Authority); } catch { return null; }
-        string html;
-        // thu direct truoc (token IP VN), fallback proxy neu direct chet
-        try{ html=await Http.Get(embedUrl, timeoutSeconds: timeoutSeconds, headers: HeadersModel.Init(("User-Agent",ChromeUA),("Referer",SiteHost+"/")), httpversion: httpversion); }catch{ html=null; }
+        // cffi truoc: HttpClient toi f4scdn hay treo 10 s roi moi fallback (player app
+        // timeout manifest sau 10 s), trong khi curl_cffi tra ngay.
+        string html = await CffiGet(embedUrl, SiteHost + "/", timeoutSeconds);
         if(string.IsNullOrEmpty(html))
-            html = await CffiGet(embedUrl, SiteHost + "/", timeoutSeconds);
+        {
+            try{ html=await Http.Get(embedUrl, timeoutSeconds: Math.Min(8, timeoutSeconds), headers: HeadersModel.Init(("User-Agent",ChromeUA),("Referer",SiteHost+"/")), httpversion: httpversion); }catch{ html=null; }
+        }
         if(string.IsNullOrEmpty(html))
         {
             try{ html=await Http.Get(embedUrl, timeoutSeconds: timeoutSeconds, headers: HeadersModel.Init(("User-Agent",ChromeUA),("Referer",SiteHost+"/")), proxy: proxyDirect, httpversion: httpversion); }catch{return null;}
@@ -630,10 +971,11 @@ public static class SexTbTo
         if(api.StartsWith("/")) api=host+api;
         // Bat buoc them ab=0 (player.js apiUrl: ?ab=<0|1>&r=<referrer>).
         api += (api.Contains("?") ? "&" : "?") + "ab=0";
-        string json;
-        try{ json=await Http.Get(api, timeoutSeconds: timeoutSeconds, headers: HeadersModel.Init(("User-Agent",ChromeUA),("Referer",embedUrl)), httpversion: httpversion); }catch{ json=null; }
+        string json = await CffiGet(api, embedUrl, timeoutSeconds);
         if(string.IsNullOrWhiteSpace(json))
-            json = await CffiGet(api, embedUrl, timeoutSeconds);
+        {
+            try{ json=await Http.Get(api, timeoutSeconds: Math.Min(8, timeoutSeconds), headers: HeadersModel.Init(("User-Agent",ChromeUA),("Referer",embedUrl)), httpversion: httpversion); }catch{ json=null; }
+        }
         if(string.IsNullOrWhiteSpace(json))
         {
             try{ json=await Http.Get(api, timeoutSeconds: timeoutSeconds, headers: HeadersModel.Init(("User-Agent",ChromeUA),("Referer",embedUrl)), proxy: proxyDirect, httpversion: httpversion); }catch{return null;}
@@ -663,8 +1005,8 @@ public static class SexTbTo
     public static async Task<(string url,string referer)> DoodSourceAsync(string embedUrl,int timeoutSeconds=10, WebProxy proxyDirect=null, int httpversion=1)
     {
         if(string.IsNullOrEmpty(embedUrl)) return (null,null);
-        string body=null;
-        try{ body=await Http.Get(embedUrl, timeoutSeconds: timeoutSeconds, headers: HeadersModel.Init(("User-Agent",ChromeUA),("Referer",SiteHost+"/")), httpversion: httpversion); }catch{}
+        // cffi truoc: playmogo tra trang nhanh voi curl_cffi, HttpClient hay treo 10 s
+        string body=await CffiGet(embedUrl, SiteHost+"/", timeoutSeconds);
         if(string.IsNullOrEmpty(body) || !body.Contains("pass_md5"))
         {
             try{ body=await Http.Get(embedUrl, timeoutSeconds: timeoutSeconds, headers: HeadersModel.Init(("User-Agent",ChromeUA),("Referer",SiteHost+"/")), proxy: proxyDirect, httpversion: httpversion); }catch{return (null,null);}
@@ -692,14 +1034,31 @@ public static class SexTbTo
         int hash=embedUrl.IndexOf('#'); if(hash<0) return (null,null);
         string id=embedUrl.Substring(hash+1).Trim().Trim('/'); int amp=id.IndexOf('&'); if(amp>=0) id=id.Substring(0,amp); if(id.Length<2) return (null,null);
         string host; try{host=new System.Uri(embedUrl).GetLeftPart(System.UriPartial.Authority);}catch{return (null,null);}
-        string hex=null;
-        try{hex=await Http.Get(host+"/api/v1/video?id="+System.Uri.EscapeDataString(id), timeoutSeconds: timeoutSeconds, headers: HeadersModel.Init(("User-Agent",ChromeUA),("Referer",host+"/")), httpversion: httpversion);}catch{}
+        // cffi truoc: Http.Get toi player.upn.one hay treo 10 s (player timeout)
+        string hex = await CffiGet(host+"/api/v1/video?id="+System.Uri.EscapeDataString(id), host+"/", timeoutSeconds);
+        if(string.IsNullOrEmpty(hex))
+        {
+            try{hex=await Http.Get(host+"/api/v1/video?id="+System.Uri.EscapeDataString(id), timeoutSeconds: Math.Min(8, timeoutSeconds), headers: HeadersModel.Init(("User-Agent",ChromeUA),("Referer",host+"/")), httpversion: httpversion);}catch{}
+        }
         if(string.IsNullOrEmpty(hex))
         {
             try{hex=await Http.Get(host+"/api/v1/video?id="+System.Uri.EscapeDataString(id), timeoutSeconds: timeoutSeconds, headers: HeadersModel.Init(("User-Agent",ChromeUA),("Referer",host+"/")), proxy: proxyDirect, httpversion: httpversion);}catch{return (null,null);}
         }
         string json=UpnDecrypt(hex); if(string.IsNullOrEmpty(json)) return (null,null);
-        try{ var doc=System.Text.Json.JsonDocument.Parse(json); var root=doc.RootElement; if(root.TryGetProperty("cfNative",out var cf)&&cf.ValueKind==System.Text.Json.JsonValueKind.String&&cf.GetString().StartsWith("http")) return (cf.GetString(), host+"/"); }catch{}
+        try
+        {
+            var doc=System.Text.Json.JsonDocument.Parse(json); var root=doc.RootElement;
+            if(root.TryGetProperty("cfNative",out var cf)&&cf.ValueKind==System.Text.Json.JsonValueKind.String&&cf.GetString().StartsWith("http"))
+                return (cf.GetString(), host+"/");
+            // Do 2026-10-31: api khong con tra cfNative, chi con hlsVideoTiktok (path tuong doi,
+            // vd /hls/<id>/.../tt/master.m3u8) — thieu cai nay la 503.
+            if(root.TryGetProperty("hlsVideoTiktok",out var tk)&&tk.ValueKind==System.Text.Json.JsonValueKind.String)
+            {
+                string u=tk.GetString();
+                if(!string.IsNullOrEmpty(u))
+                    return (u.StartsWith("http",StringComparison.OrdinalIgnoreCase)?u:host+u, host+"/");
+            }
+        }catch{}
         return (null,null);
     }
 
