@@ -259,75 +259,128 @@
 
   function menu$2(target, card_data) {
     if (!card_data.bookmark) return;
-    var cm = [{
-      title: !card_data.bookmark.uid ? 'Thêm vào dấu trang' : 'Xóa khỏi dấu trang'
-    }];
 
-    if (card_data.history_uid) {
-      cm.push({
-        title: 'Xóa khỏi lịch sử',
-        history: true
+    function build(genres, loading) {
+      var cm = [{
+        title: !card_data.bookmark.uid ? 'Thêm vào dấu trang' : 'Xóa khỏi dấu trang'
+      }];
+
+      if (loading) {
+        cm.push({
+          title: 'Thể loại: đang tải...',
+          loading: true
+        });
+      }
+
+      genres.forEach(function(grp) {
+        (grp.items || []).forEach(function(it) {
+          cm.push({
+            title: it.plain ? it.title : (it.play ? '▶ ' + it.title : grp.title + ': ' + it.title),
+            genre: it.url,
+            play: it.play,
+            name: it.name || it.title
+          });
+        });
       });
+
+      if (card_data.history_uid) {
+        cm.push({
+          title: 'Xóa khỏi lịch sử',
+          history: true
+        });
+      }
+
+      if (card_data.related) {
+        cm.push({
+          title: 'Tương tự',
+          related: true
+        });
+      }
+
+      if (card_data.model) {
+        cm.push({
+          title: card_data.model.name,
+          model: true
+        });
+      }
+
+      if (Lampa.Platform.is('android') && Lampa.Storage.field('player') !== 'inner') {
+        cm.push({
+          title: 'Trình phát Lampa',
+          lampaplayer: true
+        });
+      }
+
+      return cm;
     }
 
-    if (card_data.related) {
-      cm.push({
-        title: 'Tương tự',
-        related: true
-      });
-    }
+    function show(genres, loading) {
+      Lampa.Select.show({
+        title: 'Trình đơn',
+        items: build(genres, loading),
+        onSelect: function onSelect(m) {
+          if (m.loading) return;
 
-    if (card_data.model) {
-      cm.push({
-        title: card_data.model.name,
-        model: true
-      });
-    }
-
-    if (Lampa.Platform.is('android') && Lampa.Storage.field('player') !== 'inner') {
-      cm.push({
-        title: 'Trình phát Lampa',
-        lampaplayer: true
-      });
-    }
-
-    Lampa.Select.show({
-      title: 'Trình đơn',
-      items: cm,
-      onSelect: function onSelect(m) {
-        if (m.model) {
-          Lampa.Activity.push({
-            url: Defined.localhost.replace('/sisi', '') + '/' + card_data.model.uri,
-            title: 'Người mẫu - ' + card_data.model.name,
-            component: 'sisi_view_' + Defined.use_api,
-            page: 1
-          });
-        } else if (m.related) {
-          Lampa.Activity.push({
-            url: card_data.video + '&related=true',
-            title: 'Tương tự - ' + card_data.title,
-            component: 'sisi_view_' + Defined.use_api,
-            page: 1
-          });
-        } else if (m.history) {
-          Api.history(card_data, function(status) {
-            Lampa.Noty.show('Thành công');
-          });
-          Lampa.Controller.toggle('content');
-        } else if (m.lampaplayer) {
-          Lampa.Controller.toggle('content');
-          play(card_data);
-        } else {
-          Api.bookmark(card_data, !card_data.bookmark.uid, function(status) {
-            Lampa.Noty.show('Thành công');
-          });
+          if (m.play) {
+            Lampa.Controller.toggle('content');
+            play({
+              video: m.play,
+              name: m.name,
+              json: true
+            });
+          } else if (m.genre) {
+            Lampa.Activity.push({
+              title: m.title,
+              url: m.genre,
+              component: 'sisi_view_' + Defined.use_api,
+              page: 1
+            });
+          } else if (m.model) {
+            Lampa.Activity.push({
+              url: Defined.localhost.replace('/sisi', '') + '/' + card_data.model.uri,
+              title: 'Người mẫu - ' + card_data.model.name,
+              component: 'sisi_view_' + Defined.use_api,
+              page: 1
+            });
+          } else if (m.related) {
+            Lampa.Activity.push({
+              url: card_data.video + '&related=true',
+              title: 'Tương tự - ' + card_data.title,
+              component: 'sisi_view_' + Defined.use_api,
+              page: 1
+            });
+          } else if (m.history) {
+            Api.history(card_data, function(status) {
+              Lampa.Noty.show('Thành công');
+            });
+            Lampa.Controller.toggle('content');
+          } else if (m.lampaplayer) {
+            Lampa.Controller.toggle('content');
+            play(card_data);
+          } else {
+            Api.bookmark(card_data, !card_data.bookmark.uid, function(status) {
+              Lampa.Noty.show('Thành công');
+            });
+            Lampa.Controller.toggle('content');
+          }
+        },
+        onBack: function onBack() {
           Lampa.Controller.toggle('content');
         }
-      },
-      onBack: function onBack() {
-        Lampa.Controller.toggle('content');
-      }
-    });
+      });
+    }
+
+    // Phai mo popup NGAY: plugin khac (online mod) cung bat hover:long, neu ta
+    // khong show ngay thi menu cua no se chen vao. The loai ve sau thi cap nhat
+    // lai chinh popup dang mo.
+    var ready = Api.genresReady(card_data);
+    show(Api.genresCached(card_data), false);
+
+    if (!ready) {
+      Api.genres(card_data, function(items) {
+        if (document.body.classList.contains('selectbox--open')) show(items, false);
+      });
+    }
   }
 
   var Utils = {
@@ -352,6 +405,7 @@
       },
       onFocus: function (target, element) {
         Utils.preview($(target), element);
+        Api.genres(element, function() {});
       }
     };
   }
@@ -724,6 +778,8 @@
           error();
           Lampa.Noty.show(json.denymsg || json.msg, {style: 'error', time: 8000});
         } else if (json.list) {
+          // Het trang: dung han, tranh vong load vo han
+          if ((params.page || 1) > 1 && !json.list.length) params.page = 0;
           success(normalizeViewJson(json));
         } else {
           error();
@@ -750,6 +806,43 @@
         call(true);
       }, function() {
         call(false);
+      });
+    };
+
+    // The loai cua video: hoi module qua /<route>/genres?uri=<detail>
+    var genres_cache = {};
+
+    this.genresReady = function(element) {
+      return genres_cache.hasOwnProperty(element.video);
+    };
+
+    this.genresCached = function(element) {
+      var hit = genres_cache[element.video];
+      return hit ? hit : [];
+    };
+
+    this.genres = function(element, call) {
+      var m = /(?:^|\/)([^\/?]+)\/vidosik\?(?:[^#]*&)?uri=([^&]+)/i.exec(element.video || '');
+
+      if (!m) return call([]);
+
+      if (genres_cache[element.video]) return call(genres_cache[element.video]);
+
+      var u = Defined.localhost.replace('/sisi', '') + '/' + m[1] + '/genres?uri=' + m[2];
+
+      network.silent(this.account(u), function(json) {
+        var groups = [];
+
+        if (json && json.groups && json.groups.length) {
+          groups = json.groups;
+        } else if (json && json.items && json.items.length) {
+          groups = [{ title: 'Thể loại', items: json.items }];
+        }
+
+        genres_cache[element.video] = groups;
+        call(groups);
+      }, function() {
+        call([]);
       });
     };
 
