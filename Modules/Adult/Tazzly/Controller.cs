@@ -204,7 +204,7 @@ public class TazzlyController : BaseSisiController
                 return (null, false);
 
             string playerHtml = await GetPageAsync(player);
-            string m3u8 = TazzlyTo.M3u8Url(playerHtml);
+            string m3u8 = TazzlyTo.M3u8Url(playerHtml, player);
             if (string.IsNullOrEmpty(m3u8))
                 return (null, false);
 
@@ -253,7 +253,7 @@ public class TazzlyController : BaseSisiController
         if (string.IsNullOrEmpty(m3u8) || (!string.IsNullOrEmpty(q) && q != "1"))
             return OnError("stream_links", refresh_proxy: true);
 
-        return Redirect(HostStreamProxy(m3u8, StreamHeaders()));
+        return Redirect(HostStreamProxy(m3u8, StreamHeaders(m3u8)));
     }
 
     [HttpGet]
@@ -272,7 +272,7 @@ public class TazzlyController : BaseSisiController
             link = m3u8;
         }
 
-        return Redirect(HostStreamProxy(link, StreamHeaders()));
+        return Redirect(HostStreamProxy(link, StreamHeaders(link)));
     }
 
     string StreamRoute(string uri, string link)
@@ -298,13 +298,17 @@ public class TazzlyController : BaseSisiController
         );
     }
 
-    // m3u8 nam tren embed host va tra 403 neu thieu Referer.
-    static IReadOnlyList<HeadersModel> StreamHeaders()
+    // m3u8 nam tren embed host va tra 403 neu thieu Referer. Origin lay theo host that cua link
+    // (embed host doi theo thoi gian: tazzly -> okuracc ...).
+    static IReadOnlyList<HeadersModel> StreamHeaders(string link = null)
     {
+        string origin = TazzlyTo.EmbedHost;
+        if (!string.IsNullOrEmpty(link) && System.Uri.TryCreate(link, UriKind.Absolute, out var u))
+            origin = u.Scheme + "://" + u.Host + (u.IsDefaultPort ? "" : ":" + u.Port);
         return HeadersModel.Init(
             ("User-Agent", TazzlyTo.ChromeUA),
-            ("Referer", TazzlyTo.EmbedHost + "/"),
-            ("Origin", TazzlyTo.EmbedHost),
+            ("Referer", origin + "/"),
+            ("Origin", origin),
             ("Accept", "*/*")
         );
     }

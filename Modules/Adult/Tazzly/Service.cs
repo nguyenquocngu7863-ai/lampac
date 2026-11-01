@@ -337,19 +337,22 @@ public static class TazzlyTo
         if (string.IsNullOrWhiteSpace(pageHtml))
             return null;
 
-        Match match = Regex.Match(pageHtml, @"https://embed\.tazzly\.com/embed/([a-zA-Z0-9_-]+)/p(\d+)", RegexOptions.IgnoreCase);
+        // Embed host doi theo thoi gian (tazzly.com -> okuracc.com ...), KHONG ghep cung host.
+        // Uu tien src cua iframe, lay nguyen URL day du.
+        Match match = Regex.Match(pageHtml, @"<iframe[^>]+src\s*=\s*[""']([^""']*?/embed/[a-zA-Z0-9_-]+/p\d+[^""']*)[""']", RegexOptions.IgnoreCase);
         if (match.Success)
-            return match.Value;
+            return WebUtility.HtmlDecode(match.Groups[1].Value).Trim();
 
-        match = Regex.Match(pageHtml, @"/embed/([a-zA-Z0-9_-]+)/p(\d+)", RegexOptions.IgnoreCase);
+        // Fallback: bat ky URL https://<embed-host>/embed/<code>/p<num>
+        match = Regex.Match(pageHtml, @"https://[a-zA-Z0-9.\-]+/embed/[a-zA-Z0-9_-]+/p\d+[^""'\s<>]*", RegexOptions.IgnoreCase);
         if (match.Success)
-            return EmbedHost + match.Value;
+            return WebUtility.HtmlDecode(match.Value).Trim();
 
         return null;
     }
 
     // Trang player noi san m3u8 trong bien JS: let m3u8_file_url = '/phim-sex/<code>/cdn.m3u8';
-    public static string M3u8Url(string playerHtml)
+    public static string M3u8Url(string playerHtml, string playerUrl = null)
     {
         if (string.IsNullOrWhiteSpace(playerHtml))
             return null;
@@ -371,7 +374,12 @@ public static class TazzlyTo
         if (!path.StartsWith("/"))
             path = "/" + path;
 
-        return EmbedHost + path;
+        // m3u8 nam tren cung host voi trang player (embed host co the doi: tazzly -> okuracc ...)
+        string origin = EmbedHost;
+        if (!string.IsNullOrEmpty(playerUrl) && System.Uri.TryCreate(playerUrl, UriKind.Absolute, out var pu))
+            origin = pu.Scheme + "://" + pu.Host + (pu.IsDefaultPort ? "" : ":" + pu.Port);
+
+        return origin + path;
     }
     #endregion
 
