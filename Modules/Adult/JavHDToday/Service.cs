@@ -20,7 +20,7 @@ public sealed class JavHDTodayServer
 
 public static class JavHDTodayTo
 {
-    public static string SiteHost = "https://javhd.today";
+    public static string SiteHost = "https://javhdz.today";
 
     public static string ChromeUA = "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36";
 
@@ -1482,6 +1482,85 @@ public static class JavHDTodayTo
         if (string.IsNullOrWhiteSpace(c)) return "recent";
         var (basePath, _, _) = SplitPath(c);
         return basePath;
+    }
+
+    // ===== info card (long-press): the loai / dien vien / hang / tag =====
+    // Detail javhdz co cac dong <i class="fa fa-caret-right"></i> Genre: ... /
+    // starring: ... / Studio: ... / Director: ... / Label: ... / Tags: ...
+    // Moi dong chua <a href> rieng -> doc thang, khong can bang tra.
+    static readonly HashSet<string> PartnerSlugs = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "jav-guru", "sextb", "javmost", "missav", "7mmtv", "bestjav", "jav-tube",
+        "jav-porn", "javtiful", "javtrailers", "javct", "javgg", "jable",
+        "pornhub", "xnxx", "javbangers", "vjav", "thisav", "avgle", "supjav",
+        "javfinder"
+    };
+
+    public static List<(string kind, string slug, string name)> Info(string html)
+    {
+        var res = new List<(string kind, string slug, string name)>();
+        if (string.IsNullOrEmpty(html))
+            return res;
+
+        // Genre: <a href="/big-tits/">.. Big Tits</a> (dung truoc "starring:")
+        int gi = html.IndexOf("Genre:", StringComparison.OrdinalIgnoreCase);
+        if (gi >= 0)
+        {
+            int end = html.IndexOf("starring:", gi, StringComparison.OrdinalIgnoreCase);
+            if (end < 0) end = Math.Min(html.Length, gi + 4000);
+            string seg = html.Substring(gi, end - gi);
+            foreach (Match m in Regex.Matches(seg,
+                "<a href=\"/([^\"'/?]+)/\"[^>]*>\\s*(?:<i[^>]*></i>)?\\s*([^<]{2,80})</a>"))
+            {
+                string slug = m.Groups[1].Value.Trim().ToLowerInvariant();
+                string name = HttpUtility.HtmlDecode(m.Groups[2].Value).Trim();
+                if (slug.Length == 0 || name.Length == 0 || PartnerSlugs.Contains(slug))
+                    continue;
+                if (!res.Exists(x => x.kind == "genre" && x.slug == slug))
+                    res.Add(("genre", slug, name));
+            }
+        }
+
+        // starring:<a href="/pornstar/<slug>/">.. Name</a>
+        foreach (Match m in Regex.Matches(html,
+            "<a href=\"/pornstar/([^\"'/]+)/\"[^>]*>\\s*(?:<i[^>]*></i>)?\\s*([^<]{2,80})</a>"))
+        {
+            string slug = m.Groups[1].Value.Trim().ToLowerInvariant();
+            string name = HttpUtility.HtmlDecode(m.Groups[2].Value).Trim();
+            if (slug.Length > 0 && name.Length > 0)
+                res.Add(("actress", slug, name));
+        }
+
+        // Studio: <a class="tagnote" href=".../channel/<slug>">Name</a>
+        var st = Regex.Match(html, "Studio:\\s*<a[^>]*?/channel/([^\"'/?]+)[^>]*>([^<]{1,80})</a>");
+        if (st.Success)
+            res.Add(("studio", st.Groups[1].Value.Trim(), HttpUtility.HtmlDecode(st.Groups[2].Value).Trim()));
+
+        // Director / Label: khong co trang rieng, link la search ?s=<ten>
+        var dr = Regex.Match(html, "Director:\\s*<a[^>]*?[?&]s=([^\"&]+)[^>]*>([^<]{1,80})</a>");
+        if (dr.Success)
+            res.Add(("director", HttpUtility.UrlDecode(dr.Groups[1].Value).Trim(), HttpUtility.HtmlDecode(dr.Groups[2].Value).Trim()));
+
+        var lb = Regex.Match(html, "Label:\\s*<a[^>]*?[?&]s=([^\"&]+)[^>]*>([^<]{1,80})</a>");
+        if (lb.Success)
+            res.Add(("label", HttpUtility.UrlDecode(lb.Groups[1].Value).Trim(), HttpUtility.HtmlDecode(lb.Groups[2].Value).Trim()));
+
+        // Country: <a href="/tag/japan-sex/">Japan</a>
+        var ct = Regex.Match(html, "Country:\\s*<a href=\"/(?:tag/)?([^\"'/]+)/\"[^>]*>([^<]{1,60})</a>");
+        if (ct.Success)
+            res.Add(("tag", ct.Groups[1].Value.Trim(), HttpUtility.HtmlDecode(ct.Groups[2].Value).Trim()));
+
+        // Tags: <a href="/tag/<slug>/"><i class="fa fa-tag"></i> name</a>
+        foreach (Match m in Regex.Matches(html,
+            "<a href=\"/tag/([^\"'/]+)/\"[^>]*>\\s*<i[^>]*></i>\\s*([^<]{1,60})</a>"))
+        {
+            string slug = m.Groups[1].Value.Trim().ToLowerInvariant();
+            string name = HttpUtility.HtmlDecode(m.Groups[2].Value).Trim();
+            if (slug.Length > 0 && name.Length > 0 && !res.Exists(x => x.kind == "tag" && x.slug == slug))
+                res.Add(("tag", slug, name));
+        }
+
+        return res;
     }
 
     // ===== head menu: dong 1 + 2, dung moi request (re) =====

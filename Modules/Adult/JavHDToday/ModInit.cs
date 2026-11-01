@@ -37,7 +37,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
 
     void updateConf()
     {
-        conf = ModuleInvoke.Init("JavHDToday", new SisiSettings("JavHDToday", "https://javhd.today")
+        conf = ModuleInvoke.Init("JavHDToday", new SisiSettings("JavHDToday", "https://javhdz.today")
         {
             // 7 = ngay truoc JavGuru (8), dau nhom tu lam.
             // 20 cu trung PornHub nen doi.
@@ -55,7 +55,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
             ).ToDictionary(),
             headers_image = HeadersModel.Init(
                 ("User-Agent", JavHDTodayTo.ChromeUA),
-                ("Referer", "https://javhd.today/")
+                ("Referer", "https://javhdz.today/")
             ).ToDictionary()
         });
     }

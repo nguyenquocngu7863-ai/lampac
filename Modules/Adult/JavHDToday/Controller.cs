@@ -23,10 +23,13 @@ public class JavHDTodayController : BaseSisiController
     [HttpGet, Staticache(manually: true)]
     [Route("javhdtoday")]
     async public Task<ActionResult> Index(
-        string search, string c, int pg = 1)
+        string search, string c, string rel, int pg = 1)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
+
+        if (!string.IsNullOrWhiteSpace(rel))
+            return await RelatedList(rel, pg);
 
         var cache = await InvokeCacheResult(
             ipkey($"javhdtoday:{search}:{c}:{pg}"),
@@ -56,7 +59,7 @@ public class JavHDTodayController : BaseSisiController
                             playlists = pl;
                     }, addheaders: HeadersModel.Init(
                         ("User-Agent", JavHDTodayTo.ChromeUA),
-                        ("Referer", "https://javhd.today/"),
+                        ("Referer", JavHDTodayTo.SiteHost + "/"),
                         ("X-Requested-With", "XMLHttpRequest")
                     ));
                 }
@@ -75,6 +78,110 @@ public class JavHDTodayController : BaseSisiController
 
         return PlaylistResult(cache, await MenuAsync(search, c));
     }
+
+    // ===== long-press: the loai / dien vien / hang / tag cua 1 video =====
+    // Tra { items, groups } cho SISI/plugins/sisi.js (menu nhan giu).
+    // Moi nhom = 1 dong "Nhom: ten", bam vao la list tuong ung.
+    [HttpGet]
+    [Route("javhdtoday/genres")]
+    async public Task<ActionResult> Genres(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return Json(new { items = new object[0], groups = new object[0] });
+
+        string pageUrl = uri.Trim();
+        pageUrl = HttpUtility.HtmlDecode(pageUrl);
+        if (!pageUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            pageUrl = init.host + pageUrl;
+        int qm = pageUrl.IndexOf('?');
+        if (qm >= 0) pageUrl = pageUrl.Substring(0, qm);
+
+        string memKey = ipkey($"javhdtoday:genres:{pageUrl}");
+        if (!hybridCache.TryGetValue(memKey,
+            out List<(string kind, string slug, string name)> info) || info == null)
+        {
+            string html = await FetchHtmlAsync(pageUrl, "starring", 2, 5, Ms() + 15000);
+            info = JavHDTodayTo.Info(html);
+            if (info.Count > 0)
+                hybridCache.Set(memKey, info, cacheTime(360));
+        }
+
+        var groups = new List<object>();
+
+        void AddGroup(string title, string kind, Func<string, string> urlOf)
+        {
+            var items = info.Where(x => x.kind == kind)
+                .Select(x => new { title = x.name, url = urlOf(x.slug) }).ToList();
+            if (items.Count > 0)
+                groups.Add(new { title, items });
+        }
+
+        string list(string c) => host + "/javhdtoday?c=" + HttpUtility.UrlEncode(c);
+        string find(string s) => host + "/javhdtoday?search=" + HttpUtility.UrlEncode(s);
+
+        AddGroup("Diễn viên", "actress", s => list("pornstar/" + s));
+        AddGroup("Hãng", "studio", s => list("channel/" + s));
+        AddGroup("Nhãn", "label", s => find(s));
+        AddGroup("Đạo diễn", "director", s => find(s));
+        AddGroup("Thể loại", "genre", s => list(s));
+        AddGroup("Tag", "tag", s => list("tag/" + s));
+
+        if (groups.Count > 0)
+        {
+            groups.Add(new
+            {
+                title = "Liên quan",
+                items = new[]
+                {
+                    new
+                    {
+                        title = "Video liên quan",
+                        plain = true,
+                        url = host + "/javhdtoday?rel=" + HttpUtility.UrlEncode(pageUrl)
+                    }
+                }
+            });
+        }
+
+        return Json(new { items = new object[0], groups });
+    }
+
+    // "Related Videos" cua trang detail: ?ajax=related -> {html,total}.
+    // Chi 1 trang (site tra ve mot lo ~20 video).
+    async Task<ActionResult> RelatedList(string rel, int pg)
+    {
+        if (pg > 1)
+            return EmptyPage();
+
+        string pageUrl = rel.Trim();
+        pageUrl = HttpUtility.HtmlDecode(pageUrl);
+        if (!pageUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            pageUrl = init.host + pageUrl;
+        int qm = pageUrl.IndexOf('?');
+        if (qm >= 0) pageUrl = pageUrl.Substring(0, qm);
+
+        var cache = await InvokeCacheResult<(List<PlaylistItem> playlists, int total_pages)>(
+            ipkey($"javhdtoday:rel:{pageUrl}"), 180, async e =>
+        {
+            string json = await FetchHtmlAsync(
+                pageUrl + "?ajax=related", "videos", 2, 5, Ms() + 15000);
+
+            var pl = JavHDTodayTo.Playlist("javhdtoday/vidosik", json);
+            if (pl == null || pl.Count == 0)
+                return e.Success((new List<PlaylistItem>(), 0));
+
+            return e.Success((pl, 1));
+        });
+
+        if (!cache.IsSuccess)
+            return OnError(cache.ErrorMsg);
+
+        return PlaylistResult(cache.Value.playlists, cache.ISingleCache,
+            await MenuAsync(null, null), total_pages: 1);
+    }
+
+    ActionResult EmptyPage() =>
+        Json(new { total_pages = 1, list = new List<PlaylistItem>() });
 
     // "The loai" boc tu /categories/ (99 card, loc tube, top 50
     // theo so phim); "Hang phim" boc tu dropdown nav trang chu.
@@ -139,7 +246,7 @@ public class JavHDTodayController : BaseSisiController
                 html = span.ToString();
             }, addheaders: HeadersModel.Init(
                 ("User-Agent", JavHDTodayTo.ChromeUA),
-                ("Referer", "https://javhd.today/")
+                ("Referer", JavHDTodayTo.SiteHost + "/")
             ));
 
             Console.WriteLine("JavHDToday: fetch hydra "
