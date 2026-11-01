@@ -93,26 +93,12 @@ public static class TazzlyTo
         if (!System.Uri.TryCreate(value, UriKind.Absolute, out var parsed))
             return null;
 
-        // Site doi host 2 lan: tazzly.com -> phimsexmoi1.com -> singapore-packaging.com.
-        // Chap nhan ca 3 (URI cu tu cache/API van ve host cu), neu khong BuildItem
-        // tra null het va category trang trong.
-        if (!IsSiteHost(parsed.Host))
-            return null;
-
+        // Site doi host lien tuc: tazzly.com -> phimsexmoi1.com -> singapore-packaging.com -> okuracc.com ...
+        // Chi can la trang phim (/phim-sex/) la chap nhan, KHONG khoa cung host de khoi vo khi doi domain.
         if (parsed.AbsolutePath.IndexOf("/phim-sex/", StringComparison.OrdinalIgnoreCase) < 0)
             return null;
 
         return value;
-    }
-
-    static bool IsSiteHost(string host)
-    {
-        return host.Equals("tazzly.com", StringComparison.OrdinalIgnoreCase)
-            || host.EndsWith(".tazzly.com", StringComparison.OrdinalIgnoreCase)
-            || host.Equals("phimsexmoi1.com", StringComparison.OrdinalIgnoreCase)
-            || host.EndsWith(".phimsexmoi1.com", StringComparison.OrdinalIgnoreCase)
-            || host.Equals("singapore-packaging.com", StringComparison.OrdinalIgnoreCase)
-            || host.EndsWith(".singapore-packaging.com", StringComparison.OrdinalIgnoreCase);
     }
 
     public static string NormalizeCover(string value)
