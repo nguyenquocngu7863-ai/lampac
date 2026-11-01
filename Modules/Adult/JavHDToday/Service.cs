@@ -192,7 +192,9 @@ public static class JavHDTodayTo
             if (b.Length > 3000)
                 b = b.Substring(0, 3000);
 
-            var hm = Regex.Match(b, "<a href=\"(/\\d+/[^\\\"]+/)\"[^>]*title=\"([^\"]{3,300})\"");
+            // Tieu de co the rat dai (SIRO-5779: >400 ky tu) — gioi han 300
+            // lam regex truot -> roi vao fallback "Video <id>".
+            var hm = Regex.Match(b, "<a href=\"(/\\d+/[^\\\"]+/)\"[^>]*title=\"([^\"]{3,2000})\"");
             if (!hm.Success)
                 hm = Regex.Match(b, "<a href=\"(/\\d+/[^\\\"]+/)\"");
             if (!hm.Success)
@@ -204,6 +206,8 @@ public static class JavHDTodayTo
             string name = hm.Groups.Count > 2 ? HttpUtility.HtmlDecode(hm.Groups[2].Value.Trim()) : ("Video " + cm.Groups[1].Value);
             if (string.IsNullOrEmpty(name))
                 continue;
+            if (name.Length > 150)
+                name = name.Substring(0, 147) + "...";
 
             string poster = "";
             var im = Regex.Match(b, "<img[^>]+src=\"(https?://[^\"]+)\"");
@@ -322,6 +326,9 @@ public static class JavHDTodayTo
     }
 
     // Server nao da co cach resolve thi moi dua vao menu.
+    // Lulust (lulust.com, nut "Lulust" tren detail) CO TINH khong ho tro:
+    // embed tra "Video embed restricted for this domain", ca web cung khong
+    // phat duoc (kiem 2026-11-01) -> resolve chi ton request vo ich.
     public static bool IsSupported(string label)
     {
         if (string.IsNullOrEmpty(label))
