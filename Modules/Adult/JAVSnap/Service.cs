@@ -169,16 +169,60 @@ public static class JAVSnapTo
             if (!seen.Add(href))
                 continue;
 
+            string poster = Poster(block);
+
             list.Add((blocks[i].Groups[1].Value, new PlaylistItem()
             {
                 video = uri + "?uri=" + HttpUtility.UrlEncode(href),
                 name = title,
-                picture = Poster(block),
+                picture = poster,
                 json = true,
+                // Bookmark BAT BUOC: SISI menu$2 mo dau bang
+                // "if (!card_data.bookmark) return;" — thieu la nhan giu
+                // khong ra "Trinh don" ma roi vao menu cua plugin khac.
+                bookmark = new Bookmark()
+                {
+                    site = "javsnap",
+                    href = href,
+                    image = poster
+                }
             }));
         }
 
         return list;
+    }
+
+    // ===== info card (long-press): Cast / Studio / Director / Label / Categories =====
+    // Trang detail co <table class="info-table">, moi dong
+    // <tr><td>Nhan</td><td><a href="https://javsnap.com/en/<kind>/<slug>">Ten</a></td></tr>.
+    // Doc thang link theo kind — site them loai moi la tu co, khong can bang tra.
+    static readonly Regex InfoTableRx = new Regex(
+        "<table[^>]*\\binfo-table\\b[^>]*>(.*?)</table>",
+        RegexOptions.IgnoreCase | RegexOptions.Singleline);
+
+    static readonly Regex InfoLinkRx = new Regex(
+        "href\\s*=\\s*[\"']https?://javsnap\\.com/en/(actor|studio|director|label|genre)/([^\"']+)[\"'][^>]*>([^<]{1,120})</a>",
+        RegexOptions.IgnoreCase);
+
+    public static List<(string kind, string slug, string name)> Info(string html)
+    {
+        var res = new List<(string kind, string slug, string name)>();
+        if (string.IsNullOrEmpty(html)) return res;
+
+        var t = InfoTableRx.Match(html);
+        string body = t.Success ? t.Groups[1].Value : html;
+
+        foreach (Match m in InfoLinkRx.Matches(body))
+        {
+            string kind = m.Groups[1].Value.ToLowerInvariant();
+            string slug = WebUtility.HtmlDecode(m.Groups[2].Value).Trim().Trim('/');
+            string name = WebUtility.HtmlDecode(m.Groups[3].Value).Trim();
+            if (slug.Length == 0 || name.Length == 0 || name == "-") continue;
+            if (!res.Exists(x => x.kind == kind && x.slug == slug))
+                res.Add((kind, slug, name));
+        }
+
+        return res;
     }
 
     static string Poster(string block)

@@ -38,8 +38,9 @@ public class JAVSnapController : BaseSisiController
         var menuTask = MenuAsync(search, sort, c);
 
         var cache = await InvokeCacheResult<(List<PlaylistItem> playlists, int total_pages)>(
-            // v3: doi key vi (a) sua poster (b) trang chu gio gop 2 danh muc de co phan trang
-            ipkey($"javsnap:v4:{search}:{c}:{sort}:{pg}"),
+            // v5: doi key vi them bookmark (menu nhan giu can no) — key cu
+            // trong cache van tra item khong co bookmark.
+            ipkey($"javsnap:v5:{search}:{c}:{sort}:{pg}"),
             isSearch || isCat ? 10 : 25, async e =>
         {
             if (!isSearch && !isCat)
@@ -164,6 +165,57 @@ public class JAVSnapController : BaseSisiController
     }
     #endregion
 
+
+    #region info card (long-press)
+    // Tra { items, groups } cho SISI/plugins/sisi.js (menu nhan giu):
+    // dien vien / hang / dao dien / nhan / the loai cua 1 phim.
+    [HttpGet]
+    [Route("javsnap/genres")]
+    async public Task<ActionResult> Genres(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return Json(new { items = new object[0], groups = new object[0] });
+
+        string pageUrl = HttpUtility.HtmlDecode(uri.Trim());
+        if (!pageUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            pageUrl = JAVSnapTo.SiteHost + pageUrl;
+        int qm = pageUrl.IndexOf('?');
+        if (qm >= 0) pageUrl = pageUrl.Substring(0, qm);
+
+        string memKey = ipkey($"javsnap:genres:{pageUrl}");
+        if (!hybridCache.TryGetValue(memKey,
+            out List<(string kind, string slug, string name)> info) || info == null)
+        {
+            string html = await FetchHtmlAsync(pageUrl, 15, null, "info-table");
+            info = JAVSnapTo.Info(html);
+            if (info.Count > 0)
+                hybridCache.Set(memKey, info, cacheTime(360));
+        }
+
+        var groups = new List<object>();
+
+        void AddGroup(string title, string kind, string prefix)
+        {
+            var items = info.Where(x => x.kind == kind)
+                .Select(x => new
+                {
+                    title = x.name,
+                    url = host + "/javsnap?c="
+                        + HttpUtility.UrlEncode("en/" + prefix + "/" + x.slug)
+                }).ToList();
+            if (items.Count > 0)
+                groups.Add(new { title, items });
+        }
+
+        AddGroup("Diễn viên", "actor", "actor");
+        AddGroup("Hãng", "studio", "studio");
+        AddGroup("Đạo diễn", "director", "director");
+        AddGroup("Nhãn", "label", "label");
+        AddGroup("Thể loại", "genre", "genre");
+
+        return Json(new { items = new object[0], groups });
+    }
+    #endregion
 
     #region vidosik
     [HttpGet, Staticache(manually: true)]
