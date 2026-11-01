@@ -38,7 +38,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
     {
         // phimsexviet113.com: HTML tinh (khong CSR), fetch direct duoc.
         // Stream m3u8 tra ve tu /api/player (jwplayer sources hoac iframe).
-        conf = ModuleInvoke.Init("PhimSexViet113", new SisiSettings("PhimSexViet113", "https://phimsexviet113.com")
+        conf = ModuleInvoke.Init("PhimSexViet113", new SisiSettings("PhimSexViet113", "https://sexvnonline.net")
         {
             displayindex = 22,
             streamproxy = true,
@@ -48,11 +48,11 @@ public class ModInit : IModuleLoaded, IModuleSisi
             stream_access = "apk",
             headers_stream = HeadersModel.Init(
                 ("User-Agent", PhimSexViet113To.ChromeUA),
-                ("Referer", "https://phimsexviet113.com/")
+                ("Referer", "https://sexvnonline.net/")
             ).ToDictionary(),
             headers_image = HeadersModel.Init(
                 ("User-Agent", PhimSexViet113To.ChromeUA),
-                ("Referer", "https://phimsexviet113.com/")
+                ("Referer", "https://sexvnonline.net/")
             ).ToDictionary()
         });
     }

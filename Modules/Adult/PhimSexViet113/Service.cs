@@ -15,7 +15,7 @@ namespace PhimSexViet113;
 
 public static class PhimSexViet113To
 {
-    public static string SiteHost = "https://phimsexviet113.com";
+    public static string SiteHost = "https://sexvnonline.net";
     public const string ChromeUA = "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
 
     static readonly char[] Hidden = { '\uFEFF', '\u200B', '\u200C', '\u200D', '\u200E', '\u200F' };
@@ -102,7 +102,8 @@ public static class PhimSexViet113To
         else if (!value.StartsWith("http", StringComparison.OrdinalIgnoreCase)) value = SiteHost + "/" + value;
         if (!System.Uri.TryCreate(value, UriKind.Absolute, out var parsed)) return null;
         if (!parsed.Host.EndsWith("phimsexviet113.com", StringComparison.OrdinalIgnoreCase)
-            && !parsed.Host.EndsWith("sexvietclub.com", StringComparison.OrdinalIgnoreCase))
+            && !parsed.Host.EndsWith("sexvietclub.com", StringComparison.OrdinalIgnoreCase)
+            && !parsed.Host.EndsWith("sexvnonline.net", StringComparison.OrdinalIgnoreCase))
             return null;
         return value;
     }
