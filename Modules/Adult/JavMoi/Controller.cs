@@ -27,9 +27,9 @@ public class JavMoiController : BaseSisiController
         if (pg < 1)
             pg = 1;
 
-        var cache = await InvokeCacheResult(
+        var cache = await InvokeCacheResult<(List<PlaylistItem> playlists, int total_pages)>(
             ipkey($"javmoi:{search}:{c}:{pg}"),
-            10, jsonContext.ListPlaylistItem, async e =>
+            10, async e =>
         {
             string url = JavMoiTo.Uri(init.host, search, c, pg);
             string html = await FetchHtmlAsync(url);
@@ -37,16 +37,31 @@ public class JavMoiController : BaseSisiController
             var playlists = JavMoiTo.Playlist(
                 "javmoi/vidosik", html ?? "");
 
+            // The loai phu (vd /the-loai/sexhd) site render rong: tra danh
+            // sach trong thay vi 503 de app khong bao loi.
             if (playlists == null || playlists.Count == 0)
-                return e.Fail("playlists", refresh_proxy: true);
+            {
+                if (!string.IsNullOrWhiteSpace(search)
+                    || !string.IsNullOrWhiteSpace(c) || pg > 1)
+                    return e.Success((new List<PlaylistItem>(), 0));
 
-            return e.Success(playlists);
+                return e.Fail("playlists", refresh_proxy: true);
+            }
+
+            return e.Success((playlists, JavMoiTo.Pages(html)));
         });
 
         if (rch?.enable == true)
             StatiCacheDisabled = true;
 
-        return PlaylistResult(cache, await MenuAsync());
+        if (!cache.IsSuccess)
+            return OnError(cache.ErrorMsg);
+
+        return PlaylistResult(
+            cache.Value.playlists,
+            cache.ISingleCache,
+            await MenuAsync(),
+            total_pages: cache.Value.total_pages);
     }
 
     async Task<List<MenuItem>> MenuAsync()

@@ -18,8 +18,11 @@ public static class JavMoiTo
     // FetchHtmlAsync: 2 duong chay song, ben nao co noi dung thi lay nen
     // gan khong bao gio tra 0 phim.
     // Regex ben duoi van KHONG hardcode subdomain.
-    public static string SiteHost = "https://x.javmoi.blog";
-    public static string AltHost = "https://z.javmoi.blog";
+    // Do lai 2026-11-01: x. CHET HAN (BoringSSL SSL_connect: Connection
+    // closed abruptly, 4/4 URL) trong khi z. 200 cho ca trang chu, the loai,
+    // quoc gia va ?page=2 => doi SiteHost sang z, x chi con la duong du phong.
+    public static string SiteHost = "https://z.javmoi.blog";
+    public static string AltHost = "https://x.javmoi.blog";
 
     // Dao subdomain cua site: x -> z, z -> x. Tra null neu khong phai host
     // nay (khong sua link host khac).
@@ -102,6 +105,23 @@ public static class JavMoiTo
         + "title=\"([^\"]*)\"",
         RegexOptions.IgnoreCase);
 
+    // Phan trang: site dung ?page=N (trang cuoi thay o link "last").
+    // Do 2026-11-01: /danh-sach/phim-moi co 864 trang. Truoc day module
+    // khong tra total_pages nen app chi xem duoc page 1.
+    public static int Pages(string html)
+    {
+        if (string.IsNullOrWhiteSpace(html))
+            return 1;
+
+        int max = 1;
+        foreach (Match m in Regex.Matches(html, "[?&]page=(\\d+)"))
+        {
+            if (int.TryParse(m.Groups[1].Value, out int n) && n > max)
+                max = n;
+        }
+        return max;
+    }
+
     public static List<PlaylistItem> Playlist(string uri, string html)
     {
         var list = new List<PlaylistItem>();
@@ -134,7 +154,17 @@ public static class JavMoiTo
                 "data-original=\"(/storage/images/[^\"]+)\"");
             if (im.Success)
                 poster = origin + im.Groups[1].Value;
-            else
+            if (string.IsNullOrEmpty(poster))
+            {
+                // markup moi: <img src="https://<host>/storage/images/<slug>/thumb.webp">
+                var ig = Regex.Match(tail, "src=\"([^\"]*/storage/images/[^\"]+)\"");
+                if (ig.Success)
+                {
+                    string v = ig.Groups[1].Value;
+                    poster = v.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? v : origin + v;
+                }
+            }
+            if (string.IsNullOrEmpty(poster))
             {
                 var bg = Regex.Match(tail,
                     "background-image:url\\('(/storage/images/[^']+)'\\)");
@@ -214,6 +244,13 @@ public static class JavMoiTo
         "<a\\s+[^>]*href=\"(?<path>/(?:the-loai|quoc-gia)/[a-z0-9\\-]+)\"[^>]*>"
         + "\\s*(?<name>[^<]{1,60}?)\\s*</a>", RegexOptions.IgnoreCase);
 
+    static readonly HashSet<string> DeadCats = new HashSet<string>(
+        StringComparer.OrdinalIgnoreCase)
+    {
+        "/the-loai/sexhd", "/the-loai/hentai", "/the-loai/tap-the",
+        "/the-loai/viet-nam-clip", "/quoc-gia/han-quoc"
+    };
+
     public static List<(string name, string path)> NavList(string html)
     {
         var list = new List<(string, string)>();
@@ -228,6 +265,15 @@ public static class JavMoiTo
             // `/the-loai/x/` la cung danh muc, chi giu mot.
             string path = m.Groups["path"].Value.TrimEnd('/');
             if (!seen.Add(path))
+                continue;
+
+            // Danh muc CHET tren chinh site (do 2026-11-01: trang 200 nhung
+            // 0 phim, chi con widget "top phim" dung chung moi trang):
+            //   /the-loai/sexhd  (alias rong cua /the-loai/sex-hd)
+            //   /the-loai/hentai, /the-loai/tap-the, /the-loai/viet-nam-clip
+            //   /quoc-gia/han-quoc
+            // Bo khoi menu, neu khong app bam vao se an 503 "playlists".
+            if (DeadCats.Contains(path))
                 continue;
 
             string name = WebUtility.HtmlDecode(m.Groups["name"].Value.Trim());
