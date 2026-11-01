@@ -4,7 +4,9 @@ using Shared.Attributes;
 using Shared.Models.Base;
 using Shared.Models.SISI.Base;
 using Shared.Services;
+using Shared.Services.HTTP;
 using Shared.Services.Hybrid;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -82,6 +84,26 @@ public class VietSexBlogController : BaseSisiController
                 if (links == null || links.Count == 0)
                     return (null, false);
 
+                // Server Blogger (video.g?token=) khong phai file phat duoc —
+                // mo bang Playwright roi trich URL googlevideo (itag 18/22).
+                foreach (var kv in links.ToList())
+                {
+                    if (!VietSexBlogTo.IsBlogger(kv.Value))
+                        continue;
+
+                    var mp4s = await ResolveBloggerAsync(kv.Value, url);
+                    links.Remove(kv.Key);
+
+                    if (mp4s == null || mp4s.Count == 0)
+                        continue;
+
+                    foreach (var m in mp4s)
+                        links.TryAdd(m.Key, m.Value);
+                }
+
+                if (links.Count == 0)
+                    return (null, false);
+
                 proxyManager?.Success();
                 cache = (links, rch?.enable == true);
                 hybridCache.Set(memKey, cache, cacheTime(20));
@@ -93,6 +115,49 @@ public class VietSexBlogController : BaseSisiController
         {
             semaphore?.Release();
         }
+    }
+
+    // Trang video.g cua Blogger nhung san URL googlevideo trong HTML (da
+    // escape \u003d / \u0026) nen GET thuong la du. Playwright chi la luoi
+    // do khi Blogger doi sang render bang JS.
+    async Task<Dictionary<string, string>> ResolveBloggerAsync(string embedUrl, string referer)
+    {
+        var headers = HeadersModel.Init(
+            ("User-Agent", VietSexBlogTo.ChromeUA),
+            ("Referer", referer)
+        );
+
+        string html = null;
+
+        try
+        {
+            await httpHydra.GetSpan(embedUrl, span =>
+            {
+                html = span.ToString();
+            }, addheaders: headers);
+
+            var mp4s = VietSexBlogTo.ExtractMp4s(html);
+            if (mp4s.Count > 0)
+                return mp4s;
+        }
+        catch { }
+
+        try
+        {
+            html = null;
+
+            var pwHeaders = httpHeaders(init, headers);
+            await PlaywrightHttp.GetSpan(init.plugin, init.cors(embedUrl, pwHeaders, requestInfo), span =>
+            {
+                html = span.ToString();
+            }, pwHeaders, proxy_data);
+        }
+        catch
+        {
+            return null;
+        }
+
+        return VietSexBlogTo.ExtractMp4s(html);
     }
 
     [HttpGet, Staticache(manually: true)]
@@ -116,13 +181,17 @@ public class VietSexBlogController : BaseSisiController
         if (userch)
             return OnResult(links);
 
+        // HLS di route .m3u8, MP4 (Blogger/googlevideo) di route .mp4 —
+        // app bao "no EXTM3U delimiter" neu lan lon.
         return Json(links.ToDictionary(k => k.Key, v =>
-            $"{host}/vietsexblog/video.m3u8?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(v.Key)}"));
+            $"{host}/vietsexblog/{(v.Value.IndexOf(".m3u8", StringComparison.OrdinalIgnoreCase) >= 0 ? "video.m3u8" : "video.mp4")}"
+            + $"?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(v.Key)}"));
     }
 
     [HttpGet]
     [Route("vietsexblog/video")]
     [Route("vietsexblog/video.m3u8")]
+    [Route("vietsexblog/video.mp4")]
     async public Task<ActionResult> Video(string uri, string q)
     {
         if (await IsRequestBlocked(rch: true))
@@ -134,8 +203,13 @@ public class VietSexBlogController : BaseSisiController
         if (links == null || !links.TryGetValue(q, out string link) || string.IsNullOrEmpty(link))
             return OnError("stream_links", refresh_proxy: true);
 
+        string referer = link.Contains("googlevideo.com")
+            ? "https://www.blogger.com/"
+            : "https://x.vietsex.blog/";
+
         var direct = httpHeaders(init, HeadersModel.Init(
-            ("referer", "https://x.vietsex.blog/")
+            ("User-Agent", VietSexBlogTo.ChromeUA),
+            ("referer", referer)
         ));
         return Redirect(HostStreamProxy(link, direct));
     }

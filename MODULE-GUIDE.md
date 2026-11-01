@@ -15,9 +15,9 @@ Runtime: `/lampac-run` (Termux, app đang chạy). Repo source: thư mục này.
   ngược về `~/lampac` (nhánh `arena/...`) rồi mới tính chuyện deploy lên app.
 - Đừng mở PR từ repo này khi chưa đối chiếu với `~/lampac`.
 
-## 2. Cấu trúc module (copy SupJav, đừng sáng tạo)
+## 2. Cấu trúc module (copy Javtiful, đừng sáng tạo)
 
-Mẫu chuẩn: `Modules/Adult/SupJav/` — 5 file:
+Mẫu chuẩn: `Modules/Adult/Javtiful/` — 5 file:
 
 ```
 Modules/Adult/<Name>/
@@ -51,8 +51,9 @@ ls Modules/Adult/<Name>/*.csproj   # có thì theo §3, §4
                                     # không có csproj, BỎ QUA §3 và §4
 ```
 
-Module KHÔNG có `.csproj` (mẫu để copy): `SupJav`, `JavGuru`, `JavMoi`,
-`Jable`, `VNsexTop1`. Mẫu chuẩn để copy 4 file nên là `SupJav`.
+Module KHÔNG có `.csproj` (mẫu để copy): `Javtiful`, `SupJav`, `JavGuru`,
+`JavMoi`, `Jable`, `VNsexTop1`. Mẫu chuẩn để copy 4 file nên là `Javtiful`.
+(`SupJav` đang PAUSED — chỉ đọc code, không request site.)
 
 ### Model SISI — dùng SAI FIELD là lỗi build (đã dính 2 lần)
 
