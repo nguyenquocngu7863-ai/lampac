@@ -383,3 +383,17 @@ Modules/Adult/XNhau/*.deps.json
 Modules/Adult/XNhau/*.runtimeconfig.json
 Modules/Adult/XNhau/*.staticwebassets.endpoints.json
 playwright.ps1
+
+# Termux scratch / file nhap o root repo (do 2026-11-01)
+/.qoder/
+/cache/
+/current.conf
+/passwd
+/detail2
+/detail2.headers
+/ovh-rotate.py
+/ovh-rotate.sh
+/package.json
+/package-lock.json
+/termux-lampac-cli.sh
+/xheovl-*.headers
