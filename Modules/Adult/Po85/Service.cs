@@ -17,7 +17,8 @@ namespace Po85;
 public static class Po85To
 {
     #region Uri
-    public static string Uri(string host, string search, string sort, string c, string t, int pg)
+    public static string Uri(string host, string search, string sort, string c, string t, int pg,
+        string m = null)
     {
         var url = StringBuilderPool.ThreadInstance;
 
@@ -30,6 +31,24 @@ public static class Po85To
 
         url.Append(host);
         url.Append("/en/");   // 2026-10-17: site chuyen sang locale /en/
+
+        if (!string.IsNullOrWhiteSpace(m))
+        {
+            // Feed "Nguoi dang" (trang member cua KVS). Phan trang bang AJAX
+            // from_videos (do live 2026-11-02: pagination cua block
+            // list_videos_uploaded_videos dung data-parameters from_videos:N).
+            url.Append("members/");
+            url.Append(m.Trim().Trim('/'));
+            url.Append("/");
+            if (pg > 1)
+            {
+                url.Append("?mode=async&format=json&function=get_block");
+                url.Append("&block_id=list_videos_uploaded_videos");
+                url.Append("&from_videos=");
+                url.Append(pg);
+            }
+            return url.ToString();
+        }
 
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -199,6 +218,85 @@ public static class Po85To
 
         return playlists;
     }
+    #endregion
+
+    #region Info (card info — menu nhan giu)
+    // 85po la site user-generated: card info KHONG co dien vien/the loai/nha san
+    // xuat (video_categories/video_models rong, do live 2026-11-02). Cai co that:
+    //   <div class="headline-video"><h1>..</h1>
+    //     <li class="headline-item"><i class="icon-playlist"></i><span class="text">15:31</span>
+    //     ... icon-visibility (luot xem) ... icon-calendar (ngay dang)
+    //   <div class="tags-video">
+    //     <a class="item-button second" href=".../members/81699/">
+    //        <span class="text"> morpeko </span></span><span class="amount">100</span>
+    //     <a class="tags-link" >Japan</a>            (KHONG co href)
+    //   <span class="voters">92% (139 votes)</span>
+    public sealed class InfoBox
+    {
+        public string uploader;
+        public string memberId;
+        public List<string> tags = new();
+        public string time;
+        public string views;
+        public string date;
+        public string rating;
+    }
+
+    public static InfoBox Info(string html)
+    {
+        if (string.IsNullOrEmpty(html))
+            return null;
+
+        var box = new InfoBox();
+
+        // Nguoi dang + so video ho cua ho
+        var up = Regex.Match(html,
+            "<a[^>]*class=\"item-button second\"[^>]*href=\"[^\"]*?/members/([^\"'/]+)/?\"[\\s\\S]{0,400}?<span class=\"text\">([^<]{1,60})</span>",
+            RegexOptions.IgnoreCase);
+        if (up.Success)
+        {
+            box.memberId = up.Groups[1].Value.Trim();
+            box.uploader = HttpUtility.HtmlDecode(up.Groups[2].Value).Trim();
+        }
+
+        // Tag cua video (khong co href -> link sang search)
+        foreach (Match m in Regex.Matches(html,
+            "<a[^>]*class=\"tags-link\"[^>]*>([^<]{1,60})</a>", RegexOptions.IgnoreCase))
+        {
+            string t = HttpUtility.HtmlDecode(m.Groups[1].Value).Trim();
+            if (t.Length > 0 && !box.tags.Contains(t))
+                box.tags.Add(t);
+        }
+
+        box.time = HeadlineText(html, "icon-playlist");
+        box.views = HeadlineText(html, "icon-visibility");
+        box.date = HeadlineText(html, "icon-calendar");
+
+        var rate = Regex.Match(html, "<span class=\"voters\"[^>]*>([^<]{1,60})</span>",
+            RegexOptions.IgnoreCase);
+        if (rate.Success)
+            box.rating = HttpUtility.HtmlDecode(rate.Groups[1].Value).Trim();
+
+        return box;
+    }
+
+    static string HeadlineText(string html, string icon)
+    {
+        var m = Regex.Match(html,
+            "class=\"" + icon + "\"[^>]*>\\s*</i>\\s*<span class=\"text\">([^<]{1,30})</span>",
+            RegexOptions.IgnoreCase);
+        return m.Success ? HttpUtility.HtmlDecode(m.Groups[1].Value).Trim() : null;
+    }
+
+    public static string MemberUrl(string host, string memberId)
+        => string.IsNullOrWhiteSpace(memberId)
+            ? null
+            : $"{host.TrimEnd('/')}/po85?m={HttpUtility.UrlEncode(memberId.Trim())}";
+
+    public static string SearchUrl(string host, string q)
+        => string.IsNullOrWhiteSpace(q)
+            ? null
+            : $"{host.TrimEnd('/')}/po85?search={HttpUtility.UrlEncode(q.Trim())}";
     #endregion
 
     #region Menu

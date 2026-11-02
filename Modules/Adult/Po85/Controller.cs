@@ -21,20 +21,24 @@ public class Po85Controller : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("po85")]
-    async public Task<ActionResult> Index(string search, string sort, string c, string t, int pg = 1)
+    async public Task<ActionResult> Index(string search, string sort, string c, string t, string m, string rel, int pg = 1)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
 
+        // "Video lien quan" (block list_videos_related_videos cua trang detail)
+        if (!string.IsNullOrWhiteSpace(rel))
+            return await RelatedListAsync(rel, pg);
+
         rhubFallback:
-        var cache = await InvokeCacheResult(ipkey($"po85:{search}:{sort}:{c}:{t}:{pg}"), 10, jsonContext.ListPlaylistItem, async e =>
+        var cache = await InvokeCacheResult(ipkey($"po85:v2:{search}:{sort}:{c}:{t}:{m}:{pg}"), 10, jsonContext.ListPlaylistItem, async e =>
         {
             if (init.httpversion == 1)
                 httpHydra.RegisterHttp(httpClient);
 
             List<PlaylistItem> playlists = null;
 
-            await httpHydra.GetSpan(Po85To.Uri(init.host, search, sort, c, t, pg), span =>
+            await httpHydra.GetSpan(Po85To.Uri(init.host, search, sort, c, t, pg, m), span =>
             {
                 playlists = Po85To.Playlist("po85/vidosik", span);
             });
@@ -196,6 +200,139 @@ public class Po85Controller : BaseSisiController
         {
             semaphore?.Release();
         }
+    }
+
+    /// <summary>Trang detail day du tu uri (id, path hoac URL).</summary>
+    static string DetailPageUrl(string uri)
+    {
+        string s = HttpUtility.HtmlDecode((uri ?? "").Trim());
+        if (s.Length == 0)
+            return null;
+
+        if (s.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            return s;
+
+        if (System.Text.RegularExpressions.Regex.IsMatch(s, @"^[0-9]+$"))
+            return $"https://www.85po.com/en/v/{s}.html";
+
+        return "https://www.85po.com/en/" + s.Trim('/') + "/";
+    }
+
+    async Task<string> FetchPageAsync(string url)
+    {
+        string html = null;
+        await httpHydra.GetSpan(url, span => { html = span.ToString(); },
+            addheaders: HeadersModel.Init(
+                ("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"),
+                ("Referer", "https://www.85po.com/")
+            ));
+        return html;
+    }
+
+    // "Video lien quan" cua trang detail (block list_videos_related_videos).
+    async Task<ActionResult> RelatedListAsync(string rel, int pg)
+    {
+        if (pg > 1)
+            return EmptyPage();
+
+        string pageUrl = DetailPageUrl(rel);
+        if (pageUrl == null)
+            return EmptyPage();
+
+        var cache = await InvokeCacheResult<(List<PlaylistItem> playlists, int total_pages)>(
+            ipkey($"po85:rel:{pageUrl}"), 120, async e =>
+        {
+            string html = await FetchPageAsync(pageUrl);
+            var playlists = Po85To.Playlist("po85/vidosik", html);
+
+            // Bo chinh phim dang xem neu co trong block.
+            string self = HttpUtility.UrlEncode(pageUrl);
+            playlists?.RemoveAll(p => p.video != null && p.video.Contains(self, StringComparison.OrdinalIgnoreCase));
+
+            if (playlists == null || playlists.Count == 0)
+                return e.Success((new List<PlaylistItem>(), 0));
+
+            return e.Success((playlists, 1));
+        });
+
+        if (!cache.IsSuccess)
+            return OnError(cache.ErrorMsg);
+
+        return PlaylistResult(cache.Value.playlists, cache.ISingleCache,
+            await MenuAsync(host, null, null, null, null), total_pages: 1);
+    }
+
+    ActionResult EmptyPage() => Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+    // ===== long-press: card info cua 1 phim =====
+    // 85po la site user-generated: card info khong co dien vien/the loai/nha san
+    // xuat (video_categories/video_models rong). Cai co that: nguoi dang + tag
+    // (+ thoi luong/luot xem/ngay/danh gia — khong thanh dong menu duoc, xem
+    // ghi chu o duoi).
+    [HttpGet]
+    [Route("po85/genres")]
+    async public Task<ActionResult> Genres(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return Json(new { items = new object[0], groups = new object[0] });
+
+        if (await IsRequestBlocked(rch: true))
+            return badInitMsg;
+
+        string pageUrl = DetailPageUrl(uri);
+        if (pageUrl == null)
+            return Json(new { items = new object[0], groups = new object[0] });
+
+        string memKey = ipkey($"po85:info:{pageUrl}");
+        if (!hybridCache.TryGetValue(memKey, out Po85To.InfoBox info) || info == null)
+        {
+            string html = await FetchPageAsync(pageUrl);
+
+            info = Po85To.Info(html);
+            if (info != null)
+                hybridCache.Set(memKey, info, cacheTime(360));
+        }
+
+        var groups = new List<object>();
+
+        if (info != null)
+        {
+            // 1) Nguoi dang -> feed video cua ho (trang /en/members/<id>/)
+            string memberUrl = Po85To.MemberUrl(host, info.memberId);
+            if (!string.IsNullOrEmpty(memberUrl) && !string.IsNullOrEmpty(info.uploader))
+            {
+                groups.Add(new
+                {
+                    title = "Người đăng",
+                    items = new[] { new { title = info.uploader, url = memberUrl } }
+                });
+            }
+
+            // 2) Tag cua video (site khong gan href cho tag -> link sang search)
+            var tags = info.tags
+                .Select(x => new { title = x, url = Po85To.SearchUrl(host, x) })
+                .Where(x => x.url != null)
+                .ToList();
+
+            if (tags.Count > 0)
+                groups.Add(new { title = "Tag", items = tags });
+        }
+
+        // 3) Video lien quan (block related cua trang detail)
+        groups.Add(new
+        {
+            title = "Liên quan",
+            items = new[]
+            {
+                new
+                {
+                    title = "Video liên quan",
+                    url = $"{host}/po85?rel={HttpUtility.UrlEncode(pageUrl)}"
+                }
+            }
+        });
+
+        return Json(new { items = new object[0], groups });
     }
 
     [HttpGet, Staticache(manually: true)]
