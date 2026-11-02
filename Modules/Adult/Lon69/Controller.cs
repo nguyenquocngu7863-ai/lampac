@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using System;
 using Shared;
 using Shared.Attributes;
 using Shared.Models.Base;
@@ -73,26 +74,45 @@ public class Lon69Controller : BaseSisiController
         return menu;
     }
 
-    async Task<string> GetPageAsync(string url)
+    async Task<string> GetPageAsync(string url, string referer = null)
     {
         if (string.IsNullOrEmpty(url)) return null;
+        // Site dùng bot-detection theo header: thiếu sec-ch-ua / sec-fetch-* thì trả bản
+        // "lite" KHÔNG chứa <template id="crl-tvc-player-template"> -> không lấy được source.
+        // Gửi header giống browser thật để luôn nhận HTML đầy đủ có player.
         var headers = HeadersModel.Init(
             ("User-Agent", Lon69To.ChromeUA),
-            ("Referer", Lon69To.SiteHost + "/"),
-            ("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"));
-        try
+            ("Referer", string.IsNullOrEmpty(referer) ? Lon69To.SiteHost + "/" : referer),
+            ("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"),
+            ("Accept-Language", "vi-VN,vi;q=0.9,en;q=0.8"),
+            ("sec-ch-ua", "\"Chromium\";v=\"120\", \"Android WebView\";v=\"120\", \"Not?A_Brand\";v=\"24\""),
+            ("sec-ch-ua-mobile", "?1"),
+            ("sec-ch-ua-platform", "\"Android\""),
+            ("Sec-Fetch-Dest", "document"),
+            ("Sec-Fetch-Mode", "navigate"),
+            ("Sec-Fetch-Site", "same-origin"),
+            ("Sec-Fetch-User", "?1"),
+            ("Upgrade-Insecure-Requests", "1"));
+        // Site trả HTML ngẫu nhiên: lúc đầy đủ có player, lúc "lite" chỉ có quảng cáo.
+        // Thử lại vài lượt để tăng cơ hội nhận bản có player.
+        for (int attempt = 0; attempt < 3; attempt++)
         {
-            string html = await Http.Get(url, timeoutSeconds: 20, headers: headers, httpversion: init.httpversion);
-            if (!string.IsNullOrEmpty(html) && html.Length > 2000 && !html.Contains("Just a moment"))
-                return html;
+            try
+            {
+                string html = await Http.Get(url, timeoutSeconds: 20, headers: headers, httpversion: init.httpversion);
+                if (!string.IsNullOrEmpty(html) && html.Length > 2000 && !html.Contains("Just a moment"))
+                    return html;
+            }
+            catch { }
+            try
+            {
+                string html = await Http.Get(url, timeoutSeconds: 20, headers: headers, proxy: proxy, httpversion: init.httpversion);
+                if (!string.IsNullOrEmpty(html) && html.Length > 2000 && !html.Contains("Just a moment"))
+                    return html;
+            }
+            catch { }
         }
-        catch { }
-        try
-        {
-            string html = await Http.Get(url, timeoutSeconds: 20, headers: headers, proxy: proxy, httpversion: init.httpversion);
-            return html;
-        }
-        catch { return null; }
+        return null;
     }
 
     [HttpGet, Staticache(manually: true)]
@@ -109,26 +129,94 @@ public class Lon69Controller : BaseSisiController
         if (string.IsNullOrEmpty(detailHtml))
             return OnError("stream_links", refresh_proxy: true);
 
-        var iframeMatch = Regex.Match(detailHtml, @"<iframe[^>]+src=""([^""]+)""", RegexOptions.IgnoreCase);
-        if (!iframeMatch.Success)
+        string source = await ResolveSourceAsync(detailHtml);
+        if (string.IsNullOrEmpty(source))
             return OnError("stream_links", refresh_proxy: true);
-        string iframeUrl = iframeMatch.Groups[1].Value;
-
-        string iframeHtml = await GetPageAsync(iframeUrl);
-        if (string.IsNullOrEmpty(iframeHtml))
-            return OnError("stream_links", refresh_proxy: true);
-
-        var srcMatch = Regex.Match(iframeHtml, @"const\s+source\s*=\s*""(https?://[^""]+)""", RegexOptions.IgnoreCase);
-        if (!srcMatch.Success)
-            srcMatch = Regex.Match(iframeHtml, @"const\s+source\s*=\s*'(https?://[^']+)'", RegexOptions.IgnoreCase);
-        if (!srcMatch.Success)
-            return OnError("stream_links", refresh_proxy: true);
-
-        string source = srcMatch.Groups[1].Value.Replace("\\u0026", "&");
 
         var qualitys = new Dictionary<string, string>();
         qualitys["Server 1"] = source;
 
         return OnResult(new StreamItem() { qualitys = qualitys });
+    }
+
+    // Tách URL video thật từ HTML detail. Site có 2 biến thể player:
+    //  - Variant A: <template id="crl-tvc-player-template"> -> <source/src="...mp4">
+    //  - Variant B (trang cũ): template chứa <iframe src=".../play.php?id=...">,
+    //    fetch iframe đó -> <video id="main"><source src=".../stream.php?id=...&token=...">
+    // Quảng cáo preroll (crl-tvc-video src="...tvc.mp4") nằm NGOÀI template -> luôn bị loại.
+    async Task<string> ResolveSourceAsync(string detailHtml)
+    {
+        var tpl = Regex.Match(detailHtml, @"<template id=""crl-tvc-player-template"">([\s\S]*?)</template>", RegexOptions.IgnoreCase);
+        string scope = tpl.Success ? tpl.Groups[1].Value : detailHtml;
+
+        // Variant A: source/mp4 trực tiếp trong template
+        var m = Regex.Match(scope, @"(?:<source[^>]+src|<video[^>]+src)=""(https?://[^""]+\.mp4)""", RegexOptions.IgnoreCase);
+        if (m.Success)
+            return DecodeUrl(m.Groups[1].Value);
+
+        // Variant B/C: template chứa iframe player -> fetch rồi tìm source trong <video id="main">
+        // Variant B: iframe -> <video id="main"><source src="...stream.php?token=..."> (mp4 trực tiếp)
+        // Variant C: iframe -> JWPlayer + API -> m3u8 (HLS). Nếu không tìm thấy mp4, thử tìm m3u8.
+        var ifr = Regex.Match(scope, @"<iframe[^>]+src=""(https?://[^""]+)""", RegexOptions.IgnoreCase);
+        if (ifr.Success)
+        {
+            string iframeUrl = ifr.Groups[1].Value;
+            string referer = "";
+            try { referer = new Uri(iframeUrl).GetLeftPart(UriPartial.Authority) + "/"; } catch { }
+            // Host playvdphe3x.xyz thực tế được rewrite thành play.vstreamplay.xyz (xem crl-iframe-domain.js)
+            var candidates = new List<string> { iframeUrl };
+            try
+            {
+                var u = new Uri(iframeUrl);
+                if (u.Host.IndexOf("playvdphe3x", StringComparison.OrdinalIgnoreCase) >= 0)
+                    candidates.Add(u.Scheme + "://play.vstreamplay.xyz" + u.PathAndQuery);
+            }
+            catch { }
+            foreach (string cu in candidates)
+            {
+                string iframeHtml = await FetchExternalAsync(cu, referer);
+                if (string.IsNullOrEmpty(iframeHtml)) continue;
+                var main = Regex.Match(iframeHtml, @"<video[^>]+id=""main""[^>]*>([\s\S]*?)</video>", RegexOptions.IgnoreCase);
+                string block = main.Success ? main.Groups[1].Value : iframeHtml;
+                var sm = Regex.Match(block, @"(?:<source[^>]+src|<video[^>]+src)=""(https?://[^""]+\.mp4)""", RegexOptions.IgnoreCase);
+                if (!sm.Success)
+                    sm = Regex.Match(block, @"(?:<source[^>]+src|<video[^>]+src)=""(https?://[^""]+\.mp4[^""]*)""", RegexOptions.IgnoreCase);
+                if (sm.Success)
+                    return DecodeUrl(sm.Groups[1].Value);
+                // Variant C: không có mp4 trực tiếp -> tìm m3u8 (HLS)
+                var m3u8 = Regex.Match(iframeHtml, @"https?://[^""']+\.m3u8");
+                if (m3u8.Success)
+                    return DecodeUrl(m3u8.Groups[1].Value);
+            }
+        }
+        return null;
+    }
+
+    // Fetch host ngoài (player embed). Bounded timeout + 1 lần proxy fallback, không retry dài
+    // (host này thường chậm/bị chặn ở runtime, không nên treo 120s).
+    async Task<string> FetchExternalAsync(string url, string referer)
+    {
+        if (string.IsNullOrEmpty(url)) return null;
+        var headers = HeadersModel.Init(
+            ("User-Agent", Lon69To.ChromeUA),
+            ("Referer", referer),
+            ("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"));
+        try
+        {
+            string html = await Http.Get(url, timeoutSeconds: 15, headers: headers, httpversion: init.httpversion);
+            if (!string.IsNullOrEmpty(html) && html.Length > 500) return html;
+        }
+        catch { }
+        try
+        {
+            string html = await Http.Get(url, timeoutSeconds: 15, headers: headers, proxy: proxy, httpversion: init.httpversion);
+            return html;
+        }
+        catch { return null; }
+    }
+
+    static string DecodeUrl(string url)
+    {
+        return url.Replace("&amp;", "&").Replace("\\u0026", "&").Replace("\\/", "/").Replace("&lt;", "").Replace("&gt;", "");
     }
 }

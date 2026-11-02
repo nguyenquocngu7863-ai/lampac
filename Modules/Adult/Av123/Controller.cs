@@ -462,16 +462,27 @@ public class Av123Controller : BaseSisiController
         "actresses" => "Diễn viên",
         "makers" => "Hãng",
         "series" => "Series",
+        "genres" => "Thể loại",
         "tags" => "Tag",
-        _ => "Thể loại"
+        _ => char.ToUpperInvariant(kind[0]) + kind.Substring(1)
     };
+
+    // Thu tu uu tien hien thi; kind la do site tra ve nen KHONG whitelist —
+    // site them loai moi (vd "labels") van phai ra menu.
+    static readonly string[] KindOrder = { "actresses", "makers", "series", "genres", "tags" };
+
+    static int KindRank(string kind)
+    {
+        int i = System.Array.IndexOf(KindOrder, kind);
+        return i < 0 ? KindOrder.Length : i;
+    }
 
     ActionResult InfoResult(List<(string kind, string slug, string name)> chips, List<(string slug, string title, string dur)> rel, string uri)
     {
         var groups = new List<object>();
-        var genres = new List<object>();
 
-        foreach (string kind in new[] { "actresses", "makers", "series", "genres", "tags" })
+        foreach (string kind in chips.Select(x => x.kind).Distinct()
+                     .OrderBy(KindRank).ThenBy(x => x))
         {
             var items = chips.Where(x => x.kind == kind).Select(x => new
             {
@@ -481,7 +492,6 @@ public class Av123Controller : BaseSisiController
 
             if (items.Count == 0) continue;
 
-            if (kind == "genres") genres.AddRange(items);
             groups.Add(new { title = KindLabel(kind), items });
         }
 
@@ -508,7 +518,9 @@ public class Av123Controller : BaseSisiController
             });
         }
 
-        return Json(new { items = genres, groups });
+        // `items` chi la fallback khi khong co `groups` (client: sisi.js "groups = [{title,items}]").
+        // Menu long-press luon co groups nen de rong cho khoi lap.
+        return Json(new { items = new object[0], groups });
     }
     #endregion
 

@@ -10,7 +10,7 @@ namespace Lon69;
 
 public static class Lon69To
 {
-    public static string SiteHost = "https://Lon69.com";
+    public static string SiteHost = "https://lon69.site";
     public const string ChromeUA = "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
 
     // ========== Uri ==========
@@ -81,7 +81,8 @@ public static class Lon69To
         else if (value.StartsWith("/")) value = SiteHost + value;
         else if (!value.StartsWith("http", System.StringComparison.OrdinalIgnoreCase)) value = SiteHost + "/" + value;
         if (!System.Uri.TryCreate(value, UriKind.Absolute, out var parsed)) return null;
-        if (!parsed.Host.EndsWith("lon69.com", System.StringComparison.OrdinalIgnoreCase))
+        string h = parsed.Host.ToLowerInvariant();
+        if (h != "lon69.site" && h != "www.lon69.site" && h != "lon69.com" && h != "www.lon69.com")
             return null;
         return value;
     }
@@ -167,10 +168,10 @@ public static class Lon69To
         var res = new List<(string slug, string name)>();
         if (string.IsNullOrEmpty(html)) return res;
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (Match m in Regex.Matches(html, @"<a[^>]+href=""(https?://lon69\.com/tag/([^""]+)/)""[^>]*>(.*?)</a>", RegexOptions.IgnoreCase | RegexOptions.Singleline))
+        foreach (Match m in Regex.Matches(html, @"<a[^>]+href=""(https?://lon69\.(com|site)/tag/([^""]+)/)""[^>]*>(.*?)</a>", RegexOptions.IgnoreCase | RegexOptions.Singleline))
         {
-            string slug = m.Groups[2].Value.Trim().ToLowerInvariant();
-            string txt = Regex.Replace(WebUtility.HtmlDecode(m.Groups[3].Value), "<[^>]+>", " ").Trim();
+            string slug = m.Groups[3].Value.Trim().ToLowerInvariant();
+            string txt = Regex.Replace(WebUtility.HtmlDecode(m.Groups[4].Value), "<[^>]+>", " ").Trim();
             if (string.IsNullOrEmpty(slug) || string.IsNullOrEmpty(txt) || !seen.Add(slug)) continue;
             res.Add((slug, txt));
         }
