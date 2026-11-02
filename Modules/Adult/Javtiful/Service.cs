@@ -501,4 +501,158 @@ public static class JavtifulTo
 
         return menu;
     }
+
+    // ===== popup menu (long-press) — parse info tu trang detail =====
+    // Khoi <div class="watch-detail">: label ( Dien vien / The / Danh muc / Kenh )
+    // + cac chip <a href="/vi/{kind}/{slug}">ten</a>
+    public static List<(string kind, string slug, string name)> Chips(string html)
+    {
+        var list = new List<(string kind, string slug, string name)>();
+        if (string.IsNullOrEmpty(html)) return list;
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // tach tung khoi watch-detail
+        foreach (Match block in Regex.Matches(html, "<div class=\"watch-detail\">(.*?)</div>", RegexOptions.Singleline))
+        {
+            string content = block.Groups[1].Value;
+
+            // lay label ( Dien vien / The / Danh muc / Kenh )
+            var labelMatch = Regex.Match(content, "<strong>([^<]+)</strong>");
+            if (!labelMatch.Success) continue;
+
+            string label = HttpUtility.HtmlDecode(labelMatch.Groups[1].Value.Trim()).ToLowerInvariant();
+            string kind = MapLabelToKind(label);
+            if (string.IsNullOrEmpty(kind)) continue;
+
+            // voi actress: <a href="/vi/actress/..." class="watch-actor-card"><img alt="..."><span>TEN</span></a>
+            if (kind == "actress")
+            {
+                foreach (Match m in Regex.Matches(content, "<a[^>]+href=\"/vi/actress/([^\"]+)\"[^>]*class=\"watch-actor-card\"[^>]*>.*?<span>([^<]+)</span>", RegexOptions.Singleline | RegexOptions.IgnoreCase))
+                {
+                    string slug = m.Groups[1].Value.Trim();
+                    string name = HttpUtility.HtmlDecode(m.Groups[2].Value.Trim());
+                    if (string.IsNullOrEmpty(slug) || string.IsNullOrEmpty(name)) continue;
+                    if (!seen.Add(kind + "/" + slug)) continue;
+                    list.Add((kind, slug, name));
+                }
+            }
+            // voi search (Thẻ): <a href="/vi/search?q=TEN" class="watch-link-chip">TEN</a>
+            else if (kind == "search")
+            {
+                foreach (Match m in Regex.Matches(content, "<a[^>]+href=\"/vi/search\\?q=([^\"]+)\"[^>]*>([^<]+)</a>", RegexOptions.IgnoreCase))
+                {
+                    string query = m.Groups[1].Value.Trim();
+                    string name = HttpUtility.HtmlDecode(m.Groups[2].Value.Trim());
+                    if (string.IsNullOrEmpty(query) || string.IsNullOrEmpty(name)) continue;
+                    if (!seen.Add(kind + "/" + query)) continue;
+                    list.Add((kind, query, name));
+                }
+            }
+            // voi channel/category: <a href="/vi/{kind}/{slug}">TEN</a>
+            else
+            {
+                foreach (Match m in Regex.Matches(content, "<a[^>]+href=\"/vi/" + kind + "/([^\"]+)\"[^>]*>([^<]+)</a>", RegexOptions.IgnoreCase))
+                {
+                    string slug = m.Groups[1].Value.Trim();
+                    string name = HttpUtility.HtmlDecode(m.Groups[2].Value.Trim());
+                    if (string.IsNullOrEmpty(slug) || string.IsNullOrEmpty(name)) continue;
+                    if (!seen.Add(kind + "/" + slug)) continue;
+                    list.Add((kind, slug, name));
+                }
+            }
+        }
+
+        return list;
+    }
+
+    static string MapLabelToKind(string label) => label switch
+    {
+        "diễn viên" or "diễn viên (chính)" or "diễn viên (phụ)" => "actress",
+        "kênh" => "channel",
+        "danh mục" => "category",
+        "thẻ" => "search",
+        _ => null
+    };
+
+    // ===== video lien quan (aside.watch-related) =====
+    public static List<(string slug, string title, string dur)> Related(string html)
+    {
+        var list = new List<(string, string, string)>();
+        if (string.IsNullOrEmpty(html)) return list;
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // tim khoi related-grid
+        int i = html.IndexOf("related-grid", StringComparison.OrdinalIgnoreCase);
+        if (i < 0) return list;
+
+        string block = html.Substring(i, Math.Min(80000, html.Length - i));
+
+        foreach (Match m in Regex.Matches(block,
+            "<a[^>]+href=\"/vi/video/(\\d+)/([^\"]+)\"[^>]*class=\"video-card__thumbnail\"[^>]*>.*?<img[^>]+data-front-lazy-src=\"([^\"]+)\"[^>]*>.*?<span class=\"video-card__details\"><strong>[^<]*</strong>([^<]+)</span>.*?<a[^>]+class=\"video-card__title\"[^>]*title=\"([^\"]+)\"",
+            RegexOptions.Singleline | RegexOptions.IgnoreCase))
+        {
+            string slug = m.Groups[1].Value.Trim();
+            if (!seen.Add(slug)) continue;
+
+            string poster = HttpUtility.HtmlDecode(m.Groups[3].Value.Trim());
+            string dur = HttpUtility.HtmlDecode(m.Groups[4].Value.Trim()).Trim();
+            string title = HttpUtility.HtmlDecode(m.Groups[5].Value.Trim());
+            if (string.IsNullOrEmpty(title)) continue;
+            if (title.Length > 150) title = title.Substring(0, 147) + "...";
+
+            list.Add(("/vi/video/" + slug + "/" + Regex.Replace(title, @"[^a-z0-9-]", "-").ToLowerInvariant().Substring(0, Math.Min(60, title.Length)), title, dur));
+        }
+
+        return list;
+    }
+
+    // ===== playlist cho list video lien quan =====
+    public static List<Shared.Models.SISI.Base.PlaylistItem> PlaylistRelated(string route, string html)
+    {
+        var items = new List<Shared.Models.SISI.Base.PlaylistItem>();
+        if (string.IsNullOrEmpty(html)) return items;
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        int i = html.IndexOf("related-grid", StringComparison.OrdinalIgnoreCase);
+        if (i < 0) return items;
+
+        string block = html.Substring(i, Math.Min(80000, html.Length - i));
+
+        foreach (Match m in Regex.Matches(block,
+            "<article class=\"video-card\">.*?<a[^>]+href=\"(/vi/video/\\d+/[^\"\\s]+)\"[^>]*class=\"video-card__thumbnail\"[^>]*>.*?<img[^>]+data-front-lazy-src=\"([^\"]+)\"[^>]*>.*?<span class=\"video-card__details\"><strong>[^<]*</strong>([^<]+)</span>.*?<a[^>]+class=\"video-card__title\"[^>]*>([^<]+)</a>",
+            RegexOptions.Singleline | RegexOptions.IgnoreCase))
+        {
+            string href = m.Groups[1].Value.Trim();
+            if (!seen.Add(href)) continue;
+
+            string poster = HttpUtility.HtmlDecode(m.Groups[2].Value.Trim());
+            if (poster.StartsWith("/")) poster = SiteHost + poster;
+
+            string dur = HttpUtility.HtmlDecode(m.Groups[3].Value.Trim()).Trim();
+            string title = HttpUtility.HtmlDecode(m.Groups[4].Value.Trim());
+            if (string.IsNullOrEmpty(title)) continue;
+            if (title.Length > 150) title = title.Substring(0, 147) + "...";
+
+            string detail = href;
+            items.Add(new Shared.Models.SISI.Base.PlaylistItem
+            {
+                name = title,
+                video = route + "?uri=" + HttpUtility.UrlEncode(detail),
+                picture = poster,
+                time = dur,
+                json = true,
+                bookmark = new Shared.Models.SISI.Base.Bookmark
+                {
+                    site = "javtiful",
+                    href = SiteHost + detail,
+                    image = poster
+                }
+            });
+        }
+
+        return items;
+    }
 }

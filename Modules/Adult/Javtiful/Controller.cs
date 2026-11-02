@@ -18,10 +18,15 @@ public class JavtifulController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("javtiful")]
-    async public Task<ActionResult> Index(string search, string c, int pg = 1, string sort = null)
+    async public Task<ActionResult> Index(string search, string c, int pg = 1, string sort = null, string rel = null)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
+
+        if (!string.IsNullOrWhiteSpace(rel))
+            return await RelatedList(rel, pg);
+
+        if (pg < 1) pg = 1;
 
         // Gop sort ve dung tap cua context TRUOC khi lap cache key —
         // `sort=popular_week` o /vn/category/* da do la no-op.
@@ -72,9 +77,20 @@ public class JavtifulController : BaseSisiController
 
     // head (Tìm kiếm + "Sắp xếp: <sort hiện tại>") phụ thuộc c/search/sort
     // -> dựng lại mỗi request; base (nhóm dòng 3 trở xuống) mới cache.
-    async Task<List<MenuItem>> MenuAsync(string search, string sort, string c)
+    // `related` = block "Video liên quan" (tĩnh, không sort được) -> chỉ dòng 1
+    // + base, ẩn dòng 2 (menu-sisi §9g quy tắc 4).
+    async Task<List<MenuItem>> MenuAsync(string search, string sort, string c, bool related = false)
     {
-        var res = JavtifulTo.MenuHead(host, search, sort, c);
+        var res = related
+            ? new List<MenuItem>()
+            {
+                new MenuItem()
+                {
+                    title = "Tìm kiếm", search_on = "search_on", playlist_url = host + "/javtiful"
+                }
+            }
+            : JavtifulTo.MenuHead(host, search, sort, c);
+
         res.AddRange(await MenuBaseAsync());
         return res;
     }
@@ -255,4 +271,122 @@ public class JavtifulController : BaseSisiController
         ));
         return Redirect(HostStreamProxy(link, headers));
     }
+
+    #region info (long-press popup menu)
+    [HttpGet]
+    [Route("javtiful/genres")]
+    async public Task<ActionResult> Genres(string uri)
+    {
+        if (string.IsNullOrEmpty(uri) || !uri.Contains("/video/", StringComparison.OrdinalIgnoreCase))
+            return Json(new { items = new object[0], groups = new object[0] });
+
+        string cacheKey = ipkey($"javtiful:info:{uri}");
+        if (hybridCache.TryGetValue(cacheKey, out (List<(string kind, string slug, string name)> chips, List<(string slug, string title, string dur)> rel) hit)
+            && hit.chips != null)
+        {
+            return InfoResult(hit.chips, hit.rel, uri);
+        }
+
+        string pageUrl = uri.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? uri : init.host + uri;
+        string html = await FetchHtmlAsync(pageUrl);
+
+        var chips = JavtifulTo.Chips(html);
+        var rel = JavtifulTo.Related(html);
+
+        if (chips.Count > 0)
+            hybridCache.Set(cacheKey, (chips, rel), cacheTime(360));
+
+        return InfoResult(chips, rel, uri);
+    }
+
+    static string KindLabel(string kind) => kind switch
+    {
+        "actress" => "Diễn viên",
+        "channel" => "Kênh",
+        "category" => "Danh mục",
+        "search" => "Thẻ",
+        _ => char.ToUpperInvariant(kind[0]) + kind.Substring(1)
+    };
+
+    static int KindRank(string kind) => kind switch
+    {
+        "actress" => 0,
+        "channel" => 1,
+        "category" => 2,
+        "search" => 3,
+        _ => 99
+    };
+
+    ActionResult InfoResult(List<(string kind, string slug, string name)> chips, List<(string slug, string title, string dur)> rel, string uri)
+    {
+        var groups = new List<object>();
+
+        foreach (string kind in chips.Select(x => x.kind).Distinct()
+                     .OrderBy(KindRank).ThenBy(x => x))
+        {
+            var items = chips.Where(x => x.kind == kind).Select(x =>
+            {
+                // Uri() tu ghep host + "/vi/" + c, nen `c` KHONG duoc bat dau
+                // bang "/vi/" (se thanh /vi/vi/...). The (search) di duong
+                // `?search=` vi slug o day da encode san dang "3p+4p".
+                string url = kind == "search"
+                    ? $"{host}/javtiful?search={HttpUtility.UrlEncode(HttpUtility.UrlDecode(x.slug))}"
+                    : $"{host}/javtiful?c={HttpUtility.UrlEncode(kind + "/" + x.slug)}";
+
+                return new
+                {
+                    title = x.name,
+                    url
+                };
+            }).ToList();
+
+            if (items.Count == 0) continue;
+
+            groups.Add(new { title = KindLabel(kind), items });
+        }
+
+        if (rel.Count > 0)
+        {
+            groups.Add(new
+            {
+                title = "Liên quan",
+                items = new[]
+                {
+                    new
+                    {
+                        title = "Video liên quan",
+                        plain = true,
+                        url = $"{host}/javtiful?rel={HttpUtility.UrlEncode(uri)}"
+                    }
+                }
+            });
+        }
+
+        return Json(new { items = new object[0], groups });
+    }
+
+    async Task<ActionResult> RelatedList(string rel, int pg)
+    {
+        if (pg > 1) return Json(new { total_pages = 1, list = new List<Shared.Models.SISI.Base.PlaylistItem>() });
+
+        var cache = await InvokeCacheResult<(List<Shared.Models.SISI.Base.PlaylistItem> playlists, int total_pages)>(
+            ipkey($"javtiful:rel:{rel}"), 180, async e =>
+        {
+            string url = rel.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? rel : init.host + rel;
+            string html = await FetchHtmlAsync(url);
+
+            var playlists = JavtifulTo.PlaylistRelated("javtiful/vidosik", html);
+            if (playlists == null || playlists.Count == 0)
+                return e.Success((new List<Shared.Models.SISI.Base.PlaylistItem>(), 0));
+
+            return e.Success((playlists, 1));
+        });
+
+        if (!cache.IsSuccess)
+            return OnError(cache.ErrorMsg);
+
+        return PlaylistResult(cache.Value.playlists, cache.ISingleCache,
+            await MenuAsync(null, null, null, related: true), total_pages: 1);
+    }
+    #endregion
 }
