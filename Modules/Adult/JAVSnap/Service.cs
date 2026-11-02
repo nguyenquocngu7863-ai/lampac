@@ -17,6 +17,10 @@ public static class JAVSnapTo
     public const string PlayerHost = "https://vid-snap-player.com";
     public const string ChromeUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
+    // UA Android: path /en/search/* tra 403/rong voi UA desktop (do 2026-11-01:
+    // cung URL, UA Windows -> null; UA Android -> 528KB dung trang ket qua).
+    public const string MobileUA = "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36";
+
     #region host
     static string Host(string host) =>
         string.IsNullOrWhiteSpace(host) ? SiteHost : host.TrimEnd('/');
@@ -171,10 +175,17 @@ public static class JAVSnapTo
 
             string poster = Poster(block);
 
+            // Ma phim (FNS-272) nam o badge item__hash, khong co trong title ->
+            // ghep vao dau ten de doc card la biet phim nao.
+            string code = Code(block);
+            string name = string.IsNullOrEmpty(code) ? title : code + " " + title;
+            if (name.Length > 160)
+                name = name.Substring(0, 157) + "...";
+
             list.Add((blocks[i].Groups[1].Value, new PlaylistItem()
             {
                 video = uri + "?uri=" + HttpUtility.UrlEncode(href),
-                name = title,
+                name = name,
                 picture = poster,
                 json = true,
                 // Bookmark BAT BUOC: SISI menu$2 mo dau bang
@@ -200,21 +211,32 @@ public static class JAVSnapTo
         "<table[^>]*\\binfo-table\\b[^>]*>(.*?)</table>",
         RegexOptions.IgnoreCase | RegexOptions.Singleline);
 
+    // Kind KHONG whitelist: site them loai moi (tag/series/labels...) la tu ra menu.
     static readonly Regex InfoLinkRx = new Regex(
-        "href\\s*=\\s*[\"']https?://javsnap\\.com/en/(actor|studio|director|label|genre)/([^\"']+)[\"'][^>]*>([^<]{1,120})</a>",
+        "href\\s*=\\s*[\"']https?://javsnap\\.com/en/([a-z0-9-]+)/([^\"']+)[\"'][^>]*>([^<]{1,120})</a>",
         RegexOptions.IgnoreCase);
+
+    // Link dieu huong / trang he thong, khong phai taxonomy cua phim.
+    static readonly HashSet<string> NotTaxonomy = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "v", "me", "user", "users", "movies", "censored", "uncensored", "search", "tag-list"
+    };
 
     public static List<(string kind, string slug, string name)> Info(string html)
     {
         var res = new List<(string kind, string slug, string name)>();
         if (string.IsNullOrEmpty(html)) return res;
 
+        // Khong co info-table => khong phai trang detail (hoac trang doi layout):
+        // tra rong con hon quet ca trang roi nhet link footer vao menu.
         var t = InfoTableRx.Match(html);
-        string body = t.Success ? t.Groups[1].Value : html;
+        if (!t.Success) return res;
+        string body = t.Groups[1].Value;
 
         foreach (Match m in InfoLinkRx.Matches(body))
         {
             string kind = m.Groups[1].Value.ToLowerInvariant();
+            if (NotTaxonomy.Contains(kind)) continue;
             string slug = WebUtility.HtmlDecode(m.Groups[2].Value).Trim().Trim('/');
             string name = WebUtility.HtmlDecode(m.Groups[3].Value).Trim();
             if (slug.Length == 0 || name.Length == 0 || name == "-") continue;
@@ -223,6 +245,20 @@ public static class JAVSnapTo
         }
 
         return res;
+    }
+
+    // Ma phim nam o badge duoi title (KHONG co trong title):
+    //   <div class="item__hash"><a href="..."><span class="code">fns-272</span></a></div>
+    static readonly Regex CodeRx = new Regex(
+        "\\bitem__hash\\b[^>]*>[\\s\\S]{0,200}?<span[^>]*\\bcode\\b[^>]*>([^<]{2,40})</span>",
+        RegexOptions.IgnoreCase);
+
+    static string Code(string block)
+    {
+        var m = CodeRx.Match(block);
+        if (!m.Success) return null;
+        string code = WebUtility.HtmlDecode(m.Groups[1].Value).Trim();
+        return code.Length < 2 ? null : code.ToUpperInvariant();
     }
 
     static string Poster(string block)
@@ -518,6 +554,7 @@ public static class JAVSnapTo
         => VipUuid(embedUrl) != null
         || embedUrl.Contains("luluvid.", StringComparison.OrdinalIgnoreCase)
         || IsStreamtape(embedUrl)
+        || IsStreamHg(embedUrl)
         || Kind(embedUrl) == 2;
 
     // Streamtape (label STP): trang embed co 2 token — div#robotlink (token CU, API 500) va
@@ -636,6 +673,62 @@ public static class JAVSnapTo
         return url;
     }
 
+    // ========== SHG (StreamHg): hgcloud.to -> hanerix.com ==========
+    // Trang embed la P.A.C.K.E.R, giai ra:
+    //   var links={"hls4":"/stream/...","hls3":"https://<hash>.gardeningessentials.cyou/...",
+    //              "hls2":"https://<hash>.cdn-centaurus.com/hls2/.../master.m3u8?t=..."};
+    //   jwplayer(...).setup({ sources:[{ file: links.hls4||links.hls3||links.hls2 }] })
+    // Thu tu uu tien: hls2 (absolute + token, da verify) -> hls3 -> hls4 (relative).
+    public static bool IsStreamHg(string embedUrl)
+        => !string.IsNullOrEmpty(embedUrl)
+            && (embedUrl.Contains("hgcloud.", StringComparison.OrdinalIgnoreCase)
+                || embedUrl.Contains("streamhg.", StringComparison.OrdinalIgnoreCase)
+                || embedUrl.Contains("hanerix.", StringComparison.OrdinalIgnoreCase));
+
+    // hgcloud.to chi la gateway: trang embed that nam o hanerix.com (do 2026-11-01:
+    // hgcloud tra shell 819 byte "Loading..." + /main.js, khong co links).
+    public static string StreamHgMirror(string embedUrl)
+    {
+        if (string.IsNullOrEmpty(embedUrl)) return null;
+        if (!embedUrl.Contains("hgcloud.", StringComparison.OrdinalIgnoreCase)) return null;
+
+        try
+        {
+            var u = new Uri(embedUrl);
+            var b = new UriBuilder(u) { Host = "hanerix.com" };
+            return b.Uri.ToString();
+        }
+        catch { return null; }
+    }
+
+    public static List<string> StreamHgMasters(string html, string embedUrl)
+    {
+        var res = new List<string>();
+        if (string.IsNullOrEmpty(html)) return res;
+
+        string src = UnpackPacker(html) ?? html;
+
+        var m = Regex.Match(src, "var\\s+links\\s*=\\s*\\{([\\s\\S]{0,4000}?)\\}", RegexOptions.IgnoreCase);
+        if (!m.Success) return res;
+
+        var kv = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (Match x in Regex.Matches(m.Groups[1].Value,
+            "\"(hls\\d)\"\\s*:\\s*\"([^\"]+)\"", RegexOptions.IgnoreCase))
+            kv[x.Groups[1].Value] = WebUtility.HtmlDecode(x.Groups[2].Value.Trim()).Replace("\\/", "/");
+
+        string origin = null;
+        try { origin = new Uri(embedUrl).GetLeftPart(UriPartial.Authority); } catch { }
+
+        foreach (string key in new[] { "hls2", "hls3", "hls4" })
+        {
+            if (!kv.TryGetValue(key, out string v) || string.IsNullOrEmpty(v)) continue;
+            if (v.StartsWith("/") && !string.IsNullOrEmpty(origin)) v = origin + v;
+            if (v.StartsWith("http", StringComparison.OrdinalIgnoreCase) && !res.Contains(v)) res.Add(v);
+        }
+
+        return res;
+    }
+
     /// <summary>DoodStream: pass_md5/&lt;hash&gt;/&lt;token&gt;</summary>
     public static string DoodPassPath(string html)
     {
@@ -679,6 +772,11 @@ public static class JAVSnapTo
             return "https://luluvid.xyz/";
         if (url.Contains("playmogo.", StringComparison.OrdinalIgnoreCase))
             return "https://playmogo.com/";
+        if (url.Contains("hanerix.", StringComparison.OrdinalIgnoreCase) ||
+            url.Contains("hgcloud.", StringComparison.OrdinalIgnoreCase) ||
+            url.Contains("cdn-centaurus.", StringComparison.OrdinalIgnoreCase) ||
+            url.Contains("gardeningessentials.", StringComparison.OrdinalIgnoreCase))
+            return "https://hanerix.com/";
         if (url.Contains("javsnap.com", StringComparison.OrdinalIgnoreCase)) return SiteHost + "/";
         return SiteHost + "/";
     }

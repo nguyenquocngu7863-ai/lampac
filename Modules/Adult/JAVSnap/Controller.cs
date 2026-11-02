@@ -7,6 +7,7 @@ using Shared.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -38,10 +39,12 @@ public class JAVSnapController : BaseSisiController
         var menuTask = MenuAsync(search, sort, c);
 
         var cache = await InvokeCacheResult<(List<PlaylistItem> playlists, int total_pages)>(
-            // v5: doi key vi them bookmark (menu nhan giu can no) — key cu
-            // trong cache van tra item khong co bookmark.
-            ipkey($"javsnap:v5:{search}:{c}:{sort}:{pg}"),
-            isSearch || isCat ? 10 : 25, async e =>
+            // v7: doi key vi ten item gio co ma phim o dau (FNS-272 ...)
+            // va SHG da duoc ho tro — cache cu van tra du lieu truoc do.
+            ipkey($"javsnap:v8:{search}:{c}:{sort}:{pg}"),
+            // Search: TTL ngan vi ket qua fail cung bi cache -> site chan tam
+            // thoi se khoa search ca 10 phut.
+            isSearch ? 2 : (isCat ? 10 : 25), async e =>
         {
             if (!isSearch && !isCat)
             {
@@ -74,8 +77,10 @@ public class JAVSnapController : BaseSisiController
                 return e.Success((merged, total));
             }
 
+            // Search: BAT BUOC UA mobile (xem JAVSnapTo.MobileUA).
             string url = JAVSnapTo.Uri(init.host, search, c, pg);
-            string html = await FetchHtmlAsync(url, marker: "data-movie-item");
+            string html = await FetchHtmlAsync(url, marker: "data-movie-item",
+                ua: isSearch ? JAVSnapTo.MobileUA : null);
 
             var playlists = JAVSnapTo.Playlist("javsnap/vidosik", html);
             if (playlists == null || playlists.Count == 0)
@@ -182,7 +187,7 @@ public class JAVSnapController : BaseSisiController
         int qm = pageUrl.IndexOf('?');
         if (qm >= 0) pageUrl = pageUrl.Substring(0, qm);
 
-        string memKey = ipkey($"javsnap:genres:{pageUrl}");
+        string memKey = ipkey($"javsnap:genres2:{pageUrl}");
         if (!hybridCache.TryGetValue(memKey,
             out List<(string kind, string slug, string name)> info) || info == null)
         {
@@ -194,24 +199,35 @@ public class JAVSnapController : BaseSisiController
 
         var groups = new List<object>();
 
-        void AddGroup(string title, string kind, string prefix)
+        // Thu tu uu tien; kind do site tra ve nen KHONG whitelist (site them loai moi
+        // la tu ra menu). Nhan la biet thi dung, khong thi viet hoa kind.
+        string[] order = { "actor", "actress", "studio", "director", "label", "genre", "tag", "series" };
+        int rank(string k) { int i = System.Array.IndexOf(order, k); return i < 0 ? order.Length : i; }
+        string label(string k) => k switch
+        {
+            "actor" => "Diễn viên",
+            "actress" => "Diễn viên",
+            "studio" => "Hãng",
+            "director" => "Đạo diễn",
+            "label" => "Nhãn",
+            "genre" => "Thể loại",
+            "tag" => "Tag",
+            "series" => "Series",
+            _ => char.ToUpperInvariant(k[0]) + k.Substring(1)
+        };
+
+        foreach (string kind in info.Select(x => x.kind).Distinct().OrderBy(rank).ThenBy(x => x))
         {
             var items = info.Where(x => x.kind == kind)
                 .Select(x => new
                 {
                     title = x.name,
                     url = host + "/javsnap?c="
-                        + HttpUtility.UrlEncode("en/" + prefix + "/" + x.slug)
+                        + HttpUtility.UrlEncode("en/" + kind + "/" + x.slug)
                 }).ToList();
             if (items.Count > 0)
-                groups.Add(new { title, items });
+                groups.Add(new { title = label(kind), items });
         }
-
-        AddGroup("Diễn viên", "actor", "actor");
-        AddGroup("Hãng", "studio", "studio");
-        AddGroup("Đạo diễn", "director", "director");
-        AddGroup("Nhãn", "label", "label");
-        AddGroup("Thể loại", "genre", "genre");
 
         return Json(new { items = new object[0], groups });
     }
@@ -562,6 +578,32 @@ public class JAVSnapController : BaseSisiController
         }
         #endregion
 
+        #region SHG (StreamHg: hgcloud.to -> hanerix.com, P.A.C.K.E.R -> links.hls2)
+        if (JAVSnapTo.IsStreamHg(server.EmbedUrl))
+        {
+            string html = await FetchHtmlAsync(server.EmbedUrl, seconds: 15,
+                referer: "https://hanerix.com/");
+            string embed = server.EmbedUrl;
+            var masters = JAVSnapTo.StreamHgMasters(html, embed);
+
+            string mirror = JAVSnapTo.StreamHgMirror(embed);
+            if (masters.Count == 0 && mirror != null)
+            {
+                html = await FetchHtmlAsync(mirror, seconds: 15, referer: "https://hanerix.com/");
+                embed = mirror;
+                masters = JAVSnapTo.StreamHgMasters(html, embed);
+            }
+
+            foreach (string master in masters)
+            {
+                string probe = await FetchStreamAsync(master);
+                if (!string.IsNullOrEmpty(probe) && probe.Contains("#EXTM3U"))
+                    return new Resolved() { Url = master, Kind = 1 };
+            }
+            return null;
+        }
+        #endregion
+
         #region streamtape (div#robotlink token -> /get_video 302 -> CDN mp4)
         if (JAVSnapTo.IsStreamtape(server.EmbedUrl))
         {
@@ -613,19 +655,34 @@ public class JAVSnapController : BaseSisiController
 
 
     #region http
-    async Task<string> FetchHtmlAsync(string url, int seconds = 12, string referer = null, string marker = null)
+    async Task<string> FetchHtmlAsync(string url, int seconds = 12, string referer = null, string marker = null, string ua = null)
     {
         var deadline = DateTime.UtcNow.AddSeconds(seconds);
         int attempt = 0;
 
         while (DateTime.UtcNow < deadline)
         {
+            // Delay 800ms: retry 300ms bi site coi la bot -> khoa /en/search
+            // hang loat (do 2026-11-01: ban ~10 phut sau ~10 request don dap).
             if (attempt++ > 0)
-                await Task.Delay(300);
+                await Task.Delay(800);
 
-            var headers = HeadersModel.Init(
-                ("User-Agent", JAVSnapTo.ChromeUA),
-                ("Referer", referer ?? (JAVSnapTo.SiteHost + "/")));
+            // Doi UA moi lan thu: site chan theo UA tung dot (search: UA desktop
+            // tra rong, UA mobile qua duoc — va nguoc lai khi bi rate-limit).
+            string useUa = ua == null ? JAVSnapTo.ChromeUA
+                : (attempt % 2 == 1 ? ua : JAVSnapTo.ChromeUA);
+
+            // Search can them Accept/Accept-Language: thieu 2 header nay thi
+            // httpHydra bi tra rong du UA mobile (do 2026-11-01).
+            var headers = ua == null
+                ? HeadersModel.Init(
+                    ("User-Agent", useUa),
+                    ("Referer", referer ?? (JAVSnapTo.SiteHost + "/")))
+                : HeadersModel.Init(
+                    ("User-Agent", useUa),
+                    ("Referer", referer ?? (JAVSnapTo.SiteHost + "/")),
+                    ("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"),
+                    ("Accept-Language", "en-US,en;q=0.9"));
 
             string html = await FetchTextAsync(url, headers);
             if (string.IsNullOrEmpty(html))
