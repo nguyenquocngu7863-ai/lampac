@@ -72,8 +72,9 @@ public class Po85Controller : BaseSisiController
     // Tags = 26 muc curated tieng Viet (2774 tag /tags/ toan tieng Trung,
     // khong co count → khong loc top duoc, khong len menu noi).
     Task<List<MenuItem>> MenuAsync(
-        string host, string search, string sort, string c, string t, string m = null)
-        => Task.FromResult(Po85To.Menu(host, search, sort, c, t, m));
+        string host, string search, string sort, string c, string t, string m = null,
+        bool related = false)
+        => Task.FromResult(Po85To.Menu(host, search, sort, c, t, m, related));
 
     async Task<(Dictionary<string, string> links, bool userch)> ResolveLinksAsync(string uri)
     {
@@ -267,7 +268,7 @@ public class Po85Controller : BaseSisiController
             return OnError(cache.ErrorMsg);
 
         return PlaylistResult(cache.Value.playlists, cache.ISingleCache,
-            await MenuAsync(host, null, null, null, null, null), total_pages: 1);
+            await MenuAsync(host, null, null, null, null, null, related: true), total_pages: 1);
     }
 
     ActionResult EmptyPage() => Json(new { total_pages = 1, list = new List<PlaylistItem>() });

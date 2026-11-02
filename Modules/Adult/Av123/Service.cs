@@ -311,29 +311,33 @@ public static class Av123To
 
     public static List<MenuItem> Menu(string host, string c, string sort,
         List<(string name, string slug, int count)> genres,
-        List<(string name, string slug, int count)> makers)
+        List<(string name, string slug, int count)> makers,
+        bool related = false)
     {
         var menu = new List<MenuItem>();
 
         menu.Add(new MenuItem { title = "Tìm kiếm", search_on = "search_on", playlist_url = host + "/av123" });
 
-        menu.Add(new MenuItem
-        {
-            title = "Sắp xếp: " + SortLabel(sort),
-            playlist_url = "submenu",
-            submenu = new List<MenuItem>
+        // Block "Video liên quan" là list tĩnh của trang detail -> không sort
+        // được, ẩn dòng 2 (menu-sisi §9g quy tắc 4).
+        if (!related)
+            menu.Add(new MenuItem
             {
-                new MenuItem { title = "Release date", playlist_url = MenuUrl(host, c, "release_date") },
-                new MenuItem { title = "Recently added", playlist_url = MenuUrl(host, c, "recent") },
-                new MenuItem { title = "Hot", playlist_url = MenuUrl(host, c, "hot") },
-                new MenuItem { title = "Today views", playlist_url = MenuUrl(host, c, "today") },
-                new MenuItem { title = "Weekly views", playlist_url = MenuUrl(host, c, "week") },
-                new MenuItem { title = "Monthly views", playlist_url = MenuUrl(host, c, "month") },
-                new MenuItem { title = "Most viewed", playlist_url = MenuUrl(host, c, "views") },
-                new MenuItem { title = "Most followed", playlist_url = MenuUrl(host, c, "follows") },
-                new MenuItem { title = "Longest", playlist_url = MenuUrl(host, c, "longest") }
-            }
-        });
+                title = "Sắp xếp: " + SortLabel(sort),
+                playlist_url = "submenu",
+                submenu = new List<MenuItem>
+                {
+                    new MenuItem { title = "Release date", playlist_url = MenuUrl(host, c, "release_date") },
+                    new MenuItem { title = "Recently added", playlist_url = MenuUrl(host, c, "recent") },
+                    new MenuItem { title = "Hot", playlist_url = MenuUrl(host, c, "hot") },
+                    new MenuItem { title = "Today views", playlist_url = MenuUrl(host, c, "today") },
+                    new MenuItem { title = "Weekly views", playlist_url = MenuUrl(host, c, "week") },
+                    new MenuItem { title = "Monthly views", playlist_url = MenuUrl(host, c, "month") },
+                    new MenuItem { title = "Most viewed", playlist_url = MenuUrl(host, c, "views") },
+                    new MenuItem { title = "Most followed", playlist_url = MenuUrl(host, c, "follows") },
+                    new MenuItem { title = "Longest", playlist_url = MenuUrl(host, c, "longest") }
+                }
+            });
 
         menu.Add(new MenuItem
         {

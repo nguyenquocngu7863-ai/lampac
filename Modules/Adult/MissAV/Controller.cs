@@ -196,9 +196,21 @@ public class MissAVController : BaseSisiController
 
     // menu = head (phụ thuộc search/sort/filters/c, dựng lại mỗi request — rất rẻ)
     //        + base (taxonomy ~nghìn mục, cache 1 lần, không phụ thuộc context)
-    async Task<List<MenuItem>> MenuAsync(string search, string sort, string c, string filters = null)
+    // `related` = block "Phim liên quan" (tĩnh, không sort/filter được) -> chỉ
+    // dòng 1 + taxonomy, ẩn dòng 2 (menu-sisi §9g quy tắc 4).
+    async Task<List<MenuItem>> MenuAsync(string search, string sort, string c, string filters = null,
+        bool related = false)
     {
-        var menu = MissAVTo.MenuHead(host, search, sort, c, filters);
+        var menu = related
+            ? new List<MenuItem>()
+            {
+                new MenuItem()
+                {
+                    title = "Tìm kiếm", search_on = "search_on", playlist_url = host + "/missav"
+                }
+            }
+            : MissAVTo.MenuHead(host, search, sort, c, filters);
+
         var baseGroups = await MenuBaseAsync();
         if (baseGroups != null && baseGroups.Count > 0)
             menu.AddRange(baseGroups);
@@ -549,7 +561,7 @@ public class MissAVController : BaseSisiController
         if (!cache.IsSuccess)
             return OnError(cache.ErrorMsg);
 
-        return PlaylistResult(cache, await MenuAsync(null, null, null));
+        return PlaylistResult(cache, await MenuAsync(null, null, null, related: true));
     }
 
     // ===== long-press: card info cua 1 phim =====

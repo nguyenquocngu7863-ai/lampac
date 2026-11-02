@@ -385,7 +385,7 @@ public static class Po85To
     }
 
     public static List<MenuItem> Menu(string host, string search, string sort, string c, string t,
-        string m = null)
+        string m = null, bool related = false)
     {
         string url = $"{host}/po85";
 
@@ -420,23 +420,19 @@ public static class Po85To
         }
         #endregion
 
-        // Feed "Nguoi dang": block uploaded_videos KHONG ho tro sort_by (do live
-        // 2026-11-02: chi co pagination from_videos, khong co sort list) -> bo muc
-        // "Sap xep" de menu khong con tro ve sort cua home.
-        if (!string.IsNullOrWhiteSpace(m))
+        // Feed "Nguoi dang" va "Video lien quan": KHONG co sort that (feed member:
+        // block uploaded_videos chi co pagination from_videos; related: block tinh
+        // cua trang detail) -> AN dong 2, khong thay bang muc khac (menu-sisi §9g
+        // quy tac 4).
+        if (!string.IsNullOrWhiteSpace(m) || related)
         {
-            var memberMenu = new List<MenuItem>(4)
+            var memberMenu = new List<MenuItem>(3)
             {
                 new MenuItem()
                 {
                     title = "Tìm kiếm",
                     search_on = "search_on",
                     playlist_url = url,
-                },
-                new MenuItem()
-                {
-                    title = "Video của người đăng",
-                    playlist_url = $"{url}?m={HttpUtility.UrlEncode(m.Trim())}"
                 }
             };
             memberMenu.AddRange(FilterMenu(url));

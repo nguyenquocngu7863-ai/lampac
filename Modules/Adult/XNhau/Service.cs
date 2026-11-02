@@ -466,6 +466,13 @@ public static class XNhauTo
                 q.Add("sh=" + sh);
             return q.Count == 0 ? url : url + "?" + string.Join("&", q);
         }
+        // Row cua trang chu (?sh=hot|hay|watching) la block co dinh cua site:
+        // do live 2026-11-02 — sh=watching / hot / hay deu BO QUA ?sort_by=
+        // (list y nguyen) -> khong co sort that thi AN dong 2, khong hien
+        // "Sap xep" chet (menu-sisi §9g quy tac 4).
+        if (!string.IsNullOrWhiteSpace(sh))
+            return res;
+
         var sub = new List<MenuItem>(Sorts.Length + 1);
         foreach (var (name, s) in Sorts)
             sub.Add(new(name, link(s)));

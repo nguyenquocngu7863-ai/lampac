@@ -365,7 +365,7 @@ public class Av123Controller : BaseSisiController
         if (!cache.IsSuccess)
             return OnError(cache.ErrorMsg);
 
-        var menu = Av123To.Menu(host, null, null, await GetGenresAsync(), GetMakers());
+        var menu = Av123To.Menu(host, null, null, await GetGenresAsync(), GetMakers(), related: true);
 
         return PlaylistResult(cache.Value.playlists, cache.ISingleCache, menu, total_pages: 1);
     }
