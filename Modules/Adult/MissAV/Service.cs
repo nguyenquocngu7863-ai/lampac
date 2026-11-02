@@ -143,11 +143,11 @@ public static class MissAVTo
             // ("2:39:35\nSNOS-334 ..." hoac "... \n2:39:35"). Phai tach
             // ra, neu khong ten phim se hien kem gio phim.
             string time = "";
+            var reDur = new Regex(@"^\d{1,3}:\d{2}(:\d{2})?$");
             string[] lines = display.Split('\n')
                 .Select(s => s.Trim()).Where(s => s.Length > 0).ToArray();
             if (lines.Length > 1)
             {
-                var reDur = new Regex(@"^\d{1,3}:\d{2}(:\d{2})?$");
                 if (reDur.IsMatch(lines[0]))
                 {
                     time = lines[0];
@@ -160,16 +160,35 @@ public static class MissAVTo
                 }
                 display = string.Join(" ", lines);
             }
+            else if (lines.Length == 1 && reDur.IsMatch(lines[0]))
+            {
+                // Tile chi co thoi luong (khong co title) -> tach het ra.
+                time = lines[0];
+                display = "";
+            }
 
             // innerText chi ra MA PHIM (vd "fays-017") khi Alpine chua hydrate
             // tieu de; luc do phai dung `alt` cua <img> (ten day du). `code`
             // (alt cua <a>) chi la ma phim -> chi de so sanh, khong hien thi.
             bool onlyCode = string.IsNullOrEmpty(display)
-                || Regex.IsMatch(display, @"^\d{1,3}:\d{2}(:\d{2})?$")
+                || reDur.IsMatch(display)
                 || (!string.IsNullOrWhiteSpace(code) && display == code.Trim());
 
             if (onlyCode && !string.IsNullOrWhiteSpace(alt))
                 display = alt.Trim();
+
+            // Tile goi y (Recombee, trang detail): img alt rong, innerText chi
+            // la badge ("Không kiểm duyệt") hoac thoi luong -> ten = ma phim.
+            if (string.IsNullOrWhiteSpace(alt))
+            {
+                string badge = Regex.Replace(display ?? "", @"\s+", " ").Trim();
+                if (badge.Length == 0 || badge.IndexOf("kiểm duyệt", StringComparison.OrdinalIgnoreCase) >= 0)
+                    display = "";
+            }
+
+            if (string.IsNullOrEmpty(display) && !string.IsNullOrWhiteSpace(code))
+                display = code.Trim().ToUpperInvariant();
+
             if (string.IsNullOrEmpty(display))
                 return;
 

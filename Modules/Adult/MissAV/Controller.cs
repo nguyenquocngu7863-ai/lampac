@@ -139,10 +139,15 @@ public class MissAVController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("missav")]
-    async public Task<ActionResult> Index(string search, string c, int pg = 1, string sort = null, string filters = null)
+    async public Task<ActionResult> Index(string search, string c, int pg = 1, string sort = null, string filters = null, string rel = null)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
+
+        // "Phim lien quan" cua card info: list 12-16 phim do site goi y cho 1
+        // phim cu the (Recombee render trong DOM trang detail).
+        if (!string.IsNullOrWhiteSpace(rel))
+            return await RelatedListAsync(rel);
 
         // gop sort ve dung tap cua site (46 gia tri thu, chi views/released_at la
         // that) + KHONG cho phep sort khong co y nghia o context nay
@@ -516,6 +521,37 @@ public class MissAVController : BaseSisiController
         return links;
     }
 
+    // ===== "Phim lien quan" (aside cua trang detail) =====
+    // MissAV goi y bang Recombee: JS chen tile vao DOM sau khi trang load, nen
+    // phai render bang Playwright roi doc .thumbnail.group (cung selector voi list).
+    async Task<ActionResult> RelatedListAsync(string uri)
+    {
+        string pageUrl = HttpUtility.HtmlDecode(uri.Trim());
+        if (!pageUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            pageUrl = MissAVTo.SiteHost + "/vi/" + pageUrl.Trim('/');
+
+        string memKey = ipkey($"missav:rel:{pageUrl}");
+        var cache = await InvokeCacheResult(memKey, 60, jsonContext.ListPlaylistItem, async e =>
+        {
+            var (_, tilesJson) = await PageFetchAsync(pageUrl);
+            var playlists = MissAVTo.Playlist("missav/vidosik", tilesJson);
+
+            // Bo chinh phim dang xem neu site chen vao danh sach goi y.
+            string self = HttpUtility.UrlEncode(pageUrl);
+            playlists?.RemoveAll(p => p.video != null && p.video.Contains(self, StringComparison.OrdinalIgnoreCase));
+
+            if (playlists == null || playlists.Count == 0)
+                return e.Fail("related", refresh_proxy: true);
+
+            return e.Success(playlists);
+        });
+
+        if (!cache.IsSuccess)
+            return OnError(cache.ErrorMsg);
+
+        return PlaylistResult(cache, await MenuAsync(null, null, null));
+    }
+
     // ===== long-press: card info cua 1 phim =====
     // Tra { items, groups } cho SISI/plugins/sisi.js (menu$2). Lay HET link
     // trong card info trang detail: dien vien / the loai / nha san xuat /
@@ -559,6 +595,21 @@ public class MissAVController : BaseSisiController
             if (items.Count > 0)
                 groups.Add(new { title = MissAVTo.InfoTitle(kind), items });
         }
+
+        // Phim lien quan: site goi y bang Recombee (JS chen tile vao DOM) nen
+        // khong co URL list rieng — mo qua ?rel=<uri detail>.
+        groups.Add(new
+        {
+            title = "Phim liên quan",
+            items = new[]
+            {
+                new
+                {
+                    title = "Xem phim liên quan",
+                    url = host + "/missav?rel=" + HttpUtility.UrlEncode(pageUrl)
+                }
+            }
+        });
 
         return Json(new { items = new object[0], groups });
     }
