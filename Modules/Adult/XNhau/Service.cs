@@ -14,12 +14,13 @@ namespace XNhau;
 public static class XNhauTo
 {
     // host hien tai (ModInit.updateConf gan = conf.host moi lan reload)
-    // Domain doi lien tuc: .cab -> .limo -> .free (301 Moved) -> .pub (2026-10-18).
+    // Domain doi lien tuc: .cab -> .limo -> .free (301) -> .pub -> .band -> .pink (2026-11-02).
     // Site doi tiep thi sua o day + ModInit (host/referer).
-    public static string SiteHost = "https://xnhau.band";
+    public static string SiteHost = "https://xnhau.pink";
 
     #region Uri
-    public static string Uri(string host, string search, string sort, string c, string t, int pg)
+    public static string Uri(string host, string search, string sort, string c, string t, int pg,
+        string sh = null)
     {
         var url = StringBuilderPool.ThreadInstance;
 
@@ -31,34 +32,37 @@ public static class XNhauTo
         url.Append(host);
         url.Append("/");
 
-        if (!string.IsNullOrWhiteSpace(search) && search.Contains("/members/"))
+        // Feed nguoi dang. Ho tro 3 dang (xem MemberTokenFromSearch):
+        //   member:<id|slug>            (menu ngu canh tao ra)
+        //   https://<host>/members/<id>/ (link cu / bookmark)
+        //   <host>/<slug>/               (profile: /fisting123/)
+        string memberToken = MemberTokenFromSearch(search);
+
+        if (memberToken != null)
         {
-            // Feed nguoi dang: dan link member (https://xnhau.limo/members/16566/)
-            // vao o tim kiem — lay thang trang member
-            string murl = search.Trim();
-            if (murl.StartsWith("/"))
-                murl = $"{SiteHost}{murl}";
             url.Clear();
-            url.Append(murl.TrimEnd('/'));
-            url.Append("/");
+            url.Append(host);
+            url.Append(MemberPath(memberToken));
+
+            string ms = NormalizeSort(sort);
+
             if (pg > 1)
             {
-                url.Append("?from=");
-                url.Append(pg);
+                // Trang profile/member phan trang bang AJAX cua block
+                // `list_videos_uploaded_videos` (param `from_videos`), KHONG phai `?from=`
+                // (do live 2026-11-02: `?from=2` tra y nguyen trang 1).
+                url.Append("?mode=async&format=json&function=get_block");
+                url.Append("&block_id=list_videos_uploaded_videos");
+                url.Append("&sort_by=").Append(string.IsNullOrEmpty(ms) ? "post_date" : ms);
+                url.Append("&from_videos=").Append(pg);
             }
+            else if (!string.IsNullOrEmpty(ms))
+                url.Append("?sort_by=").Append(ms);
+
+            return url.ToString();
         }
-        else if (!string.IsNullOrWhiteSpace(search) && search.StartsWith("member:"))
-        {
-            url.Append("members/");
-            url.Append(search.Substring(7).Trim().Trim('/'));
-            url.Append("/");
-            if (pg > 1)
-            {
-                url.Append("?from=");
-                url.Append(pg);
-            }
-        }
-        else if (!string.IsNullOrWhiteSpace(search))
+
+        if (!string.IsNullOrWhiteSpace(search))
         {
             string encsearch = HttpUtility.UrlEncode(search);
             url.Append("search/");
@@ -107,24 +111,146 @@ public static class XNhauTo
             else if (tq.Length > 0)
                 url.Append(tq);
         }
-        else if (!string.IsNullOrEmpty(s))
+        else if (!string.IsNullOrEmpty(sh))
         {
-            // Home + sort: ?sort_by= (thay 3 path rieng clip-sex-moi|hot|hay).
-            url.Append("?sort_by=");
-            url.Append(s);
+            // Cac row khac tren trang chu -> vao menu (?sh=...).
+            //   hot      = "Xem nhieu hom nay"   -> /clip-sex-hot/
+            //   hay      = "Hay nhat tuan"       -> /clip-sex-hay/
+            //   watching = "Clip Sex Dang Duoc Xem": block custom tren "/",
+            //              KHONG co URL rieng -> Controller cat block ra.
+            if (sh == "watching")
+                return host.TrimEnd('/') + "/";
+
+            url.Append("clip-sex-").Append(sh).Append("/");
             if (pg > 1)
             {
-                url.Append("&from=");
+                url.Append("?from=");
                 url.Append(pg);
             }
         }
-        else if (pg > 1)
+        else if (!string.IsNullOrEmpty(s))
         {
-            url.Append("clip-sex-moi/?from=");
-            url.Append(pg);
+            // Home + sort: site BO QUA ?sort_by= tren cac path clip-sex-* (do live
+            // 2026-11-02: /clip-sex-moi/?sort_by=video_viewed van tra dung thu tu
+            // post_date) -> map 3 sort chinh sang path that cua site.
+            if (s == "rating")
+                url.Append("clip-sex-hay/");
+            else if (s == "video_viewed")
+                url.Append("clip-sex-hot/");
+            else
+                url.Append("clip-sex-moi/");
+
+            var q = new List<string>(2);
+            if (s != "rating" && s != "video_viewed")
+                q.Add("sort_by=" + s);
+            if (pg > 1)
+                q.Add("from=" + pg);
+            if (q.Count > 0)
+                url.Append("?").Append(string.Join("&", q));
+        }
+        else
+        {
+            // Home = row "Clip Sex Moi Nhat - Tong hop Clip Sex moi nhat tai xNhau".
+            // Truoc day home = "/" nen tron ca 5 row (Xem nhieu / Hay nhat tuan /
+            // Dang duoc xem / Album) va Pages() doc pagination cua block khac.
+            url.Append("clip-sex-moi/");
+            if (pg > 1)
+            {
+                url.Append("?from=");
+                url.Append(pg);
+            }
         }
 
         return url.ToString();
+    }
+
+    /// <summary>
+    /// <c>search</c> co phai feed nguoi dang khong. Nhan:
+    /// <c>member:&lt;id|slug&gt;</c>, link/path co <c>/members/</c>.
+    /// </summary>
+    public static string MemberTokenFromSearch(string search)
+    {
+        if (string.IsNullOrWhiteSpace(search))
+            return null;
+
+        string s = search.Trim();
+
+        if (s.StartsWith("member:", System.StringComparison.OrdinalIgnoreCase))
+            return MemberToken(s.Substring(7));
+
+        if (s.Contains("/members/", System.StringComparison.OrdinalIgnoreCase))
+            return MemberToken(s);
+
+        return null;
+    }
+
+    /// <summary>
+    /// Chuan hoa href profile ve path (vd: <c>https://xnhau.pink/fisting123/</c>
+    /// -&gt; <c>/fisting123/</c>). Tra null neu khong doc duoc.
+    /// </summary>
+    public static string ProfilePath(string href)
+    {
+        if (string.IsNullOrWhiteSpace(href))
+            return null;
+
+        href = href.Trim();
+        if (href.StartsWith("//"))
+            href = "https:" + href;
+
+        string p;
+        if (System.Uri.TryCreate(href, System.UriKind.Absolute, out System.Uri u))
+        {
+            p = u.AbsolutePath;
+        }
+        else
+        {
+            p = href;
+            int q = p.IndexOfAny(new[] { '?', '#' });
+            if (q >= 0)
+                p = p.Substring(0, q);
+        }
+
+        p = p.Trim();
+        if (p.Length == 0)
+            return null;
+        if (!p.StartsWith("/"))
+            p = "/" + p;
+        if (!p.EndsWith("/"))
+            p += "/";
+
+        return p;
+    }
+
+    /// <summary>
+    /// Path profile -&gt; token cho <c>?search=member:&lt;token&gt;</c>:
+    /// <c>/members/1470540/</c> -&gt; <c>1470540</c>, <c>/fisting123/</c> -&gt; <c>fisting123</c>.
+    /// </summary>
+    public static string MemberToken(string pathOrUrl)
+    {
+        string p = ProfilePath(pathOrUrl);
+        if (p == null)
+            return null;
+
+        var parts = p.Trim('/').Split('/', System.StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0)
+            return null;
+
+        if (parts[0].Equals("members", System.StringComparison.OrdinalIgnoreCase))
+            return parts.Length > 1 ? parts[1] : null;
+
+        return parts[parts.Length - 1];
+    }
+
+    public static string MemberPath(string token)
+    {
+        if (string.IsNullOrWhiteSpace(token))
+            return null;
+
+        token = token.Trim().Trim('/');
+        if (token.Length == 0)
+            return null;
+
+        return token.All(char.IsDigit) ? $"/members/{token}/" : $"/{token}/";
     }
     #endregion
 
@@ -189,6 +315,60 @@ public static class XNhauTo
         // Loại bỏ item trùng theo video URI
         return playlists.DistinctBy(p => p.video).ToList();
     }
+
+    /// <summary>
+    /// Cat mot block ra khoi trang tron (trang chu co 6 row). Dung cho row khong
+    /// co URL rieng: "Clip Sex Dang Duoc Xem" = <c>list_videos_videos_watched_right_now</c>.
+    /// Tra null neu khong thay block.
+    /// </summary>
+    public static string Block(string html, string blockId)
+    {
+        if (string.IsNullOrEmpty(html))
+            return null;
+
+        int at = html.IndexOf("id=\"" + blockId + "\"", StringComparison.OrdinalIgnoreCase);
+        if (at < 0)
+            return null;
+
+        // Block ket thuc o headline cua row ke tiep.
+        int end = html.IndexOf("<div class=\"headline\"", at, StringComparison.OrdinalIgnoreCase);
+        if (end < 0)
+            end = Math.Min(html.Length, at + 200000);
+
+        return html.Substring(at, end - at);
+    }
+
+    /// <summary>
+    /// Tong so trang cua block video tren trang list.
+    /// KVS render <c>data-xnpj-total="251"</c> trong pagination cua block;
+    /// trang home co nhieu block nen phai scope theo id <c>list_videos_*_pagination</c>.
+    /// </summary>
+    public static int Pages(string html)
+    {
+        if (string.IsNullOrEmpty(html))
+            return 0;
+
+        var pm = System.Text.RegularExpressions.Regex.Match(
+            html, "\\sid=\"list_videos_[^\"]+_pagination\"",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        if (!pm.Success)
+            return 0;
+
+        string win = html.Substring(pm.Index, Math.Min(6000, html.Length - pm.Index));
+
+        var m = System.Text.RegularExpressions.Regex.Match(win, "data-xnpj-total=\"(\\d+)\"");
+        if (m.Success && int.TryParse(m.Groups[1].Value, out int total) && total > 0)
+            return total;
+
+        int max = 0;
+        foreach (System.Text.RegularExpressions.Match x in
+            System.Text.RegularExpressions.Regex.Matches(win, "from_videos:(\\d+)"))
+            if (int.TryParse(x.Groups[1].Value, out int p) && p > max)
+                max = p;
+
+        return max;
+    }
     #endregion
 
     #region Menu
@@ -242,7 +422,13 @@ public static class XNhauTo
     {
         string s = NormalizeSort(sort);
         if (string.IsNullOrEmpty(s))
+        {
+            // Feed nguoi dang mac dinh sort_by=post_date (Moi nhat), khong phai "Lien quan".
+            if (MemberTokenFromSearch(search) != null)
+                return "Mới nhất";
+
             return string.IsNullOrWhiteSpace(search) ? "Mới nhất" : "Liên quan";
+        }
         foreach (var (name, v) in Sorts)
             if (v == s) return name;
         return s;
@@ -250,7 +436,7 @@ public static class XNhauTo
 
     // Dong 2 theo context: giu search/c/t hien tai, chi doi sort.
     public static List<MenuItem> MenuHead(
-        string host, string search, string sort, string c, string t)
+        string host, string search, string sort, string c, string t, string sh = null)
     {
         host = host.TrimEnd('/');
         string url = $"{host}/xnhau";
@@ -275,12 +461,15 @@ public static class XNhauTo
             string ns = NormalizeSort(s);
             if (!string.IsNullOrEmpty(ns))
                 q.Add("sort=" + ns);
+            // Giu context row dang mo (sh=hot|hay|watching) khi doi sort.
+            if (!string.IsNullOrWhiteSpace(sh))
+                q.Add("sh=" + sh);
             return q.Count == 0 ? url : url + "?" + string.Join("&", q);
         }
         var sub = new List<MenuItem>(Sorts.Length + 1);
         foreach (var (name, s) in Sorts)
             sub.Add(new(name, link(s)));
-        sub.Add(new("Trang chủ", url));
+        sub.Add(new("Bỏ lọc (trang chủ)", url));
         res.Add(new MenuItem()
         {
             title = "Sắp xếp: " + SortLabel(search, sort),
@@ -291,8 +480,8 @@ public static class XNhauTo
     }
     //
     // Client SISI chi hien MOT TANG submenu, nen moi nhom taxonomy la
-    // 1 muc tang 1. `/tags/` co 14634 tag nen KHONG dua vao menu (ke ca
-    // khi fetch duoc thi app se treo); chi lay `/the-loai/`.
+    // 1 muc tang 1. Chi muc `/tags/` TOAN SITE (14634 tag) KHONG dua vao menu
+    // (app se treo); tag CUA TUNG VIDEO thi van lay het — xem Info()/ReadLinks.
     //
     // `groups` = 3 nhom tren trang `/the-loai/`:
     //   "Sex Châu Á" 9 | "Thể loại cụ thể" 59 | "Phim Sex" 4
@@ -304,9 +493,24 @@ public static class XNhauTo
 
         string cat(string slug) => $"{url}?c={HttpUtility.UrlEncode(slug)}";
 
-        var menu = new List<MenuItem>(5);
+        var menu = new List<MenuItem>(6);
 
-        // Dong 3+ — taxonomy. Client chi 1 tang nen moi nhom 1 muc.
+        // Dong 3 — cac row cua trang chu cu, truoc day bi tron lan vao home.
+        // Home gio chi con row "Clip Sex Moi Nhat" (xem Uri()).
+        menu.Add(new MenuItem()
+        {
+            title = "Trang chủ",
+            playlist_url = "submenu",
+            submenu = new List<MenuItem>(4)
+            {
+                new("Mới nhất", url),
+                new("Xem nhiều hôm nay", url + "?sh=hot"),
+                new("Hay nhất tuần", url + "?sh=hay"),
+                new("Đang được xem", url + "?sh=watching"),
+            }
+        });
+
+        // Dong 4+ — taxonomy. Client chi 1 tang nen moi nhom 1 muc.
         foreach (var (name, items) in groups ?? FallbackGroups)
         {
             if (items == null || items.Count == 0)
@@ -445,6 +649,117 @@ public static class XNhauTo
                 ("sex-ai", "AI"), ("hentai", "Hentai"),
             }),
         };
+    #endregion
+
+    #region Info (menu ngu canh / long-press)
+    /// <summary>
+    /// Thong tin 1 trang detail: nguoi dang + the loai.
+    /// Dung cho popup "nhan giu" cua SISI (route <c>/xnhau/genres</c>).
+    /// </summary>
+    public sealed class InfoBox
+    {
+        public string uploader;
+        public string uploaderPath;
+        public List<(string slug, string name)> categories = new();
+        public List<(string slug, string name)> tags = new();
+    }
+
+    public static InfoBox Info(string html)
+    {
+        if (string.IsNullOrEmpty(html))
+            return null;
+
+        var box = new InfoBox();
+
+        // Khoi chu video:
+        //   <div class="xnyt-owner"><div class="block-user">...
+        //     <span class="name"> Fisting123 <span class="blue-badge"></span> </span>
+        //     <a class="avatar" href="https://xnhau.pink/fisting123/" title="Fisting123">
+        int oi = html.IndexOf("xnyt-owner", StringComparison.OrdinalIgnoreCase);
+        if (oi >= 0)
+        {
+            string owner = html.Substring(oi, Math.Min(8000, html.Length - oi));
+
+            var name = System.Text.RegularExpressions.Regex.Match(owner,
+                "<span class=\"name\">\\s*([^<]+)",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (name.Success)
+                box.uploader = WebUtility.HtmlDecode(name.Groups[1].Value).Trim();
+
+            var av = System.Text.RegularExpressions.Regex.Match(owner,
+                "<a class=\"avatar\"[^>]*href=\"([^\"]+)\"",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (av.Success)
+                box.uploaderPath = ProfilePath(WebUtility.HtmlDecode(av.Groups[1].Value));
+
+            if (string.IsNullOrEmpty(box.uploader))
+            {
+                var title = System.Text.RegularExpressions.Regex.Match(owner,
+                    "<a class=\"avatar\"[^>]*title=\"([^\"]+)\"",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                if (title.Success)
+                    box.uploader = WebUtility.HtmlDecode(title.Groups[1].Value).Trim();
+            }
+        }
+
+        // The loai + tag:
+        //   <div class="info-content">
+        //     <a href="https://xnhau.pink/the-loai/gai-xinh/"> Gai xinh </a>
+        //     <a href="https://xnhau.pink/tags/chu-giang/"> chu giang </a>
+        // Quy uoc: lay HET the loai va HET tag tren trang detail.
+        int ci = html.IndexOf("class=\"info-content\"", StringComparison.OrdinalIgnoreCase);
+        if (ci >= 0)
+        {
+            int end = html.IndexOf("</div>", ci, StringComparison.OrdinalIgnoreCase);
+            if (end < 0)
+                end = Math.Min(html.Length, ci + 8000);
+
+            string block = html.Substring(ci, end - ci);
+            ReadLinks(block, "the-loai", box.categories);
+            ReadLinks(block, "tags", box.tags);
+        }
+
+        if (string.IsNullOrEmpty(box.uploader) && box.categories.Count == 0 && box.tags.Count == 0)
+            return null;
+
+        return box;
+    }
+
+    // Lay het <a href=".../<segment>/<slug>/">name</a> trong 1 khoi HTML.
+    static void ReadLinks(string block, string segment, List<(string slug, string name)> into)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(
+            block,
+            $"href=\"[^\"]*?/{segment}/(?<slug>[^/\"]+)/\"[^>]*>(?<name>[^<]+)<",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+        {
+            string slug = WebUtility.HtmlDecode(m.Groups["slug"].Value).Trim();
+            string name = WebUtility.HtmlDecode(m.Groups["name"].Value);
+            name = System.Text.RegularExpressions.Regex.Replace(name, @"\s+", " ").Trim();
+
+            if (string.IsNullOrEmpty(slug) || string.IsNullOrEmpty(name) || !seen.Add(slug))
+                continue;
+
+            into.Add((slug, name));
+        }
+    }
+
+    public static string CategoryUrl(string host, string slug)
+        => $"{host.TrimEnd('/')}/xnhau?c={HttpUtility.UrlEncode(slug)}";
+
+    public static string TagUrl(string host, string slug)
+        => $"{host.TrimEnd('/')}/xnhau?t={HttpUtility.UrlEncode(slug)}";
+
+    public static string MemberUrl(string host, string pathOrToken)
+    {
+        string token = MemberToken(pathOrToken) ?? pathOrToken?.Trim().Trim('/');
+        if (string.IsNullOrEmpty(token))
+            return null;
+
+        return $"{host.TrimEnd('/')}/xnhau?search={HttpUtility.UrlEncode("member:" + token)}";
+    }
     #endregion
 
     #region StreamLinks

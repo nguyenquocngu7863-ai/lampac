@@ -49,24 +49,37 @@ public class XNhauController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("xnhau")]
-    async public Task<ActionResult> Index(string search, string sort, string c, string t, int pg = 1)
+    async public Task<ActionResult> Index(string search, string sort, string c, string t, string rel, string sh, int pg = 1)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
         return badInitMsg;
 
+        if (!string.IsNullOrWhiteSpace(rel))
+            return await RelatedList(rel, pg);
+
     rhubFallback:
-        var cache = await InvokeCacheResult(ipkey($"xnhau:{search}:{sort}:{c}:{t}:{pg}"), 10, jsonContext.ListPlaylistItem, async e =>
+        var cache = await InvokeCacheResult<(List<PlaylistItem> playlists, int total_pages)>(
+            // v2: home doi tu "/" (tron 5 row) sang "/clip-sex-moi/" + them sh.
+            ipkey($"xnhau:v2:{sh}:{search}:{sort}:{c}:{t}:{pg}"), 10, async e =>
         {
             if (init.httpversion == 1)
                 httpHydra.RegisterHttp(httpClient);
 
             List<PlaylistItem> playlists = null;
+            string html = null;
 
-            string dbgUrl = Relay(XNhauTo.Uri(init.host, search, sort, c, t, pg));
+            string dbgUrl = Relay(XNhauTo.Uri(init.host, search, sort, c, t, pg, sh));
             await httpHydra.GetSpan(dbgUrl, span =>
             {
-                string h = span.ToString();
-                playlists = XNhauTo.Playlist("xnhau/vidosik", span);
+                html = span.ToString();
+
+                // Row "Clip Sex Dang Duoc Xem" khong co URL rieng: cat block ra
+                // khoi trang chu, khong thi Playlist() lay ca 5 row.
+                if (sh == "watching")
+                    playlists = XNhauTo.Playlist("xnhau/vidosik",
+                        XNhauTo.Block(html, "list_videos_videos_watched_right_now_items"));
+                else
+                    playlists = XNhauTo.Playlist("xnhau/vidosik", span);
             }, addheaders: HeadersModel.Init(
                 ("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"),
                 ("Referer", init.host + "/")
@@ -77,12 +90,14 @@ public class XNhauController : BaseSisiController
             if (playlists == null || playlists.Count == 0)
             {
                 if (!string.IsNullOrWhiteSpace(search))
-                    return e.Success(new List<PlaylistItem>());
+                    return e.Success((new List<PlaylistItem>(), 0));
 
                 return e.Fail("playlists", refresh_proxy: true);
             }
 
-            return e.Success(playlists);
+            // Block "dang duoc xem" khong phan trang.
+            return e.Success((playlists,
+                sh == "watching" ? 1 : System.Math.Max(1, XNhauTo.Pages(html))));
         });
 
         if (IsRhubFallback(cache))
@@ -91,14 +106,15 @@ public class XNhauController : BaseSisiController
         if (rch?.enable == true)
             StatiCacheDisabled = true;
 
-        return PlaylistResult(cache, await MenuAsync(search, sort, c, t));
+        return PlaylistResult(cache.Value.playlists, cache.ISingleCache,
+            await MenuAsync(search, sort, c, t, sh), total_pages: cache.Value.total_pages);
     }
 
     // Menu = head (Tim kiem + Sắp xếp theo context) + base taxonomy cache.
     // Menu khong con 1 key tinh: dong 2 doi theo search/sort/c/t.
-    async Task<List<MenuItem>> MenuAsync(string search, string sort, string c, string t)
+    async Task<List<MenuItem>> MenuAsync(string search, string sort, string c, string t, string sh)
     {
-        var menu = XNhauTo.MenuHead(host, search, sort, c, t);
+        var menu = XNhauTo.MenuHead(host, search, sort, c, t, sh);
         string memKey = ipkey("xnhau:menu");
 
         if (hybridCache.TryGetValue(memKey,
@@ -311,7 +327,7 @@ public class XNhauController : BaseSisiController
         => string.IsNullOrEmpty(s) ? "" : (s.Length > 200 ? s[..200] : s);
 
     /// <summary>
-    /// Tự đăng nhập xnhau.pub bằng Chrome thật (Playwright) để lấy PHPSESSID.
+    /// Tự đăng nhập xnhau.pink bằng Chrome thật (Playwright) để lấy PHPSESSID.
     ///
     /// ĐO TRÊN MÁY NÀY (2026-10-28): Cloudflare Turnstile KHÔNG giải được khi
     /// Chrome chạy headless — widget vẽ ra checkbox nhưng không bao giờ trả token
@@ -598,50 +614,163 @@ public class XNhauController : BaseSisiController
     }
 
 
+    // ===== "nhan giu" / menu ngu canh cua SISI =====
+    // Tra { items, groups } giong 123av: nhom "Nguoi dang" (web thanh vien tu
+    // dang bai) + "The loai" + "Lien quan". Moi item bam vao la ra list tuong ung.
+    [HttpGet]
+    [Route("xnhau/genres")]
+    async public Task<ActionResult> Genres(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return Json(new { items = new object[0], groups = new object[0] });
+
+        if (await IsRequestBlocked(rch: true))
+            return badInitMsg;
+
+        var info = await LoadInfoAsync(uri);
+        if (info == null)
+            return Json(new { items = new object[0], groups = new object[0] });
+
+        var groups = new List<object>();
+
+        // 1) Nguoi dang — lay ten tren trang video, bam vao la list video cua ho.
+        if (!string.IsNullOrEmpty(info.uploader) && !string.IsNullOrEmpty(info.uploaderPath))
+        {
+            string memberUrl = XNhauTo.MemberUrl(host, info.uploaderPath);
+            if (!string.IsNullOrEmpty(memberUrl))
+            {
+                groups.Add(new
+                {
+                    title = "Người đăng",
+                    items = new[] { new { title = info.uploader, url = memberUrl } }
+                });
+            }
+        }
+
+        // 2) The loai cua video
+        var cats = info.categories
+            .Select(x => new { title = x.name, url = XNhauTo.CategoryUrl(host, x.slug) })
+            .ToList();
+
+        if (cats.Count > 0)
+            groups.Add(new { title = "Thể loại", items = cats });
+
+        // 3) Het tag cua video (quy uoc: lay du the loai + tag)
+        var tags = (info.tags ?? new())
+            .Select(x => new { title = x.name, url = XNhauTo.TagUrl(host, x.slug) })
+            .ToList();
+
+        if (tags.Count > 0)
+            groups.Add(new { title = "Tag", items = tags });
+
+        // 4) Lien quan
+        groups.Add(new
+        {
+            title = "Liên quan",
+            items = new[]
+            {
+                new
+                {
+                    title = "Video liên quan",
+                    plain = true,
+                    url = $"{host}/xnhau?rel={HttpUtility.UrlEncode(uri)}"
+                }
+            }
+        });
+
+        // `items` de RONG: client chi ve menu tu `groups` (giong JAVSnap/JavHDToday).
+        // Truoc day nhet the-loai vao `items` (kieu Av123) => menu bi lap/theo y client.
+        return Json(new { items = new object[0], groups });
+    }
+
+    /// <summary>Trang detail day du cua video (uri co the la id, path hoac URL).</summary>
+    string DetailUrl(string uri)
+    {
+        string url = XNhauTo.StreamLinksUri(uri);
+        if (string.IsNullOrEmpty(url))
+            return null;
+
+        if (System.Text.RegularExpressions.Regex.IsMatch(url, @"^[0-9]+$"))
+            return $"{init.host}/video/{url}/";
+
+        if (url.Contains("?uri="))
+            url = url.Split("?uri=")[0];
+
+        if (url.StartsWith("http", System.StringComparison.OrdinalIgnoreCase))
+            return url;
+
+        return $"{init.host}/{url.TrimStart('/')}";
+    }
+
+    async Task<XNhauTo.InfoBox> LoadInfoAsync(string uri)
+    {
+        string url = DetailUrl(uri);
+        if (string.IsNullOrEmpty(url))
+            return null;
+
+        string memKey = ipkey($"xnhau:info2:{url}");
+        if (hybridCache.TryGetValue(memKey, out XNhauTo.InfoBox cached) && cached != null)
+            return cached;
+
+        string html = await FetchAsync(url);
+        var info = XNhauTo.Info(html);
+        if (info != null)
+            hybridCache.Set(memKey, info, cacheTime(360));
+
+        return info;
+    }
+
+    // "Video lien quan" cua trang detail (block list_videos_related_videos).
+    async Task<ActionResult> RelatedList(string rel, int pg)
+    {
+        if (pg > 1)
+            return EmptyPage();
+
+        string pageUrl = DetailUrl(rel);
+        if (string.IsNullOrEmpty(pageUrl))
+            return EmptyPage();
+
+        var cache = await InvokeCacheResult<(List<PlaylistItem> playlists, int total_pages)>(
+            ipkey($"xnhau:rel:{pageUrl}"), 180, async e =>
+            {
+                string html = await FetchAsync(pageUrl);
+                var playlists = XNhauTo.Playlist("xnhau/vidosik", html);
+
+                if (playlists == null || playlists.Count == 0)
+                    return e.Success((new List<PlaylistItem>(), 0));
+
+                return e.Success((playlists, 1));
+            });
+
+        if (!cache.IsSuccess)
+            return OnError(cache.ErrorMsg);
+
+        return PlaylistResult(cache.Value.playlists, cache.ISingleCache,
+            await MenuAsync(null, null, null, null, null), total_pages: 1);
+    }
+
+    ActionResult EmptyPage() => Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+    /// <summary>Giu route cu cho client dang goi /xnhau/uploader.</summary>
     [HttpGet]
     [Route("xnhau/uploader")]
     async public Task<ActionResult> Uploader(string uri)
     {
+        if (string.IsNullOrWhiteSpace(uri))
+            return Json(new { name = "", member = "" });
+
         if (await IsRequestBlocked(rch: true))
-            return Json(new { name = "", member = "" });
+            return badInitMsg;
 
-        string url = XNhauTo.StreamLinksUri(uri);
-        if (!string.IsNullOrEmpty(url) && System.Text.RegularExpressions.Regex.IsMatch(url, @"^[0-9]+$"))
-            url = $"{init.host}/video/{url}/";
-        if (string.IsNullOrEmpty(url))
-            return Json(new { name = "", member = "" });
+        var info = await LoadInfoAsync(uri);
+        if (info == null || string.IsNullOrEmpty(info.uploader))
+            return OnError("uploader");
 
-        string memKey = ipkey($"xnhau:uploader:{url}");
-        if (!hybridCache.TryGetValue(memKey, out Dictionary<string, string> info))
-        {
-            info = null;
-            await httpHydra.GetSpan(Relay(url), span =>
-            {
-                var m = System.Text.RegularExpressions.Regex.Match(span.ToString(),
-                    @"<a class=""avatar"" href=""((?:https?://[^/]+)?/members/[0-9]+/)""[^>]*title=""([^""]+)""");
-                if (m.Success)
-                {
-                    string murl = m.Groups[1].Value;
-                    if (murl.StartsWith("/"))
-                        murl = $"{init.host}{murl}";
-                    info = new Dictionary<string, string>
-                    {
-                        ["name"] = HttpUtility.HtmlDecode(m.Groups[2].Value),
-                        ["member"] = murl
-                    };
-                }
-            }, addheaders: HeadersModel.Init(
-                ("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"),
-                ("Referer", init.host + "/"),
-                ("Cookie", Cookie)));
+        string member = string.IsNullOrEmpty(info.uploaderPath)
+            ? ""
+            : init.host.TrimEnd('/') + info.uploaderPath;
 
-            if (info == null)
-                return OnError("uploader");
-
-            hybridCache.Set(memKey, info, cacheTime(60));
-        }
-
-        return Json(info);
+        return Json(new { name = info.uploader, member });
     }
 
     [HttpGet]

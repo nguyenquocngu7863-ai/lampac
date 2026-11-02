@@ -1,11 +1,45 @@
-# XNhau (xnhau.limo)
+# XNhau (xnhau.pink)
 
-Module Adult cho nguồn xnhau.limo (Việt).
+Module Adult cho nguồn xnhau.pink (Việt).
 
 ## Cấu hình
 - `manifest.json`: module Adult, `enable: true`, `dynamic: true`
-- `Controller.cs`: endpoint `/xnhau` (list/search/member feed), `/xnhau/strem` (stream), `/xnhau/uploader` (lấy tên người đăng)
+- `Controller.cs`: endpoint `/xnhau` (list/search/member feed/related), `/xnhau/strem` (stream),
+  `/xnhau/genres` + `/xnhau/uploader` (menu ngữ cảnh / long-press)
 - `Service.cs`: parse HTML, regex `div.item`, stream links từ file:...
+
+## Menu ngữ cảnh (long-press) — chuẩn 123av
+
+`GET /xnhau/genres?uri=<detail-url>` trả `{ items, groups }` giống module `Av123`:
+
+| nhóm | nội dung | bấm vào |
+|---|---|---|
+| `Người đăng` | tên uploader lấy từ khối `.xnyt-owner .name` | `/xnhau?search=member:<slug>` → list video của người đó |
+| `Thể loại` | **tất cả** `<a href=".../the-loai/<slug>/">` trong `.info-content` | `/xnhau?c=<slug>` |
+| `Tag` | **tất cả** `<a href=".../tags/<slug>/">` trong `.info-content` | `/xnhau?t=<slug>` |
+| `Liên quan` | `Video liên quan` (`plain: true`) | `/xnhau?rel=<detail-url>` |
+
+- Client chỉ vẽ **một menu duy nhất** từ `groups` (mỗi `title` = 1 dòng, bấm vào ra
+  danh sách con). `items` để **rỗng** — giống `JAVSnap` / `JavHDToday`; nhét thể loại
+  vào `items` (kiểu `Av123`) làm client vẽ thêm một hàng nữa, dễ bị lặp.
+- **Quy ước chung**: trang detail có bao nhiêu thể loại và tag thì lấy **hết**, không cắt.
+- Riêng XNhau có thêm nhóm `Người đăng` (site thành viên tự đăng bài ⇒ không có studio/actor).
+- Route cũ `/xnhau/uploader` (`{name, member}`) vẫn giữ, giờ dùng chung parser `XNhauTo.Info`.
+  `XNhauTo.Info()` đọc `.info-content` bằng `ReadLinks()` chung cho cả `the-loai` và `tags`.
+
+## Feed người đăng (profile)
+
+- Trang profile dạng `https://xnhau.pink/<slug>/` (vd `/fisting123/`), **không** phải `/members/<id>/`.
+- `search=member:<slug|id>` (menu sinh ra) hoặc dán link có `/members/` đều được.
+- Phân trang: `?from=N` **KHÔNG có tác dụng** (trả y nguyên trang 1, đo 2026-11-02).
+  Phải dùng AJAX của block `list_videos_uploaded_videos`:
+
+  ```
+  /<slug>/?mode=async&format=json&function=get_block
+          &block_id=list_videos_uploaded_videos&sort_by=post_date&from_videos=<pg>
+  ```
+
+- `total_pages` lấy từ `data-xnpj-total` trong pagination của block video.
 
 ## Pagination
 - Category (`the-loai/`): dùng `?from=`
@@ -51,7 +85,7 @@ Cấu hình (`~/lampac-run/init.conf`, thêm section nếu chưa có):
 ```
 
 - Cookie hết hạn / bị logout ⇒ video private lại 503 `stream_links`. Cách làm mới:
-  login `xnhau.pub` trên browser → DevTools → Application → Cookies → copy `PHPSESSID`.
+  login `xnhau.pink` trên browser → DevTools → Application → Cookies → copy `PHPSESSID`.
 - Login bằng script (curl_cffi) **không được**: form login có Cloudflare Turnstile,
   POST bằng script trả về y hệt nhau cho cả mật khẩu đúng và sai (không set session).
   Muốn tự động hoàn toàn thì phải có Chromium thật (Playwright) để giải Turnstile.
@@ -65,15 +99,36 @@ Cấu hình (`~/lampac-run/init.conf`, thêm section nếu chưa có):
 5. (2026-10-28) Gửi `init.cookie` khi fetch trang detail + trang member (video private)
 
 
-## Domain (cap nhat 2026-10-18)
+## Domain (cap nhat 2026-11-02)
 
-Site **doi domain lien tuc**: `xnhau.cab` -> `xnhau.limo` -> `xnhau.free` -> **`xnhau.pub`**.
-`xnhau.free` gio tra **301 Moved Permanently** (body 162 byte, khong co card) va fetch cua module
+Site **doi domain lien tuc**: `xnhau.cab` -> `xnhau.limo` -> `xnhau.free` -> `xnhau.pub` -> `xnhau.band` -> **`xnhau.pink`**.
+`xnhau.free` tung tra **301 Moved Permanently** (body 162 byte, khong co card) va fetch cua module
 **khong di theo redirect** -> parse ra 0 item -> app bao 503 `playlists`.
 
-Da sua 5 cho (het `.free` -> `.pub`):
-- `ModInit.cs`: `SisiSettings(..., host)` + 2 `referer` + fallback `?? "https://xnhau.pub"`
+Da doi `.band` -> `.pink` (2026-11-02):
+- `ModInit.cs`: `SisiSettings(..., host)` + 2 `referer` + fallback `?? "https://xnhau.pink"`
 - `Service.cs`: `SiteHost`
+- `termux-native/xnhau-login.js` (Chrome profile login) + `cf-relay/index.js` allowlist
+
+### Đổi domain: chỉ cần chạy 1 lệnh
+
+Class HTML + cơ chế stream **không đổi** khi site đổi domain, nên không phải sửa parser.
+Chỉ có 4 chỗ phải theo: host trong module, script login, allowlist Worker relay, cookie.
+Script làm hết:
+
+```bash
+~/lampac-native/xnhau-domain.sh <domain-moi>         # đổi + deploy + login + restart + smoke
+~/lampac-native/xnhau-domain.sh <domain> --dry-run    # xem trước sẽ sửa gì
+~/lampac-native/xnhau-domain.sh --show                # domain / cookie / relay hiện tại
+```
+
+Thứ tự: verify domain sống (`site.sh`, phải ra card video) → thay host trong `ModInit.cs`,
+`Service.cs`, `xnhau-login.js`, `xnhau-login.sh`, `cf-relay/index.js` (+ bản trong
+`~/lampac-native`) → `check.sh` → copy sang `~/lampac-run` → deploy Worker allowlist
+(`domain-mới` + mọi host cũ để rollback) → `nrestart` → `/xnhau/login` → smoke
+home / pg2 / search / member / genres / vidosik / strem(+byte).
+Fail ở verify hoặc compile thì **không deploy gì**; backup ở
+`~/lampac-native/tmp/domain-bak/<ts>/` (restore: `cp -a <bak>/src/. ~/lampac-clean/`).
 
 Cach do khi nghi doi domain (khong can sua gi): lay HTML that roi chay regex card cua module —
 neu regex khop ma module van 0 item thi loi o **fetch/host**, khong phai parser.
@@ -174,7 +229,7 @@ Chỉ gửi `PHPSESSID` → trang video trả `.no-player` "Chỉ có thành vi�
 
 ### Fallback thủ công (khi script/Chrome hỏng)
 
-1. Firefox (điện thoại) → `xnhau.pub` → đăng nhập, tick "Ghi nhớ đăng nhập".
+1. Firefox (điện thoại) → `xnhau.pink` → đăng nhập, tick "Ghi nhớ đăng nhập".
 2. DevTools/Cookie-Editor → copy `PHPSESSID` (HttpOnly, bookmarklet không đọc được).
 3. Dán `PHPSESSID=…; kt_member=1; kt_tcookie=1` vào `~/lampac-run/xnhau.cookie`.
 4. `curl -s http://127.0.0.1:9118/xnhau/check` → `"cookie":"alive"`.
@@ -186,7 +241,7 @@ chết thì script login lại (cold path ~90 s, lần đầu sau đó nhanh vì
 ## Relay Cloudflare (`XNHAU_RELAY`)
 
 **Triệu chứng:** app quay vòng mãi ở trang list (log trả `503 {"msg":"playlists"}`), bấm video thì
-player trắng/không phát. Đo trực tiếp: TLS từ IP máy tới `xnhau.pub` bị reset liên tục
+player trắng/không phát. Đo trực tiếp: TLS từ IP máy tới `xnhau.pink` bị reset liên tục
 (`SSL: UNEXPECTED_EOF_WHILE_READING`) ⇒ HTML về rỗng (parse 0 item) và `/proxy/<token>` trả
 `200` + **0 byte** sau ~15 s. Không phải băng thông — cùng lúc đó qua Cloudflare Worker: `200`, 278 KB, 0.83 s.
 
@@ -204,4 +259,5 @@ player trắng/không phát. Đo trực tiếp: TLS từ IP máy tới `xnhau.pu
 `vidosik` 0.3–0.4 s, `strem` 0.13–0.38 s (trước 8–21 s), `/proxy` 206 + byte thật 0.2–0.9 s/256 KB.
 
 **Nếu media nằm host khác** (CDN riêng): worker trả `403 host not allowed: <host>` → thêm host đó vào
-allowlist rồi deploy lại: `python3 deploy.py --test-host "xnhau.pub,<cdn-host>"`.
+allowlist rồi deploy lại: `python3 deploy.py --allow "xnhau.pink,<cdn-host>"`.
+(Đổi domain thì dùng `xnhau-domain.sh`, nó tự truyền `--allow` gồm domain mới + host cũ.)
