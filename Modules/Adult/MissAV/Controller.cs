@@ -516,6 +516,53 @@ public class MissAVController : BaseSisiController
         return links;
     }
 
+    // ===== long-press: card info cua 1 phim =====
+    // Tra { items, groups } cho SISI/plugins/sisi.js (menu$2). Lay HET link
+    // trong card info trang detail: dien vien / the loai / nha san xuat /
+    // dao dien / nhan / series / tag — khong chi genre.
+    [HttpGet]
+    [Route("missav/genres")]
+    async public Task<ActionResult> Genres(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return Json(new { items = new object[0], groups = new object[0] });
+
+        string pageUrl = HttpUtility.HtmlDecode(uri.Trim());
+        if (!pageUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            pageUrl = MissAVTo.SiteHost + "/vi/" + pageUrl.Trim('/');
+
+        int qm = pageUrl.IndexOf('?');
+        if (qm >= 0)
+            pageUrl = pageUrl.Substring(0, qm);
+
+        string memKey = ipkey($"missav:genres:{pageUrl}");
+        if (!hybridCache.TryGetValue(memKey,
+            out List<(string kind, string name, string url)> info) || info == null)
+        {
+            var (content, _) = await PageFetchAsync(pageUrl);
+            info = MissAVTo.Info(content);
+            if (info.Count > 0)
+                hybridCache.Set(memKey, info, cacheTime(360));
+        }
+
+        var groups = new List<object>();
+
+        foreach (var kind in info.Select(x => x.kind).Distinct())
+        {
+            var items = info.Where(x => x.kind == kind)
+                .Select(x => new
+                {
+                    title = x.name,
+                    url = host + "/missav?c=" + HttpUtility.UrlEncode(x.url)
+                }).ToList();
+
+            if (items.Count > 0)
+                groups.Add(new { title = MissAVTo.InfoTitle(kind), items });
+        }
+
+        return Json(new { items = new object[0], groups });
+    }
+
     [HttpGet, Staticache(manually: true)]
     [Route("missav/vidosik")]
     async public Task<ActionResult> Vidosik(string uri)

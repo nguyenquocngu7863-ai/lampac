@@ -89,7 +89,10 @@ public static class MissAVTo
         return ReleaseUrl + page;
     }
 
-    public static string ReleaseUrl = "https://missav.live/dm635/vi/release";
+    // /dmNNN/ la prefix cache-busting cua site — dm635 da chet (2026-11-02:
+    // /dm635/vi/release tra trang search rong -> tiles = 0 -> module 503).
+    // Dung path tran, site tu 301 sang prefix dung.
+    public static string ReleaseUrl = "https://missav.live/vi/release";
 
     // Feed goi y (Recombee) — khong phan trang, chi dung lam 1 muc menu.
     public static string RecommendUrl = "https://missav.live/vi";
@@ -194,6 +197,88 @@ public static class MissAVTo
                     image = poster
                 }
             });
+    }
+
+    // ===== info card (long-press) =====
+    // Trang detail MissAV: moi dong thong tin la
+    //   <div class="text-secondary">
+    //     <span>Nhan:</span>
+    //     <a href="https://missav.live/<lang|dmNNN>/<kind>/<slug>">Ten</a>, <a ...>
+    //   </div>
+    // Loai lay tu PATH cua href (actresses|genres|makers|directors|labels|...)
+    // chu KHONG lay tu nhan tieng Viet -> doi ngon ngu (vi/en/ja) van dung.
+    static readonly Regex InfoRowRx = new(
+        "<div\\s+class=\"text-secondary\"[^>]*>(.*?)</div>",
+        RegexOptions.Singleline | RegexOptions.IgnoreCase);
+
+    static readonly Regex InfoLinkRx = new(
+        "<a[^>]*href=\"([^\"]+)\"[^>]*>([^<]{1,120})</a>",
+        RegexOptions.IgnoreCase);
+
+    static readonly Dictionary<string, string> InfoKinds = new(StringComparer.OrdinalIgnoreCase)
+    {
+        { "actresses", "Diễn viên" },
+        { "actors",    "Diễn viên" },
+        { "genres",    "Thể loại" },
+        { "makers",    "Nhà sản xuất" },
+        { "directors", "Đạo diễn" },
+        { "labels",    "Nhãn" },
+        { "series",    "Series" },
+        { "tags",      "Tag" },
+    };
+
+    /// <summary>Loai thong tin (kind) tu path cua link; null neu khong phai link info.</summary>
+    public static string InfoKind(string url)
+    {
+        if (string.IsNullOrEmpty(url))
+            return null;
+
+        string path;
+        try { path = new Uri(url).AbsolutePath; }
+        catch { path = url; }
+
+        var seg = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        // /<lang|dmNNN>/<kind>/<slug...>  hoac  /<kind>/<slug...>
+        for (int i = 0; i < seg.Length - 1; i++)
+            if (InfoKinds.ContainsKey(seg[i]))
+                return seg[i].ToLowerInvariant();
+
+        return null;
+    }
+
+    /// <summary>Tieu de nhom trong popup theo kind.</summary>
+    public static string InfoTitle(string kind)
+        => InfoKinds.TryGetValue(kind ?? "", out string t) ? t : kind;
+
+    /// <summary>
+    /// Lay HET link trong card info cua trang detail (dien vien, the loai, nha san
+    /// xuat, dao dien, nhan, series, tag) — khong chi genre.
+    /// </summary>
+    public static List<(string kind, string name, string url)> Info(string html)
+    {
+        var res = new List<(string kind, string name, string url)>();
+        if (string.IsNullOrEmpty(html))
+            return res;
+
+        foreach (Match row in InfoRowRx.Matches(html))
+        {
+            foreach (Match m in InfoLinkRx.Matches(row.Groups[1].Value))
+            {
+                string url = System.Net.WebUtility.HtmlDecode(m.Groups[1].Value).Trim();
+                string name = System.Net.WebUtility.HtmlDecode(m.Groups[2].Value).Trim();
+                if (name.Length == 0 || name.Length > 100)
+                    continue;
+
+                string kind = InfoKind(url);
+                if (kind == null)
+                    continue;
+
+                if (!res.Exists(x => x.kind == kind && x.name == name))
+                    res.Add((kind, name, url));
+            }
+        }
+
+        return res;
     }
 
     // giai eval(p,a,c,k,e,d) long nhau tren trang video -> list m3u8 surrit (master truoc)
