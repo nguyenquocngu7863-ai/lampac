@@ -220,6 +220,28 @@ public static class Po85To
     }
     #endregion
 
+    #region Pages
+    // So trang cuoi tu pagination cua block list. KVS ghi so trang trong
+    // data-parameters: list thuong `from:N`, feed member `from_videos:N`
+    // (do live 2026-11-02: from_videos:9 = trang 9, khong phai offset).
+    // Trang AJAX (search / feed member tu trang 2) chi tra fragment, khong co
+    // pagination -> tra 1, caller tu xu ly.
+    public static int Pages(ReadOnlySpan<char> html)
+    {
+        if (html.IsEmpty) return 1;
+
+        int max = 1;
+        var rx = Rx.Matches("data-parameters=\"[^\"]*from(?:_videos)?:[0-9]+\"", html);
+        for (int i = 0; i < rx.Count; i++)
+        {
+            string v = rx[i].Match("from(?:_videos)?:([0-9]+)", 1);
+            if (v != null && int.TryParse(v, out int p) && p > max)
+                max = p;
+        }
+        return max;
+    }
+    #endregion
+
     #region Info (card info — menu nhan giu)
     // 85po la site user-generated: card info KHONG co dien vien/the loai/nha san
     // xuat (video_categories/video_models rong, do live 2026-11-02). Cai co that:
@@ -362,7 +384,8 @@ public static class Po85To
         return q.Count == 0 ? url : url + "?" + string.Join("&", q);
     }
 
-    public static List<MenuItem> Menu(string host, string search, string sort, string c, string t)
+    public static List<MenuItem> Menu(string host, string search, string sort, string c, string t,
+        string m = null)
     {
         string url = $"{host}/po85";
 
@@ -397,13 +420,63 @@ public static class Po85To
         }
         #endregion
 
+        // Feed "Nguoi dang": block uploaded_videos KHONG ho tro sort_by (do live
+        // 2026-11-02: chi co pagination from_videos, khong co sort list) -> bo muc
+        // "Sap xep" de menu khong con tro ve sort cua home.
+        if (!string.IsNullOrWhiteSpace(m))
+        {
+            var memberMenu = new List<MenuItem>(4)
+            {
+                new MenuItem()
+                {
+                    title = "Tìm kiếm",
+                    search_on = "search_on",
+                    playlist_url = url,
+                },
+                new MenuItem()
+                {
+                    title = "Video của người đăng",
+                    playlist_url = $"{url}?m={HttpUtility.UrlEncode(m.Trim())}"
+                }
+            };
+            memberMenu.AddRange(FilterMenu(url));
+            return memberMenu;
+        }
+
         var memoryCache = HybridCache.GetMemory();
         string menuKey = $"Po85_menu_{host}_{sort}_{c}_{t}";
 
         if (memoryCache.TryGetValue(menuKey, out List<MenuItem> menu))
             return menu;
 
-        var tagmenu = new List<MenuItem>(27)
+        menu = new List<MenuItem>(2)
+        {
+            new MenuItem()
+            {
+                title = "Tìm kiếm",
+                search_on = "search_on",
+                playlist_url = url,
+            },
+            new MenuItem()
+            {
+                title = $"Sắp xếp: {SortLabel(search, sort)}",
+                playlist_url = "submenu",
+                submenu = SortSubmenu(url, search, sort, c, t)
+            }
+        };
+
+        menu.AddRange(FilterMenu(url));
+
+        if (CoreInit.conf.lowMemoryMode == false)
+            memoryCache.Set(menuKey, menu, TimeSpan.FromDays(1));
+
+        return menu;
+    }
+
+    // 2 muc loc dung chung cho moi context (home / the loai / tag / nguoi dang).
+    static List<MenuItem> FilterMenu(string url)
+    {
+        var tagmenu = new List<MenuItem>(26)
         {
             new("Tự chụp 自拍", $"{url}?t=zi-pai"),
             new("Tự sướng 自慰", $"{url}?t=zi-wei"),
@@ -433,20 +506,8 @@ public static class Po85To
             new("Học sinh 學生", $"{url}?t=xue-sheng"),
         };
 
-        menu = new List<MenuItem>(4)
+        return new List<MenuItem>(2)
         {
-            new MenuItem()
-            {
-                title = "Tìm kiếm",
-                search_on = "search_on",
-                playlist_url = url,
-            },
-            new MenuItem()
-            {
-                title = $"Sắp xếp: {SortLabel(search, sort)}",
-                playlist_url = "submenu",
-                submenu = SortSubmenu(url, search, sort, c, t)
-            },
             new MenuItem()
             {
                 title = "Thể loại",
@@ -462,22 +523,16 @@ public static class Po85To
                     new("Đài Loan (287)", $"{url}?c=tai-wan"),
                     new("Trung Quốc (56)", $"{url}?c=zhong-guo"),
                 }
+            },
+            // Tags = 26 muc curated (tieng Viet). 2774 tags tren /tags/ toan
+            // tieng Trung va KHONG co count → khong loc top duoc.
+            new MenuItem()
+            {
+                title = "Tags",
+                playlist_url = "submenu",
+                submenu = tagmenu
             }
         };
-
-        // Tags = 27 muc curated (tieng Viet). 2711 tags tren /tags/ toan
-        // tieng Trung va KHONG co count → khong loc top duoc.
-        menu.Add(new MenuItem()
-        {
-            title = "Tags",
-            playlist_url = "submenu",
-            submenu = tagmenu
-        });
-
-        if (CoreInit.conf.lowMemoryMode == false)
-            memoryCache.Set(menuKey, menu, TimeSpan.FromDays(1));
-
-        return menu;
     }
 
     static List<MenuItem> SortSubmenu(

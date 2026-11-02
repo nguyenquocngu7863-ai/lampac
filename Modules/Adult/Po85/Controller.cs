@@ -31,22 +31,30 @@ public class Po85Controller : BaseSisiController
             return await RelatedListAsync(rel, pg);
 
         rhubFallback:
-        var cache = await InvokeCacheResult(ipkey($"po85:v2:{search}:{sort}:{c}:{t}:{m}:{pg}"), 10, jsonContext.ListPlaylistItem, async e =>
+        var cache = await InvokeCacheResult<(List<PlaylistItem> playlists, int total_pages)>(
+            ipkey($"po85:v3:{search}:{sort}:{c}:{t}:{m}:{pg}"), 10, async e =>
         {
             if (init.httpversion == 1)
                 httpHydra.RegisterHttp(httpClient);
 
             List<PlaylistItem> playlists = null;
+            int pages = 1;
 
             await httpHydra.GetSpan(Po85To.Uri(init.host, search, sort, c, t, pg, m), span =>
             {
                 playlists = Po85To.Playlist("po85/vidosik", span);
+                pages = Po85To.Pages(span);
             });
 
             if (playlists == null || playlists.Count == 0)
                 return e.Fail("playlists", refresh_proxy: string.IsNullOrEmpty(search));
 
-            return e.Success(playlists);
+            // Search / feed nguoi dang tu trang 2 tra ve fragment AJAX (khong co
+            // pagination) -> giu con so trang de client con load tiep.
+            if (pages <= 1 && pg > 1)
+                pages = pg + 1;
+
+            return e.Success((playlists, pages));
         });
 
         if (IsRhubFallback(cache))
@@ -55,17 +63,17 @@ public class Po85Controller : BaseSisiController
         if (rch?.enable == true)
             StatiCacheDisabled = true;
 
-        return PlaylistResult(cache,
-            await MenuAsync(host, search, sort, c, t)
-        );
+        return PlaylistResult(cache.Value.playlists, cache.ISingleCache,
+            await MenuAsync(host, search, sort, c, t, m), total_pages: cache.Value.total_pages);
     }
 
-    // Menu build truc tiep (sort row doi theo search/sort/c/t).
-    // Tags = 27 muc curated tieng Viet (2711 tag /tags/ toan tieng Trung,
+    // Menu build truc tiep (sort row doi theo search/sort/c/t; feed nguoi dang
+    // thi khong co sort — xem Po85To.Menu).
+    // Tags = 26 muc curated tieng Viet (2774 tag /tags/ toan tieng Trung,
     // khong co count → khong loc top duoc, khong len menu noi).
     Task<List<MenuItem>> MenuAsync(
-        string host, string search, string sort, string c, string t)
-        => Task.FromResult(Po85To.Menu(host, search, sort, c, t));
+        string host, string search, string sort, string c, string t, string m = null)
+        => Task.FromResult(Po85To.Menu(host, search, sort, c, t, m));
 
     async Task<(Dictionary<string, string> links, bool userch)> ResolveLinksAsync(string uri)
     {
@@ -259,7 +267,7 @@ public class Po85Controller : BaseSisiController
             return OnError(cache.ErrorMsg);
 
         return PlaylistResult(cache.Value.playlists, cache.ISingleCache,
-            await MenuAsync(host, null, null, null, null), total_pages: 1);
+            await MenuAsync(host, null, null, null, null, null), total_pages: 1);
     }
 
     ActionResult EmptyPage() => Json(new { total_pages = 1, list = new List<PlaylistItem>() });
