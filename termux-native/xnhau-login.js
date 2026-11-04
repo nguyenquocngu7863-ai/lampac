@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * xnhau-login.js — tự đăng nhập xnhau.band để lấy cookie PHPSESSID (+ kt_member).
+ * xnhau-login.js — tự đăng nhập xnhau.pink để lấy cookie PHPSESSID (+ kt_member).
  *
  * VÌ SAO PHẢI HEADFUL: Cloudflare Turnstile KHÔNG trả token khi Chrome headless
  * (đo 2026-10-28: click toạ độ, Enter/Space, turnstile.execute(), spoof
@@ -62,11 +62,11 @@ const done = (obj, code) => { console.log(JSON.stringify(obj)); process.exit(cod
 
   try {
     const page = ctx.pages()[0] || await ctx.newPage();
-    const home = await ctx.cookies('https://xnhau.band/');
+    const home = await ctx.cookies('https://xnhau.pink/');
     log('profile có', home.length, 'cookie');
 
     // ---------- fast path: profile còn phiên ----------
-    await page.goto('https://xnhau.band/', { waitUntil: 'domcontentloaded', timeout: 45000 });
+    await page.goto('https://xnhau.pink/', { waitUntil: 'domcontentloaded', timeout: 45000 });
     if (await isMember(page)) {
       log('profile còn phiên → lấy cookie luôn');
     } else {
@@ -131,7 +131,7 @@ const done = (obj, code) => { console.log(JSON.stringify(obj)); process.exit(cod
         await sleep(2500);
         member = await isMember(page);
         if (member) break;
-        if (i === 3) await page.goto('https://xnhau.band/', { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => { });
+        if (i === 3) await page.goto('https://xnhau.pink/', { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => { });
       }
       if (!member) {
         await page.screenshot({ path: `${TMP}/xnhau-login-fail.png` }).catch(() => { });
@@ -141,7 +141,7 @@ const done = (obj, code) => { console.log(JSON.stringify(obj)); process.exit(cod
     }
 
     // ---------- xuất cookie ----------
-    const ck = await ctx.cookies('https://xnhau.band/');
+    const ck = await ctx.cookies('https://xnhau.pink/');
     const sess = ck.find(c => c.name === 'PHPSESSID' && c.value);
     if (!sess) done({ ok: false, msg: 'không thấy PHPSESSID' }, 1);
 

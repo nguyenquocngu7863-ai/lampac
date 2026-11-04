@@ -3,7 +3,7 @@
 workerd báo "Unsupported platform: android arm64").
 
 Token: ~/.secrets/cf-token (hoặc env CF_TOKEN). Cần quyền "Edit Cloudflare Workers".
-Dùng: python3 deploy.py [--test-host xnhau.pub]
+Dùng: python3 deploy.py [--allow host1,host2,...] [--smoke-host host1] [--test-host host]
 """
 import json
 import mimetypes
@@ -57,10 +57,16 @@ def multipart(parts):
     return out, "multipart/form-data; boundary=" + b
 
 
+def arg(flag):
+    return sys.argv[sys.argv.index(flag) + 1] if flag in sys.argv else None
+
+
 def main():
-    allow = "xnhau.pub"
-    if "--test-host" in sys.argv:
-        allow = sys.argv[sys.argv.index("--test-host") + 1]
+    # --allow: allowlist ghi vào binding ALLOW (nhiều host, cách nhau dấu phẩy)
+    # --test-host: (tương thích cũ) nếu không có --allow thì dùng làm allowlist
+    # --smoke-host: host dùng để smoke test (mặc định host đầu tiên của allowlist)
+    allow = arg("--allow") or arg("--test-host") or "xnhau.pink"
+    smoke_host = arg("--smoke-host") or allow.split(",")[0].strip()
 
     acc = call("GET", "/accounts")
     accounts = acc.get("result") or []
@@ -88,15 +94,17 @@ def main():
     sd = (sub.get("result") or {}).get("subdomain")
     url = f"https://{NAME}.{sd}.workers.dev"
     print("URL:", url)
-    print("test:", f"{url}/{allow}/")
+    print("allow:", allow)
+    print("test:", f"{url}/{smoke_host}/")
 
     # smoke test qua worker (1 request)
     try:
-        with urllib.request.urlopen(f"{url}/{allow}/", timeout=45) as resp:
+        with urllib.request.urlopen(f"{url}/{smoke_host}/", timeout=45) as resp:
             first = resp.read(200)
             print(f"smoke: HTTP {resp.status} {resp.headers.get('content-type')} | {first[:80]!r}")
     except Exception as e:
-        print("smoke lỗi:", type(e).__name__, str(e)[:200])
+        # 403 ở "/" thường do origin chặn IP datacenter, KHÔNG phải worker hỏng.
+        print("smoke (bỏ qua):", type(e).__name__, str(e)[:160])
 
 
 if __name__ == "__main__":

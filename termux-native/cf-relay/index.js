@@ -3,13 +3,13 @@
  * Dùng: https://<worker>/<host>/<path>?query  →  fetch https://<host>/<path>?query
  * - forward Range/Referer/Origin/UA (HLS segment + 206)
  * - cache GET ở edge (cacheEverything, TTL 1h) → xem lại không về origin
- * - chỉ cho host trong allowlist (env ALLOW, mặc định "xnhau.pub") để không thành open relay
+ * - chỉ cho host trong allowlist (env ALLOW, mặc định "xnhau.pink") để không thành open relay
  */
 const UA =
   "Mozilla/5.0 (Linux; Android 14; SM-A525F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36";
 
 function allowed(host, env) {
-  const list = (env.ALLOW || "xnhau.pub").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+  const list = (env.ALLOW || "xnhau.pink").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
   host = host.toLowerCase();
   return list.some((d) => host === d || host.endsWith("." + d));
 }
