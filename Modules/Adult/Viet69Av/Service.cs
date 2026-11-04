@@ -344,7 +344,15 @@ public static class Viet69AvTo
         if (servers.Count == 0)
             servers.Add("1");
 
-        var api = SiteHost + "/api/player";
+        // API phai goi CUNG origin voi trang detail. Site doi domain (viet69av.com ->
+        // viet69hi.com): link detail tro sang host moi, con /api/player o host cu tra
+        // 404 HTML -> parse JSON fail -> 503 stream_links. Lay origin tu detailUrl
+        // thay vi hardcode SiteHost de con doi domain lan nua van chay.
+        string origin = SiteHost;
+        if (System.Uri.TryCreate(detailUrl, System.UriKind.Absolute, out var detailUri))
+            origin = detailUri.Scheme + "://" + detailUri.Authority;
+
+        var api = origin + "/api/player";
 
         foreach (string server in servers)
         {
@@ -365,7 +373,7 @@ public static class Viet69AvTo
                     headers: HeadersModel.Init(
                         ("User-Agent", ChromeUA),
                         ("Referer", detailUrl),
-                        ("Origin", SiteHost),
+                        ("Origin", origin),
                         ("X-Requested-With", "XMLHttpRequest"),
                         ("Accept", "application/json, text/javascript, */*; q=0.01")),
                     proxy: proxy,
