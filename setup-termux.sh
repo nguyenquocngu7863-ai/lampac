@@ -818,7 +818,7 @@ sync_latest_modules() {
                 pull Modules/AdminPanel/index.html \"\$admin/index.html\"
             fi
         done
-        for adultfull in JavCt JavGuru JavHDToday JavSub JavTsunami Mbbg MissAV SexTb Jable PubJav SupJav DuJav JavMoi Javtiful Vjav ClipHotVN SexVietDam Tazzly Tizam TopGai Viet69kz; do
+        for adultfull in JavCt JavGuru JavHDToday JavSub JavTsunami Mbbg MissAV SexTb Jable PubJav SupJav DuJav JavMoi Javtiful Vjav ClipHotVN SexVietDam Tazzly Tizam TopGai Viet69kz VnChich; do
             adultfulltarget=/root/lampac/module/Adult/\$adultfull
             mkdir -p \"$adultfulltarget\"
             for adultfullfile in manifest.json Controller.cs ModInit.cs Service.cs; do
@@ -1106,7 +1106,7 @@ install_custom_modules() {
         nexthubroottarget=/root/lampac/module/NextHUB
         nexthubtarget=\"\$nexthubroottarget/sites\"
         if [ -d \"\$nexthubtarget\" ]; then
-            for file in 24rolika.yaml 24video.yaml 3movs.yaml analdin.yaml batsa.yaml beeg.yaml bigboss.yaml brazzrus.yaml cam4.yaml crocotube.yaml ebasos.yaml ebun.yaml familyporn.yaml fapguru.yaml film-adult.yaml fpo.yaml gayporntube.yaml hellporno.yaml hochutv.yaml huyamba.yaml jopaonline.yaml lenkino.yaml lenporno.yaml noodlemagazine.yaml oxax.yaml perfektdamen.yaml porn4days.yaml porndig.yaml pornhub.yaml pornk.yaml porno365.yaml porno666.yaml pornoakt.yaml pornobolt.yaml pornobriz.yaml pornokaef.yaml pornone.yaml pornve.yaml prostoporno.yaml rusporno.yaml rusvideos.yaml sex-studentki.yaml sexporno.yaml sexxxxhub.yaml sosushka.yaml trahkino.yaml uporno.yaml veporn.yaml vnchich.yaml vietmup.yaml vporno.yaml vtrahe.yaml vtrahetv.yaml watchporn.yaml xasiat.yaml xozilla.yaml xxxperevod.yaml yaeby.yaml youjizz.yaml; do
+            for file in 24rolika.yaml 24video.yaml 3movs.yaml analdin.yaml batsa.yaml beeg.yaml bigboss.yaml brazzrus.yaml cam4.yaml crocotube.yaml ebasos.yaml ebun.yaml familyporn.yaml fapguru.yaml film-adult.yaml fpo.yaml gayporntube.yaml hellporno.yaml hochutv.yaml huyamba.yaml jopaonline.yaml lenkino.yaml lenporno.yaml noodlemagazine.yaml oxax.yaml perfektdamen.yaml porn4days.yaml porndig.yaml pornhub.yaml pornk.yaml porno365.yaml porno666.yaml pornoakt.yaml pornobolt.yaml pornobriz.yaml pornokaef.yaml pornone.yaml pornve.yaml prostoporno.yaml rusporno.yaml rusvideos.yaml sex-studentki.yaml sexporno.yaml sexxxxhub.yaml sosushka.yaml trahkino.yaml uporno.yaml veporn.yaml vporno.yaml vtrahe.yaml vtrahetv.yaml watchporn.yaml xasiat.yaml xozilla.yaml xxxperevod.yaml yaeby.yaml youjizz.yaml; do
                 curl -fSL --retry 3 \"\$nexthubrootbase/sites/\$file?cb=\$syncstamp\" -o \"\$nexthubtarget/\$file.tmp\"
                 mv \"\$nexthubtarget/\$file.tmp\" \"\$nexthubtarget/\$file\"
             done
@@ -1167,7 +1167,7 @@ install_custom_modules() {
             done
         fi
 
-        for adultfull2 in JavCt JavGuru JavHDToday JavSub JavTsunami Mbbg MissAV SexTb Jable PubJav SupJav DuJav JavMoi Javtiful Vjav ClipHotVN SexVietDam Tazzly Tizam TopGai Viet69kz; do
+        for adultfull2 in JavCt JavGuru JavHDToday JavSub JavTsunami Mbbg MissAV SexTb Jable PubJav SupJav DuJav JavMoi Javtiful Vjav ClipHotVN SexVietDam Tazzly Tizam TopGai Viet69kz VnChich; do
             adultfull2target=\"/root/lampac/module/Adult/\$adultfull2\"
             mkdir -p \"\$adultfull2target\"
             for adultfull2file in manifest.json Controller.cs ModInit.cs Service.cs; do

@@ -154,7 +154,7 @@ không thắng được giá trị đã ghim cho tới khi xóa ô đó.
 | `rhub` | Hub trung gian cho một số nguồn. |
 | `apn` / `apnstream` | Kênh proxy riêng của lampac cho client có hỗ trợ. |
 
-### Site NextHUB (yaml: xasiat, vnchich...)
+### Site NextHUB (yaml: xasiat...)
 
 File gốc nằm `Modules/NextHUB/sites/*.yaml`. Panel chỉ cho sửa các ô override
 an toàn (`enable`, `displayname`, `host`, `displayindex`, `streamproxy`,
