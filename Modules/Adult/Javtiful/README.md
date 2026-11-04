@@ -19,7 +19,7 @@ Công thức player: skill `lampac-deobfuscate` (MP4 direct, không cần giải
 - Section (đều `?page=N`): `/vn/foryou`, `/vn/censored`, `/vn/uncensored`, `/vn/reducing-mosaic`.
 - Category: `/vn/category/{slug}?page=N` (+ `sort=popular|popular_today|popular_week|popular_month|most_viewed|most_liked`).
 - Kênh: `/vn/channel/{slug}?page=N`; danh sách kênh `/vn/channels?page=N` (14 trang).
-- Search: `/vn/search?q={slug}` — **slug lowercase** (query HOA từng trả 502).
+- Search: `/vi/search?q={slug}&page=N` — **slug lowercase** (query HOA từng trả 502).
 - Video: `/vn/video/{id}/{slug}`.
 
 ### ⚠️ Đổi cơ chế 2026-10-17 — site thay design system, class cũ = 0
@@ -62,6 +62,14 @@ Công thức player: skill `lampac-deobfuscate` (MP4 direct, không cần giải
 
 ## Đã biết là lỗi site / lỗi vận hành
 
+- **List lặp page (fix 2026-11-02)**: `JavtifulTo.Uri()` bỏ quên `pg` ở nhánh search →
+  `?q=x` cho mọi trang, mà cache key lại có `pg` nên **trang 2, 3… trả y trang 1**
+  (vuốt trang không ra phim mới). Dạng đúng của site là `/vi/search?q=<slug>&page=N`
+  — `page` đứng **sau** `q`. Đo sau fix: `search=solowork` p1∩p2∩p3 = 0,
+  `category/married-woman` p1∩p2∩p3 = 0.
+- **KHÔNG dedupe bản `-reducing-mosaic`**: site up 2 bản cho cùng phim (bản gốc + bản giảm
+  mosaic), 2 `href`/2 id, `title` giống nhau nhưng **là 2 phim khác nhau và site có badge
+  chú thích**. Đây không phải lỗi lặp — giữ nguyên cả 2 (đã thử dedupe theo title rồi bỏ).
 - Gọi dồn dập → site trả **503 `playlists`** ở module (raw vẫn 200) hoặc **SSL abort** ở curl.
   Chờ vài phút là hết; không phải lỗi parse.
 - Thiếu `q` ở `/javtiful/video` trước đây ném exception → **500**; đã guard thành 503.

@@ -51,7 +51,11 @@ public static class JavtifulTo
             string slug = SlugifyVi(search);
             if (string.IsNullOrEmpty(slug))
                 slug = HttpUtility.UrlEncode(search);
-            return host + "/vi/search?q=" + slug;
+
+            // Phan trang cua search cung la `?page=N` (site: /vi/search?q=x&page=2).
+            // Truoc day bo quen `page` -> moi trang deu tra ve trang 1 (list lap).
+            return host + "/vi/search?q=" + slug
+                + (pg > 1 ? "&page=" + pg : "");
         }
 
         if (!string.IsNullOrEmpty(c))
