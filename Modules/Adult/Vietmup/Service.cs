@@ -113,6 +113,19 @@ public static class VietmupTo
         return null;
     }
 
+    // Server Abyss: data-server-url là trang player riêng (player.abyssplayer.com/<slug>)
+    public static string AbyssUrl(string html)
+    {
+        if (string.IsNullOrEmpty(html))
+            return null;
+
+        var m = Regex.Match(html, "data-server-type=\"abyss\"[^>]*data-server-url=\"(https://player\\.abyssplayer\\.com/[^\"]+)\"");
+        if (m.Success)
+            return HttpUtility.HtmlDecode(m.Groups[1].Value);
+
+        return null;
+    }
+
     // Category list từ home page (fallback hardcode)
     public static List<(string name, string slug)> Categories(string html)
     {

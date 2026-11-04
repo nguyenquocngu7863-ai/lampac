@@ -129,6 +129,10 @@ public class VietmupController : BaseSisiController
                 string streamUrl = VietmupTo.SiteHost + tokenPath;
                 links.TryAdd("HLS", streamUrl);
             }
+
+            string abyssUrl = VietmupTo.AbyssUrl(pageHtml);
+            if (!string.IsNullOrEmpty(abyssUrl))
+                links.TryAdd("Abyss", "abyss|" + abyssUrl);
         }
 
         if (links.Count == 0)
@@ -167,10 +171,42 @@ public class VietmupController : BaseSisiController
         if (links == null || !links.TryGetValue(q, out string link) || string.IsNullOrEmpty(link))
             return OnError("stream_links", refresh_proxy: true);
 
+        if (link.StartsWith("abyss|", StringComparison.Ordinal))
+            return Redirect($"{host}/vietmup/abyss?p={HttpUtility.UrlEncode(link.Substring(6))}");
+
         var headers = httpHeaders(init, HeadersModel.Init(
             ("User-Agent", VietmupTo.ChromeUA),
             ("Referer", VietmupTo.SiteHost + "/")
         ));
         return Redirect(HostStreamProxy(link, headers));
+    }
+
+    [HttpGet]
+    [Route("vietmup/abyss")]
+    async public Task<ActionResult> Abyss(string p)
+    {
+        if (await IsRequestBlocked(rch: true))
+            return badInitMsg;
+
+        if (string.IsNullOrEmpty(p) || !p.StartsWith("https://player.abyssplayer.com/", StringComparison.Ordinal))
+            return OnError("stream_links", refresh_proxy: true);
+
+        string html = null;
+        await httpHydra.GetSpan(p, span =>
+        {
+            html = span.ToString();
+        }, addheaders: HeadersModel.Init(
+            ("User-Agent", VietmupTo.ChromeUA),
+            ("Referer", VietmupTo.SiteHost + "/")
+        ));
+
+        var info = await AbyssTo.ResolveAsync(html, p);
+        if (info == null)
+            return OnError("stream_links", refresh_proxy: true);
+
+        if (!await AbyssTo.StreamAsync(HttpContext, info, HttpContext.RequestAborted))
+            return OnError("stream_links", refresh_proxy: true);
+
+        return new EmptyResult();
     }
 }
