@@ -56,14 +56,11 @@ public class VnChichController : BaseSisiController
                 && !string.IsNullOrWhiteSpace(c)
                 && c.StartsWith("cat/", StringComparison.OrdinalIgnoreCase))
             {
-                string json2 = await GetJsonAsync(VnChichTo.ApiUri(init.host, search, c, pg, sort, asSearch: true));
-                playlists = VnChichTo.Playlist(json2, init.host);
+                json = await GetJsonAsync(VnChichTo.ApiUri(init.host, search, c, pg, sort, asSearch: true));
+                playlists = VnChichTo.Playlist(json, init.host);
             }
 
             // list rong = het du lieu (search rong / page ngoai phan trang) -> khong Fail
-            if (playlists.Count == 0)
-                return e.Success((new List<PlaylistItem>(), VnChichTo.TotalPages(json)));
-
             return e.Success((playlists, VnChichTo.TotalPages(json)));
         });
 
@@ -206,38 +203,6 @@ public class VnChichController : BaseSisiController
         if (tagItems.Count > 0)
             groups.Add(new { title = "Thẻ", items = tagItems });
 
-        if (!string.IsNullOrWhiteSpace(det.Channel))
-        {
-            groups.Add(new
-            {
-                title = "Kênh",
-                items = new[]
-                {
-                    new
-                    {
-                        title = det.Channel,
-                        url = $"{host}/vnchich?c=chan/{HttpUtility.UrlEncode(det.Channel)}"
-                    }
-                }
-            });
-        }
-
-        if (!string.IsNullOrWhiteSpace(det.Account))
-        {
-            groups.Add(new
-            {
-                title = "Tác giả",
-                items = new[]
-                {
-                    new
-                    {
-                        title = det.Account,
-                        url = $"{host}/vnchich?c=acc/{HttpUtility.UrlEncode(det.Account)}"
-                    }
-                }
-            });
-        }
-
         var rel = await RelatedAsync(uri, det);
         if (rel.Count > 0)
         {
@@ -265,20 +230,13 @@ public class VnChichController : BaseSisiController
             && DateTime.UtcNow - hit.at < RelTtl && hit.list != null && hit.list.Count > 0)
             return hit.list;
 
-        var res = new List<PlaylistItem>();
+        // API bỏ qua channelOneOf/accountOneOf -> liên quan lấy theo thẻ
+        string tag = VnChichTo.RelatedTag(det?.Tags);
+        if (string.IsNullOrEmpty(tag))
+            return new List<PlaylistItem>();
 
-        // cùng kênh -> cùng thẻ
-        if (!string.IsNullOrWhiteSpace(det?.Channel))
-        {
-            string json = await GetJsonAsync(VnChichTo.ApiUri(init.host, null, "chan/" + det.Channel, 1, "-publishedAt"));
-            res = VnChichTo.Playlist(json, init.host, uuid);
-        }
-
-        if (res.Count == 0 && det != null && det.Tags.Count > 0)
-        {
-            string json = await GetJsonAsync(VnChichTo.ApiUri(init.host, null, "tag/" + det.Tags[0], 1, "-publishedAt"));
-            res = VnChichTo.Playlist(json, init.host, uuid);
-        }
+        string json = await GetJsonAsync(VnChichTo.ApiUri(init.host, null, "tag/" + tag, 1, "-publishedAt"));
+        var res = VnChichTo.Playlist(json, init.host, uuid);
 
         if (res.Count > 0)
             _relCache[uuid] = (DateTime.UtcNow, res);

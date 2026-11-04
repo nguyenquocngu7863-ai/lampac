@@ -13,9 +13,11 @@ video liên quan), nhiều nguồn phát (mp4 theo resolution + HLS master).
 | Danh sách | `GET /api/v1/videos?start={n}&count=12&sort={sort}` |
 | Tìm kiếm | `...&search={từ khoá}` |
 | Lọc thẻ | `...&tagsOneOf={thẻ}` (đúng 1 thẻ, phân cách bằng `,` không work) |
-| Lọc kênh | `...&channelOneOf={tên kênh}` |
-| Lọc tác giả | `...&accountOneOf={tên account}` |
+| Lọc thể loại PeerTube | `...&categoryOneOf={id}` |
 | Chi tiết | `GET /api/v1/videos/{uuid}` |
+
+`channelOneOf` / `accountOneOf` **bị API bỏ qua** (total trả về luôn bằng total toàn site)
+→ không dùng để lọc.
 
 Response list: `{"total": 19413, "data": [ ... ]}` — item **không** có field `tags`.
 
@@ -55,8 +57,7 @@ Thẻ lấy động cho popup đến từ `tags` của API chi tiết.
 `GET /vnchich/genres?uri={uuid}` → `{items:[], groups:[...]}`:
 
 - `Thẻ` — tags của video → `?c=tag/<thẻ>`
-- `Kênh` — channel → `?c=chan/<kênh>`
-- `Tác giả` — account → `?c=acc/<tác giả>`
-- `Liên quan` — 1 item `plain` → `?rel=<uuid>` (cùng kênh, fallback cùng thẻ)
+- `Liên quan` — 1 item `plain` → `?rel=<uuid>` (cùng thẻ: ưu tiên thẻ thuộc danh mục,
+  không có thì thẻ đầu tiên)
 
 Cache detail 30 phút, cache liên quan 180 phút (RAM).

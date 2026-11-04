@@ -79,8 +79,10 @@ public static class VnChichTo
     #endregion
 
     #region URL
-    // c = "tag/<thẻ>" | "chan/<kênh>" | "acc/<tác giả>" | "cat/<danh mục>"
+    // c = "tag/<thẻ>" | "cat/<danh mục>"
     // asSearch = true -> lọc bằng search (dùng khi tagsOneOf không có kết quả)
+    // Lưu ý (đo 2026-11-04): channelOneOf / accountOneOf bị API BỎ QUA (total luôn
+    // bằng total toàn site) -> chỉ dùng tagsOneOf / search / categoryOneOf.
     public static string ApiUri(string host, string search, string c, int pg, string sort, bool asSearch = false)
     {
         host = string.IsNullOrWhiteSpace(host) ? SiteHost : host.TrimEnd('/');
@@ -100,27 +102,14 @@ public static class VnChichTo
         }
         else if (!string.IsNullOrWhiteSpace(c))
         {
-            string kind = "";
             string val = c.Trim('/');
 
             int slash = val.IndexOf('/');
             if (slash > 0)
-            {
-                kind = val.Substring(0, slash).ToLowerInvariant();
                 val = val.Substring(slash + 1);
-            }
 
             if (!string.IsNullOrWhiteSpace(val))
-            {
-                string key = kind switch
-                {
-                    "chan" => "channelOneOf",
-                    "acc" => "accountOneOf",
-                    _ => asSearch ? "search" : "tagsOneOf"
-                };
-
-                q.Add(key + "=" + System.Uri.EscapeDataString(val.Trim()));
-            }
+                q.Add((asSearch ? "search" : "tagsOneOf") + "=" + System.Uri.EscapeDataString(val.Trim()));
         }
 
         return host + "/api/v1/videos?" + string.Join("&", q);
@@ -130,6 +119,21 @@ public static class VnChichTo
     {
         host = string.IsNullOrWhiteSpace(host) ? SiteHost : host.TrimEnd('/');
         return host + "/api/v1/videos/" + uuid;
+    }
+
+    // Thẻ dùng để lấy "video liên quan": ưu tiên thẻ nằm trong danh mục
+    // (nhóm lớn, liên quan thật), không có thì lấy thẻ đầu tiên.
+    public static string RelatedTag(List<string> tags)
+    {
+        if (tags == null || tags.Count == 0)
+            return null;
+
+        foreach (var t in tags)
+            foreach (var (_, slug) in Categories)
+                if (string.Equals(t, slug, StringComparison.OrdinalIgnoreCase))
+                    return t;
+
+        return tags[0];
     }
     #endregion
 
