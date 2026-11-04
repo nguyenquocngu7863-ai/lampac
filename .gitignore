@@ -397,3 +397,4 @@ playwright.ps1
 /package-lock.json
 /termux-lampac-cli.sh
 /xheovl-*.headers
+/.codebuddy/
