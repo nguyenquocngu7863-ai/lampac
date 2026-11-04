@@ -14,9 +14,17 @@ namespace Vietmup;
 // Abyss (player.abyssplayer.com)
 //  - trang player nhúng `const datas = "<base64>"`; JSON đó có field `media` mã hoá AES-256-CTR,
 //    key = ASCII(md5hex("user_id:slug:md5_id")), counter = 16 ký tự đầu của chuỗi hex đó.
-//  - file mp4 trên CDN: CHỈ phần đầu (ftyp + moov) bị mã hoá, cùng thuật toán nhưng
-//    key = ASCII(md5hex(segment cuối của path)); phần mdat phía sau là plaintext.
-//    Server seek counter theo Range nên proxy chỉ cần giải mã đúng đoạn nằm trong header.
+//  - file mp4 trên CDN: CHỈ 64 KB đầu bị mã hoá, cùng thuật toán nhưng
+//    key = ASCII(md5hex(segment cuối path)). Phần còn lại (kể cả moov/mdat) là plaintext.
+//    Server seek counter theo Range nên proxy chỉ cần giải mã đúng 64 KB đầu.
+//
+//  ⚠ ĐỔI THÀNH 64 KB, KHÔNG dò theo box. Đã từng đi theo đường "hết moov"/"hết trak đầu"
+//    và ra 79989 / 67300 / 83900 — cả ba SAI: byte 65536..83900 là plaintext nằm giữa bảng
+//    stsz, nên chuỗi box vẫn liền mạch thêm một đoạn. Header vẫn parse được (player hiện đúng
+//    duration) nhưng sample table bị XOR lần nữa → dts rác, ffmpeg "invalid dropping st:0",
+//    DEMUXER SEEK FAILED, hình nhiễu, audio vẫn ổn.
+//    Ground truth: file `.fd` (fristDatas[].url) chỉ khác file chính ĐÚNG 64 KB đầu.
+//    Chi tiết + cách verify: skill lampac-deobfuscate, references/abyss.md (F20).
 public static class AbyssTo
 {
     static readonly HttpClient _client = new HttpClient()
@@ -32,13 +40,17 @@ public static class AbyssTo
         public long size { get; set; }
     }
 
+    // Vùng mã hoá luôn là 64 KB đầu file (đo trên nhiều file: phần còn lại trên CDN là plaintext,
+    // file `.fd` chỉ khác đúng 64 KB đầu vì nó dùng key riêng).
+    const long EncPrefix = 65536;
+
     public static async Task<StreamInfo> ResolveAsync(string html, string playerUrl)
     {
         if (string.IsNullOrEmpty(html) || string.IsNullOrEmpty(playerUrl))
             return null;
 
         var cache = HybridCache.Get();
-        string ck = "vietmup:abyss:" + playerUrl;
+        string ck = "vietmup:abyss:v3:" + playerUrl;
         if (cache.TryGetValue(ck, out StreamInfo hit) && hit != null)
             return hit;
 
@@ -93,61 +105,11 @@ public static class AbyssTo
             return null;
         }
 
-        long headerEnd = await FindHeaderEnd(cdnUrl, keyHex);
-        if (headerEnd <= 0)
-            return null;
+        long headerEnd = Math.Min(size, EncPrefix);
 
         var info = new StreamInfo() { url = cdnUrl, keyHex = keyHex, headerEnd = headerEnd, size = size };
         cache.Set(ck, info, TimeSpan.FromMinutes(30), inmemory: true);
         return info;
-    }
-
-    // Giải mã 1KB đầu rồi đi theo box: ftyp -> (free) -> moov, hết moov chính là biên vùng mã hoá.
-    static async Task<long> FindHeaderEnd(string url, string keyHex)
-    {
-        byte[] head = await GetRange(url, 0, 1023);
-        if (head == null || head.Length < 16)
-            return -1;
-
-        CtrXor(Encoding.ASCII.GetBytes(keyHex), 0, head);
-
-        int o = 0;
-        for (int i = 0; i < 8 && o + 8 <= head.Length; i++)
-        {
-            long sz = ((long)head[o] << 24) | ((long)head[o + 1] << 16) | ((long)head[o + 2] << 8) | head[o + 3];
-            string type = Encoding.ASCII.GetString(head, o + 4, 4);
-            if (sz < 8)
-                return -1;
-            if (type == "moov")
-                return o + sz;
-            o += (int)sz;
-            if (o >= head.Length)
-                break;
-        }
-
-        return -1;
-    }
-
-    static async Task<byte[]> GetRange(string url, long from, long to)
-    {
-        try
-        {
-            using var req = new HttpRequestMessage(HttpMethod.Get, url);
-            req.Headers.TryAddWithoutValidation("User-Agent", VietmupTo.ChromeUA);
-            req.Headers.TryAddWithoutValidation("Referer", "https://player.abyssplayer.com/");
-            req.Headers.TryAddWithoutValidation("Accept", "*/*");
-            req.Headers.TryAddWithoutValidation("Range", $"bytes={from}-{to}");
-
-            using var resp = await _client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
-            if (!resp.IsSuccessStatusCode)
-                return null;
-
-            return await resp.Content.ReadAsByteArrayAsync();
-        }
-        catch
-        {
-            return null;
-        }
     }
 
     public static async Task<bool> StreamAsync(HttpContext ctx, StreamInfo info, CancellationToken abort)

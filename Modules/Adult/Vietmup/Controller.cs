@@ -18,10 +18,13 @@ public class VietmupController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("vietmup")]
-    async public Task<ActionResult> Index(string search, string c, int pg = 1, string sort = null)
+    async public Task<ActionResult> Index(string search, string c, int pg = 1, string sort = null, string rel = null)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
+
+        if (!string.IsNullOrWhiteSpace(rel))
+            return await RelatedList(rel, pg);
 
         var cache = await InvokeCacheResult(ipkey($"vietmup:{search}:{c}:{sort}:{pg}"), 10, jsonContext.ListPlaylistItem, async e =>
         {
@@ -83,21 +86,45 @@ public class VietmupController : BaseSisiController
 
     async Task<List<MenuItem>> MenuBaseAsync()
     {
+        var cats = await CategoriesAsync();
+        var tags = await TagsAsync();
+        return VietmupTo.Menu(host, cats, tags);
+    }
+
+    async Task<List<(string name, string slug)>> CategoriesAsync()
+    {
         string key = ipkey("vietmup:categories");
 
-        if (!hybridCache.TryGetValue(key, out List<(string name, string slug)> cats)
-            || cats == null || cats.Count == 0)
-        {
-            string html = await FetchHtmlAsync(VietmupTo.SiteHost + "/");
-            cats = VietmupTo.Categories(html ?? "");
+        if (hybridCache.TryGetValue(key, out List<(string name, string slug)> cats)
+            && cats != null && cats.Count > 0)
+            return cats;
 
-            if (cats.Count > 0)
-                hybridCache.Set(key, cats, cacheTime(360));
+        string html = await FetchHtmlAsync(VietmupTo.SiteHost + "/");
+        cats = VietmupTo.Categories(html ?? "");
 
-            Console.WriteLine("Vietmup: categories n=" + cats.Count);
-        }
+        if (cats.Count > 0)
+            hybridCache.Set(key, cats, cacheTime(360));
 
-        return VietmupTo.Menu(host, cats);
+        Console.WriteLine("Vietmup: categories n=" + cats.Count);
+        return cats;
+    }
+
+    async Task<List<(string name, string slug)>> TagsAsync()
+    {
+        string key = ipkey("vietmup:tags");
+
+        if (hybridCache.TryGetValue(key, out List<(string name, string slug)> tags)
+            && tags != null && tags.Count > 0)
+            return tags;
+
+        string html = await FetchHtmlAsync(VietmupTo.SiteHost + "/tag");
+        tags = VietmupTo.Tags(html ?? "");
+
+        if (tags.Count > 0)
+            hybridCache.Set(key, tags, cacheTime(720));
+
+        Console.WriteLine("Vietmup: tags n=" + tags.Count);
+        return tags;
     }
 
     async Task<Dictionary<string, string>> ResolveLinksAsync(string uri)
@@ -209,4 +236,153 @@ public class VietmupController : BaseSisiController
 
         return new EmptyResult();
     }
+
+    #region info (popup long-press) — chip thể loại/thẻ + "Video liên quan"
+    // cache RAM tinh (ValueTuple khong deserialize lai duoc tu hybridCache)
+    static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTime at, List<(string kind, string slug, string name)> chips, List<PlaylistItem> rel)> _infoCache = new();
+    static readonly TimeSpan InfoTtl = TimeSpan.FromHours(6);
+
+    // sisi.js gọi đúng route "<mod>/genres?uri=<uri detail>"
+    [HttpGet]
+    [Route("vietmup/genres")]
+    async public Task<ActionResult> Genres(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return Json(new { items = new object[0], groups = new object[0] });
+
+        string pageUrl = uri.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+            ? uri : VietmupTo.SiteHost + "/" + uri.Trim('/');
+
+        // chống SSRF: chỉ trang của site
+        if (!pageUrl.Contains("vietmup.lol", StringComparison.OrdinalIgnoreCase))
+            return Json(new { items = new object[0], groups = new object[0] });
+
+        if (_infoCache.TryGetValue(uri, out var hit)
+            && DateTime.UtcNow - hit.at < InfoTtl && hit.chips != null)
+        {
+            return InfoResult(hit.chips, hit.rel, uri);
+        }
+
+        string html = await FetchHtmlAsync(pageUrl);
+        if (string.IsNullOrEmpty(html))
+            return Json(new { items = new object[0], groups = new object[0] });
+
+        var chips = VietmupTo.Chips(html);
+        var rel = VietmupTo.PlaylistRelated("vietmup/vidosik", html);
+
+        // tên đẹp: ưu tiên tên trong menu (chỉ đọc cache, KHÔNG fetch trong popup)
+        var names = await TaxonomyNamesAsync();
+        chips = chips.Select(x =>
+        {
+            string key = x.kind + "/" + x.slug;
+            return names.TryGetValue(key, out string nm) && !string.IsNullOrEmpty(nm)
+                ? (x.kind, x.slug, nm) : x;
+        }).ToList();
+
+        if (chips.Count > 0 || rel.Count > 0)
+            _infoCache[uri] = (DateTime.UtcNow, chips, rel);
+
+        return InfoResult(chips, rel, uri);
+    }
+
+    // map "<kind>/<slug>" -> tên hiển thị, chỉ lấy từ cache của menu
+    async Task<Dictionary<string, string>> TaxonomyNamesAsync()
+    {
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        string ck = ipkey("vietmup:categories");
+        if (hybridCache.TryGetValue(ck, out List<(string name, string slug)> cats) && cats != null)
+            foreach (var c in cats)
+                map["cat/" + c.slug] = c.name;
+
+        string tk = ipkey("vietmup:tags");
+        if (hybridCache.TryGetValue(tk, out List<(string name, string slug)> tags) && tags != null)
+            foreach (var t in tags)
+                map["tag/" + t.slug] = t.name;
+
+        // cache trống (chưa ai mở menu) → nạp song song, có cache 6-12h nên chỉ chậm 1 lần đầu
+        if (map.Count == 0)
+        {
+            var catTask = CategoriesAsync();
+            var tagTask = TagsAsync();
+            await Task.WhenAll(catTask, tagTask);
+
+            foreach (var c in catTask.Result)
+                map["cat/" + c.slug] = c.name;
+            foreach (var t in tagTask.Result)
+                map["tag/" + t.slug] = t.name;
+        }
+
+        return map;
+    }
+
+    ActionResult InfoResult(List<(string kind, string slug, string name)> chips,
+        List<PlaylistItem> rel, string uri)
+    {
+        var groups = new List<object>();
+
+        foreach (string kind in new[] { "cat", "tag" })
+        {
+            var items = chips?.Where(x => x.kind == kind).Select(x => new
+            {
+                title = x.name,
+                url = $"{host}/vietmup?c={kind}/{HttpUtility.UrlEncode(x.slug)}"
+            }).ToList();
+
+            if (items == null || items.Count == 0)
+                continue;
+
+            groups.Add(new { title = kind == "cat" ? "Thể loại" : "Thẻ", items });
+        }
+
+        if (rel != null && rel.Count > 0)
+        {
+            groups.Add(new
+            {
+                title = "Liên quan",
+                items = new[]
+                {
+                    new
+                    {
+                        title = "Video liên quan",
+                        plain = true,
+                        url = $"{host}/vietmup?rel={HttpUtility.UrlEncode(uri)}"
+                    }
+                }
+            });
+        }
+
+        return Json(new { items = new object[0], groups });
+    }
+
+    async Task<ActionResult> RelatedList(string rel, int pg)
+    {
+        if (pg > 1)
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        string url = rel.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+            ? rel : VietmupTo.SiteHost + "/" + rel.Trim('/');
+
+        if (!url.Contains("vietmup.lol", StringComparison.OrdinalIgnoreCase))
+            return OnError("stream_links");
+
+        var cache = await InvokeCacheResult<(List<PlaylistItem> playlists, int total_pages)>(
+            ipkey($"vietmup:rel:{url}"), 180, async e =>
+        {
+            string html = await FetchHtmlAsync(url);
+            var playlists = VietmupTo.PlaylistRelated("vietmup/vidosik", html ?? "");
+
+            if (playlists == null || playlists.Count == 0)
+                return e.Fail("related");
+
+            return e.Success((playlists, 1));
+        });
+
+        if (!cache.IsSuccess)
+            return OnError(cache.ErrorMsg);
+
+        return PlaylistResult(cache.Value.playlists, cache.ISingleCache,
+            await MenuAsync(null, null, null), total_pages: 1);
+    }
+    #endregion
 }
