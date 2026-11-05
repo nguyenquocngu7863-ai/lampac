@@ -74,6 +74,7 @@ export DOTNET_GCHeapHardLimit="${DOTNET_GCHeapHardLimit:-600000000}"
 # Tat relay: doi thanh XNHAU_RELAY=''  (dau '-' khong co ':' nen rong van thang).
 export XNHAU_RELAY="${XNHAU_RELAY-https://xn-relay.nguyenquocngu7863.workers.dev}"
 export JAVGURU_RELAY="${JAVGURU_RELAY-https://xn-relay.nguyenquocngu7863.workers.dev}"
+export VNCCHICH2_RELAY="${VNCCHICH2_RELAY-https://xn-relay.nguyenquocngu7863.workers.dev}"
 
 PORT=$(grep -o '"port": *[0-9]*' "$LAMPAC_DIR/init.conf" 2>/dev/null | head -1 | grep -o '[0-9]*' || echo 9118)
 echo ""
