@@ -167,6 +167,107 @@ public static class SexTbTo
         return list;
     }
 
+    // ========== Info popup (long-press) ==========
+    // Chip lay tu khoi #infomation cua trang detail: moi hang la
+    // "<div class=description><i></i> Label: <a href=/kind/slug>...</a>".
+    public static List<(string kind, string slug, string name)> Chips(string html)
+    {
+        var res = new List<(string, string, string)>();
+        if (string.IsNullOrEmpty(html)) return res;
+        int start = html.IndexOf("id=\"infomation\"", StringComparison.OrdinalIgnoreCase);
+        if (start < 0) return res;
+        int end = html.IndexOf("id=\"gallery\"", start, StringComparison.OrdinalIgnoreCase);
+        if (end < 0) end = html.IndexOf("</section>", start, StringComparison.OrdinalIgnoreCase);
+        if (end < 0) end = Math.Min(html.Length, start + 12000);
+        string block = html.Substring(start, end - start);
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (Match row in Regex.Matches(block,
+            @"<div\s+class\s*=\s*""description[^""]*""[^>]*>(.*?)</div>",
+            RegexOptions.IgnoreCase | RegexOptions.Singleline))
+        {
+            string inner = row.Groups[1].Value;
+            var lab = Regex.Match(inner, @"^\s*(?:<[^>]+>\s*)*([A-Za-z()\s]+?)\s*:", RegexOptions.IgnoreCase);
+            if (!lab.Success) continue;
+            string kind = KindOfRow(lab.Groups[1].Value);
+            if (kind == null) continue;
+            foreach (Match a in Regex.Matches(inner,
+                @"href\s*=\s*""/" + kind + @"/([^""#?]+)""[^>]*>([\s\S]*?)</a>",
+                RegexOptions.IgnoreCase))
+            {
+                string slug = a.Groups[1].Value.Trim();
+                if (string.IsNullOrEmpty(slug) || !seen.Add(kind + "/" + slug)) continue;
+                string name = Clean(HttpUtility.HtmlDecode(Regex.Replace(a.Groups[2].Value, "<[^>]+>", " ")));
+                if (string.IsNullOrEmpty(name))
+                {
+                    var tit = Regex.Match(a.Value, @"title\s*=\s*""([^""]+)""", RegexOptions.IgnoreCase);
+                    if (tit.Success) name = Clean(HttpUtility.HtmlDecode(tit.Groups[1].Value));
+                }
+                if (string.IsNullOrEmpty(name)) continue;
+                res.Add((kind, slug, name));
+            }
+        }
+        return res;
+    }
+
+    static string KindOfRow(string label)
+    {
+        string l = (label ?? "").Trim().ToLowerInvariant().Replace(" ", "");
+        if (l.StartsWith("cast")) return "actress";
+        if (l.StartsWith("studio")) return "studio";
+        if (l.StartsWith("label")) return "label";
+        if (l.StartsWith("director")) return "director";
+        if (l.StartsWith("genre")) return "genre";
+        return null;
+    }
+
+    public static string FilmId(string html)
+    {
+        if (string.IsNullOrEmpty(html)) return null;
+        var m = Regex.Match(html, @"\bfilmId\s*=\s*(\d+)");
+        return m.Success ? m.Groups[1].Value : null;
+    }
+
+    // /ajax/relatedAjax tra JSON array: [{code,guid,name,poster,...}]
+    public static List<PlaylistItem> RelatedJson(string route, string json)
+    {
+        var list = new List<PlaylistItem>();
+        if (string.IsNullOrEmpty(json)) return list;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind != System.Text.Json.JsonValueKind.Array) return list;
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var el in doc.RootElement.EnumerateArray())
+            {
+                string code = Str(el, "guid");
+                if (string.IsNullOrEmpty(code)) code = Str(el, "code");
+                string name = Str(el, "name");
+                string poster = Str(el, "poster");
+                if (string.IsNullOrEmpty(poster)) poster = Str(el, "thumbinfo");
+                if (string.IsNullOrEmpty(code) || string.IsNullOrEmpty(name)) continue;
+                string pageUrl = SiteHost + "/" + code.Trim('/');
+                if (!seen.Add(pageUrl)) continue;
+                poster = NormalizeMediaUrl(poster);
+                list.Add(new PlaylistItem()
+                {
+                    video = route + "?uri=" + HttpUtility.UrlEncode(pageUrl),
+                    name = Clean(name),
+                    picture = poster,
+                    json = true,
+                    bookmark = new Bookmark() { site = "sextb", href = pageUrl, image = poster }
+                });
+            }
+        }
+        catch { }
+        return list;
+    }
+
+    static string Str(System.Text.Json.JsonElement el, string prop)
+        => el.ValueKind == System.Text.Json.JsonValueKind.Object
+           && el.TryGetProperty(prop, out var v)
+           && v.ValueKind == System.Text.Json.JsonValueKind.String ? v.GetString() : null;
+
     // ========== Detail tokens ==========
     public static (string filmId, string pt, string pk) Tokens(string html)
     {
@@ -646,8 +747,46 @@ except Exception as e:
     sys.exit(5)
 """;
 
-    // Lay embed cua TAT CA server trong 1 session (1 GET + n POST). Resolve rieng le tung
-    // server = 1 process python + 1 session moi: vua cham (player timeout 10 s) vua de bi
+    // "Video lien quan": site load bang jQuery POST /ajax/relatedAjax {pg, filmId}
+    // SAU khi trang render, kem cookie phien cua trang detail. POST bang session moi
+    // thi luc duoc luc khong -> GET page + POST trong CUNG 1 session nhu browser.
+    public static Task<string> CffiRelatedAsync(string pageUrl, int maxTime = 12)
+        => string.IsNullOrEmpty(pageUrl)
+            ? Task.FromResult<string>(null)
+            : RunPyScript("sextb_related.py", RelatedPySource, pageUrl, Math.Max(8, maxTime).ToString());
+
+    const string RelatedPySource = """
+import sys, re, json
+from curl_cffi import requests as rq
+
+page, to = sys.argv[1], int(sys.argv[2])
+origin = re.match(r'(https?://[^/]+)', page).group(1)
+
+def run():
+    s = rq.Session(impersonate='chrome124')
+    h = s.get(page, timeout=to).text
+    m = re.search(r'\bfilmId\s*=\s*(\d+)', h)
+    if not m:
+        raise RuntimeError('no_film_id')
+    r = s.post(origin + '/ajax/relatedAjax',
+               data={'pg': 1, 'filmId': m.group(1)},
+               headers={'Referer': page, 'Origin': origin,
+                        'Accept': 'application/json, text/plain, */*',
+                        'X-Requested-With': 'XMLHttpRequest'},
+               timeout=to)
+    t = r.text.strip()
+    if not t.startswith('['):
+        raise RuntimeError('bad_%d:%s' % (r.status_code, t[:60]))
+    return t
+
+try:
+    print(run())
+except Exception as e:
+    print('ERR:' + str(e)[:120], file=sys.stderr)
+    sys.exit(5)
+""";
+
+    // Lay embed cua TAT CA server trong 1 session (1 GET + n POST). Resolve rieng le tung    // server = 1 process python + 1 session moi: vua cham (player timeout 10 s) vua de bi
     // site siet. Tra JSON {"F4":"https://...","SW":"..."}.
     public static async Task<string> CffiEmbedsAsync(string pageUrl, int maxTime = 12)
     {

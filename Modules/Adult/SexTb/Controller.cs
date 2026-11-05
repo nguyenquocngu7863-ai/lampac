@@ -24,10 +24,14 @@ public class SexTbController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("sextb")]
-    async public Task<ActionResult> Index(string search, string c, int pg = 1, string sort = null)
+    async public Task<ActionResult> Index(string search, string c, int pg = 1, string sort = null, string rel = null)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
+
+        // danh sach "Video lien quan" (popup long-press)
+        if (!string.IsNullOrWhiteSpace(rel))
+            return await RelatedList(rel, pg);
 
         if (pg < 1) pg = 1;
 
@@ -206,6 +210,152 @@ public class SexTbController : BaseSisiController
         }
         return !string.IsNullOrEmpty(a) ? a : b;
     }
+
+    #region info (popup long-press)
+    ActionResult EmptyInfo() => Content("{\"items\":[],\"groups\":[]}", "application/json");
+
+    [HttpGet]
+    [Route("sextb/genres")]
+    async public Task<ActionResult> Genres(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return EmptyInfo();
+
+        string pageUrl = SexTbTo.NormalizePageUrl(uri);
+        if (pageUrl == null)
+            return EmptyInfo();
+
+        string key = ipkey($"sextb:info:{pageUrl}");
+        if (hybridCache.TryGetValue(key, out string hit) && !string.IsNullOrEmpty(hit))
+            return Content(hit, "application/json");
+
+        string html = await GetPageAsync(pageUrl);
+        var chips = SexTbTo.Chips(html ?? "");
+        string json = InfoJson(chips, uri);
+        if (chips.Count > 0)
+            hybridCache.Set(key, json, cacheTime(360));
+        WarmRelated(pageUrl);
+        return Content(json, "application/json");
+    }
+
+    string InfoJson(List<(string kind, string slug, string name)> chips, string uri)
+    {
+        var groups = new List<object>();
+
+        void Add(string title, string kind)
+        {
+            var items = chips.Where(x => x.kind == kind).Select(x => new
+            {
+                title = x.name,
+                url = $"{host}/sextb?c=" + HttpUtility.UrlEncode(kind + "/" + x.slug)
+            }).ToList();
+            if (items.Count == 0) return;
+            groups.Add(new { title, items });
+        }
+
+        Add("Diễn viên", "actress");
+        Add("Hãng phim", "studio");
+        Add("Nhãn", "label");
+        Add("Đạo diễn", "director");
+        Add("Thể loại", "genre");
+
+        groups.Add(new
+        {
+            title = "Liên quan",
+            items = new[]
+            {
+                new
+                {
+                    title = "Video liên quan",
+                    plain = true,
+                    url = $"{host}/sextb?rel=" + HttpUtility.UrlEncode(uri)
+                }
+            }
+        });
+
+        return System.Text.Json.JsonSerializer.Serialize(new { items = new object[0], groups });
+    }
+
+    async Task<ActionResult> RelatedList(string rel, int pg)
+    {
+        if (pg > 1)
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        string pageUrl = SexTbTo.NormalizePageUrl(rel);
+        if (pageUrl == null)
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        var playlists = await GetRelatedAsync(pageUrl);
+
+        return PlaylistResult(playlists, false, SexTbTo.MenuHead(host, null, null, null), total_pages: 1);
+    }
+
+    async Task<List<PlaylistItem>> GetRelatedAsync(string pageUrl)
+    {
+        string key = ipkey($"sextb:rel:{pageUrl}");
+        if (hybridCache.TryGetValue(key, out string raw) && !string.IsNullOrEmpty(raw))
+        {
+            try
+            {
+                var hit = System.Text.Json.JsonSerializer.Deserialize<List<PlaylistItem>>(raw);
+                if (hit != null) return hit;
+            }
+            catch { }
+        }
+
+        var list = await FetchRelatedAsync(pageUrl);
+        if (list.Count > 0)
+            hybridCache.Set(key, System.Text.Json.JsonSerializer.Serialize(list), cacheTime(180));
+        return list;
+    }
+
+    async Task<List<PlaylistItem>> FetchRelatedAsync(string pageUrl)
+    {
+        // GET trang detail bang RaceGetAsync (hydra/Http nhanh, on dinh hon curl_cffi
+        // khi site chan IP), roi POST relatedAjax; cuoi cung moi toi python session.
+        string page = await GetPageAsync(pageUrl);
+        string filmId = SexTbTo.FilmId(page ?? "");
+        string json = string.IsNullOrEmpty(filmId) ? null : await RelatedAjaxAsync(pageUrl, filmId);
+        if (string.IsNullOrWhiteSpace(json) || !json.TrimStart().StartsWith("["))
+            json = await SexTbTo.CffiRelatedAsync(pageUrl, 12);
+        return SexTbTo.RelatedJson("sextb/vidosik", json);
+    }
+
+    // warm nen khi popup mo: luc user bam "Video lien quan" la cache hit
+    // (cold fetch vai giay: 1 GET detail + 1 POST), khong await trong /genres.
+    void WarmRelated(string pageUrl)
+    {
+        _ = Task.Run(async () =>
+        {
+            try { await GetRelatedAsync(pageUrl); }
+            catch { }
+        });
+    }
+
+    // /ajax/relatedAjax: POST form {pg,filmId} -> JSON array (site load bang jQuery sau khi trang render)
+    async Task<string> RelatedAjaxAsync(string pageUrl, string filmId)
+    {
+        string url = SexTbTo.SiteHost + "/ajax/relatedAjax";
+        string body = "pg=1&filmId=" + filmId;
+        string json = null;
+        try
+        {
+            json = await Http.Post(url, body,
+                timeoutSeconds: 10,
+                headers: HeadersModel.Init(
+                    ("User-Agent", SexTbTo.ChromeUA),
+                    ("Referer", pageUrl),
+                    ("Origin", SexTbTo.SiteHost),
+                    ("X-Requested-With", "XMLHttpRequest"),
+                    ("Accept", "application/json, text/plain, */*")),
+                httpversion: init.httpversion);
+        }
+        catch { }
+        if (string.IsNullOrWhiteSpace(json) || !json.TrimStart().StartsWith("["))
+            json = await SexTbTo.CffiPost(url, body, pageUrl, 10);
+        return json;
+    }
+    #endregion
 
     [HttpGet, Staticache(manually: true)]
     [Route("sextb/vidosik")]
