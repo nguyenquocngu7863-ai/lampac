@@ -285,6 +285,155 @@ public static class JavCtTo
         return servers;
     }
 
+    // ===== CHIP (popup long-press): dien vien / the loai / hang phim / nhan =====
+    // Lay tu khoi `card__meta` cua trang detail. Moi <li><span>Label:</span> ...</li>
+    // chua cac <a href=".../(model|category|studio|label)/<slug>">Ten</a>.
+    public static List<(string kind, string slug, string name)> Chips(string html)
+    {
+        var list = new List<(string, string, string)>();
+        if (string.IsNullOrEmpty(html))
+            return list;
+
+        // Chi parse trong card__meta (tranh link nav header/footer).
+        int i = html.IndexOf("card__meta", StringComparison.OrdinalIgnoreCase);
+        if (i < 0)
+            return list;
+
+        string block = html.Substring(i, Math.Min(12000, html.Length - i));
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (Match m in Regex.Matches(block,
+            @"<a\b[^>]*\bhref\s*=\s*[""'](?:https?://[^""'/]*)?/(model|category|studio|label)/([^""'/?#]+)[^""']*[""'][^>]*>([\s\S]*?)</a\s*>",
+            RegexOptions.IgnoreCase))
+        {
+            string pref = m.Groups[1].Value.ToLowerInvariant();
+            string slug = Clean(m.Groups[2].Value);
+            if (slug.Length == 0)
+                continue;
+
+            string name = Clean(HttpUtility.HtmlDecode(
+                Regex.Replace(m.Groups[3].Value, "<[^>]+>", " ")));
+            if (name.Length == 0)
+                name = slug;
+
+            string kind = pref == "category" ? "cat" : pref;
+            if (!seen.Add(kind + "/" + slug))
+                continue;
+
+            list.Add((kind, slug, name));
+        }
+
+        return list;
+    }
+
+    // kind (chip) -> path that tren site.
+    public static string KindPath(string kind) => kind switch
+    {
+        "model" => "model",
+        "cat" => "category",
+        "studio" => "studio",
+        "label" => "label",
+        _ => kind
+    };
+
+    // kind -> ten nhom hien tren popup (1 tu, ngan).
+    public static string KindTitle(string kind) => kind switch
+    {
+        "model" => "Diễn viên",
+        "cat" => "Thể loại",
+        "studio" => "Hãng phim",
+        "label" => "Nhãn",
+        _ => "Khác"
+    };
+
+    // ===== LIEN QUAN =====
+    // POST /ajax/relatedAjax {pg=1, filmId=<data-source>} -> JSON array
+    // [{id,code,name,poster,...}]. filmId = data-source tren trang detail.
+    public static async Task<string> RelatedAsync(
+        string pageUrl, string filmId, int timeoutSeconds = 12)
+    {
+        if (string.IsNullOrEmpty(filmId))
+            return null;
+
+        try
+        {
+            using var content = new System.Net.Http.FormUrlEncodedContent(
+                new Dictionary<string, string>()
+                {
+                    ["pg"] = "1",
+                    ["filmId"] = filmId
+                });
+
+            return await Http.Post(
+                SiteHost + "/ajax/relatedAjax",
+                content,
+                timeoutSeconds: timeoutSeconds,
+                headers: HeadersModel.Init(
+                    ("User-Agent", ChromeUA),
+                    ("Referer", pageUrl),
+                    ("Origin", SiteHost),
+                    ("X-Requested-With", "XMLHttpRequest")),
+                statusCodeOK: true,
+                disposeData: true);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    // JSON relatedAjax -> PlaylistItem tro /v/<code>.
+    public static List<PlaylistItem> RelatedPlaylist(string route, string json)
+    {
+        var list = new List<PlaylistItem>();
+        if (string.IsNullOrEmpty(json))
+            return list;
+
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind != System.Text.Json.JsonValueKind.Array)
+                return list;
+
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var e in doc.RootElement.EnumerateArray())
+            {
+                string code = e.TryGetProperty("code", out var c)
+                    ? c.GetString() : null;
+                if (string.IsNullOrEmpty(code) || !seen.Add(code))
+                    continue;
+
+                string name = e.TryGetProperty("name", out var n)
+                    ? n.GetString() : null;
+                if (string.IsNullOrEmpty(name))
+                    continue;
+
+                string poster = e.TryGetProperty("poster", out var p)
+                    ? p.GetString() : "";
+
+                string uri = SiteHost + "/v/" + code.Trim().Trim('/');
+
+                list.Add(new PlaylistItem()
+                {
+                    video = route + "?uri=" + HttpUtility.UrlEncode(uri),
+                    name = Clean(name),
+                    picture = poster ?? "",
+                    json = true,
+                    bookmark = new Bookmark()
+                    {
+                        site = "javct",
+                        href = uri,
+                        image = poster ?? ""
+                    }
+                });
+            }
+        }
+        catch { }
+
+        return list;
+    }
+
     // Card: card__cover > img[data-src|src + alt] + card__title > a[href=/v/slug].
     public static List<PlaylistItem> Playlist(string route, string html)
     {

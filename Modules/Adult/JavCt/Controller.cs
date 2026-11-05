@@ -23,13 +23,17 @@ public class JavCtController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("javct")]
-    async public Task<ActionResult> Index(string search, string c, int pg = 1, string sort = null)
+    async public Task<ActionResult> Index(string search, string c, int pg = 1, string sort = null, string rel = null)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
 
         if (pg < 1)
             pg = 1;
+
+        // Popup "Video lien quan": danh sach rieng, khong dinh search/c/sort.
+        if (!string.IsNullOrWhiteSpace(rel))
+            return await RelatedList(rel, pg);
 
         // Gop sort ve dung tap cua context (home + 3 list amateur/uncensored/
         // censored moi co sort that; category/studio/search thi sort la no-op)
@@ -633,4 +637,118 @@ public class JavCtController : BaseSisiController
             : httpHeaders(init, HeadersModel.Init(("referer", referer)));
         return Redirect(HostStreamProxy(link, direct));
     }
+
+    #region info (popup long-press) — chip dien vien/the loai/hang/nhan + "Lien quan"
+    // Route sisi.js goi: GET javct/genres?uri=<uri detail>.
+    // Popup phai NHANH: cache chip 360 phut, khong fetch > 1 trang.
+    [HttpGet]
+    [Route("javct/genres")]
+    async public Task<ActionResult> Genres(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return Json(new { items = new object[0], groups = new object[0] });
+
+        string pageUrl = uri.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+            ? uri : JavCtTo.SiteHost + "/" + uri.Trim('/');
+
+        // Chong SSRF: chi fetch host cua site.
+        if (!pageUrl.Contains("javct.net", StringComparison.OrdinalIgnoreCase))
+            return Json(new { items = new object[0], groups = new object[0] });
+
+        string memKey = ipkey($"javct:info:{uri}");
+        if (hybridCache.TryGetValue(memKey,
+            out List<(string kind, string slug, string name)> hit)
+            && hit != null && hit.Count > 0)
+        {
+            return InfoResult(hit, uri);
+        }
+
+        string html = await GetPageAsync(pageUrl);
+        var chips = JavCtTo.Chips(html ?? "");
+
+        if (chips.Count > 0)
+            hybridCache.Set(memKey, chips, cacheTime(360));
+
+        return InfoResult(chips, uri);
+    }
+
+    ActionResult InfoResult(List<(string kind, string slug, string name)> chips, string uri)
+    {
+        var groups = new List<object>();
+
+        // Thu tu nguoi -> phan loai: Dien vien, The loai, Hang phim, Nhan.
+        // Nhom rong bi bo han.
+        foreach (string kind in new[] { "model", "cat", "studio", "label" })
+        {
+            var items = chips?.Where(x => x.kind == kind).Select(x => new
+            {
+                title = x.name,
+                url = $"{host}/javct?c={JavCtTo.KindPath(kind)}/{HttpUtility.UrlEncode(x.slug)}"
+            }).ToList();
+
+            if (items == null || items.Count == 0)
+                continue;
+
+            groups.Add(new { title = JavCtTo.KindTitle(kind), items });
+        }
+
+        // "Lien quan" = 1 muc plain tro ?rel= (khong nhoi list phim vao popup).
+        groups.Add(new
+        {
+            title = "Liên quan",
+            items = new[]
+            {
+                new
+                {
+                    title = "Video liên quan",
+                    plain = true,
+                    url = $"{host}/javct?rel={HttpUtility.UrlEncode(uri)}"
+                }
+            }
+        });
+
+        return Json(new { items = new object[0], groups });
+    }
+
+    async Task<ActionResult> RelatedList(string rel, int pg)
+    {
+        if (pg > 1)
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        var cache = await InvokeCacheResult<(List<PlaylistItem> playlists, int total_pages)>(
+            ipkey($"javct:rel:{rel}"), 180, async e =>
+        {
+            string url = rel.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+                ? rel : JavCtTo.SiteHost + "/" + rel.Trim('/');
+
+            string html = await GetPageAsync(url);
+            var (filmId, _, _) = JavCtTo.GetDetailTokens(html);
+            if (string.IsNullOrEmpty(filmId))
+                return e.Success((new List<PlaylistItem>(), 0));
+
+            string json = await JavCtTo.RelatedAsync(url, filmId);
+            var playlists = JavCtTo.RelatedPlaylist("javct/vidosik", json);
+
+            if (playlists == null || playlists.Count == 0)
+                return e.Success((new List<PlaylistItem>(), 0));
+
+            return e.Success((playlists, 1));
+        });
+
+        if (!cache.IsSuccess)
+            return OnError(cache.ErrorMsg);
+
+        var menu = new List<Shared.Models.SISI.Base.MenuItem>()
+        {
+            new Shared.Models.SISI.Base.MenuItem()
+            {
+                title = "Tìm kiếm",
+                search_on = "search_on",
+                playlist_url = host.TrimEnd('/') + "/javct"
+            }
+        };
+
+        return PlaylistResult(cache.Value.playlists, cache.ISingleCache, menu, total_pages: 1);
+    }
+    #endregion
 }
