@@ -31,11 +31,16 @@ public class VietmupController : BaseSisiController
             string html = await FetchHtmlAsync(
                 VietmupTo.Uri(init.host, search, c, pg, sort));
 
-            var playlists = VietmupTo.Playlist(
-                "vietmup/vidosik", html ?? "");
+            // Chi fetch loi (mang/5xx/timeout) moi la loi that. Tim kiem khong co
+            // ket qua la chuyen binh thuong: trang tra HTML hop le nhung 0 item.
+            if (html == null)
+                return e.Fail("playlists", refresh_proxy: true);
 
-            if (playlists == null || playlists.Count == 0)
-                return e.Fail("playlists", refresh_proxy: string.IsNullOrEmpty(search));
+            var playlists = VietmupTo.Playlist(
+                "vietmup/vidosik", html);
+
+            if (playlists == null)
+                return e.Fail("playlists", refresh_proxy: true);
 
             return e.Success(playlists);
         });
@@ -43,7 +48,36 @@ public class VietmupController : BaseSisiController
         if (rch?.enable == true)
             StatiCacheDisabled = true;
 
-        return PlaylistResult(cache, await MenuAsync(search, sort, c));
+        // PlaylistResult(...) bien list rong thanh 503 "playlists", nen khi khong
+        // co ket qua phai tu tra JSON rong (count=0) de app hien "Khong tim thay"
+        // thay vi loi do.
+        var mMenu = await MenuAsync(search, sort, c);
+
+        if (!cache.IsSuccess)
+            return PlaylistResult(cache, mMenu);
+
+        var list = cache.Value;
+        if (list == null || list.Count == 0)
+            return EmptyPlaylistResult(mMenu);
+
+        return PlaylistResult(cache, mMenu);
+    }
+
+    // MVC dung JsonSerializerOptions.DefaultIgnoreCondition = WhenWritingDefault nen
+    // count=0 / total_pages=0 bi bo khoi JSON. Voi ket qua rong phai tra JSON tay de
+    // app van thay count=0 (hien "Khong tim thay ket qua") thay vi loi "playlists".
+    static readonly System.Text.Json.JsonSerializerOptions menuJsonOptions =
+        new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web);
+
+    ActionResult EmptyPlaylistResult(IReadOnlyList<MenuItem> menu, int total_pages = 1)
+    {
+        Response.Headers.CacheControl = "no-cache";
+
+        string body = "{\"count\":0,\"total_pages\":" + total_pages
+            + ",\"menu\":" + System.Text.Json.JsonSerializer.Serialize(menu ?? new List<MenuItem>(), menuJsonOptions)
+            + ",\"list\":[]}";
+
+        return Content(body, "application/json; charset=utf-8");
     }
 
     async Task<string> FetchHtmlAsync(string url)
@@ -64,9 +98,9 @@ public class VietmupController : BaseSisiController
                 if (!string.IsNullOrEmpty(html))
                     return html;
             }
-            catch
+            catch (Exception ex)
             {
-                // retry
+                Console.WriteLine($"Vietmup: fetch {url} attempt {attempt} -> {ex.Message}");
             }
 
             if (attempt == 0)
@@ -378,10 +412,14 @@ public class VietmupController : BaseSisiController
             ipkey($"vietmup:rel:{url}"), 180, async e =>
         {
             string html = await FetchHtmlAsync(url);
-            var playlists = VietmupTo.PlaylistRelated("vietmup/vidosik", html ?? "");
+
+            if (html == null)
+                return e.Fail("related", refresh_proxy: true);
+
+            var playlists = VietmupTo.PlaylistRelated("vietmup/vidosik", html);
 
             if (playlists == null || playlists.Count == 0)
-                return e.Fail("related");
+                return e.Success((new List<PlaylistItem>(), 1));
 
             return e.Success((playlists, 1));
         });
@@ -389,8 +427,13 @@ public class VietmupController : BaseSisiController
         if (!cache.IsSuccess)
             return OnError(cache.ErrorMsg);
 
+        var mMenu = await MenuAsync(null, null, null);
+
+        if (cache.Value.playlists == null || cache.Value.playlists.Count == 0)
+            return EmptyPlaylistResult(mMenu);
+
         return PlaylistResult(cache.Value.playlists, cache.ISingleCache,
-            await MenuAsync(null, null, null), total_pages: 1);
+            mMenu, total_pages: 1);
     }
     #endregion
 }
