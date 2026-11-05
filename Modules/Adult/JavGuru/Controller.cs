@@ -5,6 +5,7 @@ using Shared.Models.Base;
 using Shared.Models.SISI.Base;
 using Shared.Services;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -54,10 +55,14 @@ public class JavGuruController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("javguru")]
-    async public Task<ActionResult> Index(string search, string c, int pg = 1, string sort = null)
+    async public Task<ActionResult> Index(string search, string c, int pg = 1, string sort = null, string rel = null)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
+
+        // danh sách "Video liên quan" (mở từ popup long-press)
+        if (!string.IsNullOrWhiteSpace(rel))
+            return await RelatedList(rel);
 
         // gộp sort về đúng tập của site (17 giá trị thử: chỉ views/likes/title
         // là thật; `post__in` trả list rỗng -> 503 nên bắt buộc whitelist)
@@ -512,4 +517,90 @@ public class JavGuruController : BaseSisiController
             ? (raw, null)
             : (raw[..at], raw[(at + 1)..]);
     }
+
+    #region POPUP (long-press)
+    // Object custom / ValueTuple khong serialize lai duoc qua hybridCache nen
+    // giu trong RAM nhu Suong3x; trang detail doi theo ngay nen 6h la du.
+    static readonly ConcurrentDictionary<string, (DateTime at, List<(string kind, string slug, string name)> chips, List<PlaylistItem> rel)> _detailCache = new();
+    static readonly TimeSpan DetailTtl = TimeSpan.FromHours(6);
+
+    // 1 fetch detail -> chips taxonomy + "Related videos" (dung chung cho
+    // /genres va ?rel=, va cache nen mo popup lan hai la 0 request).
+    async Task<(List<(string kind, string slug, string name)> chips, List<PlaylistItem> rel)> DetailInfoAsync(string uri)
+    {
+        if (_detailCache.TryGetValue(uri, out var hit)
+            && DateTime.UtcNow - hit.at < DetailTtl && hit.chips != null)
+            return (hit.chips, hit.rel);
+
+        string html = await FetchHtmlAsync(JavGuruTo.NormalizePageUrl(uri), "wp-btn-iframe", 4, 4, Ms() + 20000);
+
+        var chips = JavGuruTo.DetailChips(html ?? "");
+        var rel = JavGuruTo.RelatedVideos("javguru/vidosik", html ?? "");
+
+        if (!string.IsNullOrEmpty(html))
+            _detailCache[uri] = (DateTime.UtcNow, chips, rel);
+
+        return (chips, rel);
+    }
+
+    [HttpGet]
+    [Route("javguru/genres")]
+    async public Task<ActionResult> Genres(string uri)
+    {
+        if (!JavGuruTo.IsSiteUrl(uri))
+            return Json(new { items = new object[0], groups = new object[0] });
+
+        var (chips, rel) = await DetailInfoAsync(uri);
+        if (chips == null)
+            return Json(new { items = new object[0], groups = new object[0] });
+
+        var groups = new List<object>();
+
+        // Giu dung thu tu ChipFields: Danh muc / Hang phim / Studio / The /
+        // Dien vien / Bo phim — nhom rong thi bo qua.
+        foreach (var (_, kind, group) in JavGuruTo.ChipFields)
+        {
+            var items = chips.Where(x => x.kind == kind).Select(x => new
+            {
+                title = x.name,
+                url = $"{host}/javguru?c={kind}/{HttpUtility.UrlEncode(x.slug)}"
+            }).ToList();
+
+            if (items.Count == 0)
+                continue;
+
+            groups.Add(new { title = group, items });
+        }
+
+        if (rel != null && rel.Count > 0)
+        {
+            groups.Add(new
+            {
+                title = "Liên quan",
+                items = new[]
+                {
+                    new
+                    {
+                        title = "Video liên quan",
+                        plain = true,
+                        url = $"{host}/javguru?rel={HttpUtility.UrlEncode(uri)}"
+                    }
+                }
+            });
+        }
+
+        return Json(new { items = new object[0], groups });
+    }
+
+    async Task<ActionResult> RelatedList(string rel)
+    {
+        var (_, playlists) = await DetailInfoAsync(rel);
+
+        if (playlists == null || playlists.Count == 0)
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        return PlaylistResult(playlists, false,
+            await MenuAsync(null, null, null), total_pages: 1);
+    }
+    #endregion
 }

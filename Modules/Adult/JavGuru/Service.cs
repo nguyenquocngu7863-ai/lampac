@@ -1499,4 +1499,127 @@ public static bool IsVoServer(string label)
 
         return menu;
     }
+
+    #region POPUP (long-press)
+    // Trang detail khai bao taxonomy trong <ul> info, moi dong mot <strong>nhan</strong>:
+    //   <li><strong>Category:</strong> <a href="https://jav.guru/category/1080p/" rel="category tag">
+    //   <li><strong>Studio:</strong>  <a href="https://jav.guru/maker/akinori/">     <- Studio nam o /maker/
+    //   <li><strong>Label:</strong>   <a href="https://jav.guru/studio/akdl/">       <- Label nam o /studio/
+    //   <li class="w1"><strong>Tags: </strong><a href="https://jav.guru/tag/boobs/" rel="tag">
+    //   <li class="w1"><strong>Actress:</strong> <a href="https://jav.guru/actress/akari-nonoka/">
+    //   <li class="w1"><strong>Series:</strong>  <a href="https://jav.guru/series/%e3%83%9d.../">
+    //
+    // `kind` la doan path cua href, dung thang cho `Uri()` duoc: ?c=<kind>/<slug>.
+    // Giu nguyen %xx trong slug (Series la ten tieng Nhat) — Index se nhan lai
+    // dung chuoi do sau mot lan UrlDecode cua query string.
+    public static readonly (string label, string kind, string group)[] ChipFields =
+    {
+        ("Category", "category", "Danh mục"),
+        ("Studio",   "maker",    "Hãng phim"),
+        ("Label",    "studio",   "Studio"),
+        ("Tags",     "tag",      "Thẻ"),
+        ("Actress",  "actress",  "Diễn viên"),
+        ("Series",   "series",   "Bộ phim"),
+    };
+
+    public static List<(string kind, string slug, string name)> DetailChips(string html)
+    {
+        var res = new List<(string kind, string slug, string name)>();
+        if (string.IsNullOrEmpty(html))
+            return res;
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var (label, kind, _) in ChipFields)
+        {
+            // Chi doc trong pham vi 1 dong <li>: tranh an nham anchor cua dong khac.
+            var lm = Regex.Match(html,
+                "<strong>\\s*" + Regex.Escape(label) + "\\s*:?\\s*</strong>(.{0,4000}?)</li>",
+                RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            if (!lm.Success)
+                continue;
+
+            foreach (Match m in Regex.Matches(lm.Groups[1].Value,
+                "href=\"https?://jav\\.guru/" + kind + "/([^\"#?]+?)/?\"[^>]*>([^<]{1,200})</a>",
+                RegexOptions.IgnoreCase))
+            {
+                string slug = m.Groups[1].Value.Trim('/');
+                string name = HttpUtility.HtmlDecode(m.Groups[2].Value).Trim();
+                if (slug.Length == 0 || name.Length == 0)
+                    continue;
+                if (!seen.Add(kind + "/" + slug))
+                    continue;
+                res.Add((kind, slug, name));
+            }
+        }
+
+        return res;
+    }
+
+    // Khoi "Related videos" cua trang detail (cho popup long-press).
+    //   <div class="woo-sc-related-posts"><ul>
+    //     <li class="post-id-1070144 "><a href="..." class="thumbnail"><img src="..." alt="TITLE"></a>
+    //     <a href="..." class="related-title" title="TITLE">...
+    public static List<Shared.Models.SISI.Base.PlaylistItem> RelatedVideos(string route, string html)
+    {
+        var list = new List<Shared.Models.SISI.Base.PlaylistItem>();
+        if (string.IsNullOrEmpty(html))
+            return list;
+
+        // Marker phai la THE, khong phai ten class: `woo-sc-related-posts` con
+        // xuat hien trong <style> inline truoc do (CSS theme) — bat dau tu do
+        // thi block chi la CSS va khong co <li> nao.
+        int i = html.IndexOf("<div class=\"woo-sc-related-posts\">", StringComparison.OrdinalIgnoreCase);
+        if (i < 0)
+            return list;
+
+        string block = html.Substring(i, Math.Min(60000, html.Length - i));
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (Match m in Regex.Matches(block,
+            "<li class=\"post-id-[^\"]*\">(.{0,4000}?)</li>",
+            RegexOptions.IgnoreCase | RegexOptions.Singleline))
+        {
+            string li = m.Groups[1].Value;
+
+            var hm = Regex.Match(li, "href=\"(https?://jav\\.guru/\\d{4,}/[^\"]+)\"", RegexOptions.IgnoreCase);
+            if (!hm.Success)
+                continue;
+
+            string href = NormalizePageUrl(hm.Groups[1].Value);
+            if (!IsSiteUrl(href) || !seen.Add(href))
+                continue;
+
+            string name = "";
+            var tm = Regex.Match(li, "class=\"related-title\"[^>]*title=\"([^\"]{2,400})\"", RegexOptions.IgnoreCase);
+            if (!tm.Success)
+                tm = Regex.Match(li, "<img[^>]+alt=\"([^\"]{2,400})\"", RegexOptions.IgnoreCase);
+            if (tm.Success)
+                name = HttpUtility.HtmlDecode(tm.Groups[1].Value.Trim());
+            if (string.IsNullOrEmpty(name))
+                continue;
+
+            string poster = "";
+            var pm = Regex.Match(li, "<img[^>]+src=\"(https?://[^\"]+)\"", RegexOptions.IgnoreCase);
+            if (pm.Success)
+                poster = pm.Groups[1].Value;
+
+            list.Add(new Shared.Models.SISI.Base.PlaylistItem()
+            {
+                video = route + "?uri=" + HttpUtility.UrlEncode(href),
+                name = name,
+                picture = poster,
+                json = true,
+                bookmark = new Shared.Models.SISI.Base.Bookmark()
+                {
+                    site = "javguru",
+                    href = href,
+                    image = poster
+                }
+            });
+        }
+
+        return list;
+    }
+    #endregion
 }
