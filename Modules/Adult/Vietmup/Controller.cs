@@ -180,12 +180,19 @@ public class VietmupController : BaseSisiController
         if (links == null || links.Count == 0)
             return OnError("stream_links", refresh_proxy: true);
 
+        // Duoi route phai khop dang that cua nguon: app Lampa chi bat hls.js khi
+        // URL co `.m3u8` (SISI/plugins/sisi.js applyHlsType). Thieu duoi ->
+        // player dua thang URL vao <video> -> "The element has no supported
+        // sources" (va tua la khong the). Abyss la mp4 -> di route `.mp4`.
         return Json(links.ToDictionary(k => k.Key, v =>
-            $"{host}/vietmup/video?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(v.Key)}"));
+            $"{host}/vietmup/video{(v.Key == "Abyss" ? ".mp4" : ".m3u8")}"
+            + $"?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(v.Key)}"));
     }
 
     [HttpGet]
     [Route("vietmup/video")]
+    [Route("vietmup/video.m3u8")]
+    [Route("vietmup/video.mp4")]
     async public Task<ActionResult> Video(string uri, string q)
     {
         if (await IsRequestBlocked(rch: true))
@@ -199,7 +206,7 @@ public class VietmupController : BaseSisiController
             return OnError("stream_links", refresh_proxy: true);
 
         if (link.StartsWith("abyss|", StringComparison.Ordinal))
-            return Redirect($"{host}/vietmup/abyss?p={HttpUtility.UrlEncode(link.Substring(6))}");
+            return Redirect($"{host}/vietmup/abyss.mp4?p={HttpUtility.UrlEncode(link.Substring(6))}");
 
         var headers = httpHeaders(init, HeadersModel.Init(
             ("User-Agent", VietmupTo.ChromeUA),
@@ -210,6 +217,7 @@ public class VietmupController : BaseSisiController
 
     [HttpGet]
     [Route("vietmup/abyss")]
+    [Route("vietmup/abyss.mp4")]
     async public Task<ActionResult> Abyss(string p)
     {
         if (await IsRequestBlocked(rch: true))
