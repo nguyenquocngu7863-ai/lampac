@@ -19,9 +19,9 @@ Skill tham chiếu: `lampac-popup` (hợp đồng route, luật UX, anti-pattern
 
 | nhóm | số module | trạng thái |
 |---|---|---|
-| Đã có popup | 18 | xong |
+| Đã có popup | 19 | xong |
 | Có genres, **thiếu rel** | 5 | Phase 0 |
-| JAV / Á – Việt, chưa làm | 32 | Phase 1 |
+| JAV / Á – Việt, chưa làm | 31 | Phase 1 |
 | Tube phương Tây, chưa làm | 9 | Phase 2 |
 | Cam live, chưa làm | 3 | Phase 3 |
 | Đang tắt | 3 | bỏ qua |
@@ -44,7 +44,7 @@ Skill tham chiếu: `lampac-popup` (hợp đồng route, luật UX, anti-pattern
 - [ ] `JavSub` — https://javsub.blog
 - [ ] `KawaiJAV` — https://kawai-jav.com
 - [ ] `Lon69` — https://lon69.site
-- [ ] `Manko` — https://manko.fun
+- [x] `Manko` — https://manko.fun
 - [ ] `Mbbg` — https://mbbg.hair
 - [ ] `Phe69` — https://phe69.shop
 - [ ] `PhimSexVN88` — https://phimsexvn88.com
@@ -102,3 +102,14 @@ Skill tham chiếu: `lampac-popup` (hợp đồng route, luật UX, anti-pattern
 | 2026-11-06 | VietSexBlog | fix domain `x.vietsex.blog` → `vietsexhd.blog` + popup (Thể loại/Từ khóa + Liên quan) | regex card đổi sang host-linh hoạt |
 | 2026-11-06 | XHeoVL | popup (Thể loại/Tag + Liên quan) | rel parse card `vb-mini` |
 | 2026-11-06 | DuJav | popup (Diễn viên/Hãng/Thể loại + Liên quan) | bài học `total_pages: 1` đã ghi vào skill |
+| 2026-11-06 | Manko | popup (Diễn viên/Thể loại/Hãng + Liên quan) + guard SSRF; bỏ dòng "Sắp xếp"; tiêu đề để code trần; list rỗng trả `count:0` | **site KHÔNG có sort**: `sort=/order=/order_by=/most_viewed` bị API bỏ qua (id y hệt), còn `most_popular/top_rated/best` là **filter** (đổi tập phim) → không dựng dòng 2. List API không trả `video_duration` → thumb không có thời lượng (đã cài sẵn chỗ đọc nếu API bổ sung) |
+| 2026-11-06 | DuJav (tắt) | tắt tạm thời | `~/lampac-run/init.conf`: `"dujav": {"enable": false}` (backup `init.conf.bak-20261106-1223`; bật lại = xoá key) |
+| 2026-11-06 | JavQuick (mới) | module mới `javquick.com`: list/menu/popup + proxy `video.mp4` **tự giải mã AES-128-CTR đa part** | công thức F21 đã ghi vào skill `lampac-deobfuscate`; key hardcode trong `decryptor.wasm`, reset keystream mỗi 6 MB |
+| 2026-11-06 | play.py | fix false-negative với input mp4: probe bằng Range + cờ bỏ kiểm duyệt đuôi segment chỉ chèn cho HLS | commit riêng `130db33f` |
+
+## Treo (Manko)
+
+- [ ] Ẩn "Server 2" (helvid) khỏi danh sách nguồn — web **đã bỏ**, CF Worker của helvid chặn mọi client server-side (đo: UA/Referer/Origin/Sec-Fetch/cookie/`tm=1`, cả IPv4 & IPv6 đều 404; Chrome thật thì 200)
+- [ ] Bật fallback API thật: `window.ip2` hiện là **`alpharomeo.shop`**, module đang hardcode `robustx.shop` và **không dùng** → chưa có fallback sống
+- [ ] `IsSiteUri("abc")` (id rác) đi hết 2 lần timeout (15s direct + 15s proxy) → popup trả rỗng sau ~30s; muốn fail nhanh thì cắt retry khi API trả `data` rỗng
+
