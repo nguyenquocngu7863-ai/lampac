@@ -21,7 +21,7 @@ namespace Eporner;
 public static class EpornerTo
 {
     #region Uri
-    public static string Uri(string host, string search, string sort, string c, int pg)
+    public static string Uri(string host, string search, string sort, string c, int pg, string t = null)
     {
         var url = StringBuilderPool.ThreadInstance;
 
@@ -52,6 +52,18 @@ public static class EpornerTo
             {
                 url.Append("cat/");
                 url.Append(c);
+                url.Append("/");
+
+                if (pg > 1)
+                {
+                    url.Append(pg);
+                    url.Append("/");
+                }
+            }
+            else if (!string.IsNullOrEmpty(t))
+            {
+                url.Append("tag/");
+                url.Append(t);
                 url.Append("/");
 
                 if (pg > 1)
@@ -148,6 +160,42 @@ public static class EpornerTo
         }
 
         return playlists;
+    }
+    #endregion
+
+    #region Chips
+    public static List<(string kind, string slug, string name)> Chips(ReadOnlySpan<char> html)
+    {
+        var list = new List<(string kind, string slug, string name)>(12);
+
+        if (html.IsEmpty)
+            return list;
+
+        // chỉ lấy khối thông tin video, tránh danh mục ở nav/menu
+        var node = HtmlSpan.Node(html, "*", "id", "video-info-tags", HtmlSpanTargetType.Exact);
+        if (node.IsEmpty)
+            return list;
+
+        const string pattern = "<li class=\"vit-(category|tag)\"><a href=\"/(?:cat|tag)/([^\"/]+)/\"[^>]*>([^<]+)</a>";
+
+        foreach (var row in Rx.Matches(pattern, node).Rows())
+        {
+            var g = row.Groups(pattern);
+
+            string slug = g[2].Value;
+            if (string.IsNullOrWhiteSpace(slug))
+                continue;
+
+            string kind = g[1].Value == "category" ? "cat" : "tag";
+
+            if (list.Any(i => i.kind == kind && i.slug == slug))
+                continue;
+
+            string name = HttpUtility.HtmlDecode(g[3].Value).Trim();
+            list.Add((kind, slug, string.IsNullOrEmpty(name) ? slug : name));
+        }
+
+        return list;
     }
     #endregion
 

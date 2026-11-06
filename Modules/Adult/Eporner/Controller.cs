@@ -7,8 +7,10 @@ using Shared.Services;
 using Shared.Services.Hybrid;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
+using System.Web;
 
 namespace Eporner;
 
@@ -44,15 +46,18 @@ public class EpornerController : BaseSisiController
 
     [HttpGet, Staticache(11)]
     [Route("epr")]
-    async public Task<ActionResult> Index(string search, string sort, string c, int pg = 1)
+    async public Task<ActionResult> Index(string search, string sort, string c, int pg = 1, string t = null, string rel = null)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
 
+        if (!string.IsNullOrWhiteSpace(rel))
+            return await RelatedList(rel, pg);
+
         pg += 1;
 
         SemaphorManager semaphore = null;
-        string semaphoreKey = $"epr:{search}:{sort}:{c}:{pg}";
+        string semaphoreKey = $"epr:{search}:{sort}:{c}:{t}:{pg}";
 
         List<PlaylistItem> playlists = null;
         HybridCacheEntry<List<PlaylistItem>> entryCache;
@@ -87,7 +92,7 @@ public class EpornerController : BaseSisiController
 
                 if (next)
                 {
-                    string url = EpornerTo.Uri(init.host, search, sort, c, pg);
+                    string url = EpornerTo.Uri(init.host, search, sort, c, pg, t);
 
                     await httpHydra.GetSpan(url, span =>
                     {
@@ -132,6 +137,139 @@ public class EpornerController : BaseSisiController
             EpornerTo.Menu(host, search, sort, c)
         );
     }
+
+    [HttpGet, Staticache(manually: true)]
+    [Route("epr/genres")]
+    async public Task<ActionResult> Genres(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri) || !IsEpornerUri(uri))
+            return EmptyGenres();
+
+        if (_chips.TryGetValue(uri, out var hit)
+            && DateTime.UtcNow - hit.at < TimeSpan.FromMinutes(360)
+            && hit.chips.Count > 0)
+        {
+            return GenresResult(hit.chips, uri);
+        }
+
+        List<(string kind, string slug, string name)> chips = null;
+
+        try
+        {
+            await httpHydra.GetSpan(PageUrl(uri), span =>
+            {
+                chips = EpornerTo.Chips(span);
+            });
+        }
+        catch
+        {
+            return EmptyGenres();
+        }
+
+        if (chips == null || chips.Count == 0)
+            return EmptyGenres();
+
+        _chips[uri] = (DateTime.UtcNow, chips);
+
+        return GenresResult(chips, uri);
+    }
+
+    #region popup
+    static readonly System.Collections.Concurrent.ConcurrentDictionary<
+        string, (DateTime at, List<(string kind, string slug, string name)> chips)> _chips = new();
+
+    static ActionResult EmptyGenres()
+        => new JsonResult(new { items = new object[0], groups = new object[0] });
+
+    string PageUrl(string uri)
+        => uri.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+            ? uri
+            : $"{init.host.TrimEnd('/')}/{uri.Trim('/')}";
+
+    bool IsEpornerUri(string uri)
+    {
+        // đường dẫn tương đối lấy từ chính playlist (video-xxx/title/)
+        if (!uri.Contains("://", StringComparison.Ordinal))
+            return !uri.StartsWith("//", StringComparison.Ordinal);
+
+        return System.Uri.TryCreate(uri, UriKind.Absolute, out var u)
+            && u.Host.EndsWith("eporner.com", StringComparison.OrdinalIgnoreCase);
+    }
+
+    ActionResult GenresResult(List<(string kind, string slug, string name)> chips, string uri)
+    {
+        var groups = new List<object>(3);
+
+        foreach (string kind in new[] { "cat", "tag" })
+        {
+            var items = chips.Where(x => x.kind == kind).Select(x => new
+            {
+                title = x.name,
+                url = kind == "cat"
+                    ? $"{host}/epr?c={HttpUtility.UrlEncode(x.slug)}"
+                    : $"{host}/epr?t={HttpUtility.UrlEncode(x.slug)}"
+            }).ToList();
+
+            if (items.Count == 0)
+                continue;
+
+            groups.Add(new { title = kind == "cat" ? "Thể loại" : "Thẻ", items });
+        }
+
+        groups.Add(new
+        {
+            title = "Liên quan",
+            items = new[]
+            {
+                new
+                {
+                    title = "Video liên quan",
+                    plain = true,
+                    url = $"{host}/epr?rel={HttpUtility.UrlEncode(uri)}"
+                }
+            }
+        });
+
+        return new JsonResult(new { items = new object[0], groups });
+    }
+
+    async Task<ActionResult> RelatedList(string rel, int pg)
+    {
+        if (pg > 1)
+            return Json(new { count = 0, total_pages = 1, list = new List<PlaylistItem>() });
+
+        if (!IsEpornerUri(rel))
+            return Json(new { count = 0, total_pages = 1, list = new List<PlaylistItem>() });
+
+        var cache = await InvokeCacheResult(ipkey($"eporner:rel:{rel}"), 180, jsonContext.ListPlaylistItem, async e =>
+        {
+            List<PlaylistItem> playlists = null;
+
+            try
+            {
+                await httpHydra.GetSpan(PageUrl(rel), span =>
+                {
+                    playlists = EpornerTo.Playlist("epr/vidosik", span);
+                });
+            }
+            catch
+            {
+                return e.Success(new List<PlaylistItem>());
+            }
+
+            return e.Success(playlists ?? new List<PlaylistItem>());
+        });
+
+        if (!cache.IsSuccess)
+            return OnError(cache.ErrorMsg);
+
+        if (cache.Value == null || cache.Value.Count == 0)
+            return Json(new { count = 0, total_pages = 1, list = new List<PlaylistItem>() });
+
+        return PlaylistResult(cache.Value, cache.ISingleCache,
+            EpornerTo.Menu(host, null, null, null), total_pages: 1);
+    }
+    #endregion
 
     [HttpGet, Staticache(manually: true)]
     [Route("epr/vidosik")]
