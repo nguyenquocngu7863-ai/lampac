@@ -64,6 +64,15 @@ SORT_RE = re.compile(r"[?&](orderby|sort|sort_by|sapxep|order)=([A-Za-z0-9_\-]+)
 # Cache theo (url, referer, range): cùng 1 embed xuất hiện nhiều lần trong trang chỉ tải 1 lần.
 _CACHE = {}
 
+# mp4 lớn (>1 GB) không thể GET full body trong 30 s -> probe bằng Range như player thật.
+# Chỉ áp cho mp4: m3u8 mà nhận 206/partial thì hỏng playlist.
+RANGE_PROBE = "bytes=0-262143"
+
+
+def looks_mp4(url):
+    """URL trông như file/route mp4 (kể cả khi .mp4 nằm trong query/route Lampac)."""
+    return bool(re.search(r"\.mp4\b", url or "", re.I))
+
 
 def say(*a):
     print(*a, flush=True)
@@ -120,12 +129,12 @@ def body_text(r):
     return (r.content or b"").decode("utf-8", "ignore") if r is not None else ""
 
 
-def fetch_smart(url, referers):
+def fetch_smart(url, referers, rng=None):
     """Thử lần lượt các Referer (None trước). Trả (resp, referer_đã_dùng, log)."""
     log = []
     last = None
     for ref in referers:
-        r = fetch(url, referer=ref)
+        r = fetch(url, referer=ref, rng=rng)
         last = r
         code = r.status_code if r is not None else 0
         log.append((ref, code))
@@ -436,7 +445,8 @@ def crawl(start, start_referers, max_hops=4):
     url = start
     referers = start_referers
     for step in range(1, max_hops + 1):
-        r, used, log = fetch_smart(url, referers)
+        rng = RANGE_PROBE if looks_mp4(url) else None
+        r, used, log = fetch_smart(url, referers, rng=rng)
         code = r.status_code if r is not None else 0
         text = body_text(r)
         kind = doc_kind(url, (r.headers.get("content-type") if r is not None else ""),
@@ -446,6 +456,14 @@ def crawl(start, start_referers, max_hops=4):
                  "ctype": (r.headers.get("content-type") or "?") if r is not None else "?",
                  "referer": used, "referer_note": referer_note(log),
                  "extractor": None, "next": None, "note": "", "other_players": []}
+
+        # probe Range: body chỉ là mẩu đầu -> lấy size THẬT từ Content-Range "/<total>"
+        if rng and r is not None:
+            mcr = re.search(r"/(\d+)\s*$", r.headers.get("content-range") or "")
+            if mcr:
+                entry["size"] = int(mcr.group(1))
+                entry["note"] = f"probe {rng} (size thật từ Content-Range)"
+
         chain.append(entry)
 
         if r is None or code >= 400:
@@ -744,9 +762,14 @@ def _fmt_flags():
     return _FMT
 
 
-def _ff(prog, args, timeout=30):
-    """Chạy ffmpeg/ffprobe, tự chèn cờ bỏ kiểm duyệt đuôi segment. Trả (rc, out, err)."""
-    cmd = [prog, "-hide_banner"] + _fmt_flags() + args
+def _ff(prog, args, timeout=30, hls=True):
+    """Chạy ffmpeg/ffprobe, tự chèn cờ bỏ kiểm duyệt đuôi segment.
+
+    Cờ đó là option RIÊNG của demuxer hls, chỉ hợp lệ khi input là HLS: gặp input mp4
+    (demuxer mov) ffmpeg thoát ngay `Option extension_picky not found` -> false negative.
+    Vì vậy chỉ chèn khi `hls=True`.
+    """
+    cmd = [prog, "-hide_banner"] + (_fmt_flags() if hls else []) + args
     try:
         p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         return p.returncode, p.stdout, p.stderr
@@ -810,12 +833,14 @@ def smoke(url, referer=None):
     is_lampac = lampac_route(url)
 
     # 1) body + thời gian cold/warm (route Lampac: cold = lúc app bấm lần đầu)
-    r1, t1, err = _timed_get(url, referer)
+    # mp4 > 1 GB: KHÔNG GET full body (timeout 30 s) — probe Range như player.
+    rng = RANGE_PROBE if looks_mp4(url) else None
+    r1, t1, err = _timed_get(url, referer, rng=rng)
     res["cold_s"] = round(t1, 2)
     if r1 is None:
         res["fails"].append(f"không tải được playlist: {err}")
         return res
-    r2, t2, _ = _timed_get(url, referer)
+    r2, t2, _ = _timed_get(url, referer, rng=rng)
     res["warm_s"] = round(t2, 2)
 
     if r1.status_code >= 400:
@@ -831,6 +856,9 @@ def smoke(url, referer=None):
         res["first_error"] = body.lstrip()[:140]
         return res
     res["body"] = "m3u8" if is_hls else "mp4"
+
+    # cờ demuxer chỉ dành cho HLS (xem _ff): input mp4 mà chèn -> "Option not found"
+    hls_in = is_hls
 
     # 2) segment phải đi qua Lampac (/proxy/), không raw CDN (web/TV chết vì CORS)
     if is_hls:
@@ -865,7 +893,7 @@ def smoke(url, referer=None):
     # 4) ffprobe: codec + duration (đọc xuyên master -> variant -> media)
     rc, out, err = _ff(FFPROBE, ["-v", "error"] + _hdr_args(referer) +
                        ["-show_entries", "stream=codec_type,codec_name,width,height",
-                        "-show_entries", "format=duration", "-of", "json", url])
+                        "-show_entries", "format=duration", "-of", "json", url], hls=hls_in)
     if rc != 0:
         res["fails"].append(f"ffprobe không mở được stream (rc={rc})")
         res["first_error"] = res["first_error"] or _first_err(err)
@@ -892,7 +920,7 @@ def smoke(url, referer=None):
 
     # 5) decode 5s ĐẦU (bắt chết ngay) — quyết định PASS/FAIL
     rc1, out1, e1 = _ff(FFMPEG, ["-v", "error"] + _hdr_args(referer) +
-                        ["-i", url, "-t", "5", "-c", "copy", "-f", "null", "-"])
+                        ["-i", url, "-t", "5", "-c", "copy", "-f", "null", "-"], hls=hls_in)
     res["decode_first"] = rc1
     if rc1 != 0:
         res["fails"].append(f"decode 5s đầu FAIL (rc={rc1})")
@@ -901,7 +929,7 @@ def smoke(url, referer=None):
     # 6) decode 5s CUỐI (token/CDN hết hạn giữa stream) — chỉ WARN
     if res["duration"] and res["duration"] > 12:
         rc2, _, e2 = _ff(FFMPEG, ["-v", "error"] + _hdr_args(referer) +
-                         ["-sseof", "-5", "-i", url, "-t", "5", "-c", "copy", "-f", "null", "-"])
+                         ["-sseof", "-5", "-i", url, "-t", "5", "-c", "copy", "-f", "null", "-"], hls=hls_in)
         res["decode_tail"] = rc2
         if rc2 != 0:
             res["warns"].append(f"decode 5s cuối FAIL (rc={rc2}) — đuôi stream lỗi/hết hạn")
