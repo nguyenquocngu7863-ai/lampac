@@ -74,6 +74,13 @@ def looks_mp4(url):
     return bool(re.search(r"\.mp4\b", url or "", re.I))
 
 
+def url_ext(url):
+    """Đuôi của PATH (không tính query): '.m3u8' / '.mp4' / '' nếu không có."""
+    p = up.urlparse(url or "").path.lower()
+    m = re.search(r"(\.m3u8|\.mp4)$", p)
+    return m.group(1) if m else ""
+
+
 def say(*a):
     print(*a, flush=True)
 
@@ -822,7 +829,7 @@ def _first_err(text):
 def smoke(url, referer=None):
     """Kiểm tra phát được (~90%): playlist -> segment -> key -> codec -> decode 5s đầu/cuối."""
     res = {"url": url, "ok": False, "level": "FAIL", "fails": [], "warns": [],
-           "cold_s": None, "warm_s": None, "body": "", "segments": {},
+           "cold_s": None, "warm_s": None, "body": "", "ext": None, "segments": {},
            "key": None, "codec": "", "duration": None,
            "decode_first": None, "decode_tail": None, "first_error": ""}
 
@@ -856,6 +863,22 @@ def smoke(url, referer=None):
         res["first_error"] = body.lstrip()[:140]
         return res
     res["body"] = "m3u8" if is_hls else "mp4"
+
+    # 1b) ĐUÔI URL quyết định app có phát được hay không.
+    # Lampa/SISI chọn player THEO ĐUÔI URL: không có `.m3u8` -> coi là file video
+    # thường -> "no supported source". Route Lampac trả HLS mà thiếu đuôi là lỗi
+    # thật (SupJav khai báo song song: [Route("supjav/video")] + [Route("supjav/video.m3u8")]).
+    ext = url_ext(url)
+    res["ext"] = ext
+    if is_hls and ext != ".m3u8":
+        msg = ("URL route KHÔNG có đuôi .m3u8 (path = "
+               f"{up.urlparse(url).path or '/'}) — body là HLS nhưng app chọn player theo đuôi "
+               "URL nên coi là file thường -> 'no supported source'. Khai báo thêm route "
+               "`<mod>/video.m3u8` (mẫu SupJav: [Route(\"supjav/video\")] + [Route(\"supjav/video.m3u8\")])")
+        (res["fails"] if is_lampac else res["warns"]).append(msg)
+    elif is_mp4 and ext != ".mp4":
+        res["warns"].append("URL không có đuôi .mp4 (body mp4) — Lampa chọn player theo đuôi; "
+                            "box Android thường vẫn phát, web/TV có thể 'no supported source'")
 
     # cờ demuxer chỉ dành cho HLS (xem _ff): input mp4 mà chèn -> "Option not found"
     hls_in = is_hls
@@ -956,6 +979,10 @@ def print_smoke(sm):
         extra = (f" · segment {seg.get('via_lampac', 0)}/{seg.get('total', 0)} qua Lampac"
                  + (f", {seg.get('raw')} raw" if seg.get("raw") else "")) if seg.get("total") else ""
         say(f"body     : {sm['body']}{extra}")
+    if sm.get("ext") is not None:
+        want = ".m3u8" if sm["body"] == "m3u8" else ".mp4"
+        ok_ext = sm["ext"] == want
+        say(f"đuôi URL : {(sm['ext'] or '(không có)')} {'✔' if ok_ext else '✗ thiếu ' + want}")
     say(f"key      : " + ("không có" if not sm["key"]
                           else f"{sm['key']['method']} · {sm['key']['status']} {sm['key']['bytes']}B"))
     if sm["codec"]:
@@ -976,7 +1003,7 @@ def print_smoke(sm):
 
 
 def smoke_meta(sm):
-    return {"level": sm["level"], "ok": sm["ok"], "codec": sm["codec"],
+    return {"level": sm["level"], "ok": sm["ok"], "codec": sm["codec"], "ext": sm.get("ext"),
             "duration": sm["duration"], "cold_s": sm["cold_s"], "warm_s": sm["warm_s"],
             "segments": sm["segments"], "key": sm["key"],
             "decode_first": sm["decode_first"], "decode_tail": sm["decode_tail"],
