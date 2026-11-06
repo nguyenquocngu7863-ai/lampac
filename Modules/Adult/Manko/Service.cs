@@ -41,6 +41,13 @@ public static class MankoTo
     // type=genre|country + name (route /filter/:type/:name, builder ma).
     const int Size = 24;
 
+    // Site KHONG co sort. Da do ngay 2026-11-06 tren genre=Creampie (98.739 phim):
+    //   sort=, sort=-1, sort=rating, sort_by=, order=, order=-1, order_by=,
+    //   most_viewed=true  -> total y nguyen + id y het (API bo qua tham so la)
+    //   most_popular 15.018 · top_rated 7.477 · best 4.068 · subtitle_link ...
+    //                     -> FILTER: doi han tap phim, khong phai doi thu tu.
+    // Nen khong dung dong 2 "Sap xep"; cac che do listing cua site nam o dong 3
+    // "Danh sach" (moi nhat / pho bien / top danh gia / vietsub / ...).
     public static string Uri(string host, string search, string c, int pg, bool byActor = false)
     {
         if (pg < 1) pg = 1;
@@ -59,7 +66,7 @@ public static class MankoTo
             return ApiHost + "/swx/movie/search?size=" + Size + "&page=" + pg + "&can18=true&country=" + System.Uri.EscapeDataString(cat.Substring(8));
         if (cat.StartsWith("type/", StringComparison.OrdinalIgnoreCase))
         {
-            // type/genre/Creampie -> genre=Creampie (builder ma)
+            // type/person_id/4N1Z -> person_id=4N1Z (chip dien vien + "lien quan")
             var parts = cat.Split('/', StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length >= 3)
                 return ApiHost + "/swx/movie/search?size=" + Size + "&page=" + pg + "&can18=true&"
@@ -137,8 +144,8 @@ public static class MankoTo
     }
 
     // ========== Playlist ==========
-    // Item list chi co _id/title/thumbnail/wasabi_url_1 (poster that).
-    // Detail moi co cover_image/tags/subtitle_link.
+    // Item list chi co _id/title/title_display_name/maker/startyear/rating/tags/
+    // thumbnail_image (KHONG co video_duration -> thumb chi co so phut neu API tra).
     public static List<PlaylistItem> Playlist(string route, List<JsonElement> items)
     {
         var list = new List<PlaylistItem>();
@@ -148,9 +155,8 @@ public static class MankoTo
         {
             string id = Str(it, "_id");
             if (string.IsNullOrEmpty(id) || !seen.Add(id)) continue;
-            string title = Str(it, "title");
+            string title = TitleOf(it);
             if (string.IsNullOrEmpty(title)) continue;
-            title = Clean(title);
             string poster = Str(it, "thumbnail_image");
             if (string.IsNullOrEmpty(poster)) poster = Str(it, "wide_thumbnail");
             if (string.IsNullOrEmpty(poster)) poster = Str(it, "thumbnail");
@@ -161,12 +167,87 @@ public static class MankoTo
                 video = route + "?uri=" + HttpUtility.UrlEncode(detailUrl),
                 name = title,
                 picture = string.IsNullOrEmpty(poster) ? null : poster,
+                time = DurationOf(it),
                 json = true,
                 bookmark = new Bookmark() { site = "manko", href = detailUrl, image = poster }
             });
         }
         return list;
     }
+
+    // Ten hien thi = code tren site (title_display_name uu tien "en" nhu web,
+    // fallback title). Site khong co ten mo ta -> KHONG ghep them hang/nam/diem.
+    static string TitleOf(JsonElement it)
+    {
+        string code = "";
+        try
+        {
+            if (it.TryGetProperty("title_display_name", out var tdn) && tdn.ValueKind == JsonValueKind.Array)
+            {
+                string first = "", en = "";
+                foreach (var x in tdn.EnumerateArray())
+                {
+                    string t = Str(x, "title");
+                    if (string.IsNullOrEmpty(t)) continue;
+                    if (first.Length == 0) first = t;
+                    if (Str(x, "language") == "en") { en = t; break; }
+                }
+                code = en.Length > 0 ? en : first;
+            }
+        }
+        catch { }
+        if (code.Length == 0) code = Str(it, "title");
+        return Clean(code);
+    }
+
+    // Thoi luong: list API hien KHONG tra -> thuong rong. Neu API bo sung
+    // (video_duration/duration, don vi phut nhu detail) thi hien badge tren thumb.
+    static string DurationOf(JsonElement it)
+    {
+        string raw = Clean(Str(it, "video_duration"));
+        if (raw.Length == 0) raw = Clean(Str(it, "duration"));
+        if (raw.Length == 0) return null;
+        if (raw.Contains(':') || raw.Contains('h')) return raw;
+
+        if (double.TryParse(raw, System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out double min) && min > 0)
+        {
+            int m = (int)Math.Round(min);
+            return m >= 60 ? $"{m / 60}h{m % 60:00}" : m + "p";
+        }
+        return null;
+    }
+
+    // Cast cua phim: swx/movie/actors/<id>?size=6&page=1 -> person_id + ten.
+    public static List<(string name, string personId)> ParseActors(string json)
+    {
+        var res = new List<(string, string)>();
+        var (items, _) = ParseList(json);
+        foreach (var a in items)
+        {
+            string pid = Str(a, "person_id");
+            if (string.IsNullOrEmpty(pid)) continue;
+            string name = "";
+            try
+            {
+                if (a.TryGetProperty("also_known_as", out var aka) && aka.ValueKind == JsonValueKind.Object)
+                {
+                    foreach (string lang in new[] { "en", "jp", "kr", "tw" })
+                    {
+                        string v = Str(aka, lang);
+                        if (!string.IsNullOrEmpty(v)) { name = v; break; }
+                    }
+                }
+            }
+            catch { }
+            if (name.Length == 0) name = Str(a, "name");
+            name = Clean(name);
+            if (name.Length == 0) name = pid;
+            res.Add((name, pid));
+        }
+        return res;
+    }
+
 
     public static int TotalPages(int total) => total <= 0 ? 1 : Math.Max(1, (total + Size - 1) / Size);
 
@@ -329,6 +410,7 @@ public static class MankoTo
 
     // ========== Menu (chuan 2 tang, §9a) ==========
     // Site khong co sort (thu tu nam trong category) -> khong hien dong 2.
+    // Dong 1 (Tim kiem) — site khong co sort nen khong co dong 2.
     public static List<MenuItem> MenuHead(string host, string search)
     {
         host = host.TrimEnd('/');

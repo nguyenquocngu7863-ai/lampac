@@ -22,10 +22,13 @@ public class MankoController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("manko")]
-    async public Task<ActionResult> Index(string search, string c, int pg = 1)
+    async public Task<ActionResult> Index(string search, string c, int pg = 1, string rel = null)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
+
+        if (!string.IsNullOrWhiteSpace(rel))
+            return await RelatedList(rel, pg);
 
         if (pg < 1) pg = 1;
 
@@ -52,6 +55,11 @@ public class MankoController : BaseSisiController
         if (!cache.IsSuccess)
             return OnError(cache.ErrorMsg);
 
+        // PlaylistResult doi list rong -> 503; khong ket qua (search/trang cuoi)
+        // phai tra JSON rong de app hien "Khong tim thay".
+        if (cache.Value.playlists == null || cache.Value.playlists.Count == 0)
+            return EmptyPlaylistResult(await menuTask);
+
         return PlaylistResult(
             cache.Value.playlists,
             cache.ISingleCache,
@@ -60,9 +68,28 @@ public class MankoController : BaseSisiController
         );
     }
 
-    async Task<List<MenuItem>> MenuAsync(string search)
+    static readonly System.Text.Json.JsonSerializerOptions menuJsonOptions =
+        new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web);
+
+    ActionResult EmptyPlaylistResult(IReadOnlyList<MenuItem> menu, int total_pages = 1)
     {
-        var menu = MankoTo.MenuHead(host, search);
+        Response.Headers.CacheControl = "no-cache";
+
+        string body = "{\"count\":0,\"total_pages\":" + total_pages
+            + ",\"menu\":" + System.Text.Json.JsonSerializer.Serialize(menu ?? new List<MenuItem>(), menuJsonOptions)
+            + ",\"list\":[]}";
+
+        return Content(body, "application/json; charset=utf-8");
+    }
+
+    async Task<List<MenuItem>> MenuAsync(string search, bool related = false)
+    {
+        var menu = related
+            ? new List<MenuItem>()
+            {
+                new MenuItem(){ title = "Tìm kiếm", search_on = "search_on", playlist_url = host + "/manko" }
+            }
+            : MankoTo.MenuHead(host, search);
         var baseGroups = await MenuBaseAsync();
         if (baseGroups != null && baseGroups.Count > 0)
             menu.AddRange(baseGroups);
@@ -114,6 +141,8 @@ public class MankoController : BaseSisiController
     async Task<(JsonElement detail, List<(string label, string kind, string url)> servers)> DetailAsync(string uri)
     {
         if (string.IsNullOrWhiteSpace(uri))
+            return (default, null);
+        if (!IsSiteUri(uri))
             return (default, null);
         string apiUrl = uri.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? uri : MankoTo.ApiHost + "/swx/movie/detail/" + uri.Trim('/');
         string memKey = ipkey($"manko:detail:{apiUrl}");
@@ -483,4 +512,192 @@ public class MankoController : BaseSisiController
         }
         catch { return false; }
     }
+
+    #region popup (long-press): the loai / hang / dien vien + Video lien quan
+    // Cache RAM (JsonElement + tuple khong serialize lai duoc qua hybridCache).
+    static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTime at, List<(string kind, string value, string name)> chips, string pid, string country)> _popup = new();
+    static readonly TimeSpan PopupTtl = TimeSpan.FromHours(6);
+
+    // Chan SSRF: uri/rel chi duoc tro ve host cua site (id tran -> chap nhan).
+    static readonly string[] SiteHosts =
+    {
+        "manko.fun", "healertanker.com", "alpharomeo.shop", "robustx.shop"
+    };
+
+    static bool IsSiteUri(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri)) return false;
+        if (!uri.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return true;
+        try
+        {
+            string h = new Uri(uri).Host;
+            foreach (string allow in SiteHosts)
+                if (h.Equals(allow, StringComparison.OrdinalIgnoreCase)
+                    || h.EndsWith("." + allow, StringComparison.OrdinalIgnoreCase))
+                    return true;
+        }
+        catch { }
+        return false;
+    }
+
+    // detail + cast (swx/movie/actors/<id>) — nguon cho ca popup va "lien quan"
+    async Task<(List<(string kind, string value, string name)> chips, string pid, string country)> InfoAsync(string uri)
+    {
+        if (!IsSiteUri(uri))
+            return (null, null, null);
+
+        string apiUrl = uri.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+            ? uri : MankoTo.ApiHost + "/swx/movie/detail/" + uri.Trim('/');
+
+        if (_popup.TryGetValue(apiUrl, out var hit)
+            && DateTime.UtcNow - hit.at < PopupTtl && hit.chips != null)
+            return (hit.chips, hit.pid, hit.country);
+
+        string body = await MankoTo.GetApiAsync(apiUrl, proxy, init.httpversion);
+        var d = MankoTo.ParseDetail(body ?? "");
+        if (d == null) return (null, null, null);
+
+        var chips = new List<(string kind, string value, string name)>();
+
+        // the loai = tags cua detail
+        try
+        {
+            if (d.Value.TryGetProperty("tags", out var tags) && tags.ValueKind == JsonValueKind.Array)
+                foreach (var t in tags.EnumerateArray())
+                {
+                    string name = t.ValueKind == JsonValueKind.String ? t.GetString()?.Trim() : null;
+                    if (string.IsNullOrEmpty(name)) continue;
+                    chips.Add(("genre", name, name));
+                }
+        }
+        catch { }
+
+        // hang = country (vd "PRESTIGE,プレステージ")
+        string country = null;
+        try
+        {
+            if (d.Value.TryGetProperty("country", out var ce) && ce.ValueKind == JsonValueKind.String)
+                country = ce.GetString()?.Trim();
+        }
+        catch { }
+        if (!string.IsNullOrEmpty(country))
+        {
+            string label = country;
+            int comma = label.IndexOf(',');
+            if (comma > 0) label = label.Substring(0, comma).Trim();
+            chips.Add(("country", country, label));
+        }
+
+        // dien vien = swx/movie/actors/<id> (person_id dung cho "lien quan")
+        string pid = null;
+        try
+        {
+            string id = apiUrl.Substring(apiUrl.LastIndexOf('/') + 1).Trim();
+            string ab = await MankoTo.GetApiAsync(
+                MankoTo.ApiHost + "/swx/movie/actors/" + id + "?size=6&page=1", proxy, init.httpversion);
+            var actors = MankoTo.ParseActors(ab ?? "");
+            foreach (var a in actors)
+                chips.Add(("actor", a.personId, a.name));
+            if (actors.Count > 0) pid = actors[0].personId;
+        }
+        catch { }
+
+        _popup[apiUrl] = (DateTime.UtcNow, chips, pid, country);
+        return (chips, pid, country);
+    }
+
+    [HttpGet]
+    [Route("manko/genres")]
+    async public Task<ActionResult> Genres(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return Json(new { items = new object[0], groups = new object[0] });
+
+        var (chips, pid, _) = await InfoAsync(uri);
+        if (chips == null || chips.Count == 0)
+            return Json(new { items = new object[0], groups = new object[0] });
+
+        string pageUrl = uri.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+            ? uri : MankoTo.ApiHost + "/swx/movie/detail/" + uri.Trim('/');
+
+        var groups = new List<object>();
+        foreach (string kind in new[] { "actor", "genre", "country" })
+        {
+            var items = chips.Where(x => x.kind == kind).Select(x => new
+            {
+                title = x.name,
+                url = kind == "actor"
+                    ? $"{host}/manko?c={HttpUtility.UrlEncode("type/person_id/" + x.value)}"
+                    : $"{host}/manko?c={HttpUtility.UrlEncode(kind + "/" + x.value)}"
+            }).ToList();
+
+            if (items.Count == 0) continue;
+
+            string title = kind == "actor" ? "Diễn viên" : kind == "genre" ? "Thể loại" : "Hãng";
+            // dien vien tra thang ra list (khong phai submenu) nen dem vao title cho ro
+            groups.Add(new { title = title, items });
+        }
+
+        if (!string.IsNullOrEmpty(pid))
+        {
+            groups.Add(new
+            {
+                title = "Liên quan",
+                items = new[]
+                {
+                    new
+                    {
+                        title = "Video liên quan",
+                        plain = true,
+                        url = $"{host}/manko?rel={HttpUtility.UrlEncode(pageUrl)}"
+                    }
+                }
+            });
+        }
+
+        return Json(new { items = new object[0], groups });
+    }
+
+    // "Lien quan" giong web: cung dien vien (person_id) truoc, khong co thi cung hang
+    async Task<ActionResult> RelatedList(string rel, int pg)
+    {
+        if (pg > 1)
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        var menuTask = MenuAsync(null, related: true);
+
+        var cache = await InvokeCacheResult<(List<PlaylistItem> playlists, int total_pages)>(
+            ipkey($"manko:rel:{rel}"), 180, async e =>
+        {
+            var (_, pid, country) = await InfoAsync(rel);
+
+            string apiUrl = null;
+            if (!string.IsNullOrEmpty(pid))
+                apiUrl = MankoTo.ApiHost + "/swx/movie/search?person_id=" + System.Uri.EscapeDataString(pid)
+                    + "&page=1&size=13&can18=true";
+            else if (!string.IsNullOrEmpty(country))
+                apiUrl = MankoTo.ApiHost + "/swx/movie/search?country=" + System.Uri.EscapeDataString(country)
+                    + "&page=1&size=13&can18=true";
+            else
+                return e.Success((new List<PlaylistItem>(), 1));
+
+            string body = await MankoTo.GetApiAsync(apiUrl, proxy, init.httpversion);
+            var (items, _) = MankoTo.ParseList(body ?? "");
+            var playlists = MankoTo.Playlist("manko/vidosik", items);
+            if (playlists == null || playlists.Count == 0)
+                return e.Success((new List<PlaylistItem>(), 1));
+
+            return e.Success((playlists, 1));
+        });
+
+        if (!cache.IsSuccess)
+            return OnError(cache.ErrorMsg);
+
+        if (cache.Value.playlists == null || cache.Value.playlists.Count == 0)
+            return EmptyPlaylistResult(await menuTask);
+
+        return PlaylistResult(cache.Value.playlists, cache.ISingleCache,
+            await menuTask, total_pages: 1);
+    }
+    #endregion
 }
