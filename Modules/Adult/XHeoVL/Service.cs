@@ -158,6 +158,79 @@ public static class XHeoVLTo
         };
     }
 
+    // ========== Info popup (long-press) ==========
+    // Trang detail SSR co <div class="vb-detail-meta"> chua pill:
+    //   <a class="vb-tag-pill" href="/the-loai/<slug>">Doggy</a>
+    //   <a class="vb-tag-pill vb-tag-pill-alt" href="/tag/<slug>">#tag</a>
+    public static List<(string kind, string slug, string name)> Chips(string html)
+    {
+        var res = new List<(string, string, string)>();
+        if (string.IsNullOrEmpty(html)) return res;
+
+        int start = html.IndexOf("vb-detail-meta", StringComparison.OrdinalIgnoreCase);
+        if (start < 0) return res;
+        string block = html.Substring(start, Math.Min(9000, html.Length - start));
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (Match a in Regex.Matches(block,
+            @"href=""/(the-loai|tag)/([^""#?]+)""[^>]*>([^<]*)</a>",
+            RegexOptions.IgnoreCase))
+        {
+            string kind = a.Groups[1].Value.ToLowerInvariant();
+            string slug = a.Groups[2].Value.Trim();
+            if (string.IsNullOrEmpty(slug) || !seen.Add(kind + "/" + slug))
+                continue;
+
+            string name = HttpUtility.HtmlDecode(a.Groups[3].Value).Trim().TrimStart('#').Trim();
+            if (string.IsNullOrEmpty(name))
+                name = slug;
+
+            res.Add((kind, slug, name));
+        }
+        return res;
+    }
+
+    // Khoi "Phim liên quan": .vb-related > .vb-shelf > .vb-shelf-grid > a.vb-mini
+    // (title trong h3.vb-mini__title — khac class voi card trang list).
+    public static List<PlaylistItem> PlaylistRelated(string route, string html)
+    {
+        var list = new List<PlaylistItem>();
+        if (string.IsNullOrEmpty(html)) return list;
+
+        int i = html.IndexOf("Phim liên quan", StringComparison.OrdinalIgnoreCase);
+        if (i < 0) return list;
+        int end = html.IndexOf("vb-shelf-title", i + 10, StringComparison.OrdinalIgnoreCase);
+        string block = end > i ? html[i..end] : html[i..];
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (Match m in Regex.Matches(block,
+            @"<a[^>]*class=""vb-mini""[^>]*href=""(/video/[^""#?]+)""[\s\S]*?</a>",
+            RegexOptions.IgnoreCase))
+        {
+            string href = m.Groups[1].Value.Trim();
+            string videoUrl = SiteHost + href;
+            if (!seen.Add(videoUrl)) continue;
+
+            var t = Regex.Match(m.Value, @"class=""vb-mini__title""[^>]*>([^<]+)");
+            if (!t.Success) continue;
+
+            var im = Regex.Match(m.Value, @"<img[^>]*src=""([^""]+)""");
+            string poster = im.Success ? im.Groups[1].Value : null;
+            if (!string.IsNullOrEmpty(poster) && poster.StartsWith("/"))
+                poster = SiteHost + poster;
+
+            list.Add(new PlaylistItem()
+            {
+                video = route + "?uri=" + HttpUtility.UrlEncode(videoUrl),
+                name = HttpUtility.HtmlDecode(t.Groups[1].Value.Trim()),
+                picture = poster,
+                json = true,
+                bookmark = new Bookmark() { site = "xheovl", href = videoUrl, image = poster }
+            });
+        }
+        return list;
+    }
+
     public static List<MenuItem> Menu(string host)
     {
         host = host.TrimEnd('/');
@@ -176,7 +249,8 @@ public static class XHeoVLTo
         else if (!value.StartsWith("http", StringComparison.OrdinalIgnoreCase))
             value = SiteHost + "/" + value.TrimStart('/');
         if (!Uri.TryCreate(value, UriKind.Absolute, out var parsed)) return null;
-        if (!parsed.Host.EndsWith("xheovl.site", StringComparison.OrdinalIgnoreCase)) return null;
+        if (!parsed.Host.EndsWith("xheovl.site", StringComparison.OrdinalIgnoreCase) &&
+            !parsed.Host.EndsWith("xheovl.lat", StringComparison.OrdinalIgnoreCase)) return null;
         return value;
     }
 
