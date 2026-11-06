@@ -123,6 +123,89 @@ public static class DuJavTo
         return list;
     }
 
+    // ========== Info popup (long-press) ==========
+    // Khoi "Thông tin" cua trang detail co 3 loai pill link:
+    //   Hãng     -> /vi/by/<slug>      (nha san xuat / series)
+    //   Diễn viên-> /vi/stars/<slug>
+    //   Thể loại -> /vi/topics/<slug>
+    // Nhan dien kind bang chinh path (khong phu thuoc chu co dau).
+    public static List<(string kind, string slug, string name)> Chips(string html)
+    {
+        var res = new List<(string, string, string)>();
+        if (string.IsNullOrEmpty(html))
+            return res;
+
+        int start = html.IndexOf("details-heading", StringComparison.OrdinalIgnoreCase);
+        if (start < 0)
+            return res;
+        int end = html.IndexOf("related-videos-heading", start, StringComparison.OrdinalIgnoreCase);
+        if (end < 0)
+            end = Math.Min(html.Length, start + 15000);
+        string block = html.Substring(start, end - start);
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (Match a in Regex.Matches(block,
+            @"href=""/vi/(by|stars|topics)/([^""#?]+)""[^>]*>([\s\S]*?)</a>",
+            RegexOptions.IgnoreCase))
+        {
+            string kind = a.Groups[1].Value.ToLowerInvariant();
+            string slug = a.Groups[2].Value.Trim();
+            if (string.IsNullOrEmpty(slug) || !seen.Add(kind + "/" + slug))
+                continue;
+
+            // Dien vien: anchor co avatar <span>L</span> roi moi toi ten -> lay span CUOI.
+            string inner = a.Groups[3].Value;
+            var spans = Regex.Matches(inner, @"<span[^>]*>([^<]+)</span>");
+            string name = spans.Count > 0
+                ? Clean(HttpUtility.HtmlDecode(spans[^1].Groups[1].Value))
+                : Clean(HttpUtility.HtmlDecode(Regex.Replace(inner, "<[^>]+>", " ")));
+            if (string.IsNullOrEmpty(name))
+                name = slug;
+
+            res.Add((kind, slug, name));
+        }
+        return res;
+    }
+
+    static string Clean(string s)
+    {
+        if (string.IsNullOrEmpty(s)) return "";
+        return s.Replace('\uFEFF', ' ').Replace('\u200B', ' ').Trim();
+    }
+
+    // Khoi "Video liên quan" cua trang detail: cung markup card nhu trang list
+    // (data-video-id + href="/vi/...").
+    public static List<PlaylistItem> PlaylistRelated(string route, string html)
+    {
+        if (string.IsNullOrEmpty(html))
+            return new List<PlaylistItem>();
+        int i = html.IndexOf("related-videos-heading", StringComparison.OrdinalIgnoreCase);
+        if (i < 0)
+            return new List<PlaylistItem>();
+        string block = html.Substring(i, Math.Min(80000, html.Length - i));
+        return Playlist(route, block);
+    }
+
+    // Chi nhan URL thuoc dujav.com (chong SSRF tu tham so uri/rel).
+    public static string NormalizePageUrl(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+        value = HttpUtility.HtmlDecode(value.Trim());
+        int frag = value.IndexOf('#');
+        if (frag >= 0) value = value[..frag];
+        if (value.StartsWith("//")) value = "https:" + value;
+        else if (value.StartsWith("/")) value = SiteHost + value;
+        else if (!value.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            value = SiteHost + "/" + value.Trim('/');
+        if (!System.Uri.TryCreate(value, UriKind.Absolute, out var parsed))
+            return null;
+        if (!parsed.Host.Equals("dujav.com", StringComparison.OrdinalIgnoreCase) &&
+            !parsed.Host.EndsWith(".dujav.com", StringComparison.OrdinalIgnoreCase))
+            return null;
+        return value;
+    }
+
     // Taxonomy tu JSON-LD BreadcrumbList (vi du trang /vi/topics, /vi/stars):
     //   {"@type":"ListItem","position":1,"name":"hd","url":".../vi/topics/hd"}
     // Parse THEO BLOCK (thu tu field name/url khong on dinh) roi trich rieng.

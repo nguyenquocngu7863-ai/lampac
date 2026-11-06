@@ -21,10 +21,14 @@ public class DuJavController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("dujav")]
-    async public Task<ActionResult> Index(string search, string c, int pg = 1, string sort = null)
+    async public Task<ActionResult> Index(string search, string c, int pg = 1, string sort = null, string rel = null)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
+
+        // danh sach "Video lien quan" (popup long-press)
+        if (!string.IsNullOrWhiteSpace(rel))
+            return await RelatedList(rel, pg);
 
         if (pg < 1)
             pg = 1;
@@ -152,6 +156,114 @@ public class DuJavController : BaseSisiController
             return null;
         }
     }
+
+    #region info (popup long-press)
+    ActionResult EmptyInfo() => Content("{\"items\":[],\"groups\":[]}", "application/json");
+
+    [HttpGet]
+    [Route("dujav/genres")]
+    async public Task<ActionResult> Genres(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return EmptyInfo();
+
+        string pageUrl = DuJavTo.NormalizePageUrl(uri);
+        if (pageUrl == null)
+            return EmptyInfo();
+
+        string key = ipkey($"dujav:info:{pageUrl}");
+        if (hybridCache.TryGetValue(key, out string hit) && !string.IsNullOrEmpty(hit))
+            return Content(hit, "application/json");
+
+        string html = await GetPageAsync(pageUrl);
+        var chips = DuJavTo.Chips(html ?? "");
+        string json = InfoJson(chips, uri);
+        if (chips.Count > 0)
+            hybridCache.Set(key, json, cacheTime(360));
+        WarmRelated(pageUrl);
+        return Content(json, "application/json");
+    }
+
+    string InfoJson(List<(string kind, string slug, string name)> chips, string uri)
+    {
+        var groups = new List<object>();
+
+        void Add(string title, string kind)
+        {
+            var items = chips.Where(x => x.kind == kind).Select(x => new
+            {
+                title = x.name,
+                url = $"{host}/dujav?c=" + HttpUtility.UrlEncode(kind + "/" + x.slug)
+            }).ToList();
+            if (items.Count == 0) return;
+            groups.Add(new { title, items });
+        }
+
+        Add("Diễn viên", "stars");
+        Add("Hãng", "by");
+        Add("Thể loại", "topics");
+
+        groups.Add(new
+        {
+            title = "Liên quan",
+            items = new[]
+            {
+                new
+                {
+                    title = "Video liên quan",
+                    plain = true,
+                    url = $"{host}/dujav?rel=" + HttpUtility.UrlEncode(uri)
+                }
+            }
+        });
+
+        return System.Text.Json.JsonSerializer.Serialize(new { items = new object[0], groups });
+    }
+
+    async Task<ActionResult> RelatedList(string rel, int pg)
+    {
+        if (pg > 1)
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        string pageUrl = DuJavTo.NormalizePageUrl(rel);
+        if (pageUrl == null)
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        var playlists = await GetRelatedAsync(pageUrl);
+
+        return PlaylistResult(playlists, false,
+            DuJavTo.MenuHead(host, null, null, null), total_pages: 1);
+    }
+
+    async Task<List<PlaylistItem>> GetRelatedAsync(string pageUrl)
+    {
+        string key = ipkey($"dujav:rel:{pageUrl}");
+        if (hybridCache.TryGetValue(key, out string raw) && !string.IsNullOrEmpty(raw))
+        {
+            try
+            {
+                var hit = System.Text.Json.JsonSerializer.Deserialize<List<PlaylistItem>>(raw);
+                if (hit != null) return hit;
+            }
+            catch { }
+        }
+
+        var list = DuJavTo.PlaylistRelated("dujav/vidosik", await GetPageAsync(pageUrl) ?? "");
+        if (list.Count > 0)
+            hybridCache.Set(key, System.Text.Json.JsonSerializer.Serialize(list), cacheTime(180));
+        return list;
+    }
+
+    // warm nen khi popup mo: bam "Video lien quan" la cache hit
+    void WarmRelated(string pageUrl)
+    {
+        _ = Task.Run(async () =>
+        {
+            try { await GetRelatedAsync(pageUrl); }
+            catch { }
+        });
+    }
+    #endregion
 
     [HttpGet, Staticache(manually: true)]
     [Route("dujav/vidosik")]
