@@ -56,6 +56,9 @@ public class EpornerController : BaseSisiController
 
         pg += 1;
 
+        // clamp TRƯỚC cache key: sort lạ/không hợp context -> "" (mặc định)
+        sort = EpornerTo.ClampSort(sort, search, c, t);
+
         SemaphorManager semaphore = null;
         string semaphoreKey = $"epr:{search}:{sort}:{c}:{t}:{pg}";
 
@@ -134,7 +137,7 @@ public class EpornerController : BaseSisiController
         return PlaylistResult(
             playlists,
             entryCache.singleCache,
-            EpornerTo.Menu(host, search, sort, c)
+            EpornerTo.Menu(host, search, sort, c, t)
         );
     }
 
@@ -267,7 +270,7 @@ public class EpornerController : BaseSisiController
             return Json(new { count = 0, total_pages = 1, list = new List<PlaylistItem>() });
 
         return PlaylistResult(cache.Value, cache.ISingleCache,
-            EpornerTo.Menu(host, null, null, null), total_pages: 1);
+            EpornerTo.Menu(host, null, null, null, allowSort: false), total_pages: 1);
     }
     #endregion
 

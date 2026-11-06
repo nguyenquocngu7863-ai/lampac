@@ -74,7 +74,7 @@ Skill tham chiếu: `lampac-popup` (hợp đồng route, luật UX, anti-pattern
 ## Phase 2 — Tube phương Tây (chip = thể loại / pornstar / channel / tag)
 
 - [ ] `Ebalovo` — https://www.ebalovo.pro
-- [x] `Eporner` — https://www.eporner.com *(popup: thể loại `?c=` + thẻ `?t=` (trang `/tag/`) + video liên quan `?rel=`; detail page không có pornstar/channel)*
+- [x] `Eporner` — https://www.eporner.com *(popup: thể loại `?c=` + thẻ `?t=` (trang `/tag/`) + video liên quan `?rel=`; detail page không có pornstar/channel. Sort: home 4, cat `SORT-*` 4, tag 5 — `shortest`(cat)/`top-monthly`(cat+tag)/search = no-op nên bỏ; bằng chứng ở skill lampac-sort cases.md)*
 - [ ] `HQporner` — https://m.hqporner.com
 - [ ] `PornHub` — https://rt.pornhub.com
 - [ ] `Porntrex` — https://www.porntrex.com

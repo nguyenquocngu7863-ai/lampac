@@ -20,6 +20,86 @@ namespace Eporner;
 
 public static class EpornerTo
 {
+    #region Sort
+    // ĐÃ ĐO 2026-11-06 (xem todo/skill lampac-sort cases.md):
+    //  home   : /most-viewed/ /top-rated/ /longest/ /shortest/ — đổi thứ tự, h1 đổi theo sort
+    //  cat    : /cat/<c>/SORT-<sort>/<pg>/ — có top-weekly, most-viewed, top-rated, longest.
+    //           SORT-shortest và SORT-top-monthly bị site bỏ qua (h1 không đổi) → KHÔNG đưa vào menu.
+    //  tag    : /tag/<t>/<pg>/<sort>/ — có top-weekly, most-viewed, top-rated, longest, shortest.
+    //           top-monthly no-op (h1 giữ nguyên) → không đưa vào menu.
+    //  search : /search/<q>/ KHÔNG sort được ("threesome ni jacky": 20 kết quả → most-viewed còn 1)
+    //           ⇒ context search không có dòng "Sắp xếp".
+    //  rel    : block tĩnh của trang detail ⇒ không sort.
+    static readonly (string id, string name)[] SortsHome =
+    {
+        ("",            "Mới nhất"),
+        ("most-viewed", "Xem nhiều nhất"),
+        ("top-rated",   "Đánh giá cao"),
+        ("longest",     "Video dài"),
+        ("shortest",    "Video ngắn")
+    };
+
+    static readonly (string id, string name)[] SortsCat =
+    {
+        ("",            "Mới nhất"),
+        ("top-weekly",  "Top tuần"),
+        ("most-viewed", "Xem nhiều nhất"),
+        ("top-rated",   "Đánh giá cao"),
+        ("longest",     "Video dài")
+    };
+
+    static readonly (string id, string name)[] SortsTag =
+    {
+        ("",            "Mới nhất"),
+        ("top-weekly",  "Top tuần"),
+        ("most-viewed", "Xem nhiều nhất"),
+        ("top-rated",   "Đánh giá cao"),
+        ("longest",     "Video dài"),
+        ("shortest",    "Video ngắn")
+    };
+
+    // null = context này không sort được (đừng dựng dòng 2)
+    public static (string id, string name)[] SortsFor(string search, string c, string t)
+    {
+        if (!string.IsNullOrWhiteSpace(search))
+            return null;
+
+        if (!string.IsNullOrWhiteSpace(c))
+            return SortsCat;
+
+        if (!string.IsNullOrWhiteSpace(t))
+            return SortsTag;
+
+        return SortsHome;
+    }
+
+    public static string ClampSort(string sort, string search, string c, string t)
+    {
+        var ok = SortsFor(search, c, t);
+        if (ok == null)
+            return "";
+
+        if (!string.IsNullOrWhiteSpace(sort))
+        {
+            sort = sort.Trim().ToLowerInvariant();
+            foreach (var s in ok)
+                if (s.id == sort)
+                    return sort;
+        }
+
+        return "";
+    }
+
+    public static string SortLabel(string sort)
+    {
+        foreach (var s in SortsHome)
+            if (s.id == (sort ?? ""))
+                return s.name;
+
+        return "Mới nhất";
+    }
+    #endregion
+
     #region Uri
     public static string Uri(string host, string search, string sort, string c, int pg, string t = null)
     {
@@ -30,8 +110,40 @@ public static class EpornerTo
 
         if (!string.IsNullOrWhiteSpace(search))
         {
+            // search: site bỏ qua sort, chỉ còn trang
             url.Append("search/");
             url.Append(HttpUtility.UrlEncode(search));
+            url.Append("/");
+
+            if (pg > 1)
+            {
+                url.Append(pg);
+                url.Append("/");
+            }
+        }
+        else if (!string.IsNullOrEmpty(c))
+        {
+            url.Append("cat/");
+            url.Append(c);
+            url.Append("/");
+
+            if (!string.IsNullOrEmpty(sort))
+            {
+                url.Append("SORT-");
+                url.Append(sort);
+                url.Append("/");
+            }
+
+            if (pg > 1)
+            {
+                url.Append(pg);
+                url.Append("/");
+            }
+        }
+        else if (!string.IsNullOrEmpty(t))
+        {
+            url.Append("tag/");
+            url.Append(t);
             url.Append("/");
 
             if (pg > 1)
@@ -48,43 +160,16 @@ public static class EpornerTo
         }
         else
         {
-            if (!string.IsNullOrEmpty(c))
+            if (pg > 1)
             {
-                url.Append("cat/");
-                url.Append(c);
+                url.Append(pg);
                 url.Append("/");
-
-                if (pg > 1)
-                {
-                    url.Append(pg);
-                    url.Append("/");
-                }
             }
-            else if (!string.IsNullOrEmpty(t))
+
+            if (!string.IsNullOrEmpty(sort))
             {
-                url.Append("tag/");
-                url.Append(t);
+                url.Append(sort);
                 url.Append("/");
-
-                if (pg > 1)
-                {
-                    url.Append(pg);
-                    url.Append("/");
-                }
-            }
-            else
-            {
-                if (pg > 1)
-                {
-                    url.Append(pg);
-                    url.Append("/");
-                }
-
-                if (!string.IsNullOrEmpty(sort))
-                {
-                    url.Append(sort);
-                    url.Append("/");
-                }
             }
         }
 
@@ -200,48 +285,12 @@ public static class EpornerTo
     #endregion
 
     #region Menu
-    public static List<MenuItem> Menu(string host, string search, string sort, string c)
+    public static List<MenuItem> Menu(string host, string search, string sort, string c, string t = null, bool allowSort = true)
     {
         host = string.IsNullOrWhiteSpace(host) ? string.Empty : $"{host}/";
         string url = host + "epr";
 
-        #region search menu
-        if (!string.IsNullOrEmpty(search))
-        {
-            string encodesearch = HttpUtility.UrlEncode(search);
-
-            return new List<MenuItem>(2)
-            {
-                new MenuItem()
-                {
-                    title = "Tìm kiếm",
-                    search_on = "search_on",
-                    playlist_url = url,
-                },
-                new MenuItem()
-                {
-                    title = $"Sắp xếp: {(string.IsNullOrWhiteSpace(sort) ? "mới nhất" : sort)}",
-                    playlist_url = "submenu",
-                    submenu = new List<MenuItem>(5)
-                    {
-                        new("Mới nhất", $"{url}?search={encodesearch}"),
-                        new("Xem nhiều nhất", $"{url}?sort=most-viewed&search={encodesearch}"),
-                        new("Đánh giá cao", $"{url}?sort=top-rated&search={encodesearch}"),
-                        new("Video dài", $"{url}?sort=longest&search={encodesearch}"),
-                        new("Video ngắn", $"{url}?sort=shortest&search={encodesearch}")
-                    }
-                }
-            };
-        }
-        #endregion
-
-        var memoryCache = HybridCache.GetMemory();
-        string menuKey = $"Eporner_menu_{host}_{sort}_{c}";
-
-        if (memoryCache.TryGetValue(menuKey, out List<MenuItem> menu))
-            return menu;
-
-        menu = new List<MenuItem>(3)
+        var menu = new List<MenuItem>(3)
         {
             new MenuItem()
             {
@@ -251,24 +300,67 @@ public static class EpornerTo
             }
         };
 
-        if (string.IsNullOrEmpty(c))
+        // dòng 2: chỉ dựng khi context này sort được (search/rel = không)
+        var sorts = allowSort ? SortsFor(search, c, t) : null;
+
+        if (sorts != null)
         {
+            string link(string s)
+            {
+                string q;
+
+                if (!string.IsNullOrWhiteSpace(search))
+                    q = "search=" + HttpUtility.UrlEncode(search);
+                else if (!string.IsNullOrWhiteSpace(c))
+                    q = "c=" + HttpUtility.UrlEncode(c);
+                else if (!string.IsNullOrWhiteSpace(t))
+                    q = "t=" + HttpUtility.UrlEncode(t);
+                else
+                    q = "";
+
+                return q.Length == 0 ? $"{url}?sort={s}" : $"{url}?{q}&sort={s}";
+            }
+
             menu.Add(new MenuItem()
             {
-                title = $"Sắp xếp: {(string.IsNullOrWhiteSpace(sort) ? "mới nhất" : sort)}",
+                title = $"Sắp xếp: {SortLabel(sort)}",
                 playlist_url = "submenu",
-                submenu = new List<MenuItem>(5)
-                {
-                    new("Mới nhất", url),
-                    new("Xem nhiều nhất", $"{url}?sort=most-viewed"),
-                    new("Đánh giá cao", $"{url}?sort=top-rated"),
-                    new("Video dài", $"{url}?sort=longest"),
-                    new("Video ngắn", $"{url}?sort=shortest")
-                }
+                submenu = System.Linq.Enumerable.ToList(
+                    System.Linq.Enumerable.Select(sorts, s => new MenuItem(s.name, link(s.id))))
             });
         }
 
-        var catmenu = new List<MenuItem>(70)
+        #region danh mục (tĩnh, cache 1 lần)
+        var memoryCache = HybridCache.GetMemory();
+        string menuKey = $"Eporner_cats_{host}";
+
+        if (!memoryCache.TryGetValue(menuKey, out List<MenuItem> catmenu))
+        {
+            catmenu = BuildCats(url);
+
+            if (CoreInit.conf.lowMemoryMode == false)
+                memoryCache.Set(menuKey, catmenu, TimeSpan.FromDays(1));
+        }
+        #endregion
+
+        string catTitle = "tất cả";
+
+        if (!string.IsNullOrEmpty(c))
+            catTitle = catmenu.FirstOrDefault(i => i.playlist_url.EndsWith($"c={c}"))?.title ?? c;
+
+        menu.Add(new MenuItem()
+        {
+            title = string.IsNullOrEmpty(t) ? $"Danh mục: {catTitle}" : $"Thẻ: {t}",
+            playlist_url = "submenu",
+            submenu = catmenu
+        });
+
+        return menu;
+    }
+
+    static List<MenuItem> BuildCats(string url)
+    {
+        return new List<MenuItem>(70)
         {
             new("Tất cả", url),
             new("4K UHD", $"{url}?c=4k-porn"),
@@ -340,18 +432,6 @@ public static class EpornerTo
             new("Vintage", $"{url}?c=vintage"),
             new("Webcam", $"{url}?c=webcam")
         };
-
-        menu.Add(new MenuItem()
-        {
-            title = $"Danh mục: {catmenu.FirstOrDefault(i => i.playlist_url.EndsWith($"c={c}"))?.title ?? "tất cả"}",
-            playlist_url = "submenu",
-            submenu = catmenu
-        });
-
-        if (CoreInit.conf.lowMemoryMode == false)
-            memoryCache.Set(menuKey, menu, TimeSpan.FromDays(1));
-
-        return menu;
     }
     #endregion
 
