@@ -7,7 +7,7 @@ namespace VietSexBlog;
 
 public static class VietSexBlogTo
 {
-    public static string SiteHost = "https://x.vietsex.blog";
+    public static string SiteHost = "https://vietsexhd.blog";
 
     // Phai trung UA ma proxy cua Lampac ghi de (Http.UserAgent) — URL
     // googlevideo tra ve bi rang buoc voi UA luc mo trang embed.
@@ -94,7 +94,7 @@ public static class VietSexBlogTo
         {
             string b = block.Value;
 
-            var hm = Regex.Match(b, "href=\"(https://x\\.vietsex\\.blog/phim/[a-z0-9-]+)\"");
+            var hm = Regex.Match(b, "href=\"(https?://[^\"]+/phim/[A-Za-z0-9._%-]+)\"");
             var tm = Regex.Match(b, "title=\"([^\"]+)\"");
             if (!hm.Success || !tm.Success) continue;
 
@@ -131,6 +131,96 @@ public static class VietSexBlogTo
         }
 
         return playlists;
+    }
+
+    // ========== Info popup (long-press) ==========
+    // Trang detail co 3 dong #extras: "Diễn viên" (thuong rong — site khong
+    // co taxonomy dien vien), "Thể loại" (/the-loai/), "Từ khóa" (/tu-khoa/).
+    public static List<(string kind, string slug, string name)> Chips(string html)
+    {
+        var res = new List<(string, string, string)>();
+        if (string.IsNullOrEmpty(html))
+            return res;
+
+        int start = html.IndexOf("id=\"extras\"", StringComparison.OrdinalIgnoreCase);
+        if (start < 0)
+            return res;
+
+        int end = html.IndexOf("header-list-index", start, StringComparison.OrdinalIgnoreCase);
+        if (end < 0)
+            end = Math.Min(html.Length, start + 6000);
+        string block = html[start..end];
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (Match a in Regex.Matches(block,
+            @"href=""[^""]*/(the-loai|tu-khoa)/([^""#?]+)""[^>]*>([\s\S]*?)</a>",
+            RegexOptions.IgnoreCase))
+        {
+            string kind = a.Groups[1].Value.ToLowerInvariant();
+            string slug = kind + "/" + a.Groups[2].Value.Trim();
+            if (slug.Length <= kind.Length + 1 || !seen.Add(slug))
+                continue;
+
+            string name = CleanTag(a.Value);
+            if (string.IsNullOrEmpty(name))
+            {
+                var tit = Regex.Match(a.Value, @"title=""([^""]+)""", RegexOptions.IgnoreCase);
+                if (tit.Success)
+                    name = HttpUtility.HtmlDecode(tit.Groups[1].Value).Trim();
+            }
+            if (string.IsNullOrEmpty(name))
+                name = a.Groups[2].Value;
+
+            res.Add((kind, a.Groups[2].Value.Trim(), name));
+        }
+        return res;
+    }
+
+    static string CleanTag(string tag)
+    {
+        if (string.IsNullOrEmpty(tag)) return "";
+        var m = Regex.Match(tag, @">([^<]*)</a>\s*$");
+        if (!m.Success) return "";
+        // Client tach subtitle bang ':' -> ten co dau ':' se bi cat.
+        return HttpUtility.HtmlDecode(m.Groups[1].Value).Trim().Replace(':', '-');
+    }
+
+    // Khoi "Có thể bạn thích?" (10 card m-block movie-item) o cuoi trang detail.
+    public static List<Shared.Models.SISI.Base.PlaylistItem> PlaylistRelated(
+        string route, string html)
+    {
+        if (string.IsNullOrEmpty(html))
+            return new List<Shared.Models.SISI.Base.PlaylistItem>();
+
+        int i = html.IndexOf("Có thể bạn thích?", StringComparison.OrdinalIgnoreCase);
+        if (i < 0)
+            i = html.IndexOf("header-list-index", StringComparison.OrdinalIgnoreCase);
+        if (i < 0)
+            return new List<Shared.Models.SISI.Base.PlaylistItem>();
+
+        return Playlist(route, html[i..]);
+    }
+
+    // Chi nhan URL thuoc vietsexhd.blog / x.vietsex.blog (chong SSRF).
+    // Site doi domain lieu tuc (x.vietsex.blog -> vietsexhd.blog 2026-11-06).
+    public static string NormalizePageUrl(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+        value = HttpUtility.HtmlDecode(value.Trim());
+        int frag = value.IndexOf('#');
+        if (frag >= 0) value = value[..frag];
+        if (value.StartsWith("//")) value = "https:" + value;
+        else if (value.StartsWith("/")) value = SiteHost + value;
+        else if (!value.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            value = SiteHost + "/" + value.Trim('/');
+        if (!System.Uri.TryCreate(value, UriKind.Absolute, out var parsed))
+            return null;
+        if (parsed.Host.Equals("vietsexhd.blog", StringComparison.OrdinalIgnoreCase)
+            || parsed.Host.Equals("x.vietsex.blog", StringComparison.OrdinalIgnoreCase)
+            || parsed.Host.EndsWith(".vietsex.blog", StringComparison.OrdinalIgnoreCase))
+            return value;
+        return null;
     }
 
     public static Dictionary<string, string> StreamLinks(string html)

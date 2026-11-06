@@ -20,10 +20,14 @@ public class VietSexBlogController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("vietsexblog")]
-    async public Task<ActionResult> Index(string search, string sort, string c, string t, int pg = 1)
+    async public Task<ActionResult> Index(string search, string sort, string c, string t, int pg = 1, string rel = null)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
+
+        // danh sach "Video lien quan" (popup long-press)
+        if (!string.IsNullOrWhiteSpace(rel))
+            return await RelatedList(rel, pg);
 
     rhubFallback:
         var cache = await InvokeCacheResult(ipkey($"vietsexblog:{search}:{sort}:{c}:{t}:{pg}"), 10, jsonContext.ListPlaylistItem, async e =>
@@ -49,6 +53,127 @@ public class VietSexBlogController : BaseSisiController
 
         return PlaylistResult(cache, VietSexBlogTo.Menu(host));
     }
+
+    #region info (popup long-press)
+    ActionResult EmptyInfo() => Content("{\"items\":[],\"groups\":[]}", "application/json");
+
+    [HttpGet]
+    [Route("vietsexblog/genres")]
+    async public Task<ActionResult> Genres(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return EmptyInfo();
+
+        string pageUrl = VietSexBlogTo.NormalizePageUrl(uri);
+        if (pageUrl == null)
+            return EmptyInfo();
+
+        string key = ipkey($"vietsexblog:info:{pageUrl}");
+        if (hybridCache.TryGetValue(key, out string hit) && !string.IsNullOrEmpty(hit))
+            return Content(hit, "application/json");
+
+        string html = await GetPageAsync(pageUrl);
+        var chips = VietSexBlogTo.Chips(html ?? "");
+        string json = InfoJson(chips, uri);
+        if (chips.Count > 0)
+            hybridCache.Set(key, json, cacheTime(360));
+        WarmRelated(pageUrl);
+        return Content(json, "application/json");
+    }
+
+    string InfoJson(List<(string kind, string slug, string name)> chips, string uri)
+    {
+        var groups = new List<object>();
+
+        void Add(string title, string kind)
+        {
+            var items = chips.Where(x => x.kind == kind).Select(x => new
+            {
+                title = x.name,
+                url = $"{host}/vietsexblog?c=" + HttpUtility.UrlEncode(kind + "/" + x.slug)
+            }).ToList();
+            if (items.Count == 0) return;
+            groups.Add(new { title, items });
+        }
+
+        Add("Thể loại", "the-loai");
+        Add("Từ khóa", "tu-khoa");
+
+        groups.Add(new
+        {
+            title = "Liên quan",
+            items = new[]
+            {
+                new
+                {
+                    title = "Video liên quan",
+                    plain = true,
+                    url = $"{host}/vietsexblog?rel=" + HttpUtility.UrlEncode(uri)
+                }
+            }
+        });
+
+        return System.Text.Json.JsonSerializer.Serialize(new { items = new object[0], groups });
+    }
+
+    async Task<ActionResult> RelatedList(string rel, int pg)
+    {
+        if (pg > 1)
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        string pageUrl = VietSexBlogTo.NormalizePageUrl(rel);
+        if (pageUrl == null)
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        var playlists = await GetRelatedAsync(pageUrl);
+
+        return PlaylistResult(playlists, false, VietSexBlogTo.Menu(host), total_pages: 1);
+    }
+
+    async Task<List<PlaylistItem>> GetRelatedAsync(string pageUrl)
+    {
+        string key = ipkey($"vietsexblog:rel:{pageUrl}");
+        if (hybridCache.TryGetValue(key, out string raw) && !string.IsNullOrEmpty(raw))
+        {
+            try
+            {
+                var hit = System.Text.Json.JsonSerializer.Deserialize<List<PlaylistItem>>(raw);
+                if (hit != null) return hit;
+            }
+            catch { }
+        }
+
+        var list = VietSexBlogTo.PlaylistRelated("vietsexblog/vidosik",
+            await GetPageAsync(pageUrl) ?? "");
+        if (list.Count > 0)
+            hybridCache.Set(key, System.Text.Json.JsonSerializer.Serialize(list), cacheTime(180));
+        return list;
+    }
+
+    // warm nen khi popup mo: bam "Video lien quan" la cache hit
+    void WarmRelated(string pageUrl)
+    {
+        _ = Task.Run(async () =>
+        {
+            try { await GetRelatedAsync(pageUrl); }
+            catch { }
+        });
+    }
+
+    async Task<string> GetPageAsync(string url)
+    {
+        string html = null;
+        try
+        {
+            await httpHydra.GetSpan(url, span =>
+            {
+                html = span.ToString();
+            });
+        }
+        catch { }
+        return html;
+    }
+    #endregion
 
     async Task<(Dictionary<string, string> links, bool userch)> ResolveLinksAsync(string uri)
     {

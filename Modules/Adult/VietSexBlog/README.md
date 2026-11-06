@@ -1,4 +1,4 @@
-# VietSexBlog — https://x.vietsex.blog
+# VietSexBlog — https://vietsexhd.blog
 
 Module SISI phim Việt Nam. Route `vietsexblog`, displayindex 10.
 
