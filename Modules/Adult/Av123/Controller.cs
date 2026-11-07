@@ -33,6 +33,7 @@ public class Av123Controller : BaseSisiController
     class TaxoDto
     {
         public string at { get; set; }
+        public string lang { get; set; }
         public string[][] genres { get; set; }
         public string[][] makers { get; set; }
     }
@@ -54,6 +55,8 @@ public class Av123Controller : BaseSisiController
             if (file == null || !System.IO.File.Exists(file)) return;
             var dto = System.Text.Json.JsonSerializer.Deserialize<TaxoDto>(System.IO.File.ReadAllText(file));
             if (dto == null || !DateTime.TryParse(dto.at, null, DateTimeStyles.AdjustToUniversal, out DateTime at)) return;
+            // taxo luu theo ngon ngu: doi /en -> /vi thi cache cu (ten tieng Anh) phai bi bo.
+            if (!string.Equals(dto.lang, Av123To.Lang, StringComparison.Ordinal)) return;
             if (DateTime.UtcNow - at >= TaxoTtl) return;
             lock (_taxoLock)
             {
@@ -88,6 +91,7 @@ public class Av123Controller : BaseSisiController
             var dto = new TaxoDto
             {
                 at = DateTime.UtcNow.ToString("o"),
+                lang = Av123To.Lang,
                 genres = _genres?.Select(x => new[] { x.Item1, x.Item2, x.Item3.ToString() }).ToArray(),
                 makers = _makers?.Select(x => new[] { x.Item1, x.Item2, x.Item3.ToString() }).ToArray()
             };
@@ -105,7 +109,7 @@ public class Av123Controller : BaseSisiController
         }
         try
         {
-            string html = await FetchHtmlAsync((ModInit.conf?.host ?? Av123To.SiteHost) + "/en/genres", seconds: 6, marker: "gchip");
+            string html = await FetchHtmlAsync((ModInit.conf?.host ?? Av123To.SiteHost) + Av123To.Lang + "/genres", seconds: 6, marker: "gchip");
             var list = Av123To.Taxo(html, "genres");
             if (list.Count > 0)
             {
@@ -152,7 +156,7 @@ public class Av123Controller : BaseSisiController
             for (int p = 1; p <= 40; p++)
             {
                 if (p > 1) await Task.Delay(600);
-                string html = await FetchHtmlAsync(host0 + "/en/makers?sort=count&page=" + p, seconds: 10, marker: "mcard", warm: true);
+                string html = await FetchHtmlAsync(host0 + Av123To.Lang + "/makers?sort=count&page=" + p, seconds: 10, marker: "mcard", warm: true);
                 var list = Av123To.Taxo(html, "makers");
                 if (list.Count == 0) break;
                 int added = 0;
@@ -189,7 +193,7 @@ public class Av123Controller : BaseSisiController
         bool isSearch = !string.IsNullOrWhiteSpace(search);
 
         var cache = await InvokeCacheResult<(List<PlaylistItem> playlists, int total_pages)>(
-            ipkey($"av123:v2:{search}:{c}:{sort}:{pg}"),
+            ipkey($"av123:v3:{search}:{c}:{sort}:{pg}"),
             isSearch || !string.IsNullOrWhiteSpace(c) ? 10 : 30, async e =>
         {
             string url = BuildUrl(search, c, sort, pg);
@@ -302,7 +306,7 @@ public class Av123Controller : BaseSisiController
                         string name = (c + " — " + title).Trim();
                         if (name.Length > 150) name = name.Substring(0, 147) + "...";
 
-                        string detail = "/en/v/" + c.ToLowerInvariant();
+                        string detail = Av123To.Lang + "/v/" + c.ToLowerInvariant();
                         string poster = Av123Rec.Cover(c);
 
                         items.Add(new PlaylistItem
@@ -375,9 +379,9 @@ public class Av123Controller : BaseSisiController
     string BuildUrl(string search, string c, string sort, int pg)
     {
         if (!string.IsNullOrWhiteSpace(search))
-            return init.host + "/en/search?keyword=" + Uri.EscapeDataString(search.Trim()) + "&page=" + pg;
+            return init.host + Av123To.Lang + "/search?keyword=" + Uri.EscapeDataString(search.Trim()) + "&page=" + pg;
 
-        string path = string.IsNullOrWhiteSpace(c) ? "/en/new" : c;
+        string path = string.IsNullOrWhiteSpace(c) ? Av123To.Lang + "/new" : c;
         string q = string.IsNullOrWhiteSpace(sort) ? "?page=" + pg : "?sort=" + sort + "&page=" + pg;
         return init.host + path + q;
     }
@@ -420,7 +424,7 @@ public class Av123Controller : BaseSisiController
 
         var dict = new Dictionary<string, string>
         {
-            ["Auto"] = $"{host}/av123/hls?u={HttpUtility.UrlEncode(m3u8)}&r={HttpUtility.UrlEncode(embedHost + "/")}"
+            ["Auto"] = $"{host}/av123/hls.m3u8?u={HttpUtility.UrlEncode(m3u8)}&r={HttpUtility.UrlEncode(embedHost + "/")}"
         };
         return Json(dict);
     }
@@ -487,7 +491,7 @@ public class Av123Controller : BaseSisiController
             var items = chips.Where(x => x.kind == kind).Select(x => new
             {
                 title = x.name,
-                url = $"{host}/av123?c={HttpUtility.UrlEncode("/en/" + kind + "/" + x.slug)}"
+                url = $"{host}/av123?c={HttpUtility.UrlEncode(Av123To.Lang + "/" + kind + "/" + x.slug)}"
             }).ToList();
 
             if (items.Count == 0) continue;
@@ -529,6 +533,7 @@ public class Av123Controller : BaseSisiController
 
     [HttpGet]
     [Route("av123/hls")]
+    [Route("av123/hls.m3u8")]
     async public Task<ActionResult> Hls(string u, string r)
     {
         if (await IsRequestBlocked(rch: true))
@@ -608,7 +613,7 @@ public class Av123Controller : BaseSisiController
         return new EmptyResult();
     }
 
-    string HlsUrl(string url, string r) => $"{host}/av123/hls?u={HttpUtility.UrlEncode(url)}&r={HttpUtility.UrlEncode(r)}";
+    string HlsUrl(string url, string r) => $"{host}/av123/hls.m3u8?u={HttpUtility.UrlEncode(url)}&r={HttpUtility.UrlEncode(r)}";
 
     string SegUrl(string url, string r) => $"{host}/av123/seg?u={HttpUtility.UrlEncode(url)}&r={HttpUtility.UrlEncode(r)}";
 
@@ -650,7 +655,7 @@ public class Av123Controller : BaseSisiController
             {
                 await Task.Delay(Math.Min(2500, 500 * attempt));
                 if (attempt % 2 == 0)
-                    await FetchTextAsync(Av123To.SiteHost + "/en", headers, 8, warm);
+                    await FetchTextAsync(Av123To.SiteHost + Av123To.Lang, headers, 8, warm);
             }
             attempt++;
             string html = await FetchTextAsync(url, headers, 8, warm);

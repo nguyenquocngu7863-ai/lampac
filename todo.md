@@ -95,6 +95,55 @@ Skill tham chiếu: `lampac-popup` (hợp đồng route, luật UX, anti-pattern
 
 ---
 
+## Phase 4 — Việc đang treo (2026-11-07)
+
+### 4a. Av123 → chuyển sang bản tiếng Việt `/vi` — ✅ XONG (2026-11-07)
+
+**Bối cảnh**: 123av.com có bản web tự cung cấp `/vi` (tiếng Việt). Module `Av123`
+bám `/en/` → chuyển sang `/vi` thì menu tự ra tiếng Việt, **khỏi viết bảng dịch**.
+
+- [x] Đo lại DNS: đã nhả (`123av.com` → `104.21.93.106`), fetch được, không cần chờ wifi khác
+- [x] Capture + so `/vi` với `/en`: **slug thể loại trùng 508/508**, markup card y hệt
+      (`card__cover`/`card__link`/`card__dur`), maker `/vi` dùng `mcard`. Chỉ khác prefix.
+- [x] Thêm `public const string Lang = "/vi";` (`Service.cs`) và thay **toàn bộ** đường dẫn
+      sang `Lang` (regex card/vside/chip/taxo, MenuUrl, taxonomy prefix, BuildUrl, search,
+      `/vidosik`, warm). `grep '"/en'` = 0.
+- [x] Nhãn menu **lấy nguyên văn từ web `/vi`** (không tự dịch):
+      `Ngày phát hành` / `Mới thêm gần đây` / `Nổi bật` / `Lượt xem hôm nay|tuần|tháng` /
+      `Xem nhiều nhất` / `Theo dõi nhiều nhất` / `Dài nhất`;
+      nhóm: `Mới` `Nổi bật` `Gần đây` · `Xu hướng` · `Loại` (Kiểm duyệt/Không kiểm duyệt/
+      Rò rỉ không kiểm duyệt) · `Nghiệp dư` · `Không kiểm duyệt` · `Nhà sản xuất`.
+- [x] `HasCjk()`: web `/vi` vẫn để **45 mục** tiếng Nhật (10 thể loại = tên đợt sale,
+      35 maker lẻ) → ẩn khỏi menu/popup để đúng luật "menu chỉ Việt/Anh".
+      Menu còn **962 mục**, quét CJK/Cyrillic/Thái/Hàn = **0**.
+- [x] `taxo.json` giờ lưu kèm `lang`; load thấy `lang` khác `Av123To.Lang` → bỏ
+      (đổi ngôn ngữ route là mất cache tên cũ).
+- [x] Bump cache key `av123:v2` → `av123:v3` (playlist cũ chứa đường dẫn `/en`).
+- [x] Fix phát hiện khi smoke: stream trả `{"Auto": ".../av123/hls?..."}` **thiếu đuôi
+      `.m3u8`** → app coi là file thường. Thêm `[Route("av123/hls.m3u8")]` + đổi URL trả về
+      (`Auto`, `HlsUrl`) sang `.m3u8` → `play.sh` **PHÁT ĐƯỢC** (h264 1280x720).
+- [x] Smoke 9 endpoint (home, `/vi/new` pg2, thể loại, maker, search, search pg2, sort views,
+      `/vi/uncensored`, popup + `rel`), tất cả trả `/vi` + HTTP 200; popup Hãng/Thể loại/Liên quan OK.
+
+> **Bẫy đã dính (ghi lại)**: đổi code mà `/av123` vẫn ra tiếng Anh + `/en/` → KHÔNG phải
+> `taxo.json` (cái đó chỉ ảnh hưởng tên thể loại). Thủ phạm là **cache file
+> `~/lampac-run/cache/fdb/`** (`HybridFileCache`, gzip, **sống qua restart**), key
+> `av123:v2:*`. Muốn xoá sạch: xoá file trong `cache/fdb` mà `zcat` chứa `av123/`
+> rồi restart. Vì vậy lần này bump key lên `v3`.
+
+### 4b. Menu không phải Việt/Anh (vi phạm luật mới)
+
+Luật đã ghi vào `AGENTS.md` (LUẬT CỨNG) + skill `lampac-adult-module/references/menu-sisi.md` §9g.
+
+- [ ] **XvideosRED** — 36 mục thể loại **tiếng Nga** (`Азиат`, `Анал`, `Соло`,
+      `Тинейджеры`, `Фистинг`…) cần dịch sang Việt/Anh
+- [ ] **Spankbang** — 2 mục sort tiếng Nga (`Трендовое`, `Популярное`) trộn tiếng Việt
+      (`Mới`) → dịch cho đồng nhất
+- [ ] **Po85** — nhãn song ngữ VN + chữ Trung kèm (`Tự chụp 自拍`, `Vú to 大奶`…)
+      → bỏ phần chữ Hán, giữ tiếng Việt
+
+---
+
 ## Log tiến độ
 
 | ngày | module | việc | ghi chú |
@@ -106,6 +155,12 @@ Skill tham chiếu: `lampac-popup` (hợp đồng route, luật UX, anti-pattern
 | 2026-11-06 | DuJav (tắt) | tắt tạm thời | `~/lampac-run/init.conf`: `"dujav": {"enable": false}` (backup `init.conf.bak-20261106-1223`; bật lại = xoá key) |
 | 2026-11-06 | JavQuick (mới) | module mới `javquick.com`: list/menu/popup + proxy `video.mp4` **tự giải mã AES-128-CTR đa part** | công thức F21 đã ghi vào skill `lampac-deobfuscate`; key hardcode trong `decryptor.wasm`, reset keystream mỗi 6 MB |
 | 2026-11-06 | play.py | fix false-negative với input mp4: probe bằng Range + cờ bỏ kiểm duyệt đuôi segment chỉ chèn cho HLS | commit riêng `130db33f` |
+| 2026-11-06 | AsianGirl (mới) | module mới `asiangirl.porn`: list/menu/popup (Thể loại + Liên quan) + HLS | home = `/new/` (trang chủ gốc trộn section); search phân trang bằng `from_videos=<offset>`, list bằng `from=<pg>`; card QC cùng class nên lọc theo host; `play.sh` PASS (AES-128) |
+| 2026-11-07 | **Jav18 (mới)** | module mới `18jav.tv` (`/jav18`): list/menu/popup/path-route + HLS | KVS: phân trang **AJAX** `?mode=async&function=get_block&block_id=…&from=`, sort thật `release_at`/`views`/`stars` (search thêm `""`); trailing slash bắt buộc; search chỉ dạng `/search/<q>/`; fallback 14 thể loại + 113 tag; `play.sh` **PASS** (h264 720p, không AES). Bug đã sửa: `Uri()` trả path tương đối; race 2 đường gây rate-limit; 404 slug bịa → 503 (nay trả `count:0`); popup parse nhầm tag cloud toàn site (113 tag) → giới hạn vùng meta |
+| 2026-11-07 | Jav18 | **dịch menu thể loại/từ khoá Trung → Việt** | bảng `Trans` (125 từ) + `Jav18To.Translate()`, áp cho menu **và** popup `/genres`; tên diễn viên Latin giữ nguyên |
+| 2026-11-07 | AGENTS.md + skill | **LUẬT MỚI: menu phải Việt hoặc Anh** | ghi vào `AGENTS.md` mục LUẬT CỨNG + `references/menu-sisi.md` §9g khối "LUẬT CỨNG — NGÔN NGỮ MENU" (kèm lệnh grep CJK/Cyrillic/Thái/Hàn để quét) |
+| 2026-11-07 | **Av123 → `/vi`** | chuyển hẳn sang bản tiếng Việt của site (`Lang = "/vi"`), nhãn menu lấy nguyên văn từ web, ẩn 45 mục site để tiếng Nhật, `taxo.json` khoá theo `lang`, bump cache key `v3` | slug thể loại trùng 508/508 nên chỉ đổi prefix; `play.sh` **PHÁT ĐƯỢC** sau khi thêm route `av123/hls.m3u8` (trước đó thiếu đuôi → app báo no supported source) |
+| 2026-11-07 | (bài học) | **cache file `~/lampac-run/cache/fdb/`** (`HybridFileCache`) **sống qua restart** | đổi code mà `/av123` vẫn ra `/en/` + tên tiếng Anh; xoá entry có `zcat … | grep av123/` rồi restart mới sạch |
 
 ## Treo (Manko)
 

@@ -49,23 +49,33 @@ public static class Av123Rec
 public static class Av123To
 {
     public static readonly string SiteHost = "https://123av.com";
+
+    // Ngon ngu DUONG DAN cua site. 123av tu cung cap ban /vi (tieng Viet)
+    // va /en. Slug the loai / maker / video GIONG HET nhau giua 2 ban (do
+    // 2026-11-07: 508/508 genre slug trung), markup cung y het -> chi can
+    // doi prefix la duoc ban tieng Viet.
+    public const string Lang = "/vi";
     public static readonly string ChromeUA = Shared.Services.Http.UserAgent;
 
+    // Nhan lay NGUYEN VAN tu dropdown "Sap xep" cua ban /vi (do 2026-11-07):
+    //   release_date=Ngay phat hanh, recent=Moi them gan day, hot=Noi bat,
+    //   today/week/month=Luot xem hom nay/tuan/thang, views=Xem nhieu nhat,
+    //   follows=Theo doi nhieu nhat, longest=Dai nhat.
     public static string SortLabel(string sort) => sort switch
     {
-        "recent" => "Recently added",
-        "hot" => "Hot",
-        "today" => "Today views",
-        "week" => "Weekly views",
-        "month" => "Monthly views",
-        "views" => "Most viewed",
-        "follows" => "Most followed",
-        "longest" => "Longest",
-        _ => "Release date"
+        "recent" => "Mới thêm gần đây",
+        "hot" => "Nổi bật",
+        "today" => "Lượt xem hôm nay",
+        "week" => "Lượt xem tuần",
+        "month" => "Lượt xem tháng",
+        "views" => "Xem nhiều nhất",
+        "follows" => "Theo dõi nhiều nhất",
+        "longest" => "Dài nhất",
+        _ => "Ngày phát hành"
     };
 
     static readonly Regex _cardRe = new Regex(
-        "<a class=\"card__cover\" href=\"/en/v/([^\"]+)\">.*?<img class=\"card__img\" src=\"([^\"]+)\"[^>]*>.*?<span class=\"card__dur\">([^<]*)</span>.*?<h3 class=\"card__title\"><a class=\"card__link\"[^>]*>(.*?)</a>",
+        "<a class=\"card__cover\" href=\"" + Lang + "/v/([^\"]+)\">.*?<img class=\"card__img\" src=\"([^\"]+)\"[^>]*>.*?<span class=\"card__dur\">([^<]*)</span>.*?<h3 class=\"card__title\"><a class=\"card__link\"[^>]*>(.*?)</a>",
         RegexOptions.Singleline | RegexOptions.IgnoreCase);
 
     public static List<PlaylistItem> Playlist(string route, string html)
@@ -83,7 +93,7 @@ public static class Av123To
             string title = WebUtility.HtmlDecode(Regex.Replace(m.Groups[4].Value, @"\s+", " ").Trim());
             if (title.Length > 150) title = title.Substring(0, 147) + "...";
 
-            string detail = "/en/v/" + slug;
+            string detail = Lang + "/v/" + slug;
             items.Add(new PlaylistItem
             {
                 name = title,
@@ -159,6 +169,22 @@ public static class Av123To
     }
 
     // detail page -> tat ca chip thong tin: (kind, slug, ten)
+    // Web /vi van de nguyen tieng Nhat o mot so the loai / nha san xuat (chu
+    // yeu la ten dot sale + maker le). LUAT menu: chi Viet hoac Anh -> an muc do.
+    public static bool HasCjk(string s)
+    {
+        if (string.IsNullOrEmpty(s)) return false;
+        foreach (char c in s)
+        {
+            if (c >= 0x3040 && c <= 0x30FF) return true; // kana
+            if (c >= 0x3400 && c <= 0x9FFF) return true; // kanji / han
+            if (c >= 0xAC00 && c <= 0xD7AF) return true; // hangul
+            if (c >= 0x0E00 && c <= 0x0E7F) return true; // thai
+            if (c >= 0x0400 && c <= 0x04FF) return true; // cyrillic
+        }
+        return false;
+    }
+
     public static List<(string kind, string slug, string name)> Chips(string html)
     {
         var list = new List<(string, string, string)>();
@@ -169,12 +195,12 @@ public static class Av123To
         foreach (Match row in Regex.Matches(html, "<div class=\"watch__info-row\">(.*?)</div>", RegexOptions.Singleline))
         {
             foreach (Match m in Regex.Matches(row.Groups[1].Value,
-                "<a class=\"chip\" href=\"/en/([a-z-]+)/([^\"]+)\">([^<]+)</a>", RegexOptions.IgnoreCase))
+                "<a class=\"chip\" href=\"" + Lang + "/([a-z-]+)/([^\"]+)\">([^<]+)</a>", RegexOptions.IgnoreCase))
             {
                 string kind = m.Groups[1].Value.ToLowerInvariant();
                 string slug = m.Groups[2].Value.Trim();
                 string name = WebUtility.HtmlDecode(m.Groups[3].Value.Trim());
-                if (name.Length == 0) continue;
+                if (name.Length == 0 || HasCjk(name)) continue;
                 if (!seen.Add(kind + "/" + slug)) continue;
                 list.Add((kind, slug, name));
             }
@@ -191,7 +217,7 @@ public static class Av123To
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (Match m in Regex.Matches(html,
-            "<a class=\"vside\" href=\"/en/v/([^\"]+)\">.*?background-image:url\\('([^']+)'\\)[^>]*>.*?<span class=\"vside__dur\">([^<]*)</span>.*?<span class=\"vside__title\">(.*?)</span>",
+            "<a class=\"vside\" href=\"" + Lang + "/v/([^\"]+)\">.*?background-image:url\\('([^']+)'\\)[^>]*>.*?<span class=\"vside__dur\">([^<]*)</span>.*?<span class=\"vside__title\">(.*?)</span>",
             RegexOptions.Singleline | RegexOptions.IgnoreCase))
         {
             string slug = m.Groups[1].Value.Trim();
@@ -213,7 +239,7 @@ public static class Av123To
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (Match m in Regex.Matches(html,
-            "<a class=\"vside\" href=\"/en/v/([^\"]+)\">.*?background-image:url\\('([^']+)'\\)[^>]*>.*?<span class=\"vside__dur\">([^<]*)</span>.*?<span class=\"vside__title\">(.*?)</span>",
+            "<a class=\"vside\" href=\"" + Lang + "/v/([^\"]+)\">.*?background-image:url\\('([^']+)'\\)[^>]*>.*?<span class=\"vside__dur\">([^<]*)</span>.*?<span class=\"vside__title\">(.*?)</span>",
             RegexOptions.Singleline | RegexOptions.IgnoreCase))
         {
             string slug = m.Groups[1].Value.Trim();
@@ -225,7 +251,7 @@ public static class Av123To
             if (title.Length == 0) continue;
             if (title.Length > 150) title = title.Substring(0, 147) + "...";
 
-            string detail = "/en/v/" + slug;
+            string detail = Lang + "/v/" + slug;
             items.Add(new PlaylistItem
             {
                 name = title,
@@ -255,12 +281,12 @@ public static class Av123To
 
         string block = html.Substring(s, e - s);
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (Match m in Regex.Matches(block, "<a[^>]+href=\"/en/genres/([^\"]+)\"[^>]*>([^<]+)</a>", RegexOptions.IgnoreCase))
+        foreach (Match m in Regex.Matches(block, "<a[^>]+href=\"" + Lang + "/genres/([^\"]+)\"[^>]*>([^<]+)</a>", RegexOptions.IgnoreCase))
         {
             string slug = m.Groups[1].Value.Trim();
             if (!seen.Add(slug)) continue;
             string title = WebUtility.HtmlDecode(m.Groups[2].Value.Trim());
-            if (title.Length == 0) continue;
+            if (title.Length == 0 || HasCjk(title)) continue;
             list.Add((title, slug));
         }
         return list;
@@ -274,7 +300,7 @@ public static class Av123To
         string cls = kind == "genres" ? "gchip" : "mcard";
         string cntCls = kind == "genres" ? "gchip__count" : "mcard__meta";
         var re = new Regex(
-            "<a class=\"" + cls + "\" href=\"/en/" + kind + "/([^\"]+)\"[^>]*>.*?<span class=\"" + cls + "__name\">([^<]+)</span>.*?<span class=\"" + cntCls + "\">([^<]+)</span>",
+            "<a class=\"" + cls + "\" href=\"" + Lang + "/" + kind + "/([^\"]+)\"[^>]*>.*?<span class=\"" + cls + "__name\">([^<]+)</span>.*?<span class=\"" + cntCls + "\">([^<]+)</span>",
             RegexOptions.Singleline | RegexOptions.IgnoreCase);
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (Match m in re.Matches(html))
@@ -282,6 +308,7 @@ public static class Av123To
             string slug = m.Groups[1].Value.Trim();
             if (!seen.Add(slug)) continue;
             string name = WebUtility.HtmlDecode(m.Groups[2].Value.Trim());
+            if (HasCjk(name)) continue;
             int count = ParseCount(m.Groups[3].Value);
             list.Add((name, slug, count));
         }
@@ -327,90 +354,90 @@ public static class Av123To
                 playlist_url = "submenu",
                 submenu = new List<MenuItem>
                 {
-                    new MenuItem { title = "Release date", playlist_url = MenuUrl(host, c, "release_date") },
-                    new MenuItem { title = "Recently added", playlist_url = MenuUrl(host, c, "recent") },
-                    new MenuItem { title = "Hot", playlist_url = MenuUrl(host, c, "hot") },
-                    new MenuItem { title = "Today views", playlist_url = MenuUrl(host, c, "today") },
-                    new MenuItem { title = "Weekly views", playlist_url = MenuUrl(host, c, "week") },
-                    new MenuItem { title = "Monthly views", playlist_url = MenuUrl(host, c, "month") },
-                    new MenuItem { title = "Most viewed", playlist_url = MenuUrl(host, c, "views") },
-                    new MenuItem { title = "Most followed", playlist_url = MenuUrl(host, c, "follows") },
-                    new MenuItem { title = "Longest", playlist_url = MenuUrl(host, c, "longest") }
+                    new MenuItem { title = "Ngày phát hành", playlist_url = MenuUrl(host, c, "release_date") },
+                    new MenuItem { title = "Mới thêm gần đây", playlist_url = MenuUrl(host, c, "recent") },
+                    new MenuItem { title = "Nổi bật", playlist_url = MenuUrl(host, c, "hot") },
+                    new MenuItem { title = "Lượt xem hôm nay", playlist_url = MenuUrl(host, c, "today") },
+                    new MenuItem { title = "Lượt xem tuần", playlist_url = MenuUrl(host, c, "week") },
+                    new MenuItem { title = "Lượt xem tháng", playlist_url = MenuUrl(host, c, "month") },
+                    new MenuItem { title = "Xem nhiều nhất", playlist_url = MenuUrl(host, c, "views") },
+                    new MenuItem { title = "Theo dõi nhiều nhất", playlist_url = MenuUrl(host, c, "follows") },
+                    new MenuItem { title = "Dài nhất", playlist_url = MenuUrl(host, c, "longest") }
                 }
             });
 
         menu.Add(new MenuItem
         {
-            title = "Mới & Hot",
+            title = "Mới & Nổi bật",
             playlist_url = "submenu",
             submenu = new List<MenuItem>
             {
-                new MenuItem { title = "New", playlist_url = MenuUrl(host, "/en/new", null) },
-                new MenuItem { title = "Hot", playlist_url = MenuUrl(host, "/en/hot", null) },
-                new MenuItem { title = "Recent", playlist_url = MenuUrl(host, "/en/recent", null) }
+                new MenuItem { title = "Mới", playlist_url = MenuUrl(host, Lang + "/new", null) },
+                new MenuItem { title = "Nổi bật", playlist_url = MenuUrl(host, Lang + "/hot", null) },
+                new MenuItem { title = "Gần đây", playlist_url = MenuUrl(host, Lang + "/recent", null) }
             }
         });
 
         menu.Add(new MenuItem
         {
-            title = "Trending",
+            title = "Xu hướng",
             playlist_url = "submenu",
             submenu = new List<MenuItem>
             {
-                new MenuItem { title = "Today", playlist_url = MenuUrl(host, "/en/all", "today") },
-                new MenuItem { title = "This week", playlist_url = MenuUrl(host, "/en/all", "week") },
-                new MenuItem { title = "This month", playlist_url = MenuUrl(host, "/en/all", "month") }
+                new MenuItem { title = "Hôm nay", playlist_url = MenuUrl(host, Lang + "/all", "today") },
+                new MenuItem { title = "Tuần này", playlist_url = MenuUrl(host, Lang + "/all", "week") },
+                new MenuItem { title = "Tháng này", playlist_url = MenuUrl(host, Lang + "/all", "month") }
             }
         });
 
         menu.Add(new MenuItem
         {
-            title = "Types",
+            title = "Loại",
             playlist_url = "submenu",
             submenu = new List<MenuItem>
             {
-                new MenuItem { title = "Censored", playlist_url = MenuUrl(host, "/en/censored", null) },
-                new MenuItem { title = "Uncensored", playlist_url = MenuUrl(host, "/en/uncensored", null) },
-                new MenuItem { title = "Uncensored Leaked", playlist_url = MenuUrl(host, "/en/uncensored-leaked", null) }
+                new MenuItem { title = "Kiểm duyệt", playlist_url = MenuUrl(host, Lang + "/censored", null) },
+                new MenuItem { title = "Không kiểm duyệt", playlist_url = MenuUrl(host, Lang + "/uncensored", null) },
+                new MenuItem { title = "Rò rỉ không kiểm duyệt", playlist_url = MenuUrl(host, Lang + "/uncensored-leaked", null) }
             }
         });
 
         menu.Add(new MenuItem
         {
-            title = "Amateur",
+            title = "Nghiệp dư",
             playlist_url = "submenu",
             submenu = new List<MenuItem>
             {
-                new MenuItem { title = "SIRO", playlist_url = MenuUrl(host, "/en/tags/siro", null) },
-                new MenuItem { title = "LUXU", playlist_url = MenuUrl(host, "/en/tags/259luxu", null) },
-                new MenuItem { title = "200GANA", playlist_url = MenuUrl(host, "/en/tags/200gana", null) },
-                new MenuItem { title = "PRESTIGE", playlist_url = MenuUrl(host, "/en/tags/prestige-premium", null) },
-                new MenuItem { title = "ORECO", playlist_url = MenuUrl(host, "/en/tags/230oreco", null) },
-                new MenuItem { title = "S-CUTE", playlist_url = MenuUrl(host, "/en/makers/s-cute", null) },
-                new MenuItem { title = "ARA", playlist_url = MenuUrl(host, "/en/tags/261ara", null) },
-                new MenuItem { title = "390JAC", playlist_url = MenuUrl(host, "/en/tags/390jac", null) }
+                new MenuItem { title = "SIRO", playlist_url = MenuUrl(host, Lang + "/tags/siro", null) },
+                new MenuItem { title = "LUXU", playlist_url = MenuUrl(host, Lang + "/tags/259luxu", null) },
+                new MenuItem { title = "200GANA", playlist_url = MenuUrl(host, Lang + "/tags/200gana", null) },
+                new MenuItem { title = "PRESTIGE", playlist_url = MenuUrl(host, Lang + "/tags/prestige-premium", null) },
+                new MenuItem { title = "ORECO", playlist_url = MenuUrl(host, Lang + "/tags/230oreco", null) },
+                new MenuItem { title = "S-CUTE", playlist_url = MenuUrl(host, Lang + "/makers/s-cute", null) },
+                new MenuItem { title = "ARA", playlist_url = MenuUrl(host, Lang + "/tags/261ara", null) },
+                new MenuItem { title = "390JAC", playlist_url = MenuUrl(host, Lang + "/tags/390jac", null) }
             }
         });
 
         menu.Add(new MenuItem
         {
-            title = "Uncensored",
+            title = "Không kiểm duyệt",
             playlist_url = "submenu",
             submenu = new List<MenuItem>
             {
-                new MenuItem { title = "FC2", playlist_url = MenuUrl(host, "/en/makers/fc2", null) },
-                new MenuItem { title = "HEYZO", playlist_url = MenuUrl(host, "/en/makers/heyzo", null) },
-                new MenuItem { title = "1pondo", playlist_url = MenuUrl(host, "/en/makers/1pondo", null) },
-                new MenuItem { title = "Caribbeancom", playlist_url = MenuUrl(host, "/en/makers/caribbeancom", null) },
-                new MenuItem { title = "10musume", playlist_url = MenuUrl(host, "/en/makers/10musume", null) },
-                new MenuItem { title = "Pacopacomama", playlist_url = MenuUrl(host, "/en/makers/pacopacomama", null) },
-                new MenuItem { title = "Tokyo Hot", playlist_url = MenuUrl(host, "/en/makers/tokyo-hot", null) },
-                new MenuItem { title = "XXX-AV", playlist_url = MenuUrl(host, "/en/makers/xxx-av", null) }
+                new MenuItem { title = "FC2", playlist_url = MenuUrl(host, Lang + "/makers/fc2", null) },
+                new MenuItem { title = "HEYZO", playlist_url = MenuUrl(host, Lang + "/makers/heyzo", null) },
+                new MenuItem { title = "1pondo", playlist_url = MenuUrl(host, Lang + "/makers/1pondo", null) },
+                new MenuItem { title = "Caribbeancom", playlist_url = MenuUrl(host, Lang + "/makers/caribbeancom", null) },
+                new MenuItem { title = "10musume", playlist_url = MenuUrl(host, Lang + "/makers/10musume", null) },
+                new MenuItem { title = "Pacopacomama", playlist_url = MenuUrl(host, Lang + "/makers/pacopacomama", null) },
+                new MenuItem { title = "Tokyo Hot", playlist_url = MenuUrl(host, Lang + "/makers/tokyo-hot", null) },
+                new MenuItem { title = "XXX-AV", playlist_url = MenuUrl(host, Lang + "/makers/xxx-av", null) }
             }
         });
 
-        AddChunks(menu, host, "Thể loại", "/en/genres/", genres);
-        AddChunks(menu, host, "Hãng", "/en/makers/", makers);
+        AddChunks(menu, host, "Thể loại", Lang + "/genres/", genres);
+        AddChunks(menu, host, "Nhà sản xuất", Lang + "/makers/", makers);
 
         return menu;
     }
