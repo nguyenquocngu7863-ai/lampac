@@ -49,6 +49,14 @@ Các skill từ OpenCode đã được import vào `.kilo/skills/`:
 
 - KHÔNG dùng `curl` thường cho request ra site thật — dùng `curl_cffi` impersonate="chrome124"
 - `curl` chỉ hợp lệ: `127.0.0.1`/`localhost`, đo hạ tầng, hoặc đã hết cách
+- **MENU PHẢI LÀ TIẾNG VIỆT HOẶC TIẾNG ANH** (user chốt 2026-11-07): mọi `title` trong
+  menu SISI (dòng 1/2/3/4, submenu) và popup nhấn giữ `/genres` **không được** để
+  chữ Trung/Nhật/Nga/Hàn/Thái… Site nguồn tiếng khác thì phải dịch (bảng
+  `Trans` + `Translate()` trong `Service.cs`, áp cho cả menu lẫn popup, kể cả
+  fallback tĩnh). Menu trộn ngôn ngữ (vd `Mới` + `Популярное`) là lỗi phải sửa.
+  Quét: grep CJK `[一-鿿]`, Cyrillic `[А-Яа-я]`, Thái `[ก-๙]`, Hàn `[ㄱ-ㅎㅏ-ㅣ]`
+  trong `new("…")` / `title = …` (bỏ comment). Chi tiết: skill
+  `lampac-adult-module` → `references/menu-sisi.md` §9g, khối "LUẬT CỨNG — NGÔN NGỮ MENU".
 - Đo trước, xoá sau: luôn `du -sh` trước khi dọn rác
 - Không tự xoá repo trùng (`lampac-src`, `lampac-native`) — hỏi user
 - Không tự xoá `~/lampac/publish/` — hỏi user
