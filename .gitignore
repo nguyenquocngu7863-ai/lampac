@@ -399,3 +399,8 @@ playwright.ps1
 /xheovl-*.headers
 /.codebuddy/
 ogcode.json
+
+# runtime data / file tam cua tool
+.ogcode/
+*.m3u8
+*.m3u8.headers
