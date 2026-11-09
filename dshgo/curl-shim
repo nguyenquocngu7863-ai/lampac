@@ -1,0 +1,49 @@
+#!/opt/python/bin/python3
+# curl shim -> curl_cffi impersonate (bypass Cloudflare TLS fingerprint)
+# Drops unsupported args that CurlGet passes (-sL --http2 --compressed -A -e --max-time ...)
+import sys, io
+from curl_cffi import requests
+
+args = sys.argv[1:]
+url = None
+ua = None
+referer = None
+maxtime = 25
+i = 0
+while i < len(args):
+    a = args[i]
+    if a == "--":
+        i += 1
+        continue
+    if a in ("-A", "--user-agent"):
+        i += 1; ua = args[i] if i < len(args) else None
+    elif a in ("-e", "--referer"):
+        i += 1; referer = args[i] if i < len(args) else None
+    elif a in ("--max-time", "--connect-timeout"):
+        i += 1
+        try: maxtime = int(float(args[i]))
+        except Exception: pass
+    elif a in ("-s","-L","-sL","--compressed","--http2","-k","-sSL"):
+        pass
+    elif a.startswith("-"):
+        pass
+    else:
+        url = a
+    i += 1
+
+if not url:
+    sys.exit(2)
+
+h = {}
+if ua: h["User-Agent"] = ua
+if referer: h["Referer"] = referer
+
+try:
+    r = requests.get(url, impersonate="chrome124", timeout=maxtime, headers=h)
+    if r.status_code != 200:
+        sys.exit(22)
+    sys.stdout.buffer.write(r.content)
+    sys.stdout.flush()
+    sys.exit(0)
+except Exception:
+    sys.exit(7)

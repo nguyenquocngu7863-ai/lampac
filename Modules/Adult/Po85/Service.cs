@@ -787,4 +787,45 @@ public static class Po85To
         return 0;
     }
     #endregion
+
+    // curl shim (curl_cffi impersonate) -> bypass Cloudflare cho 85po.com
+    public static async Task<byte[]> CurlGetBytes(string url, string referer)
+    {
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            psi.FileName = "curl";
+            psi.ArgumentList.Add("-sL");
+            psi.ArgumentList.Add("--compressed");
+            psi.ArgumentList.Add("--max-time");
+            psi.ArgumentList.Add("60");
+            psi.ArgumentList.Add("-A");
+            psi.ArgumentList.Add("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+            if (!string.IsNullOrEmpty(referer))
+            {
+                psi.ArgumentList.Add("-e");
+                psi.ArgumentList.Add(referer);
+            }
+            psi.ArgumentList.Add("--");
+            psi.ArgumentList.Add(url);
+
+            using (var p = System.Diagnostics.Process.Start(psi))
+            {
+                if (p == null) return null;
+                using (var ms = new System.IO.MemoryStream())
+                {
+                    await p.StandardOutput.BaseStream.CopyToAsync(ms);
+                    await p.WaitForExitAsync();
+                    return p.ExitCode == 0 ? ms.ToArray() : null;
+                }
+            }
+        }
+        catch { return null; }
+    }
 }

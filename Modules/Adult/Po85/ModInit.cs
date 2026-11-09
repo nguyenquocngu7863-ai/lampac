@@ -35,6 +35,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
         modpath = baseconf.path;
         updateConf();
         EventListener.UpdateInitFile += updateConf;
+        EventListener.ProxyApiOverride += ProxyOverride;
         StartUhd();
     }
 
@@ -48,6 +49,36 @@ public class ModInit : IModuleLoaded, IModuleSisi
         catch { }
 
         EventListener.UpdateInitFile -= updateConf;
+        EventListener.ProxyApiOverride -= ProxyOverride;
+    }
+
+    // 85po.com chan HttpClient .NET (Cloudflare 403). Tai bang curl shim
+    // (curl_cffi impersonate) roi tra bytes thang, giong MissAV lam voi surrit.
+    static async Task<bool> ProxyOverride(EventProxyApiOverride e)
+    {
+        try
+        {
+            string uri = e?.decryptLink?.uri;
+            if (string.IsNullOrEmpty(uri) || !uri.Contains("85po.com"))
+                return true;
+
+            byte[] body = await Po85To.CurlGetBytes(uri, "https://www.85po.com/");
+            if (body == null || body.Length == 0)
+                return true;
+
+            var resp = e.httpContext.Response;
+            resp.StatusCode = 200;
+            string lower = uri.ToLowerInvariant();
+            resp.ContentType = lower.Contains(".m3u8") ? "application/vnd.apple.mpegurl"
+                : lower.Contains(".mp4") ? "video/mp4"
+                : "application/octet-stream";
+            await resp.Body.WriteAsync(body, 0, body.Length);
+            return false;
+        }
+        catch
+        {
+            return true;
+        }
     }
 
     #region uhd-resolver (node + Chrome that, giai ma link 4K 85po)
