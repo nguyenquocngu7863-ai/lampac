@@ -42,9 +42,9 @@ if [[ "$MODE" == "help" ]]; then
     cat <<EOF
 Usage: bash dshgo/setup.sh [OPTION]
 
-  (khong doi so)   Cai day du: apt + chrome + publish + deploy
+  (khong doi so)   Cai day du: apt + chrome + launcher (KHONG build)
   --only-env       Chi cai moi truong (apt, pip curl_cffi, shim, symlink)
-  --only-app       Chi publish + deploy app
+  --only-app       Publish app (chi can khi sua Core/Shared, ton RAM)
   --sync           Chi sync module tu GitHub
 
 Env:
@@ -121,7 +121,9 @@ step_chrome() {
     ok "chrome -> $CHROME_DIR/chrome"
 }
 
-# ─── Step 5: publish app ─────────────────────────────────────────────────────
+# ─── Step 5: publish app (TUY CHON — thuong KHONG can) ──────────────────────
+# Core tu compile module bang Roslyn luc start (xem skill lampac-build §3).
+# Chi can publish khi sua Core/ hoac Shared/. Mobile: tranh build vi ton RAM.
 step_publish() {
     info "publish app tu repo..."
     [[ -d "$REPO/Core" ]] || die "Khong thay $REPO/Core (clone repo truoc)"
@@ -225,8 +227,10 @@ case "$MODE" in
         step_sync
         ;;
     *)
+        # KHONG goi step_publish: Core tu compile module bang Roslyn luc start.
+        # Chi publish khi sua Core/Shared: bash dshgo/setup.sh --only-app
         step_apt; step_curl_cffi; step_node_links; step_chrome
-        step_publish; step_launcher
+        step_launcher
         ;;
 esac
 echo ""

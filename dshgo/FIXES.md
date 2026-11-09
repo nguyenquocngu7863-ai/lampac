@@ -57,11 +57,44 @@ Thiếu 1 trong 3 là `return` im lặng.
 ## Phục hồi sau reset
 
 ```bash
-bash dshgo/restore.sh
+git clone -b dshgo/01a0673e-lampac https://github.com/nguyenquocngu7863-ai/lampac.git lampac
+bash lampac/dshgo/setup.sh
 ```
 
-Script cài apt packages, pip curl_cffi, symlink node/npm, đặt curl shim,
-cài playwright-core cho Po85.
+Script cài apt (dotnet-sdk-10.0, ffmpeg, gstreamer, curl, lib cho Chrome),
+pip curl_cffi, symlink node/npm, tải **google-chrome-stable arm64 native**,
+đặt curl shim, cài playwright-core cho Po85.
+
+## KHONG can build (quan trong)
+
+**Core tu compile module bang Roslyn luc start** — doi chieu `Shared.dll` cua
+runtime. Nghia la module **khong can** `dotnet build`, khong can `bin/obj`,
+khong can publish. Xem skill `lampac-build` §3.
+
+Vong lap sua module (~1.5 s check + ~20 s restart):
+
+```bash
+# 1. sua .cs trong repo
+# 2. check cu phap (~1-2 s, khong build)
+bash lampac-native/csc/check.sh Modules/Adult/<Name>
+
+# 3. copy 5 file (KHONG copy bin/obj/csproj)
+D=lampac-run/module/Adult/<Name>
+cp Modules/Adult/<Name>/{Controller.cs,ModInit.cs,Service.cs,GlobalUsings.cs,manifest.json} "$D/"
+
+# 4. restart (bat buoc)
+pkill -f 'Core\.dll'; sleep 3
+nohup bash lampac-native/run-lampac.sh > lampac-native/lampac-native.log 2>&1 &
+
+# 5. verify
+grep -nE "compilation error|loaded module: <Name>" lampac-native/lampac-native.log | tail -5
+```
+
+Chi `--only-app` (publish) khi sua `Core/` hoac `Shared/` — ton RAM, tranh dung
+tren mobile.
+
+> Luu y: `csc/check.sh` can `Shared.dll` cua runtime. Neu chua co, dat
+> `SHARED_DLL=lampac-run/Shared.dll`.
 
 ## Còn lại
 
