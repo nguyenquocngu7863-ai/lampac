@@ -47,6 +47,23 @@ public static class JavGuruTo
         catch { return url; }
     }
 
+    // Gateway `/searcho/?hr=..` (DD) va `?tr=..` (VO) 302 sang host embed that
+    // (DoodStream `<mirror>/e/<id>`, VOE `<mirror>/e/<id>`). Relay worker dang
+    // `redirect: follow` nen `url_effective` = URL worker -> mat host embed, keo
+    // theo ca DD (cat baseUrl tai "/e/") lan VO (Chrome mo sai origin) chet.
+    // `__nf=1` = co opt-in cua worker: tra 302 NGUYEN VEN de curl `-L` tu di
+    // tiep toi embed that (xem termux-native/cf-relay/index.js).
+    // Khong qua relay (relayBase rong) thi tra nguyen URL — luc do curl da tu
+    // thay 302 that.
+    public static string NoFollow(string url)
+    {
+        if (string.IsNullOrEmpty(url) || string.IsNullOrEmpty(relayBase))
+            return url;
+        if (!url.StartsWith(relayBase, StringComparison.OrdinalIgnoreCase))
+            return url;
+        return url + (url.Contains('?') ? "&" : "?") + "__nf=1";
+    }
+
     // Segment HLS cua server 1 nam o turbosplayer/turboviplay/lh3.googleusercontent.
     // GUI them Referer hoac Origin cua jav.guru thi CDN doi 429 (chan hotlink) —
     // da do: UA bat ky deu 206, chi can co Referer jav.guru la 429. Stream vi
@@ -505,16 +522,20 @@ public static class JavGuruTo
         if (string.IsNullOrEmpty(gateway))
             return res;
 
-        // DD (DoodStream): gateway 302 thang sang embed `vide0.net/e/<id>`,
+        // DD (DoodStream): gateway 302 thang sang embed `<mirror>/e/<id>`,
         // khong co trang player de boc data-hash/urlPlay nen phai nhan dien
-        // rieng. `-w %{url_effective}` lay URL cuoi sau khi da follow hop 302.
+        // rieng. `-w %{url_effective}` lay URL cuoi sau khi da follow hop 302 —
+        // phai kem `__nf=1` vi worker relay follow 302 ho (xem `NoFollow`).
+        // Host embed doi theo lan (vide0.net -> playmogo.com) va CHI IP may nay
+        // moi duoc tra trang that: egress worker/jina bi Dood tra captcha
+        // Turnstile (trang 4KB, khong co pass_md5).
         if (IsDdGateway(gateway))
         {
-            var hop = await CurlGetUrl(gateway, referer, 6);
+            var hop = await CurlGetUrl(NoFollow(gateway), referer, 6);
             if (string.IsNullOrEmpty(hop.finalUrl))
                 return res;
 
-            var (doodUrl, doodRef) = await DoodSourceAsync(hop.finalUrl, referer, 6, deadline);
+            var (doodUrl, doodRef) = await DoodSourceAsync(hop.finalUrl, referer, 6, deadline, hop.body);
             if (string.IsNullOrEmpty(doodUrl))
                 return res;
 
@@ -538,9 +559,16 @@ public static class JavGuruTo
         // curl khong ra link. Di that bang Chrome (VoSourceAsync), mac dinh
         // o CUOI chuoi fallback nen hiem khi toi luot (VO la phao cuu sinh
         // khi 5 server kia chet het).
+        // VO (voe.sx) cung 302 sang `<mirror>/e/<id>` nen cung phai `__nf=1`:
+        // Chrome phai mo DUNG origin cua embed, mo URL worker thi trang VOE
+        // hydrate sai origin (n=0 du host con song).
         if (IsVoGateway(gateway))
         {
-            var vo = await VoSourceAsync(gateway, referer, deadline);
+            var hop = await CurlGetUrl(NoFollow(gateway), referer, 10);
+            if (string.IsNullOrEmpty(hop.finalUrl))
+                return res;
+
+            var vo = await VoSourceAsync(hop.finalUrl, referer, deadline);
             if (vo.Count == 0)
                 return res;
 
@@ -625,7 +653,8 @@ public static class JavGuruTo
            && Regex.IsMatch(gateway, @"[?&]x[dr]=[0-9a-z]+", RegexOptions.IgnoreCase);
 
     // DD (rtype h: ?hd= trong iframe_url, ?hr= sau khi dao) — gateway 302
-    // THANG sang embed DoodStream `https://vide0.net/e/<id>` nen KHONG co trang
+    // THANG sang embed DoodStream `https://<mirror>/e/<id>` (mirror doi theo
+    // lan: vide0.net / playmogo.com) nen KHONG co trang
     // player de boc data-hash/urlPlay. Phai biet URL cuoi cua gateway roi chay
     // cong thuc DoodStream (xem DoodSourceAsync).
     public static bool IsDdGateway(string gateway)
@@ -708,35 +737,50 @@ public static class JavGuruTo
     // ================= DD (DoodStream) =================
     //
     // Cong thuc (dung chung moi site, xem skill `lampac-adult-module` muc 15):
-    //   1. GET embed `vide0.net/e/<id>` (-L) -> HTML chua
+    //   1. GET embed `<mirror>/e/<id>` (-L) -> HTML chua
     //      `pass_md5/<hash>/<token>`; host API = url_effective CAT TAI "/e/"
+    //      (mirror doi theo lan: vide0.net / playmogo.com / ... — dung host
+    //      trong url_effective, dung doan)
     //   2. GET https://<hostAPI>/pass_md5/<hash>/<token>?referer=jav.guru
     //      -> TEXT THUAN: https://<rand>.cloudatacdn.com/<path>/<file>
     //   3. Nhan mp4 do query `?token=<token>&expiry=<unix_ms>` va bat buoc co
     //      header Referer khop host API.
     //
+    // Do 2026-11-10: mirror `playmogo.com` tra 51KB co pass_md5 khi GET tu IP
+    // may nay, nhung qua egress CF (relay worker / jina) Dood tra trang captcha
+    // Turnstile 4KB (khong co pass_md5) -> phai FETCH EMBED TU IP MAY.
+    //
     // Buoc 3 la mau chot: thieu query HOAC thieu Referer thi CDN 302 sang
     // `*.dood.video`, host do tro 127.0.0.1 o ca public DNS (Cloudflare/Google
     // DoH deu vay) nen chet tuyet doi. Gia tri token/expiry khong quan trong —
     // token sai van 206 — chi can URL *co* query string.
+    // `body` = trang embed da tai san (vd. tu chinh hop 302 cua gateway) — co
+    // `pass_md5` thi khoi GET lai lan hai.
     public static async Task<(string url, string referer)> DoodSourceAsync(
-        string embedUrl, string referer, int maxTime = 6, long deadline = 0)
+        string embedUrl, string referer, int maxTime = 6, long deadline = 0, string body = null)
     {
         if (string.IsNullOrEmpty(embedUrl))
             return (null, null);
 
-        var got = await CurlGetUrl(embedUrl, referer ?? (SiteHost + "/"), maxTime);
-        var m = Regex.Match(got.body ?? "", @"(pass_md5/[A-Za-z0-9_\-]+/[A-Za-z0-9]+)");
+        string html = body;
+        string finalUrl = embedUrl;
+
+        if (string.IsNullOrEmpty(html) || !html.Contains("pass_md5"))
+        {
+            var got = await CurlGetUrl(embedUrl, referer ?? (SiteHost + "/"), maxTime);
+            html = got.body;
+            if (!string.IsNullOrEmpty(got.finalUrl))
+                finalUrl = got.finalUrl;
+        }
+
+        var m = Regex.Match(html ?? "", @"(pass_md5/[A-Za-z0-9_\-]+/[A-Za-z0-9]+)");
         if (!m.Success)
             return (null, null);
 
         string baseUrl = null;
-        if (!string.IsNullOrEmpty(got.finalUrl))
-        {
-            int at = got.finalUrl.IndexOf("/e/", StringComparison.OrdinalIgnoreCase);
-            if (at > 8)
-                baseUrl = got.finalUrl[..at];
-        }
+        int at = finalUrl.IndexOf("/e/", StringComparison.OrdinalIgnoreCase);
+        if (at > 8)
+            baseUrl = finalUrl[..at];
 
         if (string.IsNullOrEmpty(baseUrl))
             return (null, null);
@@ -759,8 +803,10 @@ public static class JavGuruTo
     }
 
 // VO (voe.sx): gateway /searcho/?tr= 302 THANG sang trang embed
-// `https://<rand>.com/e/<id>` — giong DD (302 sang vide0.net/e/). Nhan dien
+// `https://<rand>.com/e/<id>` — giong DD (302 sang `<mirror>/e/`). Nhan dien
 // rieng vi khong co trang player de boc data-hash/urlPlay (xem IsDdGateway).
+// Cung nhu DD, Chrome phai mo DUNG embed URL (KHONG phai URL relay): xem
+// `NoFollow` va nhanh VO trong `Streams`.
 //
 // Trang embed la JW Player + JS obfuscate (mang chuoi ma hoa o(), khong packer,
 // khong sources san): curl khong lay duoc link nen DUNG Chrome (Playwright)
