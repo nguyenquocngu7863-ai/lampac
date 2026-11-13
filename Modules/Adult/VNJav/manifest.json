@@ -1,0 +1,9 @@
+{
+  "name": "VNJav",
+  "description": "VNJav - JAV Vietsub mỗi ngày",
+  "version": "1.0.0",
+  "author": "Lampac",
+  "site": "https://vnjav.net",
+  "enable": true,
+  "dynamic": true
+}
