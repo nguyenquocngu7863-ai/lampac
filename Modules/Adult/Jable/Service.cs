@@ -22,6 +22,9 @@ public static class JableTo
     // </div> (se cat ngan).
     const string CardMark = "<div class=\"col-6 col-sm-4 col-lg-3\">";
 
+    // Card cua khoi "You May Like" trong trang detail dung class khac list.
+    const string RelCardMark = "<div class=\"col-6 col-sm-4 col-xl-3\">";
+
     // Trang phim chi co MOT video/phan, phan trang la duong dan khong query:
     //   /latest-updates/2/ , /hot/2/ , /categories/<slug>/2/ ,
     //   /tags/<slug>/2/ , /search/<q>/2/
@@ -172,7 +175,7 @@ public static class JableTo
     // <div class="absolute-bottom-right"><span class="label">2:05:33</span>
     // <img ... data-src=".../62000/62326/320x180/1.jpg" data-preview="...">
     // <span ... data-fav-video-id="62326">
-    public static List<PlaylistItem> Playlist(string html)
+    public static List<PlaylistItem> Playlist(string html, string cardMark = CardMark)
     {
         var list = new List<PlaylistItem>();
         if (string.IsNullOrEmpty(html))
@@ -180,7 +183,7 @@ public static class JableTo
 
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        var parts = Regex.Split(html, CardMark);
+        var parts = Regex.Split(html, cardMark);
         for (int i = 1; i < parts.Length; i++)
         {
             string block = parts[i];
@@ -259,6 +262,100 @@ public static class JableTo
         }
 
         return list;
+    }
+
+    // ===== popup (long-press): dien vien / the loai / tu khoa cua 1 video =====
+    // Vung meta cua video: tu <div class="models"> hoac <h5 class="tags">
+    // den het </section> cua video-info. Ngoai vung nay la tag cloud toan
+    // site (113 the) -> khong duoc parse.
+    public static List<(string kind, string slug, string name)> Info(string html)
+    {
+        var res = new List<(string kind, string slug, string name)>();
+        if (string.IsNullOrEmpty(html))
+            return res;
+
+        int im = html.IndexOf("<div class=\"models\"", StringComparison.Ordinal);
+        int it = html.IndexOf("<h5 class=\"tags", StringComparison.Ordinal);
+        int start = -1;
+        if (im >= 0)
+            start = im;
+        if (it >= 0 && (start < 0 || it < start))
+            start = it;
+        if (start < 0)
+            return res;
+
+        int end = html.IndexOf("</section>", start, StringComparison.OrdinalIgnoreCase);
+        if (end < 0)
+            end = html.Length;
+
+        string meta = html.Substring(start, end - start);
+
+        // model: <a class="model" href="https://en.jable.tv/models/<hash>/">
+        //          <span ... title="市来まひろ">市</span></a>
+        foreach (Match m in Regex.Matches(meta,
+            @"<a\b(?=[^>]*\bclass\s*=\s*[""'][^""']*\bmodel\b[^""']*[""'])"
+          + @"(?=[^>]*\bhref\s*=\s*[""']https?://en\.jable\.tv/models/([^""'/]+)/?[""'])[^>]*>(.*?)</a\s*>",
+            RegexOptions.IgnoreCase | RegexOptions.Singleline))
+        {
+            string name = Attr(m.Groups[2].Value, "title");
+            if (name.Length == 0)
+                name = Name(m.Groups[2].Value);
+            Add(res, "model", m.Groups[1].Value, name);
+        }
+
+        // cat: <a href="https://en.jable.tv/categories/pov/" class="cat">POV</a>
+        foreach (Match m in Regex.Matches(meta,
+            @"<a\b(?=[^>]*\bhref\s*=\s*[""']https?://en\.jable\.tv/categories/([^""'/]+)/?[""'])"
+          + @"(?=[^>]*\bclass\s*=\s*[""'][^""']*\bcat\b[^""']*[""'])[^>]*>(.*?)</a\s*>",
+            RegexOptions.IgnoreCase | RegexOptions.Singleline))
+        {
+            Add(res, "cat", m.Groups[1].Value, Name(m.Groups[2].Value));
+        }
+
+        // tag: <a href="https://en.jable.tv/tags/creampie/">Creampie</a>
+        foreach (Match m in Regex.Matches(meta,
+            @"<a\b(?=[^>]*\bhref\s*=\s*[""']https?://en\.jable\.tv/tags/([^""'/]+)/?[""'])[^>]*>(.*?)</a\s*>",
+            RegexOptions.IgnoreCase | RegexOptions.Singleline))
+        {
+            Add(res, "tag", m.Groups[1].Value, Name(m.Groups[2].Value));
+        }
+
+        return res;
+    }
+
+    // Khoi "You May Like" cua trang detail.
+    public static List<PlaylistItem> Related(string html)
+    {
+        if (string.IsNullOrEmpty(html))
+            return new List<PlaylistItem>();
+
+        int i = html.IndexOf("You May Like", StringComparison.OrdinalIgnoreCase);
+        if (i < 0)
+            return new List<PlaylistItem>();
+
+        return Playlist(html.Substring(i), RelCardMark);
+    }
+
+    static void Add(List<(string kind, string slug, string name)> res,
+        string kind, string slug, string name)
+    {
+        slug = slug.Trim();
+        if (slug.Length == 0 || name.Length == 0)
+            return;
+        if (res.Any(x => x.kind == kind &&
+            string.Equals(x.slug, slug, StringComparison.OrdinalIgnoreCase)))
+            return;
+        res.Add((kind, slug, name));
+    }
+
+    static string Name(string inner) =>
+        Clean(HttpUtility.HtmlDecode(Regex.Replace(inner, "<[^>]+>", " ")));
+
+    static string Attr(string html, string attr)
+    {
+        var m = Regex.Match(html,
+            @"\b" + attr + @"\s*=\s*[""']([^""']+)[""']", RegexOptions.IgnoreCase);
+        return m.Success ? Clean(HttpUtility.HtmlDecode(m.Groups[1].Value)) : "";
     }
 
     // var hlsUrl = 'https://hot-box-gen.mushroomtrack.com/hls/<token>/<ts>/<id2>/<id>/<id>.m3u8';

@@ -20,8 +20,13 @@ public class JableController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("jable")]
-    async public Task<ActionResult> Index(string search, string c, int pg = 1, string q = null, string sort = null)
-        => await Core(search ?? q, c, pg, sort);
+    async public Task<ActionResult> Index(string search, string c, string rel, int pg = 1, string q = null, string sort = null)
+    {
+        if (!string.IsNullOrWhiteSpace(rel))
+            return await RelatedList(rel, pg);
+
+        return await Core(search ?? q, c, pg, sort);
+    }
 
     // Duong dan thay cho query — app diem manh hon, khong lo query bi
     // mat/chen khi no ghep them `pg=1`:
@@ -394,4 +399,108 @@ public class JableController : BaseSisiController
         ));
         return Redirect(HostStreamProxy(link, direct));
     }
+
+    #region info (long-press popup menu)
+    // Tra { items, groups } cho SISI/plugins/sisi.js (menu nhan giu).
+    [HttpGet]
+    [Route("jable/genres")]
+    async public Task<ActionResult> Genres(string uri)
+    {
+        string pageUrl = PageUrl(uri);
+        if (pageUrl == null)
+            return Json(new { items = new object[0], groups = new object[0] });
+
+        string memKey = ipkey($"jable:info:{pageUrl}");
+        if (!hybridCache.TryGetValue(memKey,
+            out List<(string kind, string slug, string name)> info) || info == null)
+        {
+            string html = await GetPageAsync(pageUrl);
+            info = JableTo.Info(html);
+            if (info.Count > 0)
+                hybridCache.Set(memKey, info, cacheTime(360));
+        }
+
+        var groups = new List<object>();
+
+        void AddGroup(string title, string kind, Func<string, string> urlOf)
+        {
+            var items = info.Where(x => x.kind == kind)
+                .Select(x => new { title = x.name, url = urlOf(x.slug) }).ToList();
+            if (items.Count > 0)
+                groups.Add(new { title, items });
+        }
+
+        string list(string c) => host + "/jable?c=" + HttpUtility.UrlEncode(c);
+
+        AddGroup("Diễn viên", "model", s => list("models/" + s));
+        AddGroup("Thể loại", "cat", s => list("categories/" + s));
+        AddGroup("Từ khoá", "tag", s => list("tags/" + s));
+
+        if (groups.Count > 0)
+        {
+            groups.Add(new
+            {
+                title = "Liên quan",
+                items = new[]
+                {
+                    new
+                    {
+                        title = "Video liên quan",
+                        plain = true,
+                        url = host + "/jable?rel=" + HttpUtility.UrlEncode(pageUrl)
+                    }
+                }
+            });
+        }
+
+        return Json(new { items = new object[0], groups });
+    }
+
+    // Khoi "You May Like" cua trang detail. Site chi tra 1 lo ~12 card.
+    async Task<ActionResult> RelatedList(string rel, int pg)
+    {
+        if (pg > 1)
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        string pageUrl = PageUrl(rel);
+        if (pageUrl == null)
+            return OnError("playlists");
+
+        var cache = await InvokeCacheResult<(List<PlaylistItem> playlists, int total_pages)>(
+            ipkey($"jable:rel:{pageUrl}"), 180, async e =>
+        {
+            string html = await GetPageAsync(pageUrl);
+            var playlists = string.IsNullOrEmpty(html) ? null : JableTo.Related(html);
+
+            if (playlists == null || playlists.Count == 0)
+                return e.Success((new List<PlaylistItem>(), 0));
+
+            return e.Success((playlists, 1));
+        });
+
+        if (!cache.IsSuccess)
+            return OnError(cache.ErrorMsg);
+
+        return PlaylistResult(cache.Value.playlists, cache.ISingleCache,
+            await MenuAsync(null, null, null), total_pages: 1);
+    }
+
+    // Uri popup la URL detail day du; chuan hoa trailing slash (site 404
+    // neu thieu "/" cuoi) va bo query.
+    static string PageUrl(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return null;
+
+        uri = HttpUtility.HtmlDecode(uri.Trim());
+        if (!uri.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            uri = JableTo.SiteHost + (uri.StartsWith("/") ? uri : "/" + uri);
+
+        int qm = uri.IndexOf('?');
+        if (qm >= 0)
+            uri = uri.Substring(0, qm);
+
+        return uri.TrimEnd('/') + "/";
+    }
+    #endregion
 }
