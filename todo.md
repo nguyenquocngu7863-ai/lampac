@@ -20,7 +20,7 @@ Skill tham chiếu: `lampac-popup` (hợp đồng route, luật UX, anti-pattern
 | nhóm | số module | trạng thái |
 |---|---|---|
 | Đã có popup | 19 | xong |
-| Có genres, **thiếu rel** | 4 | Phase 0 |
+| Có genres, **thiếu rel** | 2 | Phase 0 (còn JAVSnap, JavHDToday) |
 | JAV / Á – Việt, chưa làm | 31 | Phase 1 |
 | Tube phương Tây, chưa làm | 9 | Phase 2 |
 | Cam live, chưa làm | 3 | Phase 3 |
