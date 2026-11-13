@@ -20,7 +20,7 @@ Skill tham chiếu: `lampac-popup` (hợp đồng route, luật UX, anti-pattern
 | nhóm | số module | trạng thái |
 |---|---|---|
 | Đã có popup | 19 | xong |
-| Có genres, **thiếu rel** | 1 | Phase 0 (còn JAVSnap) |
+| Có genres, **thiếu rel** | 1 | Phase 0 (JAVSnap — site chặn, đang tắt) |
 | JAV / Á – Việt, chưa làm | 31 | Phase 1 |
 | Tube phương Tây, chưa làm | 9 | Phase 2 |
 | Cam live, chưa làm | 3 | Phase 3 |
@@ -31,7 +31,7 @@ Skill tham chiếu: `lampac-popup` (hợp đồng route, luật UX, anti-pattern
 ## Phase 0 — Bù mục "Liên quan" (`?rel=`) cho 5 module đã có genres
 
 - [x] `Av123` — https://123av.com *(rel chạy: 12 item)*
-- [ ] `JAVSnap` — https://javsnap.com
+- [ ] `JAVSnap` — https://javsnap.com *(2026-11-13: site chặn IP/TLS — live fetch trả rỗng, chỉ home chạy nhờ cache; module đang `enable:false` theo chủ ý cũ vì throttle nặng. Đã thử bật + code `?rel=` nhưng **revert sạch**, không test được. Chỉ làm khi site cho vào lại hoặc có proxy egress sạch)*
 - [x] `JavHDToday` — https://javhdz.today *(rel đã có sẵn; 2026-11-13 verify rel 12 item. Bug thật: genres trả **rỗng** vì site bỏ nhãn `starring:` → marker `FetchHtmlAsync` fail, ném cả HTML 132KB; sửa marker `Genre:` + luôn có "Liên quan". Thêm `DetailUrl()` chặn SSRF, chỉ nhận `/<id>/<slug>/`; `?rel=` rác/host lạ → `{total_pages:1,list:[]}`)*
 - [x] `Po85` — https://www.85po.com *(rel chạy: 15 item)*
 - [x] `XNhau` — https://xnhau.pink *(rel đã có sẵn từ 2026-11-02; 2026-11-13 verify: rel 20 item, pg2 rỗng; fix uri rác/host lạ trả `{total_pages:1,list:[]}` thay vì 500 + chặn SSRF ở LoadInfoAsync/RelatedList)*
