@@ -168,6 +168,7 @@ public class SexTbController : BaseSisiController
 
     async Task<string> GetPageAsync(string url)
     {
+        url = SexTbTo.Relay(url);
         var deadline = DateTime.UtcNow.AddSeconds(14);
         while (DateTime.UtcNow < deadline)
         {
@@ -335,7 +336,7 @@ public class SexTbController : BaseSisiController
     // /ajax/relatedAjax: POST form {pg,filmId} -> JSON array (site load bang jQuery sau khi trang render)
     async Task<string> RelatedAjaxAsync(string pageUrl, string filmId)
     {
-        string url = SexTbTo.SiteHost + "/ajax/relatedAjax";
+        string url = SexTbTo.Relay(SexTbTo.SiteHost + "/ajax/relatedAjax");
         string body = "pg=1&filmId=" + filmId;
         string json = null;
         try

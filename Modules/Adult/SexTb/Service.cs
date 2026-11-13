@@ -19,6 +19,32 @@ public static class SexTbTo
     public const string ChromeUA = "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
     public static string PlayerApi => SiteHost + "/ajax/player";
 
+    // CF relay (env SEXTB_RELAY): sextb bat CF challenge voi MOI request
+    // server-side (curl_cffi -> SSL reset, .NET -> 403). Di qua Worker egress
+    // CF + UA Chrome thi 200. Tat: SEXTB_RELAY=''
+    public static string RelayBase =
+        System.Environment.GetEnvironmentVariable("SEXTB_RELAY")?.TrimEnd('/');
+
+    public static string Relay(string url)
+    {
+        if (string.IsNullOrEmpty(RelayBase) || string.IsNullOrEmpty(url)
+            || !url.StartsWith("http", System.StringComparison.OrdinalIgnoreCase))
+            return url;
+
+        if (url.StartsWith(RelayBase, System.StringComparison.OrdinalIgnoreCase))
+            return url;
+
+        try
+        {
+            var u = new System.Uri(url);
+            return $"{RelayBase}/{u.Host}{u.PathAndQuery}";
+        }
+        catch
+        {
+            return url;
+        }
+    }
+
     static readonly char[] Hidden = { '\uFEFF', '\u200B', '\u200C', '\u200D', '\u200E', '\u200F' };
     static string Clean(string s)
     {

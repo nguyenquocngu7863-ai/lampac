@@ -75,6 +75,9 @@ export DOTNET_GCHeapHardLimit="${DOTNET_GCHeapHardLimit:-600000000}"
 export XNHAU_RELAY="${XNHAU_RELAY-https://xn-relay.nguyenquocngu7863.workers.dev}"
 export JAVGURU_RELAY="${JAVGURU_RELAY-https://xn-relay.nguyenquocngu7863.workers.dev}"
 export VNCCHICH2_RELAY="${VNCCHICH2_RELAY-https://xn-relay.nguyenquocngu7863.workers.dev}"
+# SexTb: site bat CF challenge voi moi request server-side (curl_cffi/.NET deu
+# bi tiep) -> di qua cung Worker. Bat buoc UA trinh duyet (Chrome) moi qua.
+export SEXTB_RELAY="${SEXTB_RELAY-https://xn-relay.nguyenquocngu7863.workers.dev}"
 
 PORT=$(grep -o '"port": *[0-9]*' "$LAMPAC_DIR/init.conf" 2>/dev/null | head -1 | grep -o '[0-9]*' || echo 9118)
 echo ""
