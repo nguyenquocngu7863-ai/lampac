@@ -319,6 +319,7 @@ public class Po85Controller : BaseSisiController
 
             // 2) Tag cua video (site khong gan href cho tag -> link sang search)
             var tags = info.tags
+                .Where(x => !Po85To.HasCjk(x))
                 .Select(x => new { title = x, url = Po85To.SearchUrl(host, x) })
                 .Where(x => x.url != null)
                 .ToList();

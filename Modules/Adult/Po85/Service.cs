@@ -474,32 +474,32 @@ public static class Po85To
     {
         var tagmenu = new List<MenuItem>(26)
         {
-            new("Tự chụp 自拍", $"{url}?t=zi-pai"),
-            new("Tự sướng 自慰", $"{url}?t=zi-wei"),
-            new("Nghèo nàn 貧乳", $"{url}?t=pin-ru"),
-            new("Em gái 妹", $"{url}?t=mei"),
-            new("Trên giường 床上", $"{url}?t=chuang-shang"),
-            new("Bướm non 嫩逼", $"{url}?t=nen-bi"),
-            new("Muội muội 妹妹", $"{url}?t=mei-mei"),
-            new("Khỏa thân 全裸", $"{url}?t=quan-luo"),
-            new("Rên rỉ 淫叫", $"{url}?t=yin-jiao"),
-            new("Banh bướm 掰逼", $"{url}?t=bai-bi"),
-            new("Bào ngư 鮑魚", $"{url}?t=bao-yu"),
-            new("Mông đẹp 美臀", $"{url}?t=mei-tun"),
-            new("Vú to 大奶", $"{url}?t=da-nai"),
-            new("Quần lót 內褲", $"{url}?t=nei-ku2"),
-            new("Lỗ đít 屁眼", $"{url}?t=pi-yan"),
-            new("Em gái 妹子", $"{url}?t=mei-zi"),
-            new("Nhật Bản 日本", $"{url}?t=ri-ben"),
-            new("Bú cu 口交", $"{url}?t=kou-jiao"),
-            new("Dễ thương 可愛", $"{url}?t=ke-ai"),
-            new("Làm tình 做愛", $"{url}?t=zuo-ai"),
-            new("Vú khủng 巨乳", $"{url}?t=ju-ru"),
-            new("Cởi đồ 脫衣", $"{url}?t=tuo-yi"),
-            new("Lên đỉnh 高潮", $"{url}?t=gao-chao"),
-            new("Phun nước 噴水", $"{url}?t=pen-shui"),
-            new("Đài Loan 台灣", $"{url}?t=tai-wan"),
-            new("Học sinh 學生", $"{url}?t=xue-sheng"),
+            new("Tự chụp", $"{url}?t=zi-pai"),
+            new("Tự sướng", $"{url}?t=zi-wei"),
+            new("Nghèo nàn", $"{url}?t=pin-ru"),
+            new("Em gái", $"{url}?t=mei"),
+            new("Trên giường", $"{url}?t=chuang-shang"),
+            new("Bướm non", $"{url}?t=nen-bi"),
+            new("Muội muội", $"{url}?t=mei-mei"),
+            new("Khỏa thân", $"{url}?t=quan-luo"),
+            new("Rên rỉ", $"{url}?t=yin-jiao"),
+            new("Banh bướm", $"{url}?t=bai-bi"),
+            new("Bào ngư", $"{url}?t=bao-yu"),
+            new("Mông đẹp", $"{url}?t=mei-tun"),
+            new("Vú to", $"{url}?t=da-nai"),
+            new("Quần lót", $"{url}?t=nei-ku2"),
+            new("Lỗ đít", $"{url}?t=pi-yan"),
+            new("Cô gái", $"{url}?t=mei-zi"),
+            new("Nhật Bản", $"{url}?t=ri-ben"),
+            new("Bú cu", $"{url}?t=kou-jiao"),
+            new("Dễ thương", $"{url}?t=ke-ai"),
+            new("Làm tình", $"{url}?t=zuo-ai"),
+            new("Vú khủng", $"{url}?t=ju-ru"),
+            new("Cởi đồ", $"{url}?t=tuo-yi"),
+            new("Lên đỉnh", $"{url}?t=gao-chao"),
+            new("Phun nước", $"{url}?t=pen-shui"),
+            new("Đài Loan", $"{url}?t=tai-wan"),
+            new("Học sinh", $"{url}?t=xue-sheng"),
         };
 
         return new List<MenuItem>(2)
@@ -529,6 +529,22 @@ public static class Po85To
                 submenu = tagmenu
             }
         };
+    }
+
+    // Web de nguyen chu Nhat/Trung o tag cua video -> LUAT menu: chi Viet/Anh
+    // nen loc bo khi dung lam chip popup.
+    public static bool HasCjk(string s)
+    {
+        if (string.IsNullOrEmpty(s)) return false;
+        foreach (char c in s)
+        {
+            if (c >= 0x3040 && c <= 0x30FF) return true; // kana
+            if (c >= 0x3400 && c <= 0x9FFF) return true; // kanji / han
+            if (c >= 0xAC00 && c <= 0xD7AF) return true; // hangul
+            if (c >= 0x0E00 && c <= 0x0E7F) return true; // thai
+            if (c >= 0x0400 && c <= 0x04FF) return true; // cyrillic
+        }
+        return false;
     }
 
     static List<MenuItem> SortSubmenu(
