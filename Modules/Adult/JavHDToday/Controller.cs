@@ -89,18 +89,18 @@ public class JavHDTodayController : BaseSisiController
         if (string.IsNullOrWhiteSpace(uri))
             return Json(new { items = new object[0], groups = new object[0] });
 
-        string pageUrl = uri.Trim();
-        pageUrl = HttpUtility.HtmlDecode(pageUrl);
-        if (!pageUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
-            pageUrl = init.host + pageUrl;
-        int qm = pageUrl.IndexOf('?');
-        if (qm >= 0) pageUrl = pageUrl.Substring(0, qm);
+        string pageUrl = DetailUrl(uri);
+        if (string.IsNullOrEmpty(pageUrl))
+            return Json(new { items = new object[0], groups = new object[0] });
 
         string memKey = ipkey($"javhdtoday:genres:{pageUrl}");
         if (!hybridCache.TryGetValue(memKey,
             out List<(string kind, string slug, string name)> info) || info == null)
         {
-            string html = await FetchHtmlAsync(pageUrl, "starring", 2, 5, Ms() + 15000);
+            // 2026-11-13: site bo nhan "starring:" -> marker cu ("starring")
+            // khong con trong HTML 132KB, FetchHtmlAsync nem trang di va
+            // tra rong => popup that banh. Marker moi = "Genre:".
+            string html = await FetchHtmlAsync(pageUrl, "Genre:", 2, 5, Ms() + 15000);
             info = JavHDTodayTo.Info(html);
             if (info.Count > 0)
                 hybridCache.Set(memKey, info, cacheTime(360));
@@ -126,24 +126,57 @@ public class JavHDTodayController : BaseSisiController
         AddGroup("Thể loại", "genre", s => list(s));
         AddGroup("Tag", "tag", s => list("tag/" + s));
 
-        if (groups.Count > 0)
+        // Lien quan luon co khi URL detail hop le (ke ca khi khong parse
+        // duoc chip) — route ?rel= tu fetch lai trang detail.
+        groups.Add(new
         {
-            groups.Add(new
+            title = "Liên quan",
+            items = new[]
             {
-                title = "Liên quan",
-                items = new[]
+                new
                 {
-                    new
-                    {
-                        title = "Video liên quan",
-                        plain = true,
-                        url = host + "/javhdtoday?rel=" + HttpUtility.UrlEncode(pageUrl)
-                    }
+                    title = "Video liên quan",
+                    plain = true,
+                    url = host + "/javhdtoday?rel=" + HttpUtility.UrlEncode(pageUrl)
                 }
-            });
-        }
+            }
+        });
 
         return Json(new { items = new object[0], groups });
+    }
+
+    /// <summary>
+    /// Chuan hoa URL detail + chan SSRF (chi nhan host cua site).
+    /// Tra null neu uri rac / host la / scheme khong hop le.
+    /// </summary>
+    string DetailUrl(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return null;
+
+        string u = HttpUtility.HtmlDecode(uri.Trim());
+        if (!u.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            u = init.host.TrimEnd('/') + "/" + u.TrimStart('/');
+
+        int qm = u.IndexOf('?');
+        if (qm >= 0) u = u.Substring(0, qm);
+
+        if (!System.Uri.TryCreate(u, System.UriKind.Absolute, out var abs))
+            return null;
+
+        if (abs.Scheme != "http" && abs.Scheme != "https")
+            return null;
+
+        // Chi nhan URL detail that: /<id>/<slug>/ (id la so).
+        if (!System.Text.RegularExpressions.Regex.IsMatch(abs.AbsolutePath, @"^/\d+(/|$)"))
+            return null;
+
+        string h = abs.Host;
+        bool ok = h.Equals("javhdz.today", StringComparison.OrdinalIgnoreCase)
+               || h.Equals("javhd.today", StringComparison.OrdinalIgnoreCase)
+               || h.Equals(new System.Uri(init.host).Host, StringComparison.OrdinalIgnoreCase);
+
+        return ok ? u : null;
     }
 
     // "Related Videos" cua trang detail: ?ajax=related -> {html,total}.
@@ -153,12 +186,9 @@ public class JavHDTodayController : BaseSisiController
         if (pg > 1)
             return EmptyPage();
 
-        string pageUrl = rel.Trim();
-        pageUrl = HttpUtility.HtmlDecode(pageUrl);
-        if (!pageUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
-            pageUrl = init.host + pageUrl;
-        int qm = pageUrl.IndexOf('?');
-        if (qm >= 0) pageUrl = pageUrl.Substring(0, qm);
+        string pageUrl = DetailUrl(rel);
+        if (string.IsNullOrEmpty(pageUrl))
+            return EmptyPage();
 
         var cache = await InvokeCacheResult<(List<PlaylistItem> playlists, int total_pages)>(
             ipkey($"javhdtoday:rel:{pageUrl}"), 180, async e =>
@@ -173,8 +203,8 @@ public class JavHDTodayController : BaseSisiController
             return e.Success((pl, 1));
         });
 
-        if (!cache.IsSuccess)
-            return OnError(cache.ErrorMsg);
+        if (!cache.IsSuccess || cache.Value.playlists == null || cache.Value.playlists.Count == 0)
+            return EmptyPage();
 
         return PlaylistResult(cache.Value.playlists, cache.ISingleCache,
             await MenuAsync(null, null), total_pages: 1);
