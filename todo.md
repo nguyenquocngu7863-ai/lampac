@@ -30,10 +30,10 @@ Skill tham chiếu: `lampac-popup` (hợp đồng route, luật UX, anti-pattern
 
 ## Phase 0 — Bù mục "Liên quan" (`?rel=`) cho 5 module đã có genres
 
-- [ ] `Av123` — https://123av.com
+- [x] `Av123` — https://123av.com *(rel chạy: 12 item)*
 - [ ] `JAVSnap` — https://javsnap.com
 - [ ] `JavHDToday` — https://javhdz.today
-- [ ] `Po85` — https://www.85po.com
+- [x] `Po85` — https://www.85po.com *(rel chạy: 15 item)*
 - [ ] `XNhau` — https://xnhau.pink
 
 ## Phase 1 — JAV / Á – Việt (ưu tiên, có trang detail + vidosik)
@@ -55,15 +55,17 @@ Skill tham chiếu: `lampac-popup` (hợp đồng route, luật UX, anti-pattern
 - [ ] `SexDep` — https://z.sexdep.co.uk
 - [ ] `SexHihi` — https://sexhihih.blog
 - [ ] `SexVietDam` — https://sexvietdam.blog
+- [x] `SexVietop` — https://sexvietop.com — ✅ MỚI (2026-11-11): home/category/tag/search(path `/tim-kiem/<slug>`)/rank(ajax/top)/genres+rel/sort **BỎ HẲN dòng 2** (site không có sort thật — xem cases.md)
 - [ ] `Sexgenz2` — https://x.sexgenz.blog
 - [ ] `Sieusex` — https://biphim.net
 - [ ] `SupJav` — https://supjav.com *(PAUSED: Cloudflare chặn — chỉ probe khi user xác nhận)*
 - [ ] `TangThon` — https://tangthon.com
-- [ ] `Tazzly` — https://singapore-packaging.com
+- [x] ~~`Tazzly`~~ — ĐÃ XOÁ 2026-11-09: web hỏng (xem `notes/SITE-HONG.md`)
 - [ ] `Tizam` — https://amu.tizam.org
 - [ ] `TopGai` — https://topgai.net
 - [ ] `Topsex` — https://s1.topsex.blog
 - [ ] `VNsexTop1` — https://vnsextop1.com
+- [x] `VNJav` — https://vnjav.net — ✅ MỚI (2026-11-13): 2 server LoadVid(HLS)/StreamTape(mp4) + genres(chips Danh mục/Thẻ/Diễn viên) + rel(total_pages:1). helvid/upload18 để Treo (CF chặn server-side). Lưu ý: nhiều phim chỉ còn 1 nguồn (StreamTape) sau khi bỏ helvid, phim mới chưa có sources → 503.
 - [ ] `Viet69Av` — https://viet69av.com
 - [ ] `Viet69z` — https://viet69z.to
 - [ ] `Vlxx` — https://vlxx.phd
@@ -78,7 +80,7 @@ Skill tham chiếu: `lampac-popup` (hợp đồng route, luật UX, anti-pattern
 - [ ] `HQporner` — https://m.hqporner.com
 - [ ] `PornHub` — https://rt.pornhub.com
 - [ ] `Porntrex` — https://www.porntrex.com
-- [ ] `Spankbang` — https://ru.spankbang.com
+- [x] `Spankbang` — https://ru.spankbang.com *(popup: `Diễn viên`/`Kênh`/`Thẻ` + `Liên quan`; chip mở thẳng trang site bằng `?path=` (vd `/a1e/pornstar/big+tre/`), lọc tên CJK/Nga; list: card mới của site không còn `title` → đọc `img alt`, badge `HD`/`11m` theo `data-testid`; sort thật `new_videos` / `trending_videos` / `most_popular` = `/most_popular/?p=w` — `/upcoming/` bị site trả 503 nên bỏ; trang pornstar 0 video → trả list rỗng thay vì lỗi)*
 - [ ] `Xhamster` — https://xhamster.com
 - [ ] `Xnxx` — https://www.xnxx-ru.com
 - [ ] `Xvideos` — https://www.xvideos.com
@@ -137,10 +139,39 @@ Luật đã ghi vào `AGENTS.md` (LUẬT CỨNG) + skill `lampac-adult-module/re
 
 - [ ] **XvideosRED** — 36 mục thể loại **tiếng Nga** (`Азиат`, `Анал`, `Соло`,
       `Тинейджеры`, `Фистинг`…) cần dịch sang Việt/Anh
-- [ ] **Spankbang** — 2 mục sort tiếng Nga (`Трендовое`, `Популярное`) trộn tiếng Việt
-      (`Mới`) → dịch cho đồng nhất
-- [ ] **Po85** — nhãn song ngữ VN + chữ Trung kèm (`Tự chụp 自拍`, `Vú to 大奶`…)
-      → bỏ phần chữ Hán, giữ tiếng Việt
+- [x] **Spankbang** — 2 mục sort tiếng Nga (`Трендовое`, `Популярное`) trộn tiếng Việt
+      (`Mới`) → dịch thành `Xu hướng` / `Phổ biến`, nhãn dòng 2 hiển thị theo
+      `SpankbangTo.SortLabel(sort)`; quét menu = **0** chữ Nga
+- [x] **Po85** — đã bỏ phần chữ Hán ở 26 nhãn tag, giữ tiếng Việt:
+      `Tự chụp 自拍` → `Tự chụp`, `Vú to 大奶` → `Vú to`… (1 mục `妹子` đổi thành
+      `Cô gái` vì bỏ chữ Hán sẽ trùng tên với `妹` = `Em gái`).
+      Popup `/po85/genres`: chip `Tag` lấy từ trang phim — tag site toàn tiếng
+      Nhật/Trung (`エロい`, `ロリ`, `巨乳`) nên **lọc bỏ bằng `Po85To.HasCjk()`**;
+      video nào có tag Latin thì chip vẫn hiện. Quét CJK menu (43 mục) + popup = **0**.
+
+---
+
+## Phase 5 — Thumbnail 3 trường (`name` / `time` / `quality`) — làm dần
+
+**Luật**: card chỉ có 3 slot chữ, cả 3 phải lấy từ markup site. Không bịa (cấm hằng số,
+nhãn tự nghĩ), không bỏ sót (site in badge mà regex không bắt = lỗi). Suy ra từ dữ liệu
+site thì được (`isUHD`→`HD`, giây→`mm:ss`, `is-4k`→`4K`).
+Nguồn: `~/.config/opencode/skills/lampac-adult-module/references/card-thumbnail.md`
++ bullet LUẬT trong `SKILL.md` §Nguyên tắc bắt buộc.
+
+- [x] Ghi luật vào skill (`card-thumbnail.md` + map + bullet LUẬT) — 2026-11-08
+- [x] Quét "bịa": 0 module set literal khác rỗng; các `= ""` chỉ là khởi tạo biến
+- [x] Xác nhận 2 chỗ suy ra hợp lệ: `Xhamster/Service.cs:123`, `VnChich/Service.cs:177`
+- [ ] **Sweep bỏ sót — nhóm JAV** (đối chiếu capture, site thường CÓ badge thời lượng):
+      `JavCt` `JavGuru` `JavHDToday` `JavMoi` `JavQuick` `JavSub` `JavTsunami` `KawaiJAV` `JAVSnap` `PubJav` `SupJav`
+- [ ] **Sweep bỏ sót — nhóm VN/Á** : `DuJav` `HeoVl` `Lon69` `Mbbg` `Phe69` `PhimSexVN88`
+      `PhimSexViet113` `QmhSex` `SexDep` `SexHihi` `SexTb` `Sexgenz2` `Sieusex` `TopGai`
+      `Topsex` `VNsexTop1` `Viet69Av` `Viet69z` `VietSexBlog` `Vietmup` `XHeoVL` `XViet` `XszAv`
+- [ ] **Sweep bỏ sót — nhóm Tube Tây**: `Av123` `AsianGirl` `Javtiful` `Manko` `SakuraSins`
+      `Suong3x` `VnChich` (chỉ cần xác nhận site không in `quality` ở card list)
+- [ ] Bỏ qua hợp lệ (live cam không có thời lượng): `BongaCams` `Chaturbate` `Runetki`
+- [ ] Mỗi module sửa xong: soi JSON list thật, `time`/`quality` phải khớp 1:1 card trên site
+- [ ] Chốt: danh sách module cố ý để `null` (kèm lý do site không in) ghi vào README module
 
 ---
 
@@ -160,11 +191,26 @@ Luật đã ghi vào `AGENTS.md` (LUẬT CỨNG) + skill `lampac-adult-module/re
 | 2026-11-07 | Jav18 | **dịch menu thể loại/từ khoá Trung → Việt** | bảng `Trans` (125 từ) + `Jav18To.Translate()`, áp cho menu **và** popup `/genres`; tên diễn viên Latin giữ nguyên |
 | 2026-11-07 | AGENTS.md + skill | **LUẬT MỚI: menu phải Việt hoặc Anh** | ghi vào `AGENTS.md` mục LUẬT CỨNG + `references/menu-sisi.md` §9g khối "LUẬT CỨNG — NGÔN NGỮ MENU" (kèm lệnh grep CJK/Cyrillic/Thái/Hàn để quét) |
 | 2026-11-07 | **Av123 → `/vi`** | chuyển hẳn sang bản tiếng Việt của site (`Lang = "/vi"`), nhãn menu lấy nguyên văn từ web, ẩn 45 mục site để tiếng Nhật, `taxo.json` khoá theo `lang`, bump cache key `v3` | slug thể loại trùng 508/508 nên chỉ đổi prefix; `play.sh` **PHÁT ĐƯỢC** sau khi thêm route `av123/hls.m3u8` (trước đó thiếu đuôi → app báo no supported source) |
+| 2026-11-07 | Po85 | bỏ chữ Hán khỏi 26 nhãn tag, lọc chip `Tag` tiếng Nhật/Trung ở popup | menu 43 mục + popup quét CJK = 0; `play.sh`: PHÁT ĐƯỢC (kèm cảnh báo cũ: route `strem` không đuôi `.mp4`, codec av1) |
 | 2026-11-07 | (bài học) | **cache file `~/lampac-run/cache/fdb/`** (`HybridFileCache`) **sống qua restart** | đổi code mà `/av123` vẫn ra `/en/` + tên tiếng Anh; xoá entry có `zcat … | grep av123/` rồi restart mới sạch |
+| 2026-11-07 | **Spankbang** | popup (Diễn viên/Kênh/Thẻ + Liên quan), `?path=` cho chip, dịch menu sort, fix card list | card mới của site **không có `title`** trên `<a>` → lấy `img alt`; badge `HD`/`11m` đọc theo `data-testid="video-item-resolution|length"`; sort: `?p=w` cho tuần, `/upcoming/` 503 → bỏ; pornstar 0 video → `list: []` thay vì 503; popup 6 video / 95 chip = 0 CJK; `play.sh` → **PHÁT ĐƯỢC** (h264 1280x720 + aac, ffmpeg decode 5s OK, Range 206) |
+| 2026-11-08 | **SexNetVc (mới)** | module mới `sexnetvc.com` (engine vlxx): list/menu/popup/path-route + 2 nguồn HLS | search phải dùng `/tim-kiem/<q>` (form `?k=` chỉ trả trang 1); tag cuối là `</a>` chứa SVG 1KB nên phải bắt tới `</a>` mới thấy `<span>`; **sort: đo 8 biến thể `?sort=` → chỉ là tăng dần cùng tập, `order=desc`/`-views` bị nuốt → BỎ dòng 2**; thumbnail: **ưu tiên duration** — site in 0 duration → lấy **1 nhãn ribbon đầu** làm `time` (`Không Che`), `quality: null`; KHÔNG nối 2 nhãn (`" · "` tràn poster; `\n` bị `innerText` gộp thành dấu cách — đã test Chrome thật); `PlaylistResult` coi list rỗng là lỗi → trả `Json` tay (`total_pages:1`); `play.sh` **PASS** cả 2 server (h264 640x360, decode 5s đầu/cuối) |
+| 2026-11-08 | (luật mới) | **Thumbnail = 3 trường `name`/`time`/`quality`, lấy từ site** | ghi vào skill `lampac-adult-module` (`references/card-thumbnail.md` + bullet LUẬT + map); quét toàn bộ module: **không module nào bịa** literal; `Xhamster`/`VnChich` chỉ suy ra từ field site. Audit "bỏ sót" để Phase 5 trong todo |
 
 ## Treo (Manko)
 
 - [ ] Ẩn "Server 2" (helvid) khỏi danh sách nguồn — web **đã bỏ**, CF Worker của helvid chặn mọi client server-side (đo: UA/Referer/Origin/Sec-Fetch/cookie/`tm=1`, cả IPv4 & IPv6 đều 404; Chrome thật thì 200)
+
+## Treo (VNJav — module mới 2026-11-13)
+
+- [ ] **Server 2 (upload18 → helvid)** — chưa đưa vào module (`/vnjav` chỉ có 2 server: LoadVid + StreamTape).
+      Công thức ĐÃ ĐO: `GET https://upload18.org/play/index/<key>` (Referer = trang detail vnjav) → set cookie `u18ps`
+      → đọc `PLAYER_CONFIG.m3u8` = `https://helvid.com/m/<b64>/playlist.m3u8?e=&h=&s=&x=&d=chromium&i=<ipv6/64>&v=`.
+      Chrome THẬT (x.sh) fetch được master + segment `/s/<hex>?sn=`; `curl_cffi impersonate=chrome124` bị **404**
+      dù cùng session/cookie (`s=` khớp), mọi biến thể Referer (`root`/`play`/none)/Origin/UA/Accept đều 404 — CF `cf-ray …-SIN`.
+      Token có `i=v6/64:…` (IP-bind), egress curl_cffi ra cả IPv4 `116.108.81.131` lẫn IPv6 `2402:800:…`.
+      Kết luận: cùng họ "CF Worker chặn server-side" như Manko ở trên. Muốn bật lại: resolve bằng
+      Chrome/Playwright trong cùng context rồi redirect thẳng (KHÔNG dùng HostStreamProxy), hoặc chờ site đổi player.
 - [ ] Bật fallback API thật: `window.ip2` hiện là **`alpharomeo.shop`**, module đang hardcode `robustx.shop` và **không dùng** → chưa có fallback sống
 - [ ] `IsSiteUri("abc")` (id rác) đi hết 2 lần timeout (15s direct + 15s proxy) → popup trả rỗng sau ~30s; muốn fail nhanh thì cắt retry khi API trả `data` rỗng
 
