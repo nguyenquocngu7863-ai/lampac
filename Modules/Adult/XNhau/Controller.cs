@@ -110,12 +110,12 @@ public class XNhauController : BaseSisiController
             await MenuAsync(search, sort, c, t, sh), total_pages: cache.Value.total_pages);
     }
 
-    // Menu = head (Tim kiem + Sắp xếp theo context) + base taxonomy cache.
+    // Menu = head (Tim kiem + Sắp xếp theo context) + base taxonomy cache
+    // + nhom "Tai khoan" (trang thai song, khong cache).
     // Menu khong con 1 key tinh: dong 2 doi theo search/sort/c/t.
     async Task<List<MenuItem>> MenuAsync(string search, string sort, string c, string t, string sh)
     {
         var menu = XNhauTo.MenuHead(host, search, sort, c, t, sh);
-        // v2: them nhom "Tai khoan" (popup login) -> bump key de khong an cache menu cu.
         string memKey = ipkey("xnhau:menu2");
 
         if (hybridCache.TryGetValue(memKey,
@@ -123,26 +123,33 @@ public class XNhauController : BaseSisiController
             && groups != null && groups.Count > 0)
         {
             menu.AddRange(XNhauTo.Menu(host, groups));
-            return menu;
         }
-
-        string hostLocal = host;
-
-        try
+        else
         {
-            var list = await FetchAsync(hostLocal + "/the-loai/");
-            var tax = XNhauTo.Taxonomies(list);
+            string hostLocal = host;
 
-            if (tax.Count > 0)
+            try
             {
-                menu.AddRange(XNhauTo.Menu(hostLocal, tax));
-                hybridCache.Set(memKey, tax, cacheTime(720), true);
-                return menu;
+                var list = await FetchAsync(hostLocal + "/the-loai/");
+                var tax = XNhauTo.Taxonomies(list);
+
+                if (tax.Count > 0)
+                {
+                    menu.AddRange(XNhauTo.Menu(hostLocal, tax));
+                    hybridCache.Set(memKey, tax, cacheTime(720), true);
+                }
+                else
+                {
+                    menu.AddRange(XNhauTo.Menu(hostLocal, null));
+                }
+            }
+            catch
+            {
+                menu.AddRange(XNhauTo.Menu(hostLocal, null));
             }
         }
-        catch { }
 
-        menu.AddRange(XNhauTo.Menu(hostLocal, null));
+        menu.Add(await AccountMenuAsync());
         return menu;
     }
 
@@ -577,10 +584,72 @@ public class XNhauController : BaseSisiController
         });
     }
 
-    // ===== Popup tai khoan (menu SISI): xem trang thai + chay script login =====
+    // ===== Popup tai khoan (menu SISI): trang thai + chay script login =====
     static volatile bool loginBusy;
     static string lastLoginMsg;
     static System.DateTime lastLoginAtUtc = System.DateTime.MinValue;
+
+    /// <summary>Trang thai tai khoan (probe + ket qua login gan nhat).</summary>
+    sealed class AccountState
+    {
+        public bool member;
+        public System.DateTime cookieAt;
+    }
+
+    /// <summary>
+    /// Probe trang chu (cookie con song khong), cache RAM 20s.
+    /// `busy` KHONG cache — doc truc tiep `loginBusy` de menu doi ngay.
+    /// </summary>
+    async Task<AccountState> AccountStateAsync()
+    {
+        const string key = "xnhau:acct";
+        if (hybridCache.TryGetValue(key, out AccountState cached) && cached != null)
+            return cached;
+
+        var st = new AccountState();
+
+        try
+        {
+            string html = await FetchAsync(init.host + "/");
+            st.member = html != null && (html.Contains("data-member=\"2\"") || html.Contains("Đăng xuất"));
+        }
+        catch { }
+
+        try { st.cookieAt = System.IO.File.Exists(CookieFile) ? System.IO.File.GetLastWriteTimeUtc(CookieFile) : default; }
+        catch { }
+
+        hybridCache.Set(key, st, System.TimeSpan.FromSeconds(20), true);
+        return st;
+    }
+
+    /// <summary>Nhom "Tai khoan" cua menu: tieu de con = trang thai that.</summary>
+    async Task<MenuItem> AccountMenuAsync()
+    {
+        var st = await AccountStateAsync();
+
+        var sub = new List<MenuItem>(3);
+
+        if (loginBusy)
+            sub.Add(new MenuItem("⏳ Đang chạy script…", $"{host}/xnhau/account"));
+        else
+            sub.Add(new MenuItem(st.member ? "✅ Đã đăng nhập" : "❌ Chưa đăng nhập", $"{host}/xnhau/account"));
+
+        sub.Add(new MenuItem("▶ Đăng nhập bằng script", $"{host}/xnhau/account?act=login"));
+
+        if (!string.IsNullOrEmpty(lastLoginMsg))
+        {
+            string last = (lastLoginMsg.StartsWith("OK") ? "OK" : "Lỗi")
+                + " " + lastLoginAtUtc.ToLocalTime().ToString("dd/MM HH:mm");
+            sub.Add(new MenuItem("Lần cuối: " + last, $"{host}/xnhau/account"));
+        }
+
+        return new MenuItem()
+        {
+            title = "Tài khoản",
+            playlist_url = "submenu",
+            submenu = sub
+        };
+    }
 
     /// <summary>
     /// Trang "Tai khoan": cookie con song khong + nut chay script login headful.
@@ -596,22 +665,7 @@ public class XNhauController : BaseSisiController
         if (act == "login")
             StartLogin();
 
-        bool member = false;
-        string probe = "chua kiem tra";
-        try
-        {
-            string html = await FetchAsync(init.host + "/");
-            member = html != null && (html.Contains("data-member=\"2\"") || html.Contains("Đăng xuất"));
-            probe = html == null ? "khong tai duoc trang chu" : (member ? "thanh vien" : "chua dang nhap");
-        }
-        catch (System.Exception ex)
-        {
-            probe = ex.GetType().Name;
-        }
-
-        System.DateTime cookieAt;
-        try { cookieAt = System.IO.File.Exists(CookieFile) ? System.IO.File.GetLastWriteTimeUtc(CookieFile) : default; }
-        catch { cookieAt = default; }
+        var st = await AccountStateAsync();
 
         var list = new List<PlaylistItem>();
 
@@ -629,9 +683,9 @@ public class XNhauController : BaseSisiController
         {
             list.Add(new PlaylistItem
             {
-                name = member ? "✅ Đã đăng nhập (thành viên)" : "❌ Chưa đăng nhập / cookie đã chết",
+                name = st.member ? "✅ Đã đăng nhập (thành viên)" : "❌ Chưa đăng nhập / cookie đã chết",
                 video = $"{host}/xnhau/account",
-                time = cookieAt == default ? null : cookieAt.ToLocalTime().ToString("dd/MM HH:mm"),
+                time = st.cookieAt == default ? null : st.cookieAt.ToLocalTime().ToString("dd/MM HH:mm"),
                 quality = "Cookie",
                 json = true
             });

@@ -28,19 +28,25 @@ Module Adult cho nguồn xnhau.pink (Việt).
 - Route cũ `/xnhau/uploader` (`{name, member}`) vẫn giữ, giờ dùng chung parser `XNhauTo.Info`.
   `XNhauTo.Info()` đọc `.info-content` bằng `ReadLinks()` chung cho cả `the-loai` và `tags`.
 
-## Popup Tài khoản (chạy script login + trạng thái)
+## Popup Tài khoản (2 tầng, trạng thái hiện ngay trên menu)
 
-Menu dòng 3 `Tài khoản` → 2 mục: **Trạng thái đăng nhập** / **Đăng nhập bằng script**.
+- **Tầng 1** `Tài khoản` — nhóm trong menu SISI (dòng 3), nằm ở `MenuAsync` (không cache).
+- **Tầng 2** (tự cập nhật theo trạng thái thật):
+  - `✅ Đã đăng nhập` / `❌ Chưa đăng nhập` / `⏳ Đang chạy script…` → `/xnhau/account`
+  - `▶ Đăng nhập bằng script` → `/xnhau/account?act=login`
+  - `Lần cuối: OK 13/11 16:42` (chỉ hiện sau khi đã chạy login ít nhất 1 lần)
 
-- `GET /xnhau/account` — trang trạng thái, trả playlist JSON (2–3 card):
-  - `✅ Đã đăng nhập (thành viên)` / `❌ Chưa đăng nhập / cookie đã chết`
-    (probe `data-member="2"` / `Đăng xuất` trên trang chủ, `time` = mtime `xnhau.cookie`)
-  - `▶ Chạy script đăng nhập (Chrome + Turnstile)` → `?act=login`
-  - `Lần chạy trước (…): OK — …` (kết quả lần login gần nhất trong tiến trình)
-- `GET /xnhau/account?act=login` — **chạy nền** (`Task.Run`), trả về ngay card
-  `⏳ Đang chạy script…`; script headful mất ~25–60 s, mở lại trang sau ~30 s để xem kết quả.
-  `loginBusy` chặn chạy 2 lần cùng lúc; cookie file `xnhau.cookie` được module hot-reload.
-- Cùng dữ liệu JSON: `/xnhau/check` (`cookie: alive|dead|missing`, `member`, `script`, `chromium`).
+Probe trang chủ cache RAM **20 s** (`xnhau:acct`); `busy` đọc trực tiếp `loginBusy`
+nên menu đổi ngay khi bấm chạy.
+
+### Trang `/xnhau/account`
+- Card trạng thái: `✅ Đã đăng nhập (thành viên)` / `❌ Chưa đăng nhập / cookie đã chết`
+  (`time` = mtime `xnhau.cookie`, badge `Cookie`)
+- Card `▶ Chạy script đăng nhập (Chrome + Turnstile)` → `?act=login`
+- Card `Lần chạy trước (…): OK — …` (kết quả chi tiết)
+- `?act=login` **chạy nền** (`Task.Run`), trả về ngay card `⏳ Đang chạy script…`;
+  script headful ~25–60 s, `loginBusy` chống chạy 2 lần; cookie file hot-reload.
+- JSON thô: `/xnhau/check` (`cookie: alive|dead|missing`, `member`, `script`, `chromium`).
 
 ## Feed người đăng (profile)
 
