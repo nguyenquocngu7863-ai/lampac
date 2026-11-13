@@ -1,6 +1,25 @@
 (function() {
   'use strict';
 
+  // Chan menu nhan giu cua browser tren anh (Opera/Chrome: "Mo hinh anh
+  // trong tab moi", "Luu hinh anh", "Tim anh voi Google"...). Anh khong
+  // nhan touch -> long-press roi vao .card (.selector) de Lampa ban
+  // hover:long -> popup module.
+  (function () {
+    var style = document.createElement('style');
+    style.appendChild(document.createTextNode(
+      'img{pointer-events:none!important;-webkit-touch-callout:none!important;' +
+      '-webkit-user-drag:none!important;user-select:none!important;' +
+      '-webkit-user-select:none!important}'));
+    (document.head || document.documentElement).appendChild(style);
+
+    document.addEventListener('contextmenu', function (e) {
+      var t = e.target;
+      if (t && (t.tagName === 'IMG' || (t.closest && t.closest('.card, .full-start'))))
+        e.preventDefault();
+    }, true);
+  })();
+
   var Defined = {
     use_api: 'lampac',
     localhost: '{localhost}/sisi',

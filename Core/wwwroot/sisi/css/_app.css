@@ -7456,3 +7456,12 @@ body.glass--style .torrent-serial.focus {
 body.glass--style .card-more__box {
   background: rgba(0, 0, 0, 0.3);
 }
+/* Chan menu nhan giu cua browser tren anh (Tim anh voi Google, Luu anh...).
+   pointer-events:none -> touch roi vao .card/.selector de hover:long mo popup. */
+img {
+  pointer-events: none;
+  -webkit-touch-callout: none;
+  -webkit-user-drag: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
