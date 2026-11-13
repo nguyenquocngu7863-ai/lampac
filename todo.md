@@ -63,7 +63,7 @@ Skill tham chiếu: `lampac-popup` (hợp đồng route, luật UX, anti-pattern
 - [x] ~~`Tazzly`~~ — ĐÃ XOÁ 2026-11-09: web hỏng (xem `notes/SITE-HONG.md`)
 - [ ] `Tizam` — https://amu.tizam.org
 - [ ] `TopGai` — https://topgai.net
-- [ ] `Topsex` — https://s1.topsex.blog
+- [x] ~~`Topsex`~~ — ĐÃ XOÁ 2026-11-13: web die (domain NXDOMAIN, xem `notes/SITE-HONG.md`)
 - [ ] `VNsexTop1` — https://vnsextop1.com
 - [x] `VNJav` — https://vnjav.net — ✅ MỚI (2026-11-13): 2 server LoadVid(HLS)/StreamTape(mp4) + genres(chips Danh mục/Thẻ/Diễn viên) + rel(total_pages:1). helvid/upload18 để Treo (CF chặn server-side). Lưu ý: nhiều phim chỉ còn 1 nguồn (StreamTape) sau khi bỏ helvid, phim mới chưa có sources → 503.
 - [ ] `Viet69Av` — https://viet69av.com

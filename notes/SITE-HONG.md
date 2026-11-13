@@ -41,3 +41,41 @@ Lampac chỉ proxy lại nên **không thể vá**. Giữ module chỉ tổ ong 
 Trạng thái: **đã xoá** `Modules/Adult/Tazzly/` (source) và `~/lampac-run/module/Adult/Tazzly/`
 (runtime). Route `/tazzly` giờ 404. Ảnh bìa (`static.sweetievulgar.com`) vẫn tải được bình thường —
 lỗi nằm ở CDN video, không phải ở ảnh.
+
+---
+
+## Topsex — XOÁ 2026-11-13
+
+- Domain lúc xoá: `https://s1.topsex.blog` (trong `manifest.json`, `ModInit.cs`, `Service.cs`).
+- Module được add ở commit `4e5162b4` nhưng chưa từng verify (vẫn `[ ]` trong `todo.md`).
+
+### Lý do xoá: tên miền chết (không phải lỗi code)
+
+Triệu chứng: `GET /topsex` trả `503 {"msg":"playlists"}` (0 item). Module vẫn compile sạch
+(`check.sh` errors: 0), vẫn `loaded module: Topsex`, source = runtime (identical).
+
+Đo tầng T1 (mạng/DNS) — tất cả chỉ ra domain không còn resolve:
+
+| Phép đo | Kết quả |
+|---|---|
+| `python3 socket.gethostbyname('s1.topsex.blog')` | `[Errno 7] No address associated with hostname` |
+| DoH Google + Cloudflare, `s1.topsex.blog` type A | `Status 3` (NXDOMAIN), không có Answer |
+| DoH, `topsex.blog` type A/AAAA/CNAME/MX | `Status 0` nhưng **không có bản ghi nào**; chỉ còn NS `launch1/launch2.spaceship.net` |
+| Probe 17 subdomain (`s1..s10`, `www`, `m`, `api`, `cdn`, `img`…) | không cái nào có A record |
+| `curl_cffi` (chrome124) trực tiếp `https://s1.topsex.blog/` | `DNSError (6) Could not resolve host` |
+| `curl_cffi` qua proxy Oracle `168.107.66.134:3128` | Timeout 25s |
+| `r.jina.ai/https://s1.topsex.blog/` | HTTP 422 (jina cũng không fetch được) |
+| Đối chứng `sexvietop.com` / `google.com` / `vnjav.net` | resolve bình thường → DNS máy còn tốt |
+
+Kiểu chết giống các site blog hay đổi subdomain `s1/s2/...`: apex còn NS (Spaceship) nhưng
+mọi A record đã bị gỡ, `s1` thành NXDOMAIN. Không phải Cloudflare chặn, không phải lỗi parser,
+không phải lỗi proxy — **không còn host để gọi**. Sửa `SiteHost` cũng vô nghĩa vì không có
+subdomain nào sống.
+
+### Kết luận
+
+Web die hẳn, không vá được từ phía module. User chốt: xoá + push.
+
+Trạng thái: **đã xoá** `Modules/Adult/Topsex/` (source) và `~/lampac-run/module/Adult/Topsex/`
+(runtime). Route `/topsex` giờ 404. `detail2` (HTML capture cũ, untracked) và comment trong
+`VietSexBlog/Service.cs` chỉ còn giá trị tham khảo, không ảnh hưởng chạy.
