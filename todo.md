@@ -20,7 +20,7 @@ Skill tham chiếu: `lampac-popup` (hợp đồng route, luật UX, anti-pattern
 | nhóm | số module | trạng thái |
 |---|---|---|
 | Đã có popup | 19 | xong |
-| Có genres, **thiếu rel** | 5 | Phase 0 |
+| Có genres, **thiếu rel** | 4 | Phase 0 |
 | JAV / Á – Việt, chưa làm | 31 | Phase 1 |
 | Tube phương Tây, chưa làm | 9 | Phase 2 |
 | Cam live, chưa làm | 3 | Phase 3 |
@@ -34,7 +34,7 @@ Skill tham chiếu: `lampac-popup` (hợp đồng route, luật UX, anti-pattern
 - [ ] `JAVSnap` — https://javsnap.com
 - [ ] `JavHDToday` — https://javhdz.today
 - [x] `Po85` — https://www.85po.com *(rel chạy: 15 item)*
-- [ ] `XNhau` — https://xnhau.pink
+- [x] `XNhau` — https://xnhau.pink *(rel đã có sẵn từ 2026-11-02; 2026-11-13 verify: rel 20 item, pg2 rỗng; fix uri rác/host lạ trả `{total_pages:1,list:[]}` thay vì 500 + chặn SSRF ở LoadInfoAsync/RelatedList)*
 
 ## Phase 1 — JAV / Á – Việt (ưu tiên, có trang detail + vidosik)
 

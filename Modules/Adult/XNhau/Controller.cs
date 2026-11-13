@@ -705,7 +705,7 @@ public class XNhauController : BaseSisiController
     async Task<XNhauTo.InfoBox> LoadInfoAsync(string uri)
     {
         string url = DetailUrl(uri);
-        if (string.IsNullOrEmpty(url))
+        if (string.IsNullOrEmpty(url) || !IsSiteUrl(url))
             return null;
 
         string memKey = ipkey($"xnhau:info2:{url}");
@@ -727,7 +727,7 @@ public class XNhauController : BaseSisiController
             return EmptyPage();
 
         string pageUrl = DetailUrl(rel);
-        if (string.IsNullOrEmpty(pageUrl))
+        if (string.IsNullOrEmpty(pageUrl) || !IsSiteUrl(pageUrl))
             return EmptyPage();
 
         var cache = await InvokeCacheResult<(List<PlaylistItem> playlists, int total_pages)>(
@@ -736,17 +736,32 @@ public class XNhauController : BaseSisiController
                 string html = await FetchAsync(pageUrl);
                 var playlists = XNhauTo.Playlist("xnhau/vidosik", html);
 
+                // Detail khong co block lien quan / fetch loi -> list rong,
+                // KHONG OnError (PlaylistResult coi list rong la loi).
                 if (playlists == null || playlists.Count == 0)
                     return e.Success((new List<PlaylistItem>(), 0));
 
                 return e.Success((playlists, 1));
             });
 
-        if (!cache.IsSuccess)
-            return OnError(cache.ErrorMsg);
+        if (!cache.IsSuccess || cache.Value.playlists == null || cache.Value.playlists.Count == 0)
+            return EmptyPage();
 
         return PlaylistResult(cache.Value.playlists, cache.ISingleCache,
             await MenuAsync(null, null, null, null, null), total_pages: 1);
+    }
+
+    /// <summary>URL co thuoc host cua site khong (chong SSRF qua `uri`/`rel`).</summary>
+    bool IsSiteUrl(string url)
+    {
+        if (!System.Uri.TryCreate(url, System.UriKind.Absolute, out var u))
+            return false;
+
+        if (u.Scheme != "http" && u.Scheme != "https")
+            return false;
+
+        return string.Equals(u.Host,
+            new System.Uri(init.host).Host, System.StringComparison.OrdinalIgnoreCase);
     }
 
     ActionResult EmptyPage() => Json(new { total_pages = 1, list = new List<PlaylistItem>() });
