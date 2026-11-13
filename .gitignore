@@ -404,3 +404,9 @@ ogcode.json
 .ogcode/
 *.m3u8
 *.m3u8.headers
+
+# scratch ca nhan (do 2026-11-13)
+/_c*.sh
+/_c*.list
+*.swp
+/.commandcode/
