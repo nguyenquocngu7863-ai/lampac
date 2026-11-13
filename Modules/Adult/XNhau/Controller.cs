@@ -115,7 +115,8 @@ public class XNhauController : BaseSisiController
     async Task<List<MenuItem>> MenuAsync(string search, string sort, string c, string t, string sh)
     {
         var menu = XNhauTo.MenuHead(host, search, sort, c, t, sh);
-        string memKey = ipkey("xnhau:menu");
+        // v2: them nhom "Tai khoan" (popup login) -> bump key de khong an cache menu cu.
+        string memKey = ipkey("xnhau:menu2");
 
         if (hybridCache.TryGetValue(memKey,
             out List<(string name, List<(string slug, string name)> items)> groups)
@@ -573,6 +574,114 @@ public class XNhauController : BaseSisiController
             script = System.IO.File.Exists(LoginScript) ? "co" : "khong",
             cookieFile = cookieFileAt == default ? null : cookieFileAt.ToString("yyyy-MM-dd HH:mm:ss") + " UTC",
             chromium = Chromium.Status.ToString()
+        });
+    }
+
+    // ===== Popup tai khoan (menu SISI): xem trang thai + chay script login =====
+    static volatile bool loginBusy;
+    static string lastLoginMsg;
+    static System.DateTime lastLoginAtUtc = System.DateTime.MinValue;
+
+    /// <summary>
+    /// Trang "Tai khoan": cookie con song khong + nut chay script login headful.
+    /// `?act=login` = chay script (nen, ~25-60s) roi tu bao ket qua.
+    /// </summary>
+    [HttpGet]
+    [Route("xnhau/account")]
+    async public Task<ActionResult> Account(string act)
+    {
+        if (await IsRequestBlocked(rch: true))
+            return badInitMsg;
+
+        if (act == "login")
+            StartLogin();
+
+        bool member = false;
+        string probe = "chua kiem tra";
+        try
+        {
+            string html = await FetchAsync(init.host + "/");
+            member = html != null && (html.Contains("data-member=\"2\"") || html.Contains("Đăng xuất"));
+            probe = html == null ? "khong tai duoc trang chu" : (member ? "thanh vien" : "chua dang nhap");
+        }
+        catch (System.Exception ex)
+        {
+            probe = ex.GetType().Name;
+        }
+
+        System.DateTime cookieAt;
+        try { cookieAt = System.IO.File.Exists(CookieFile) ? System.IO.File.GetLastWriteTimeUtc(CookieFile) : default; }
+        catch { cookieAt = default; }
+
+        var list = new List<PlaylistItem>();
+
+        if (loginBusy)
+        {
+            list.Add(new PlaylistItem
+            {
+                name = "⏳ Đang chạy script đăng nhập (chờ ~30 giây rồi mở lại)",
+                video = $"{host}/xnhau/account",
+                quality = "ĐANG CHẠY",
+                json = true
+            });
+        }
+        else
+        {
+            list.Add(new PlaylistItem
+            {
+                name = member ? "✅ Đã đăng nhập (thành viên)" : "❌ Chưa đăng nhập / cookie đã chết",
+                video = $"{host}/xnhau/account",
+                time = cookieAt == default ? null : cookieAt.ToLocalTime().ToString("dd/MM HH:mm"),
+                quality = "Cookie",
+                json = true
+            });
+
+            list.Add(new PlaylistItem
+            {
+                name = "▶ Chạy script đăng nhập (Chrome + Turnstile)",
+                video = $"{host}/xnhau/account?act=login",
+                quality = "Script",
+                json = true
+            });
+        }
+
+        if (!string.IsNullOrEmpty(lastLoginMsg))
+        {
+            list.Add(new PlaylistItem
+            {
+                name = "Lần chạy trước (" + lastLoginAtUtc.ToLocalTime().ToString("dd/MM HH:mm") + "): " + lastLoginMsg,
+                video = $"{host}/xnhau/account",
+                json = true
+            });
+        }
+
+        return PlaylistResult(list, false, await MenuAsync(null, null, null, null, null), total_pages: 1);
+    }
+
+    /// <summary>Chay script login o background (trang tra ve ngay, khong treo UI).</summary>
+    void StartLogin()
+    {
+        if (loginBusy)
+            return;
+
+        loginBusy = true;
+
+        _ = System.Threading.Tasks.Task.Run(async () =>
+        {
+            try
+            {
+                var (ok, msg) = await LoginAsync(force: true);
+                lastLoginMsg = (ok ? "OK — " : "Lỗi — ") + msg;
+            }
+            catch (System.Exception ex)
+            {
+                lastLoginMsg = "Lỗi — " + ex.GetType().Name + ": " + ex.Message;
+            }
+            finally
+            {
+                lastLoginAtUtc = System.DateTime.UtcNow;
+                loginBusy = false;
+            }
         });
     }
 

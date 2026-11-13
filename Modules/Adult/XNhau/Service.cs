@@ -517,6 +517,18 @@ public static class XNhauTo
             }
         });
 
+        // Dong 3 — tai khoan: xem trang thai cookie + chay script login (popup).
+        menu.Add(new MenuItem()
+        {
+            title = "Tài khoản",
+            playlist_url = "submenu",
+            submenu = new List<MenuItem>(2)
+            {
+                new("Trạng thái đăng nhập", url + "/account"),
+                new("Đăng nhập bằng script", url + "/account?act=login"),
+            }
+        });
+
         // Dong 4+ — taxonomy. Client chi 1 tang nen moi nhom 1 muc.
         foreach (var (name, items) in groups ?? FallbackGroups)
         {

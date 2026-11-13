@@ -5,7 +5,8 @@ Module Adult cho nguồn xnhau.pink (Việt).
 ## Cấu hình
 - `manifest.json`: module Adult, `enable: true`, `dynamic: true`
 - `Controller.cs`: endpoint `/xnhau` (list/search/member feed/related), `/xnhau/strem` (stream),
-  `/xnhau/genres` + `/xnhau/uploader` (menu ngữ cảnh / long-press)
+  `/xnhau/genres` + `/xnhau/uploader` (menu ngữ cảnh / long-press),
+  `/xnhau/account` (popup **Tài khoản**: trạng thái cookie + chạy script login)
 - `Service.cs`: parse HTML, regex `div.item`, stream links từ file:...
 
 ## Menu ngữ cảnh (long-press) — chuẩn 123av
@@ -26,6 +27,20 @@ Module Adult cho nguồn xnhau.pink (Việt).
 - Riêng XNhau có thêm nhóm `Người đăng` (site thành viên tự đăng bài ⇒ không có studio/actor).
 - Route cũ `/xnhau/uploader` (`{name, member}`) vẫn giữ, giờ dùng chung parser `XNhauTo.Info`.
   `XNhauTo.Info()` đọc `.info-content` bằng `ReadLinks()` chung cho cả `the-loai` và `tags`.
+
+## Popup Tài khoản (chạy script login + trạng thái)
+
+Menu dòng 3 `Tài khoản` → 2 mục: **Trạng thái đăng nhập** / **Đăng nhập bằng script**.
+
+- `GET /xnhau/account` — trang trạng thái, trả playlist JSON (2–3 card):
+  - `✅ Đã đăng nhập (thành viên)` / `❌ Chưa đăng nhập / cookie đã chết`
+    (probe `data-member="2"` / `Đăng xuất` trên trang chủ, `time` = mtime `xnhau.cookie`)
+  - `▶ Chạy script đăng nhập (Chrome + Turnstile)` → `?act=login`
+  - `Lần chạy trước (…): OK — …` (kết quả lần login gần nhất trong tiến trình)
+- `GET /xnhau/account?act=login` — **chạy nền** (`Task.Run`), trả về ngay card
+  `⏳ Đang chạy script…`; script headful mất ~25–60 s, mở lại trang sau ~30 s để xem kết quả.
+  `loginBusy` chặn chạy 2 lần cùng lúc; cookie file `xnhau.cookie` được module hot-reload.
+- Cùng dữ liệu JSON: `/xnhau/check` (`cookie: alive|dead|missing`, `member`, `script`, `chromium`).
 
 ## Feed người đăng (profile)
 
