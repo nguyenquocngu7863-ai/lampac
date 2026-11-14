@@ -281,27 +281,19 @@ public static class MankoTo
         return string.IsNullOrEmpty(p) ? null : p;
     }
 
-    // server1 = wasabi_embed_url (/e/<hash>), server2 = upload18_player[0]
-    // (PLAYER_CONFIG m3u8 helvid, IP-bound). server3 mmtv: CF challenge -> bo.
+    // server1 = wasabi_embed_url (/e/<hash>).
+    // server2 (upload18_player -> PLAYER_CONFIG m3u8 helvid) DA BO 2026-11-14:
+    //   detail API van tra upload18_player=["https://upload18.com/play/index/<id>"],
+    //   nhung ca upload18.com va upload18.org deu tra 404 (2979B, "Page not found"
+    //   cua project khac) => domain player da het han/bi ban, khong con la player.
+    //   Doi lai bang upload18_player that + UA dung luc tao thi moi bat lai.
+    // server3 mmtv: CF challenge -> bo.
     public static List<(string label, string kind, string url)> DetailServers(JsonElement d)
     {
         var res = new List<(string, string, string)>();
         string w = Str(d, "wasabi_embed_url");
         if (!string.IsNullOrEmpty(w) && w.StartsWith("http", StringComparison.OrdinalIgnoreCase))
             res.Add(("Server 1", "wasabi", w));
-        try
-        {
-            if (d.TryGetProperty("upload18_player", out var arr) && arr.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var x in arr.EnumerateArray())
-                {
-                    string u = x.ValueKind == JsonValueKind.String ? x.GetString() : null;
-                    if (!string.IsNullOrEmpty(u) && u.StartsWith("http", StringComparison.OrdinalIgnoreCase))
-                    { res.Add(("Server 2", "upload18", u)); break; }
-                }
-            }
-        }
-        catch { }
         return res;
     }
 
@@ -549,16 +541,138 @@ public static class MankoTo
         return html;
     }
 
+    // ---- Host API: site tự khai host đang chạy trong `window.ip2` ở /home (họ đổi tên miền là đổi ở đây) ----
+    public static readonly string[] ApiHosts = { "healertanker.com", "alpharomeo.shop", "robustx.shop" };
+    // id rác: server KHÔNG trả lời (treo tới hết timeout, đo 40 s vẫn 0 byte) -> 1 host, 1 lần rồi nhớ 10'.
+    // Http.Get tự kẹp timeout tối thiểu 8 s.
+    public const int DetailTimeout = 8;
+    static readonly TimeSpan Ip2Ttl = TimeSpan.FromMinutes(30);
+    static readonly TimeSpan NegTtl = TimeSpan.FromMinutes(10);
+    static readonly TimeSpan FastFail = TimeSpan.FromSeconds(2);
+    static string _ip2;
+    static DateTime _ip2At = DateTime.MinValue;
+    static readonly System.Collections.Concurrent.ConcurrentDictionary<string, DateTime> _apiFail = new();
+    static readonly Regex ObjectId = new(@"^[0-9a-f]{24}$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    static string HostOf(string url)
+    {
+        int i = (url ?? "").IndexOf("://", StringComparison.Ordinal);
+        return i < 0 ? (url ?? "").Trim('/') : url.Substring(i + 3).Trim('/');
+    }
+
+    // Đổi host trong URL API, giữ nguyên path + query. Host lạ -> trả y nguyên.
+    public static string WithApiHost(string url, string host)
+    {
+        if (string.IsNullOrEmpty(url) || string.IsNullOrEmpty(host)) return url;
+        int i = url.IndexOf("://", StringComparison.Ordinal);
+        if (i < 0) return url;
+        bool known = false;
+        foreach (var h in ApiHosts) if (url.IndexOf(h, StringComparison.OrdinalIgnoreCase) >= 0) { known = true; break; }
+        if (!known) return url;
+        int j = url.IndexOf('/', i + 3);
+        return url.Substring(0, i + 3) + host + (j < 0 ? "" : url.Substring(j));
+    }
+
+    // ip2 = host API thật của site. Cache 30', chỉ gọi /home 1 lần.
+    public static async Task<string> ResolveApiHostAsync(int httpversion = 1)
+    {
+        if (_ip2 != null && DateTime.UtcNow - _ip2At < Ip2Ttl) return _ip2;
+        _ip2At = DateTime.UtcNow;
+        try
+        {
+            var headers = HeadersModel.Init(("User-Agent", ChromeUA), ("Referer", SiteHost + "/home"));
+            string html = await Http.Get(SiteHost + "/", timeoutSeconds: DetailTimeout, headers: headers, httpversion: httpversion);
+            var m = Regex.Match(html ?? "", @"ip2\s*=\s*['""]([A-Za-z0-9.\-]+)['""]");
+            if (m.Success)
+            {
+                string v = m.Groups[1].Value.Trim().Trim('/');
+                if (v != _ip2) Console.WriteLine($"Manko: ip2 -> {v}");
+                _ip2 = v;
+            }
+        }
+        catch { }
+        return _ip2;
+    }
+
+    // Thứ tự thử: host site tự khai -> host dự phòng -> host mặc định trong code.
+    static List<string> ApiChain(string primary)
+    {
+        var list = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var h in new[] { primary, HostOf(ApiFallback), HostOf(ApiHost) })
+            if (!string.IsNullOrEmpty(h) && seen.Add(h)) list.Add(h);
+        return list;
+    }
+
+    static async Task<string> ApiGet(string url, int timeoutSeconds, IReadOnlyList<HeadersModel> headers, int httpversion, System.Net.WebProxy proxy)
+    {
+        try { return await Http.Get(url, timeoutSeconds: timeoutSeconds, headers: headers, proxy: proxy, httpversion: httpversion); }
+        catch { return null; }
+    }
+
+    // null + elapsed >= FastFail = host sống nhưng treo (id rác) -> đổi host/proxy chỉ tốn thêm timeout.
+    static async Task<(string body, bool slowFail)> ApiTimed(string url, int timeoutSeconds, IReadOnlyList<HeadersModel> headers, int httpversion, System.Net.WebProxy proxy)
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        string body = await ApiGet(url, timeoutSeconds, headers, httpversion, proxy);
+        sw.Stop();
+        return (body, string.IsNullOrEmpty(body) && sw.Elapsed >= FastFail);
+    }
+
     public static async Task<string> GetApiAsync(string url, System.Net.WebProxy proxy = null, int httpversion = 1, int timeoutSeconds = 15, string ua = null)
     {
         var headers = HeadersModel.Init(
             ("User-Agent", string.IsNullOrEmpty(ua) ? ChromeUA : ua),
             ("Referer", SiteHost + "/home"),
             ("Accept", "application/json"));
-        string body = null;
-        try { body = await Http.Get(url, timeoutSeconds: timeoutSeconds, headers: headers, httpversion: httpversion); } catch { }
-        if (!string.IsNullOrEmpty(body)) return body;
-        try { body = await Http.Get(url, timeoutSeconds: timeoutSeconds, headers: headers, proxy: proxy, httpversion: httpversion); } catch { return null; }
-        return body;
+
+        bool detail = url != null && (url.Contains("/swx/movie/detail/") || url.Contains("/swx/movie/actors/"));
+        var hosts = ApiChain(await ResolveApiHostAsync(httpversion) ?? HostOf(ApiHost));
+
+        // detail/actors: id rác = server treo im (không phải lỗi mạng). 1 lượt, nhớ 10' để lần sau fail ngay.
+        if (detail)
+        {
+            if (_apiFail.TryGetValue(url, out var at) && DateTime.UtcNow - at < NegTtl) return null;
+
+            // id không đúng dạng ObjectId: gần chắc là rác -> không proxy, không đổi host.
+            string id = url.Substring(url.LastIndexOf('/') + 1).Split('?')[0];
+            if (!ObjectId.IsMatch(id))
+            {
+                string junk = await ApiGet(WithApiHost(url, hosts[0]), DetailTimeout, headers, httpversion, null);
+                if (!string.IsNullOrEmpty(junk)) { _apiFail.TryRemove(url, out _); return junk; }
+                _apiFail[url] = DateTime.UtcNow;
+                return null;
+            }
+
+            var (body, slow) = await ApiTimed(WithApiHost(url, hosts[0]), DetailTimeout, headers, httpversion, null);
+            if (!string.IsNullOrEmpty(body)) { _apiFail.TryRemove(url, out _); return body; }
+            if (!slow)
+            {
+                (body, slow) = await ApiTimed(WithApiHost(url, hosts[0]), DetailTimeout, headers, httpversion, proxy);
+                if (!string.IsNullOrEmpty(body)) { _apiFail.TryRemove(url, out _); return body; }
+            }
+            if (slow) { _apiFail[url] = DateTime.UtcNow; return null; }   // host treo -> host khác cũng treo
+
+            for (int i = 1; i < hosts.Count; i++)                          // host chết (fail nhanh) -> thử host kế
+            {
+                (body, slow) = await ApiTimed(WithApiHost(url, hosts[i]), DetailTimeout, headers, httpversion, null);
+                if (!string.IsNullOrEmpty(body)) { _apiFail.TryRemove(url, out _); return body; }
+                if (slow) break;
+            }
+            _apiFail[url] = DateTime.UtcNow;
+            return null;
+        }
+
+        for (int i = 0; i < hosts.Count; i++)
+        {
+            string u = WithApiHost(url, hosts[i]);
+            int t = i == 0 ? timeoutSeconds : Math.Min(8, timeoutSeconds);
+            var (body, slow) = await ApiTimed(u, t, headers, httpversion, null);
+            if (!string.IsNullOrEmpty(body)) return body;
+            var (viaProxy, slow2) = await ApiTimed(u, t, headers, httpversion, proxy);
+            if (!string.IsNullOrEmpty(viaProxy)) return viaProxy;
+            if (slow || slow2) break;                                      // host treo -> đổi host vô ích
+        }
+        return null;
     }
 }
