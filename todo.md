@@ -60,6 +60,7 @@ Skill tham chiếu: `lampac-popup` (hợp đồng route, luật UX, anti-pattern
 - [ ] `Sieusex` — https://biphim.net
 - [ ] `SupJav` — https://supjav.com *(PAUSED: Cloudflare chặn — chỉ probe khi user xác nhận)*
 - [ ] `TangThon` — https://tangthon.com
+- [x] `ThichSex` — https://thichsex.org — ✅ MỚI (2026-11-14): WordPress theme phimsex69sexdep, HTML server-side. home/pg2/category(`?c=slug`)/tag(`?c=tag/slug`)/search(`?s=`, WordPress)/sort(`?orderby=`, 5 mục khớp site 100%)/genres+rel. Stream: `player.php?slug=<hash>` (bài mới) hoặc `embed.php?url=` (bài cũ, có bài trả `file:""` → fallback ứng viên kế tiếp). **CDN `lh3-ggcontent.top` chặn TLS .NET bằng CF (403) → segment tải qua Worker `xn-relay` (env `THICHSEX_RELAY`)**, cắt 265B PNG junk trước header TS.
 - [x] ~~`Tazzly`~~ — ĐÃ XOÁ 2026-11-09: web hỏng (xem `notes/SITE-HONG.md`)
 - [ ] `Tizam` — https://amu.tizam.org
 - [ ] `TopGai` — https://topgai.net
@@ -199,6 +200,8 @@ Nguồn: `~/.config/opencode/skills/lampac-adult-module/references/card-thumbnai
 | 2026-11-13 | **XNhau** | **popup Tài khoản 2 tầng**: tầng 1 `Tài khoản`, tầng 2 hiện thẳng trạng thái (`✅ Đã đăng nhập` / `⏳ Đang chạy…` / `▶ Đăng nhập bằng script` / `Lần cuối: OK HH:mm`) → `/xnhau/account`; `?act=login` chạy script headful **nền** (`loginBusy` chống 2 lần) | probe cache RAM 20s (`xnhau:acct`), `busy` đọc live; script ~25s; verify menu + trang + log `rc=0` |
 | 2026-11-13 | **SexTb** | **cf relay**: site bật CF challenge với MỌI request server-side (curl_cffi → SSL reset, .NET/hydra → 403), `x.sh` (Chrome) vẫn vào được. Kết cấu **KHÔNG đổi** (tray-item/tray-item-title/tray-item-code/filmId/`id="infomation"` còn nguyên) | Worker `xn-relay`: thêm `sextb.net` vào ALLOW + forward body/content-type/authorization/set-cookie + cacheTtl 60s; module `SEXTB_RELAY` (env trong termux-run-lampac.sh) bọc `GetPageAsync` + `/ajax/relatedAjax`. Verify: home 72 item, category/search, genres 6 nhóm, rel 12 item, stream F4 (HLS) + DD (mp4) **PHÁT ĐƯỢC** |
 
+| 2026-11-14 | **Manko** | **fallback API thật + fail-fast id rác** | host API lấy ĐỘNG từ `window.ip2` ở `manko.fun/` (cache 30', log `Manko: ip2 -> …`), chain thử `ip2 → robustx → healertanker`; detail/actors: id không phải ObjectId → 1 lượt, KHÔNG proxy/đổi host; id đúng dạng → direct 8 s + proxy 8 s, fail CHẬM (≥2 s) = host treo → dừng, nhớ 10' (`_apiFail`) để lần sau trả ngay. Đo: `/manko/genres?uri=abc` **8.7 s → 0.01 s**; list 24 item/1207 trang 0.9 s; `play.sh` **PASS** (h264 1280x720, decode 5s đầu+cuối). 3 host là mirror cùng backend (detail 3086B y hệt, `actors` → `Movie not found` ở cả 3) |
+
 ## Treo (Manko)
 
 - [ ] Ẩn "Server 2" (helvid) khỏi danh sách nguồn — web **đã bỏ**, CF Worker của helvid chặn mọi client server-side (đo: UA/Referer/Origin/Sec-Fetch/cookie/`tm=1`, cả IPv4 & IPv6 đều 404; Chrome thật thì 200)
@@ -213,6 +216,6 @@ Nguồn: `~/.config/opencode/skills/lampac-adult-module/references/card-thumbnai
       Token có `i=v6/64:…` (IP-bind), egress curl_cffi ra cả IPv4 `116.108.81.131` lẫn IPv6 `2402:800:…`.
       Kết luận: cùng họ "CF Worker chặn server-side" như Manko ở trên. Muốn bật lại: resolve bằng
       Chrome/Playwright trong cùng context rồi redirect thẳng (KHÔNG dùng HostStreamProxy), hoặc chờ site đổi player.
-- [ ] Bật fallback API thật: `window.ip2` hiện là **`alpharomeo.shop`**, module đang hardcode `robustx.shop` và **không dùng** → chưa có fallback sống
-- [ ] `IsSiteUri("abc")` (id rác) đi hết 2 lần timeout (15s direct + 15s proxy) → popup trả rỗng sau ~30s; muốn fail nhanh thì cắt retry khi API trả `data` rỗng
+- [x] **Fallback API thật (2026-11-14)** — `window.ip2` = `alpharomeo.shop`, module giờ đọc động từ `manko.fun/` (cache 30') rồi chain `ip2 → robustx.shop → healertanker.com`; 3 host là mirror cùng backend (đo: detail 3086B y hệt nhau)
+- [x] **Fail-fast id rác (2026-11-14)** — thực tế site **treo im** (40 s vẫn 0 byte, không trả `data` rỗng), nên cắt theo hình dạng id + thời gian fail: id ≠ ObjectId → 1 lượt 8 s, không proxy/đổi host; fail ≥2 s = host treo → dừng chain, nhớ 10'. `uri=abc`: 24 s → **8.7 s**, lần 2 **0.01 s** (trước đây ~30 s)
 

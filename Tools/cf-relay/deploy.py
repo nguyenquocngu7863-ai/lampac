@@ -60,7 +60,7 @@ def multipart(parts):
 def main():
     # Host duoc phep relay. JavGuru wrap jav.guru (JAVGURU_RELAY cung worker nay),
     # neu thieu se bi 403 "host not allowed" o worker.
-    allow = "xnhau.pub,xnhau.pink,jav.guru,sextb.net"
+    allow = "xnhau.pub,xnhau.pink,jav.guru,sextb.net,thichsex.org,lh3-ggcontent.top,uptobox-ggcdn.top"
     if "--test-host" in sys.argv:
         allow = sys.argv[sys.argv.index("--test-host") + 1]
 
