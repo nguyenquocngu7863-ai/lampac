@@ -274,6 +274,106 @@ public static class PubJavTo
 
     // ================= DETAIL =================
 
+    // ===== CHIP: thong tin cua phim trong trang detail =====
+    // Moi dong la `<p>Label: <span ...><a href="/<kind>/<slug>" title="Ten">
+    // <strong>Ten</strong></a>...`; Genre(s) thi nhieu the noi bang ", " va
+    // KHONG co <span> bao ngoai.
+    //
+    // Vung doc: tu `<p>Studio:` den truoc khoi "You May Also Like" — cat truoc
+    // vi nav toan site o dau trang cung co `/genre/...` (`/genre/anal` v.v.)
+    // va se lan vao chip cua phim neu parse ca trang.
+    static readonly (string label, string kind)[] InfoKinds =
+    {
+        ("Studio", "studio"),
+        ("Director", "director"),
+        ("Label", "label"),
+        ("Actor(s)", "actor"),
+        ("Genre(s)", "genre")
+    };
+
+    public static List<(string kind, string slug, string name)> Chips(string html)
+    {
+        var list = new List<(string, string, string)>();
+        if (string.IsNullOrEmpty(html))
+            return list;
+
+        int from = html.IndexOf("<p>Studio:", StringComparison.OrdinalIgnoreCase);
+        if (from < 0)
+            return list;
+
+        int to = html.IndexOf("You May Also Like", from, StringComparison.OrdinalIgnoreCase);
+        if (to < 0)
+            to = html.Length;
+
+        string block = html[from..to];
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var (label, kind) in InfoKinds)
+        {
+            int at = block.IndexOf(label + ":", StringComparison.OrdinalIgnoreCase);
+            if (at < 0)
+                continue;
+
+            // Moi dong `<p>` rieng -> cat den `</p>` de khong lan sang dong ke.
+            int end = block.IndexOf("</p>", at, StringComparison.Ordinal);
+            string line = end > at ? block[at..end] : block[at..];
+
+            foreach (Match m in Regex.Matches(line,
+                "<a\\b[^>]*\\bhref\\s*=\\s*[\"']/" + kind + "/([^\"'/]+)[\"'][^>]*>" +
+                "(?:\\s*<strong>([^<]*)</strong>)?",
+                RegexOptions.IgnoreCase))
+            {
+                string slug = m.Groups[1].Value.Trim();
+                if (string.IsNullOrEmpty(slug) || !seen.Add(kind + "/" + slug))
+                    continue;
+
+                string name = m.Groups[2].Success
+                    ? WebUtility.HtmlDecode(m.Groups[2].Value).Trim()
+                    : "";
+
+                if (string.IsNullOrEmpty(name))
+                    name = PrettyName(slug);
+
+                list.Add((kind, slug, name));
+            }
+        }
+
+        return list;
+    }
+
+    // Slug -> ten doc duoc khi site khong in <strong>: `kotoha-kurusu` ->
+    // `Kotoha Kurusu`.
+    static string PrettyName(string slug)
+    {
+        if (string.IsNullOrWhiteSpace(slug))
+            return "";
+
+        var parts = slug.Split('-', StringSplitOptions.RemoveEmptyEntries);
+        for (int i = 0; i < parts.Length; i++)
+        {
+            if (parts[i].Length > 1)
+                parts[i] = char.ToUpperInvariant(parts[i][0]) + parts[i][1..];
+        }
+
+        return string.Join(' ', parts);
+    }
+
+    // ===== PHIM LIEN QUAN (khoi "You May Also Like?" cuoi trang detail) =====
+    public static List<PlaylistItem> PlaylistRelated(string route, string html)
+    {
+        if (string.IsNullOrEmpty(html))
+            return new List<PlaylistItem>();
+
+        int i = html.IndexOf("You May Also Like", StringComparison.OrdinalIgnoreCase);
+        if (i < 0)
+            return new List<PlaylistItem>();
+
+        // Cat tu marker den cuoi nhung bo `<div class="ml-item">` cua chinh
+        // trang (khong co) — khoi related nam cuoi trang nen lay het la an toan.
+        string block = html[i..];
+        return Playlist(route, block);
+    }
+
     // Trang detail nhung 3 bien JS: filmId, window.__pt, window.__pk.
     // __pt la token MOT LAN DUNG — moi lan goi /ajax/player phai lay pt moi
     // (hoac noi tiep bang next_pt tra ve). Dung lai pt cu => 403.

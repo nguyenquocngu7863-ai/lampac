@@ -19,12 +19,18 @@ Skill tham chiếu: `lampac-popup` (hợp đồng route, luật UX, anti-pattern
 
 | nhóm | số module | trạng thái |
 |---|---|---|
-| Đã có popup | 19 | xong |
+| **Đã có popup (genres + rel)** | **26** | xong |
 | Có genres, **thiếu rel** | 1 | Phase 0 (JAVSnap — site chặn, đang tắt) |
-| JAV / Á – Việt, chưa làm | 31 | Phase 1 |
-| Tube phương Tây, chưa làm | 9 | Phase 2 |
+| JAV / Á – Việt, chưa làm | 29 | Phase 1 |
+| Tube phương Tây, chưa làm | 7 | Phase 2 |
 | Cam live, chưa làm | 3 | Phase 3 |
 | Đang tắt | 3 | bỏ qua |
+
+> **Đo lại 2026-11-15**: **26 đủ popup**, 1 chỉ-genres (`JAVSnap`), **43 chưa có**.
+> Danh sách 26 module đủ popup:
+> `AnySex` `AsianGirl` `Av123` `DuJav` `Eporner` `Jable` `JavCt` `JavGuru` `JavHDToday`
+> `JavQuick` `Javtiful` `Manko` `MissAV` `Po85` `PubJav` `QmhSex` `SakuraSins` `SexNetVc` `SexTb`
+> `SexVietop` `Spankbang` `ThichSex` `VietSexBlog` `Vietmup` `VNJav` `VnChich` `XHeoVL` `XNhau`
 
 ---
 
@@ -39,7 +45,7 @@ Skill tham chiếu: `lampac-popup` (hợp đồng route, luật UX, anti-pattern
 ## Phase 1 — JAV / Á – Việt (ưu tiên, có trang detail + vidosik)
 
 - [ ] `HeoVl` — https://heovl.im
-- [ ] `Jable` — https://en.jable.tv
+- [x] `Jable` — https://en.jable.tv *(xong 2026-10-02 `7d148168`: module + menu SISI chuẩn; 2026-10-06 `0859a189`: sort theo context đo trực tiếp; 2026-11-13 `e53b6cde`: popup Diễn viên/Thể loại/Từ khoá + khối "You May Like" `?rel=`. TODO đánh `[ ]` là sót — đã sửa 2026-11-14)*
 - [ ] `JavMoi` — https://z.javmoi.blog
 - [ ] `JavSub` — https://javsub.blog
 - [ ] `KawaiJAV` — https://kawai-jav.com
@@ -50,7 +56,7 @@ Skill tham chiếu: `lampac-popup` (hợp đồng route, luật UX, anti-pattern
 - [ ] `PhimSexVN88` — https://phimsexvn88.com
 - [ ] `PhimSexVi` — https://kidayteknoloji.com
 - [ ] `PhimSexViet113` — https://sexvnonline.net
-- [ ] `PubJav` — https://pubjav.com *(đã có popup nguồn phát ở vidosik — chỉ thêm chip + rel)*
+- [x] `PubJav` — https://pubjav.com *(✅ MỚI 2026-11-15: popup info `/<mod>/genres?uri=` — 6 nhóm chip (**Diễn viên** `actor/`, **Nhà sản xuất** `studio/`, **Đạo diễn** `director/`, **Nhãn** `label/`, **Thể loại** `genre/`) parse từ khối `<p>Studio:` → `You May Also Like`, cắt trước marker vì nav đầu trang cũng có `/genre/*`; `?rel=` tái dùng chính `Playlist()` trên khối "You May Also Like" (cùng markup `ml-item`) → `total_pages:1`, `pg>1` → list rỗng. Chặn SSRF qua `NormalizePageUrl`. **Bẫy**: `pubjav.com` reset TLS với `curl_cffi` (SSL_connect closed) → request đầu fail, lần sau qua được + cache 6h; home/vidosik đã có từ trước — không hồi quy)*
 - [ ] `SevenMM` — https://7mmtv.sx
 - [ ] `SexDep` — https://z.sexdep.co.uk
 - [ ] `SexHihi` — https://sexhihih.blog
@@ -200,6 +206,9 @@ Nguồn: `~/.config/opencode/skills/lampac-adult-module/references/card-thumbnai
 | 2026-11-13 | **XNhau** | **popup Tài khoản 2 tầng**: tầng 1 `Tài khoản`, tầng 2 hiện thẳng trạng thái (`✅ Đã đăng nhập` / `⏳ Đang chạy…` / `▶ Đăng nhập bằng script` / `Lần cuối: OK HH:mm`) → `/xnhau/account`; `?act=login` chạy script headful **nền** (`loginBusy` chống 2 lần) | probe cache RAM 20s (`xnhau:acct`), `busy` đọc live; script ~25s; verify menu + trang + log `rc=0` |
 | 2026-11-13 | **SexTb** | **cf relay**: site bật CF challenge với MỌI request server-side (curl_cffi → SSL reset, .NET/hydra → 403), `x.sh` (Chrome) vẫn vào được. Kết cấu **KHÔNG đổi** (tray-item/tray-item-title/tray-item-code/filmId/`id="infomation"` còn nguyên) | Worker `xn-relay`: thêm `sextb.net` vào ALLOW + forward body/content-type/authorization/set-cookie + cacheTtl 60s; module `SEXTB_RELAY` (env trong termux-run-lampac.sh) bọc `GetPageAsync` + `/ajax/relatedAjax`. Verify: home 72 item, category/search, genres 6 nhóm, rel 12 item, stream F4 (HLS) + DD (mp4) **PHÁT ĐƯỢC** |
 | 2026-11-14 | **Manko** | **fallback API thật + fail-fast id rác** | host API lấy ĐỘNG từ `window.ip2` ở `manko.fun/` (cache 30', log `Manko: ip2 -> …`), chain thử `ip2 → robustx → healertanker`; detail/actors: id không phải ObjectId → 1 lượt, KHÔNG proxy/đổi host; id đúng dạng → direct 8 s + proxy 8 s, fail CHẬM (≥2 s) = host treo → dừng, nhớ 10' (`_apiFail`) để lần sau trả ngay. Đo: `/manko/genres?uri=abc` **8.7 s → 0.01 s**; list 24 item/1207 trang 0.9 s; `play.sh` **PASS** (h264 1280x720, decode 5s đầu+cuối). 3 host là mirror cùng backend (detail 3086B y hệt, `actors` → `Movie not found` ở cả 3). **Ẩn "Server 2" (helvid)**: `upload18.com`/`.org` đều trả 404 (2979B, "Page not found" của project khác) ⇒ player hết hạn/bị bán; `MankoTo.DetailServers()` chỉ còn `Server 1` (wasabi), giữ `ResolveHelvidAsync`/`upload18` kind để bật lại sau. Verify: `/manko/vidosik` → `{"Server 1": …}`, `play.sh` PASS (422/422 segment). Bẫy test: `srv=Server+1` (hoặc `Server%201`), **không** `%2B` |
+| 2026-11-14 | **todo.md** | đo lại toàn bộ trạng thái popup offline (đếm route `/genres` + `?rel=` trong `Modules/Adult/*/Controller.cs`) | sửa bảng tổng: **25 đủ popup** (không phải 19), 1 chỉ-genres (`JAVSnap`), 44 chưa có; đánh `[x]` cho `Jable` (thực tế xong từ 2026-10-02, TODO sót) |
+
+| 2026-11-15 | **PubJav** | thêm popup info: `/<mod>/genres` (6 nhóm chip) + `?rel=` | Parse `<p>Studio:`→`You May Also Like` (cắt trước marker, tránh nav `/genre/*` của đầu trang); `rel` tái dùng `Playlist()` trên khối "You May Also Like" (`ml-item`), trả `total_pages:1`. Verify: genres 6 nhóm (Diễn viên/Nhà SX/Đạo diễn/Nhãn/Thể loại/Liên quan), rel 16 item, pg2 rỗng, uri rác + host lạ → rỗng 200, home 24 item + vidosik 4 server không hồi quy. Bẫy: `curl_cffi` bị SSL reset với host này |
 
 ## Treo (VNJav — module mới 2026-11-13)
 

@@ -19,10 +19,14 @@ public class PubJavController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("pubjav")]
-    async public Task<ActionResult> Index(string search, string c, int pg = 1)
+    async public Task<ActionResult> Index(string search, string c, int pg = 1, string rel = null)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
+
+        // Popup long-press: muc "Lien quan" tro ?rel=<uri detail>.
+        if (!string.IsNullOrWhiteSpace(rel))
+            return await RelatedList(rel, pg);
 
         var cache = await InvokeCacheResult(ipkey($"pubjav:{search}:{c}:{pg}"), 10, jsonContext.ListPlaylistItem, async e =>
         {
@@ -110,6 +114,118 @@ public class PubJavController : BaseSisiController
         // (giong menu), giu object song trong memory la chac nhat.
         hybridCache.Set(memKey, res, cacheTime(720), true);
         return res;
+    }
+
+    // ================= INFO POPUP (long-press) =================
+
+    // Tra { items, groups } cho SISI/plugins/sisi.js (menu nhan giu).
+    // 1 fetch detail -> parse chip (Studio/Director/Label/Dien vien/The loai)
+    // + khoi "You May Also Like?" lam "Lien quan".
+    [HttpGet]
+    [Route("pubjav/genres")]
+    async public Task<ActionResult> Genres(string uri)
+    {
+        string pageUrl = PubJavTo.NormalizePageUrl(uri);
+        if (string.IsNullOrEmpty(pageUrl))
+            return Json(new { items = new object[0], groups = new object[0] });
+
+        string memKey = ipkey($"pubjav:info:{pageUrl}");
+
+        if (hybridCache.TryGetValue(memKey,
+            out (List<(string kind, string slug, string name)> chips, List<PlaylistItem> rel) hit)
+            && hit.chips != null)
+        {
+            return InfoResult(hit.chips, hit.rel);
+        }
+
+        string html = await GetPageAsync(pageUrl);
+        if (string.IsNullOrEmpty(html))
+            return Json(new { items = new object[0], groups = new object[0] });
+
+        var chips = PubJavTo.Chips(html);
+        var rel = PubJavTo.PlaylistRelated("pubjav/vidosik", html);
+
+        if (chips.Count > 0 || rel.Count > 0)
+            hybridCache.Set(memKey, (chips, rel), cacheTime(360));
+
+        return InfoResult(chips, rel);
+    }
+
+    ActionResult InfoResult(List<(string kind, string slug, string name)> chips, List<PlaylistItem> rel)
+    {
+        string uri = Request.Query["uri"].ToString();
+        var groups = new List<object>();
+
+        // Thu tu nhom: nguoi -> nha san xuat -> phan loai (bo han nhom rong).
+        foreach (var (kind, title) in new[]
+        {
+            ("actor", "Diễn viên"),
+            ("studio", "Nhà sản xuất"),
+            ("director", "Đạo diễn"),
+            ("label", "Nhãn"),
+            ("genre", "Thể loại")
+        })
+        {
+            var items = chips?.Where(x => x.kind == kind).Select(x => new
+            {
+                title = x.name,
+                url = $"{host}/pubjav?c={kind}/{HttpUtility.UrlEncode(x.slug)}"
+            }).ToList();
+
+            if (items == null || items.Count == 0)
+                continue;
+
+            groups.Add(new { title, items });
+        }
+
+        if (rel != null && rel.Count > 0)
+        {
+            groups.Add(new
+            {
+                title = "Liên quan",
+                items = new[]
+                {
+                    new
+                    {
+                        title = "Video liên quan",
+                        plain = true,
+                        url = $"{host}/pubjav?rel={HttpUtility.UrlEncode(uri)}"
+                    }
+                }
+            });
+        }
+
+        return Json(new { items = new object[0], groups });
+    }
+
+    // Route list 1 trang cho `?rel=`. LUAT: total_pages = 1 (KHONG phai 0 —
+    // 0 = "con trang vo han" => app nap lap mai), pg > 1 tra list rong.
+    async Task<ActionResult> RelatedList(string rel, int pg)
+    {
+        string pageUrl = PubJavTo.NormalizePageUrl(rel);
+        if (string.IsNullOrEmpty(pageUrl))
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        if (pg > 1)
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        var cache = await InvokeCacheResult<(List<PlaylistItem> playlists, int total_pages)>(
+            ipkey($"pubjav:rel:{pageUrl}"), 180, async e =>
+        {
+            string html = await GetPageAsync(pageUrl);
+            var playlists = PubJavTo.PlaylistRelated("pubjav/vidosik", html);
+
+            if (playlists.Count == 0)
+                return e.Fail("playlists");
+
+            return e.Success((playlists, 1));
+        });
+
+        if (!cache.IsSuccess)
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        return PlaylistResult(cache.Value.playlists, cache.ISingleCache,
+            await MenuAsync(null, null), total_pages: 1);
     }
 
     [HttpGet, Staticache(manually: true)]
