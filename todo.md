@@ -19,25 +19,27 @@ Skill tham chiếu: `lampac-popup` (hợp đồng route, luật UX, anti-pattern
 
 | nhóm | số module | trạng thái |
 |---|---|---|
-| **Đã có popup (genres + rel)** | **26** | xong |
-| Có genres, **thiếu rel** | 1 | Phase 0 (JAVSnap — site chặn, đang tắt) |
-| JAV / Á – Việt, chưa làm | 29 | Phase 1 |
-| Tube phương Tây, chưa làm | 7 | Phase 2 |
-| Cam live, chưa làm | 3 | Phase 3 |
-| Đang tắt | 3 | bỏ qua |
+| **Đã có popup (genres + rel)** | **31** | xong |
+| Có genres, **thiếu rel** | 2 | `SevenMM` `SexVietDam` |
+| Chưa có popup | 36 | Phase 1/2/3 (5 module đang `enable:false`) |
+| Đang tắt | +JAVSnap | bỏ qua, không quan tâm |
 
-> **Đo lại 2026-11-15**: **26 đủ popup**, 1 chỉ-genres (`JAVSnap`), **43 chưa có**.
-> Danh sách 26 module đủ popup:
-> `AnySex` `AsianGirl` `Av123` `DuJav` `Eporner` `Jable` `JavCt` `JavGuru` `JavHDToday`
-> `JavQuick` `Javtiful` `Manko` `MissAV` `Po85` `PubJav` `QmhSex` `SakuraSins` `SexNetVc` `SexTb`
-> `SexVietop` `Spankbang` `ThichSex` `VietSexBlog` `Vietmup` `VNJav` `VnChich` `XHeoVL` `XNhau`
+> **Đo lại 2026-11-15 (đếm trong `Modules/Adult/*/Controller.cs`)**: **31 đủ popup**, 2 chỉ-genres
+> (`SevenMM` `SexVietDam`), **36 chưa có**. `PornHub` không có `Controller.cs` (thư mục rỗng).
+> Đang tắt trong `~/lampac-run/init.conf`: `dujav` `SexHihi` `PhimSexViet113` `PhimSexVN88` `Lon69`
+> → nằm trong nhóm "chưa có popup" nhưng không test được cho tới khi bật lại.
+> `JAVSnap` = module **cố ý tắt** (`manifest.enable:false`, commit `ede682df`) — bỏ khỏi mọi kế hoạch.
+> Danh sách 31 module đủ popup:
+> `AnySex` `AsianGirl` `Av123` `DuJav` `Eporner` `Jable` `Jav18` `JavCt` `JavGuru` `JavHDToday`
+> `JavQuick` `Javtiful` `Manko` `Mbbg` `MissAV` `Po85` `PubJav` `QmhSex` `SakuraSins` `SexNetVc` `SexTb`
+> `SexVietop` `Spankbang` `Suong3x` `ThichSex` `VietSexBlog` `Vietmup` `VNJav` `VnChich` `XHeoVL` `XNhau`
 
 ---
 
-## Phase 0 — Bù mục "Liên quan" (`?rel=`) cho 5 module đã có genres
+## Phase 0 — Bù mục "Liên quan" (`?rel=`) cho các module đã có genres
 
 - [x] `Av123` — https://123av.com *(rel chạy: 12 item)*
-- [ ] `JAVSnap` — https://javsnap.com *(2026-11-13: site chặn IP/TLS — live fetch trả rỗng, chỉ home chạy nhờ cache; module đang `enable:false` theo chủ ý cũ vì throttle nặng. Đã thử bật + code `?rel=` nhưng **revert sạch**, không test được. Chỉ làm khi site cho vào lại hoặc có proxy egress sạch)*
+- [ ] ~~`JAVSnap`~~ — **BỎ QUA**: module cố ý tắt (`manifest.enable: false`, commit `ede682df`, throttle nặng). Không làm, không test.
 - [x] `JavHDToday` — https://javhdz.today *(rel đã có sẵn; 2026-11-13 verify rel 12 item. Bug thật: genres trả **rỗng** vì site bỏ nhãn `starring:` → marker `FetchHtmlAsync` fail, ném cả HTML 132KB; sửa marker `Genre:` + luôn có "Liên quan". Thêm `DetailUrl()` chặn SSRF, chỉ nhận `/<id>/<slug>/`; `?rel=` rác/host lạ → `{total_pages:1,list:[]}`)*
 - [x] `Po85` — https://www.85po.com *(rel chạy: 15 item)*
 - [x] `XNhau` — https://xnhau.pink *(rel đã có sẵn từ 2026-11-02; 2026-11-13 verify: rel 20 item, pg2 rỗng; fix uri rác/host lạ trả `{total_pages:1,list:[]}` thay vì 500 + chặn SSRF ở LoadInfoAsync/RelatedList)*
@@ -51,16 +53,16 @@ Skill tham chiếu: `lampac-popup` (hợp đồng route, luật UX, anti-pattern
 - [ ] `KawaiJAV` — https://kawai-jav.com
 - [ ] `Lon69` — https://lon69.site
 - [x] `Manko` — https://manko.fun
-- [ ] `Mbbg` — https://mbbg.hair
+- [x] `Mbbg` — https://mbbg.hair *(2026-11-16: genres ✅ + `?rel=` ✅ — popup "Danh mục"/"Thẻ" + "Liên quan"; cùng lượt fix player `s1.uproxy.sbs`)*
 - [ ] `Phe69` — https://phe69.shop
 - [ ] `PhimSexVN88` — https://phimsexvn88.com
 - [ ] `PhimSexVi` — https://kidayteknoloji.com
 - [ ] `PhimSexViet113` — https://sexvnonline.net
 - [x] `PubJav` — https://pubjav.com *(✅ MỚI 2026-11-15: popup info `/<mod>/genres?uri=` — 6 nhóm chip (**Diễn viên** `actor/`, **Nhà sản xuất** `studio/`, **Đạo diễn** `director/`, **Nhãn** `label/`, **Thể loại** `genre/`) parse từ khối `<p>Studio:` → `You May Also Like`, cắt trước marker vì nav đầu trang cũng có `/genre/*`; `?rel=` tái dùng chính `Playlist()` trên khối "You May Also Like" (cùng markup `ml-item`) → `total_pages:1`, `pg>1` → list rỗng. Chặn SSRF qua `NormalizePageUrl`. **Bẫy**: `pubjav.com` reset TLS với `curl_cffi` (SSL_connect closed) → request đầu fail, lần sau qua được + cache 6h; home/vidosik đã có từ trước — không hồi quy)*
-- [ ] `SevenMM` — https://7mmtv.sx
+- [ ] `SevenMM` — https://7mmtv.sx *(genres ✅ có, **thiếu `?rel=`**)*
 - [ ] `SexDep` — https://z.sexdep.co.uk
 - [ ] `SexHihi` — https://sexhihih.blog
-- [ ] `SexVietDam` — https://sexvietdam.blog
+- [ ] `SexVietDam` — https://sexvietdam.blog *(genres ✅ có, **thiếu `?rel=`**)*
 - [x] `SexVietop` — https://sexvietop.com — ✅ MỚI (2026-11-11): home/category/tag/search(path `/tim-kiem/<slug>`)/rank(ajax/top)/genres+rel/sort **BỎ HẲN dòng 2** (site không có sort thật — xem cases.md)
 - [ ] `Sexgenz2` — https://x.sexgenz.blog
 - [ ] `Sieusex` — https://biphim.net
@@ -100,7 +102,13 @@ Skill tham chiếu: `lampac-popup` (hợp đồng route, luật UX, anti-pattern
 
 ## Bỏ qua (đang tắt)
 
-`JavTsunami` · `Viet69kz` · `XvideosRED`
+`JavTsunami` · `Viet69kz` · `XvideosRED` · `JAVSnap` *(cố ý tắt — `manifest.enable:false`)*
+
+## Đang `enable:false` trong runtime (`~/lampac-run/init.conf`)
+
+`dujav` · `SexHihi` · `PhimSexViet113` · `PhimSexVN88` · `Lon69`
+
+→ Vẫn đánh `[ ]` ở Phase 1 nhưng **không smoke/test được** cho tới khi user bật lại.
 
 ---
 
@@ -209,6 +217,7 @@ Nguồn: `~/.config/opencode/skills/lampac-adult-module/references/card-thumbnai
 | 2026-11-14 | **todo.md** | đo lại toàn bộ trạng thái popup offline (đếm route `/genres` + `?rel=` trong `Modules/Adult/*/Controller.cs`) | sửa bảng tổng: **25 đủ popup** (không phải 19), 1 chỉ-genres (`JAVSnap`), 44 chưa có; đánh `[x]` cho `Jable` (thực tế xong từ 2026-10-02, TODO sót) |
 
 | 2026-11-15 | **PubJav** | thêm popup info: `/<mod>/genres` (6 nhóm chip) + `?rel=` | Parse `<p>Studio:`→`You May Also Like` (cắt trước marker, tránh nav `/genre/*` của đầu trang); `rel` tái dùng `Playlist()` trên khối "You May Also Like" (`ml-item`), trả `total_pages:1`. Verify: genres 6 nhóm (Diễn viên/Nhà SX/Đạo diễn/Nhãn/Thể loại/Liên quan), rel 16 item, pg2 rỗng, uri rác + host lạ → rỗng 200, home 24 item + vidosik 4 server không hồi quy. Bẫy: `curl_cffi` bị SSL reset với host này |
+| 2026-11-16 | **Mbbg** | **fix player "một số phát được một số lỗi" + popup (genres + `?rel=`)** | Nguyên nhân 503 `stream_links`: site chuyển 12/20 phim sang iframe `s1.uproxy.sbs` (`getplayer` trả `type:"iframe"`), module chỉ nhận `qooglevideo`. Fix: nhánh mirror nhận **mọi** iframe http (không lọc theo host) + `Unenc()` giải `enc.<hex>` (`_0x_dec`: đảo hex → XOR key `o_X1_2Gj`). Popup: chip từ `class="category-…/tag-…"` của bài + tên thật lấy từ `.tags-list` (`MbbgTo.Chips`), `rel` cắt từ khối `under-video-block` (`MbbgTo.Related`, `total_pages:1`). Verify: 20/20 phim `vidosik` ra link; genres 2 nhóm (Danh mục/Liên quan), rel 10 item, chip `?c=phim-sex-trung-quoc` 20 item + pg2 OK; `play.sh` PASS HLS xvideos-cdn + MP4 mirror + MP4 Blogger. Bẫy: phim chỉ có `DP 1` (`x1.zzzzz.buzz` → `lh3.googleusercontent.com`) trả segment `content-type: image/png` thân TS (PNG 1×1 + `0x47…`) → `play.sh` báo FAIL **giả** (tải về file rồi decode = rc 0); công thức ghi vào skill `lampac-deobfuscate` F14b |
 
 ## Treo (VNJav — module mới 2026-11-13)
 

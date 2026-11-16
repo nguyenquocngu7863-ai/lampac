@@ -2,6 +2,7 @@ using Shared.Models.SISI.Base;
 using Shared.Services;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -405,7 +406,7 @@ public static class MbbgTo
             RegexOptions.IgnoreCase))
         {
             string block = m.Value;
-            string url = m.Groups[1].Value.Replace("\\/", "/").Trim();
+            string url = Unenc(m.Groups[1].Value).Replace("\\/", "/").Trim();
             if (!url.StartsWith("http", StringComparison.OrdinalIgnoreCase))
                 continue;
             var tm = Regex.Match(block, @"""type""\s*:\s*""([^""]+)""", RegexOptions.IgnoreCase);
@@ -422,6 +423,35 @@ public static class MbbgTo
         return res;
     }
 
+    // Mot so embed (uproxy) boc link bang `window._0x_dec`: "enc.<hex>" voi hex
+    // bi DAO NGUOC, giai hex ra byte roi XOR tung byte voi key "o_X1_2Gj".
+    static string Unenc(string url)
+    {
+        if (string.IsNullOrEmpty(url)
+            || !url.StartsWith("enc.", StringComparison.OrdinalIgnoreCase))
+            return url;
+
+        var ch = url.Substring(4).Replace(".", "").ToCharArray();
+        if (ch.Length < 2 || ch.Length % 2 != 0)
+            return url;
+
+        Array.Reverse(ch);
+
+        const string key = "o_X1_2Gj";
+        var sb = new StringBuilder(ch.Length / 2);
+
+        for (int i = 0; i + 1 < ch.Length; i += 2)
+        {
+            if (!byte.TryParse(new string(new[] { ch[i], ch[i + 1] }),
+                NumberStyles.HexNumber, CultureInfo.InvariantCulture, out byte b))
+                return url;
+
+            sb.Append((char)(b ^ key[(i / 2) % key.Length]));
+        }
+
+        return sb.ToString();
+    }
+
     static string Label(int itag)
     {
         if (itag == 22) return "720p";
@@ -434,6 +464,110 @@ public static class MbbgTo
         if (string.IsNullOrEmpty(url)) return SiteHost;
         if (!System.Uri.TryCreate(url, UriKind.Absolute, out var parsed)) return SiteHost;
         return parsed.GetLeftPart(System.UriPartial.Authority);
+    }
+
+    #endregion
+
+    #region popup long-press (skill lampac-popup)
+
+    // Trang chi tiet:
+    //   <article id="post-15474" class="post-15474 … category-phim-sex-trung-quoc">
+    //   <div class="tags"><div class="tags-list">
+    //     <a href="https://mbbg.blog/phim-sex-trung-quoc" title="Phim Sex Trung Quốc">
+    // Ten that lay tu `title` (khong doan tu slug).
+    public static List<(string kind, string slug, string name)> Chips(string html)
+    {
+        var res = new List<(string kind, string slug, string name)>();
+        if (string.IsNullOrEmpty(html))
+            return res;
+
+        var names = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        var block = Regex.Match(html, "<div class=\"tags\">([\\s\\S]*?)</div>\\s*</div>",
+            RegexOptions.IgnoreCase);
+
+        if (block.Success)
+            foreach (Match a in Regex.Matches(block.Groups[1].Value,
+                "href=\"(?<href>[^\"]+)\"[^>]*title=\"(?<title>[^\"]*)\"",
+                RegexOptions.IgnoreCase))
+            {
+                string path = PathOf(a.Groups["href"].Value);
+                if (path.Length == 0)
+                    continue;
+
+                names[path] = HttpUtility.HtmlDecode(a.Groups["title"].Value).Trim();
+            }
+
+        // Lop `category-`/`tag-` cua chinh bai (article dau tien, khong loop-video).
+        var post = Regex.Match(html,
+            "<article\\s+id=\"post-\\d+\"[^>]*class=\"(?<cls>[^\"]*)\"", RegexOptions.IgnoreCase);
+
+        if (!post.Success)
+            post = Regex.Match(html, "<article[^>]*class=\"(?<cls>loop-video|post-)[^\"]*\"",
+                RegexOptions.IgnoreCase);
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        void Add(string kind, string slug, string path)
+        {
+            if (string.IsNullOrEmpty(slug) || !seen.Add(kind + "/" + slug))
+                return;
+
+            string name = names.TryGetValue(path, out string n) && n.Length > 0 ? n : slug;
+            res.Add((kind, slug, name));
+        }
+
+        foreach (string cls in post.Groups["cls"].Value.Split(
+            new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (cls.StartsWith("category-", StringComparison.OrdinalIgnoreCase))
+                Add("cat", cls.Substring(9), "/" + cls.Substring(9));
+            else if (cls.StartsWith("tag-", StringComparison.OrdinalIgnoreCase))
+                Add("tag", cls.Substring(4), "/tag/" + cls.Substring(4));
+        }
+
+        // Link trong .tags-list ma lop article khong ke (vd the chi co trong block).
+        foreach (var kv in names)
+            Add(kv.Key.StartsWith("/tag/", StringComparison.OrdinalIgnoreCase)
+                ? "tag" : "cat",
+                kv.Key.StartsWith("/tag/", StringComparison.OrdinalIgnoreCase)
+                    ? kv.Key.Substring(5) : kv.Key.TrimStart('/'),
+                kv.Key);
+
+        return res;
+    }
+
+    // "Phim Sex Diary Hay Nhất" — chi lay card trong khoi duoi video, khong lay
+    // sidebar/bai lien quan khac ( chung cung la .loop-video).
+    public static List<PlaylistItem> Related(string uri, string html)
+    {
+        if (string.IsNullOrEmpty(html))
+            return new List<PlaylistItem>();
+
+        int cut = html.IndexOf("under-video-block", StringComparison.OrdinalIgnoreCase);
+        return Playlist(uri, cut > 0 ? html.Substring(cut) : "");
+    }
+
+    // https://mbbg.blog/phim-sex-trung-quoc  -> /phim-sex-trung-quoc
+    // https://mbbg.blog/tag/viet69           -> /tag/viet69
+    static string PathOf(string href)
+    {
+        if (string.IsNullOrEmpty(href))
+            return "";
+
+        string s = href.Trim();
+
+        int p = s.IndexOf("://", StringComparison.Ordinal);
+        if (p > 0)
+        {
+            int slash = s.IndexOf('/', p + 3);
+            s = slash > 0 ? s.Substring(slash) : "/";
+        }
+
+        if (!s.StartsWith("/") || s.Length < 2)
+            return "";
+
+        return s.TrimEnd('/');
     }
 
     #endregion

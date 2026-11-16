@@ -20,8 +20,13 @@ public class MbbgController : BaseSisiController
     [HttpGet, Staticache(manually: true)]
     [Route("mbbg")]
     async public Task<ActionResult> Index(
-        string search, string c, int pg = 1, string q = null)
-        => await Core(search ?? q, c, pg);
+        string search, string c, int pg = 1, string q = null, string rel = null)
+    {
+        if (!string.IsNullOrWhiteSpace(rel))
+            return await RelatedList(rel, pg);
+
+        return await Core(search ?? q, c, pg);
+    }
 
     async Task<ActionResult> Core(string search, string c, int pg)
     {
@@ -275,11 +280,14 @@ public class MbbgController : BaseSisiController
         string token = MbbgTo.Token(MbbgTo.FileFrom(aj));
         if (string.IsNullOrEmpty(token))
         {
-            // [1b] mirror qooglevideo (Blogger goc chet): file la iframe mirror
-            // co san sources (HLS xvideos-cdn + MP4). Do 2026-10-09.
+            // [1b] mirror (Blogger goc chet): file la iframe cua gateway bat ky
+            // (qooglevideo, s1.uproxy.sbs, ...) — trang JWPlayer co san sources
+            // (HLS xvideos-cdn + MP4). Do 2026-10-09, mo rong 2026-11-16:
+            // gan nua so phim cua site da chuyen sang iframe uproxy, chi nhan
+            // rieng "qooglevideo" thi nhung phim do tra stream_links.
             string frame = MbbgTo.FileFrom(aj);
             if (!string.IsNullOrEmpty(frame)
-                && frame.IndexOf("qooglevideo", StringComparison.OrdinalIgnoreCase) >= 0)
+                && frame.StartsWith("http", StringComparison.OrdinalIgnoreCase))
             {
                 var qh = await GetMirrorAsync(frame, pageUrl);
                 var qs = MbbgTo.QoogleSources(qh ?? "");
@@ -367,4 +375,120 @@ public class MbbgController : BaseSisiController
 
         return Redirect(HostStreamProxy(link, direct));
     }
+
+    #region popup long-press (skill lampac-popup)
+
+    // Cache RAM tinh: (chips, rel) khong qua hybridCache duoc (tuple/list phuc tap).
+    static readonly Dictionary<string,
+        (DateTime at, List<(string kind, string slug, string name)> chips, List<PlaylistItem> rel)>
+        _infoCache = new();
+
+    static readonly TimeSpan InfoTtl = TimeSpan.FromHours(6);
+
+    [HttpGet]
+    [Route("mbbg/genres")]
+    async public Task<ActionResult> Genres(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return Json(new { items = new object[0], groups = new object[0] });
+
+        string pageUrl = uri.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+            ? uri
+            : MbbgTo.SiteHost + "/" + uri.Trim('/');
+
+        // Chong SSRF: chi nhan trang cua chinh site nay.
+        if (pageUrl.IndexOf("mbbg.", StringComparison.OrdinalIgnoreCase) < 0)
+            return Json(new { items = new object[0], groups = new object[0] });
+
+        lock (_infoCache)
+        {
+            if (_infoCache.TryGetValue(uri, out var hit)
+                && DateTime.UtcNow - hit.at < InfoTtl && hit.chips != null)
+                return InfoResult(hit.chips, hit.rel, uri);
+        }
+
+        // 1 fetch duy nhat cho ca chip lan "Lien quan".
+        string html = await GetPageAsync(pageUrl);
+
+        var chips = MbbgTo.Chips(html ?? "");
+        var rel = MbbgTo.Related("mbbg/vidosik", html ?? "");
+
+        lock (_infoCache)
+        {
+            _infoCache[uri] = (DateTime.UtcNow, chips, rel);
+        }
+
+        return InfoResult(chips, rel, uri);
+    }
+
+    ActionResult InfoResult(
+        List<(string kind, string slug, string name)> chips, List<PlaylistItem> rel, string uri)
+    {
+        var groups = new List<object>();
+
+        foreach (string kind in new[] { "cat", "tag" })
+        {
+            var items = chips?.Where(x => x.kind == kind).Select(x => new
+            {
+                title = x.name,
+                url = $"{host}/mbbg?c="
+                    + HttpUtility.UrlEncode(kind == "tag" ? "tag/" + x.slug : x.slug)
+            }).ToList();
+
+            if (items == null || items.Count == 0)
+                continue;
+
+            groups.Add(new { title = kind == "cat" ? "Danh mục" : "Thẻ", items });
+        }
+
+        if (rel != null && rel.Count > 0)
+        {
+            groups.Add(new
+            {
+                title = "Liên quan",
+                items = new[]
+                {
+                    new
+                    {
+                        title = "Video liên quan",
+                        plain = true,
+                        url = $"{host}/mbbg?rel={HttpUtility.UrlEncode(uri)}"
+                    }
+                }
+            });
+        }
+
+        return Json(new { items = new object[0], groups });
+    }
+
+    // `?rel=` chi 1 trang -> total_pages = 1 (0 = "con trang vo han" voi SISI).
+    async Task<ActionResult> RelatedList(string rel, int pg)
+    {
+        string relUrl = rel.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+            ? rel : MbbgTo.SiteHost + "/" + rel.Trim('/');
+
+        // Cung guard nhu /genres: khong fetch ra ngoai site.
+        if (relUrl.IndexOf("mbbg.", StringComparison.OrdinalIgnoreCase) < 0)
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        if (pg > 1)
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        var cache = await InvokeCacheResult<(List<PlaylistItem> playlists, int total_pages)>(
+            ipkey($"mbbg:rel:{rel}"), 180, async e =>
+        {
+            string html = await GetPageAsync(relUrl);
+            var playlists = MbbgTo.Related("mbbg/vidosik", html ?? "");
+
+            return e.Success((playlists, 1));
+        });
+
+        if (!cache.IsSuccess)
+            return OnError(cache.ErrorMsg);
+
+        return PlaylistResult(cache.Value.playlists, cache.ISingleCache,
+            await MenuAsync(), total_pages: 1);
+    }
+
+    #endregion
 }
