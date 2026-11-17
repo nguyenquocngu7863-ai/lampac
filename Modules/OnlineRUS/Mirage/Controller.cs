@@ -119,13 +119,16 @@ public class MirageController : BaseOnlineController<ModuleConf>
                 bool uhd = init.m4s ? file.Value<bool>("uhd") : false;
 
                 string link = $"{host}/lite/mirage/video?id_file={id}&token_movie={data.Value<string>("token_movie")}";
+                // trans route luon tra ban 1080p h264: khong gan nhan 2160p de Lampa/GStreamer
+                // khong day nham sang transcode (gst tu choi source localhost)
+                string vq = uhd ? "1080p" : quality;
                 mtpl.Append(
                     translation,
                     link,
                     "call",
                     accsArgs($"{link.Replace("/video", "/video.m3u8")}&play=true"),
-                    voice_name: uhd ? "2160p" : quality,
-                    quality: uhd ? "2160p" : ""
+                    voice_name: vq,
+                    quality: vq == quality ? "" : vq
                 );
             }
 
@@ -145,7 +148,7 @@ public class MirageController : BaseOnlineController<ModuleConf>
                 try
                 {
                     if (init.m4s)
-                        q = frame.active.Value<bool>("uhd") == true ? "2160p" : null;
+                        q = frame.active.Value<bool>("uhd") == true ? "1080p" : null;
                 }
                 catch { }
 
