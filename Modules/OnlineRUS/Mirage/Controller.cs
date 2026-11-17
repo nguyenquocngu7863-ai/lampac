@@ -9,12 +9,15 @@ using Shared.Models.AppConf;
 using Shared.Models.Base;
 using Shared.Models.Templates;
 using Shared.PlaywrightCore;
+using Shared.Services;
 using Shared.Services.RxEnumerate;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Net.WebSockets;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -30,6 +33,7 @@ public class MirageController : BaseOnlineController<ModuleConf>
     static object locker = new();
     static System.Net.Http.HttpClient dlClient = new System.Net.Http.HttpClient(new System.Net.Http.HttpClientHandler { AllowAutoRedirect = true }) { Timeout = TimeSpan.FromSeconds(20) };
     static Dictionary<long, (string variantUrl, string referer, List<string> segs, string initMap)> dlStates = new();
+    static string edgeHash;
     static string MirageDir(long id_file) => $"cache/mirage/{id_file}";
 
     static MirageController()
@@ -790,7 +794,16 @@ public class MirageController : BaseOnlineController<ModuleConf>
             }
             catch { }
             if (tcsOk || System.IO.File.Exists($"{MirageDir(id_file)}/master.m3u8"))
+            {
+                // page chi can cho buoc lay master/seg dau; dong de nha slot Playwright cho module khac
+                if (page != null)
+                {
+                    try { await page.CloseAsync(); } catch { }
+                    page = null;
+                }
+
                 return $"{host}/lite/mirage/trans/{id_file}/master.m3u8";
+            }
             else
             {
                 try { await page.CloseAsync(); } catch { }
@@ -820,6 +833,10 @@ public class MirageController : BaseOnlineController<ModuleConf>
             var qtoken = hlsArr?["quality"];
             var qlist = qtoken == null ? null : qtoken.Children<JProperty>().ToList();
             if (qlist == null || qlist.Count == 0)
+                return;
+
+            edgeHash = await GetEdgeHash(jo.Value<string>("pnr"), jo.Value<string>("pnk"), qlist[0].Name);
+            if (string.IsNullOrEmpty(edgeHash))
                 return;
 
             var q = qlist.FirstOrDefault(x => x.Name == "1080") ?? qlist.FirstOrDefault();
@@ -902,6 +919,108 @@ public class MirageController : BaseOnlineController<ModuleConf>
         catch { }
     }
 
+    static ClientWebSocket edgeWs;
+    static CancellationTokenSource edgeCts;
+    static string edgeResolution = "1080";
+
+    static void StartEdgeWatch(string pnr, string pnk, string resolution)
+    {
+        if (edgeWs != null && edgeWs.State == WebSocketState.Open)
+            return;
+
+        edgeCts?.Cancel();
+        try { edgeWs?.Dispose(); } catch { }
+
+        edgeHash = null;
+        edgeResolution = resolution;
+
+        var cts = new CancellationTokenSource();
+        edgeCts = cts;
+
+        var ws = new ClientWebSocket();
+        edgeWs = ws;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                ws.Options.SetRequestHeader("User-Agent", Http.UserAgent);
+
+                await ws.ConnectAsync(new Uri($"{pnr}?sid={pnk}&v=2.1&t={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}"), cts.Token);
+
+                async Task Send(string type)
+                {
+                    string payload = JsonConvert.SerializeObject(new
+                    {
+                        type,
+                        current_time = 0,
+                        resolution = edgeResolution,
+                        track_id = "1",
+                        speed = 1,
+                        subtitle = -1,
+                        ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+                    });
+
+                    await ws.SendAsync(new ArraySegment<byte>(Encoding.UTF8.GetBytes(payload)), WebSocketMessageType.Text, true, cts.Token);
+                }
+
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        var buffer = new byte[16 * 1024];
+
+                        while (!cts.IsCancellationRequested && ws.State == WebSocketState.Open)
+                        {
+                            var result = await ws.ReceiveAsync(new ArraySegment<byte>(buffer), cts.Token);
+                            if (result.MessageType == WebSocketMessageType.Close)
+                                break;
+
+                            string hash = Regex.Match(Encoding.UTF8.GetString(buffer, 0, result.Count), "\"edge_hash\":\"([^\"]+)\"")
+                                .Groups[1].Value;
+
+                            if (!string.IsNullOrEmpty(hash))
+                                edgeHash = hash;
+                        }
+                    }
+                    catch { }
+                }, cts.Token);
+
+                await Send("playback_start");
+                await Send("init");
+
+                while (!cts.IsCancellationRequested && ws.State == WebSocketState.Open)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(30), cts.Token);
+                    await Send("playing");
+                }
+            }
+            catch { }
+        });
+    }
+
+    static async Task<string> GetEdgeHash(string pnr, string pnk, string resolution = "1080")
+    {
+        if (string.IsNullOrEmpty(pnr) || string.IsNullOrEmpty(pnk))
+            return null;
+
+        StartEdgeWatch(pnr, pnk, resolution);
+
+        var sw = Stopwatch.StartNew();
+        while (string.IsNullOrEmpty(edgeHash) && sw.Elapsed < TimeSpan.FromSeconds(20))
+            await Task.Delay(100);
+
+        return edgeHash;
+    }
+
+    static void AddStreamHeaders(System.Net.Http.HttpRequestMessage req)
+    {
+        if (!string.IsNullOrEmpty(edgeHash))
+            req.Headers.TryAddWithoutValidation("Accepts-Controls", edgeHash);
+
+        req.Headers.TryAddWithoutValidation("Authorizations", "Bearer pXzvbyDGLYyB6VkwsWZDv3iMKZtsXNzpzRyxZUcsKHXxsSeaYakbo3hw9mBFRc5VQTpqAX6BW8aDEqyLaHYcXSQiV6KHYTVTK6MYRphNAy5sBjtrevqkDzKmLqNdfMZGEU9NELjmtKfZy3RNGzCd767sNh1mXEj4tCcvqndHtzmwAbZNkhm4ghDEasodotMBewypNQ56uotJAQGX11csfeRfBAPk8DcUWWkkqzxca8vbnEw12vUFbBzT6hz8ZB3F3dzUhUXoL2cr1WM1bXQArRCS1MUNMz3X5WDMMQoZKxj2AMTRqp7QQX4dDB9B7VzEZTmyFULhm1AcHHMkoMvSVvKYoBoAKLycYAgMHeD4ECJcGEAGpnkJhrV57zQ7");
+    }
+
     static async Task<string> DlText(string url, string referer, string origin)
     {
         try
@@ -910,6 +1029,7 @@ public class MirageController : BaseOnlineController<ModuleConf>
             req.Headers.TryAddWithoutValidation("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
             req.Headers.Referrer = new Uri(referer);
             req.Headers.TryAddWithoutValidation("Origin", origin);
+            AddStreamHeaders(req);
             using var res = await dlClient.SendAsync(req);
             if (!res.IsSuccessStatusCode)
                 return null;
@@ -926,6 +1046,7 @@ public class MirageController : BaseOnlineController<ModuleConf>
             req.Headers.TryAddWithoutValidation("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
             req.Headers.Referrer = new Uri(referer);
             req.Headers.TryAddWithoutValidation("Origin", origin);
+            AddStreamHeaders(req);
             using var res = await dlClient.SendAsync(req);
             if (!res.IsSuccessStatusCode)
                 return null;

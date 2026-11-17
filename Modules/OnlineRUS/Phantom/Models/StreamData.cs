@@ -7,4 +7,6 @@ public class StreamData
     public string requestOrigin { get; set; }
 
     public string requestReferer { get; set; }
+
+    public string resolution { get; set; }
 }

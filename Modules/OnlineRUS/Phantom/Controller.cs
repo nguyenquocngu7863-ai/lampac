@@ -618,6 +618,9 @@ public class PhantomController : BaseOnlineController<ModuleConf>
                             string json = await fetchResponse.TextAsync().ConfigureAwait(false);
                             var jo = JsonConvert.DeserializeObject<JObject>(json);
 
+                            watch.requestReferer = route.Request.Headers["referer"];
+                            watch.requestOrigin = route.Request.Headers["origin"];
+
                             var selectedItem =
                                 jo["hlsSource"]
                                     .Children<JObject>()
@@ -641,7 +644,16 @@ public class PhantomController : BaseOnlineController<ModuleConf>
                                     .Trim();
 
                                 streams.Add(new StreamQualityDto(link, $"{q.Name}p"));
+
+                                if (string.IsNullOrEmpty(watch.resolution))
+                                    watch.resolution = q.Name;
                             }
+
+                            string pnr = jo.Value<string>("pnr");
+                            string pnk = jo.Value<string>("pnk");
+
+                            if (!string.IsNullOrEmpty(pnr) && !string.IsNullOrEmpty(pnk))
+                                Service.WatchEdgeHash(watch, $"{pnr}?sid={pnk}&v=2.1&t={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}");
 
                             await route.FulfillAsync(new RouteFulfillOptions
                             {
