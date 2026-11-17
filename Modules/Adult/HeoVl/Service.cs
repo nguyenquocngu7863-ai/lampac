@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Web;
 
@@ -203,6 +204,155 @@ public static class HeoVlTo
         }
 
         return links;
+    }
+
+    /// <summary>
+    /// Chuan hoa uri detail cua popup: chi nhan trang /videos/ thuoc heovl.im.
+    /// uri rac hoac host la -> null (popup tra rong, khong fetch ra ngoai site).
+    /// </summary>
+    public static string PageUrl(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return null;
+
+        uri = uri.Trim();
+        string abs = uri.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+            ? uri
+            : SiteHost + "/" + uri.TrimStart('/');
+
+        try
+        {
+            var u = new System.Uri(abs);
+            if (!u.Host.Equals("heovl.im", StringComparison.OrdinalIgnoreCase))
+                return null;
+            if (!u.AbsolutePath.StartsWith("/videos/", StringComparison.OrdinalIgnoreCase))
+                return null;
+            return SiteHost + u.AbsolutePath.TrimEnd('/');
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    static bool HasCjk(string s)
+    {
+        if (string.IsNullOrEmpty(s))
+            return false;
+        foreach (char c in s)
+        {
+            if (c >= 0x3040 && c <= 0x30ff) return true; // Hiragana/Katakana
+            if (c >= 0x3400 && c <= 0x9fff) return true; // CJK
+            if (c >= 0xac00 && c <= 0xd7af) return true; // Hangul
+            if (c >= 0x0400 && c <= 0x04ff) return true; // Cyrillic
+            if (c >= 0x0e00 && c <= 0x0e7f) return true; // Thai
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Chip cua popup: the loai lay tu breadcrumb cua trang detail, the lay tu
+    /// khoi "Tags" (chi ton tai khi video co tag). Ca hai deu la ten site in.
+    /// </summary>
+    public static List<(string kind, string slug, string name)> Chips(string html)
+    {
+        var chips = new List<(string kind, string slug, string name)>();
+        if (string.IsNullOrEmpty(html))
+            return chips;
+
+        var seen = new HashSet<string>();
+
+        // The loai: breadcrumb (dung 1 the loai / video).
+        foreach (Match m in Regex.Matches(html, @"<a href=""https://heovl\.im/categories/([^""]+)"" class=""breadcrumb__item__link"">\s*(.+?)\s*</a>", RegexOptions.Singleline))
+        {
+            string slug = m.Groups[1].Value.Trim();
+            string name = HttpUtility.HtmlDecode(m.Groups[2].Value.Trim());
+            if (slug.Length == 0 || name.Length == 0 || HasCjk(name))
+                continue;
+            if (!seen.Add("cat:" + slug))
+                continue;
+            chips.Add(("cat", slug, name));
+        }
+
+        // The: khoi "Tags" chi chua tag cua chinh video nay (khac featured-list
+        // "The loai" o sidebar, do la danh sach the loai toan site).
+        int start = html.IndexOf("<!-- Tags -->", StringComparison.Ordinal);
+        if (start >= 0)
+        {
+            int end = html.IndexOf("<!-- Body -->", start, StringComparison.Ordinal);
+            string region = end > start
+                ? html.Substring(start, end - start)
+                : html.Substring(start);
+
+            foreach (Match m in Regex.Matches(region, @"<a href=""https://heovl\.im/tag/([^""]+)"" class=""featured-list__desktop__list__item__body"">.*?<h3 class=""featured-list__desktop__list__item__title"">\s*(.+?)\s*</h3>", RegexOptions.Singleline))
+            {
+                string slug = m.Groups[1].Value.Trim();
+                string name = HttpUtility.HtmlDecode(m.Groups[2].Value.Trim());
+                if (slug.Length == 0 || name.Length == 0 || HasCjk(name))
+                    continue;
+                if (!seen.Add("tag:" + slug))
+                    continue;
+                chips.Add(("tag", slug, name));
+            }
+        }
+
+        return chips;
+    }
+
+    /// <summary>
+    /// "Xem them" cua site = GET /ajax/suggestions/&lt;slug&gt; tra JSON.
+    /// </summary>
+    public static List<Shared.Models.SISI.Base.PlaylistItem> Suggestions(string json, string vidosikUrl)
+    {
+        var playlists = new List<Shared.Models.SISI.Base.PlaylistItem>();
+        if (string.IsNullOrWhiteSpace(json))
+            return playlists;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty("data", out var arr))
+                return playlists;
+
+            var seen = new HashSet<string>();
+            foreach (var e in arr.EnumerateArray())
+            {
+                string href = e.TryGetProperty("url", out var u) ? u.GetString() : null;
+                string name = e.TryGetProperty("title", out var t) ? t.GetString() : null;
+                if (string.IsNullOrEmpty(href) || string.IsNullOrEmpty(name))
+                    continue;
+
+                if (!System.Uri.TryCreate(href, System.UriKind.Absolute, out var pu)
+                    || !pu.Host.Equals("heovl.im", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                if (!seen.Add(href))
+                    continue;
+
+                string poster = e.TryGetProperty("thumbnail_file_url", out var th)
+                    ? th.GetString() : "";
+
+                playlists.Add(new Shared.Models.SISI.Base.PlaylistItem()
+                {
+                    video = vidosikUrl + "?uri=" + HttpUtility.UrlEncode(href),
+                    name = name.Trim(),
+                    picture = poster,
+                    json = true,
+                    bookmark = new Shared.Models.SISI.Base.Bookmark()
+                    {
+                        site = "heovl",
+                        href = href,
+                        image = poster
+                    }
+                });
+            }
+        }
+        catch
+        {
+            return playlists;
+        }
+
+        return playlists;
     }
 
     public static List<Shared.Models.SISI.Base.MenuItem> Menu(string host)

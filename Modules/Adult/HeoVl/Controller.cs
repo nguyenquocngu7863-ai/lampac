@@ -23,8 +23,12 @@ public class HeoVlController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("heovl")]
-    async public Task<ActionResult> Index(string search, string c, int pg = 1)
+    async public Task<ActionResult> Index(string search, string c, int pg = 1, string rel = null)
     {
+        // `?rel=` = danh sach "Video liên quan" cua popup long-press.
+        if (!string.IsNullOrWhiteSpace(rel))
+            return await RelatedList(rel, pg);
+
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
 
@@ -345,4 +349,167 @@ public class HeoVlController : BaseSisiController
         ));
         return Redirect(HostStreamProxy(link, direct));
     }
+
+    #region popup long-press (skill lampac-popup)
+
+    const string PopupUA = "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
+
+    // Cache RAM: 1 fetch detail cho ca chip lan "lien quan".
+    static readonly Dictionary<string,
+        (DateTime at, List<(string kind, string slug, string name)> chips)> _infoCache = new();
+
+    static readonly TimeSpan InfoTtl = TimeSpan.FromHours(6);
+
+    async Task<string> FetchHtmlAsync(string url)
+    {
+        string html = null;
+        await httpHydra.GetSpan(url, span =>
+        {
+            html = span.ToString();
+        }, addheaders: HeadersModel.Init(
+            ("User-Agent", PopupUA),
+            ("Referer", "https://heovl.im/")
+        ));
+        return html;
+    }
+
+    [HttpGet]
+    [Route("heovl/genres")]
+    async public Task<ActionResult> Genres(string uri)
+    {
+        var pageUrl = HeoVlTo.PageUrl(uri);
+
+        // uri rac / host la -> popup rong, KHONG 500 (skill lampac-popup §2).
+        if (pageUrl == null)
+            return Json(new { items = new object[0], groups = new object[0] });
+
+        var chips = await ChipsAsync(pageUrl);
+
+        // Warm nen: bam "Video lien quan" la co cache ngay.
+        _ = Task.Run(async () =>
+        {
+            try { await WarmRelated(pageUrl); } catch { }
+        });
+
+        return InfoResult(chips, pageUrl);
+    }
+
+    async Task<List<(string kind, string slug, string name)>> ChipsAsync(string pageUrl)
+    {
+        lock (_infoCache)
+        {
+            if (_infoCache.TryGetValue(pageUrl, out var hit)
+                && DateTime.UtcNow - hit.at < InfoTtl && hit.chips != null)
+                return hit.chips;
+        }
+
+        string html = await FetchHtmlAsync(pageUrl);
+        var chips = HeoVlTo.Chips(html ?? "");
+
+        lock (_infoCache)
+            _infoCache[pageUrl] = (DateTime.UtcNow, chips);
+
+        return chips;
+    }
+
+    ActionResult InfoResult(
+        List<(string kind, string slug, string name)> chips, string pageUrl)
+    {
+        var groups = new List<object>();
+
+        foreach (var (kind, title) in new[] { ("cat", "Thể loại"), ("tag", "Thẻ") })
+        {
+            var items = chips?.Where(x => x.kind == kind)
+                .Select(x => new
+                {
+                    title = x.name,
+                    url = $"{host}/heovl?c="
+                        + HttpUtility.UrlEncode(kind == "tag" ? "tag/" + x.slug : "categories/" + x.slug)
+                }).ToList();
+
+            if (items == null || items.Count == 0)
+                continue;
+
+            groups.Add(new { title, items });
+        }
+
+        // "Xem them" cua site = /ajax/suggestions/<slug>, warm o tren.
+        groups.Add(new
+        {
+            title = "Liên quan",
+            items = new[]
+            {
+                new
+                {
+                    title = "Video liên quan",
+                    plain = true,
+                    url = $"{host}/heovl?rel={HttpUtility.UrlEncode(pageUrl)}"
+                }
+            }
+        });
+
+        return Json(new { items = new object[0], groups });
+    }
+
+    static string SuggestionUrl(string pageUrl)
+    {
+        string slug = pageUrl.Substring(pageUrl.LastIndexOf('/') + 1);
+        return HeoVlTo.SiteHost + "/ajax/suggestions/" + slug;
+    }
+
+    // Chi 1 trang -> total_pages = 1 (0 = "con trang vo han" voi SISI,
+    // app se nap lai dung list cu mai).
+    async Task<ActionResult> RelatedList(string rel, int pg)
+    {
+        if (pg > 1)
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        var pageUrl = HeoVlTo.PageUrl(rel);
+        if (pageUrl == null)
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        var cache = await InvokeCacheResult<(List<PlaylistItem> playlists, int total_pages)>(
+            ipkey($"heovl:rel:{pageUrl}"), 180, async e =>
+        {
+            string json = await FetchHtmlAsync(SuggestionUrl(pageUrl));
+            var items = HeoVlTo.Suggestions(json, "heovl/vidosik");
+            items.RemoveAll(x => SamePage(x, pageUrl));
+            return e.Success((items, 1));
+        });
+
+        // PlaylistResult coi list rong = loi (503) -> tra JSON rong thang.
+        if (!cache.IsSuccess || cache.Value.playlists == null || cache.Value.playlists.Count == 0)
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        return PlaylistResult(cache.Value.playlists, cache.ISingleCache,
+            HeoVlTo.Menu(host), total_pages: 1);
+    }
+
+    async Task WarmRelated(string pageUrl)
+    {
+        await InvokeCacheResult<(List<PlaylistItem> playlists, int total_pages)>(
+            ipkey($"heovl:rel:{pageUrl}"), 180, async e =>
+        {
+            string json = await FetchHtmlAsync(SuggestionUrl(pageUrl));
+            var items = HeoVlTo.Suggestions(json, "heovl/vidosik");
+            items.RemoveAll(x => SamePage(x, pageUrl));
+            return e.Success((items, 1));
+        });
+    }
+
+    static bool SamePage(PlaylistItem x, string pageUrl)
+    {
+        string href = x?.bookmark?.href;
+        if (string.IsNullOrEmpty(href))
+            return false;
+
+        string u = href.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+            ? href
+            : HeoVlTo.SiteHost + "/" + href.Trim('/');
+
+        return string.Equals(u.TrimEnd('/'), pageUrl.TrimEnd('/'),
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    #endregion
 }
