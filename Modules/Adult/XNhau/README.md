@@ -1,4 +1,4 @@
-# XNhau (xnhau.pink)
+# XNhau (xnhau.meme)
 
 Module Adult cho nguồn xnhau.pink (Việt).
 
@@ -123,6 +123,7 @@ Cấu hình (`~/lampac-run/init.conf`, thêm section nếu chưa có):
 ## Domain (cap nhat 2026-11-02)
 
 Site **doi domain lien tuc**: `xnhau.cab` -> `xnhau.limo` -> `xnhau.free` -> `xnhau.pub` -> `xnhau.band` -> **`xnhau.pink`**.
+Doi `xnhau.pink` -> **`xnhau.meme`** (`2026-11-17`) bang `~/lampac-native/xnhau-domain.sh xnhau.meme`.
 `xnhau.free` tung tra **301 Moved Permanently** (body 162 byte, khong co card) va fetch cua module
 **khong di theo redirect** -> parse ra 0 item -> app bao 503 `playlists`.
 
