@@ -16,8 +16,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Net.WebSockets;
-using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -589,6 +587,26 @@ public class MirageController : BaseOnlineController<ModuleConf>
             if (page == null)
                 return default;
 
+            await page.AddInitScriptAsync(@"(() => {
+                const W = window.WebSocket;
+                function ProxyWS(...args) {
+                    const ws = new W(...args);
+                    try {
+                        ws.addEventListener('message', ev => {
+                            try {
+                                const d = typeof ev.data === 'string' ? ev.data : '';
+                                const m = /""edge_hash"":""([^""]+)""/.exec(d);
+                                if (m) window.__edge = m[1];
+                            } catch (e) {}
+                        });
+                    } catch (e) {}
+                    return ws;
+                }
+                ProxyWS.prototype = W.prototype;
+                Object.assign(ProxyWS, W);
+                window.WebSocket = ProxyWS;
+            })();").ConfigureAwait(false);
+
             await page.RouteAsync("**/*", async route =>
             {
                 try
@@ -835,7 +853,7 @@ public class MirageController : BaseOnlineController<ModuleConf>
             if (qlist == null || qlist.Count == 0)
                 return;
 
-            edgeHash = await GetEdgeHash(jo.Value<string>("pnr"), jo.Value<string>("pnk"), qlist[0].Name);
+            edgeHash = await GetEdgeHashFromPage();
             if (string.IsNullOrEmpty(edgeHash))
                 return;
 
@@ -919,98 +937,35 @@ public class MirageController : BaseOnlineController<ModuleConf>
         catch { }
     }
 
-    static ClientWebSocket edgeWs;
-    static CancellationTokenSource edgeCts;
-    static string edgeResolution = "1080";
-
-    static void StartEdgeWatch(string pnr, string pnk, string resolution)
+    static async Task<string> GetEdgeHashFromPage()
     {
-        if (edgeWs != null && edgeWs.State == WebSocketState.Open)
-            return;
-
-        edgeCts?.Cancel();
-        try { edgeWs?.Dispose(); } catch { }
-
-        edgeHash = null;
-        edgeResolution = resolution;
-
-        var cts = new CancellationTokenSource();
-        edgeCts = cts;
-
-        var ws = new ClientWebSocket();
-        edgeWs = ws;
-
-        _ = Task.Run(async () =>
+        // trang player tu mo WebSocket va nhan edge_hash; doc tu bien __edge do init script ghi lai
+        var sw = Stopwatch.StartNew();
+        while (sw.Elapsed < TimeSpan.FromSeconds(20))
         {
+            var pg = page;
+            if (pg == null)
+                return null;
+
             try
             {
-                ws.Options.SetRequestHeader("User-Agent", Http.UserAgent);
-
-                await ws.ConnectAsync(new Uri($"{pnr}?sid={pnk}&v=2.1&t={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}"), cts.Token);
-
-                async Task Send(string type)
-                {
-                    string payload = JsonConvert.SerializeObject(new
-                    {
-                        type,
-                        current_time = 0,
-                        resolution = edgeResolution,
-                        track_id = "1",
-                        speed = 1,
-                        subtitle = -1,
-                        ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
-                    });
-
-                    await ws.SendAsync(new ArraySegment<byte>(Encoding.UTF8.GetBytes(payload)), WebSocketMessageType.Text, true, cts.Token);
-                }
-
-                _ = Task.Run(async () =>
+                foreach (var frame in pg.Frames)
                 {
                     try
                     {
-                        var buffer = new byte[16 * 1024];
-
-                        while (!cts.IsCancellationRequested && ws.State == WebSocketState.Open)
-                        {
-                            var result = await ws.ReceiveAsync(new ArraySegment<byte>(buffer), cts.Token);
-                            if (result.MessageType == WebSocketMessageType.Close)
-                                break;
-
-                            string hash = Regex.Match(Encoding.UTF8.GetString(buffer, 0, result.Count), "\"edge_hash\":\"([^\"]+)\"")
-                                .Groups[1].Value;
-
-                            if (!string.IsNullOrEmpty(hash))
-                                edgeHash = hash;
-                        }
+                        string h = await frame.EvaluateAsync<string>("() => window.__edge || ''");
+                        if (!string.IsNullOrEmpty(h))
+                            return h;
                     }
                     catch { }
-                }, cts.Token);
-
-                await Send("playback_start");
-                await Send("init");
-
-                while (!cts.IsCancellationRequested && ws.State == WebSocketState.Open)
-                {
-                    await Task.Delay(TimeSpan.FromSeconds(30), cts.Token);
-                    await Send("playing");
                 }
             }
             catch { }
-        });
-    }
 
-    static async Task<string> GetEdgeHash(string pnr, string pnk, string resolution = "1080")
-    {
-        if (string.IsNullOrEmpty(pnr) || string.IsNullOrEmpty(pnk))
-            return null;
+            await Task.Delay(200);
+        }
 
-        StartEdgeWatch(pnr, pnk, resolution);
-
-        var sw = Stopwatch.StartNew();
-        while (string.IsNullOrEmpty(edgeHash) && sw.Elapsed < TimeSpan.FromSeconds(20))
-            await Task.Delay(100);
-
-        return edgeHash;
+        return null;
     }
 
     static void AddStreamHeaders(System.Net.Http.HttpRequestMessage req)
@@ -1018,7 +973,18 @@ public class MirageController : BaseOnlineController<ModuleConf>
         if (!string.IsNullOrEmpty(edgeHash))
             req.Headers.TryAddWithoutValidation("Accepts-Controls", edgeHash);
 
+        req.Headers.TryAddWithoutValidation("Connection", "keep-alive");
+        req.Headers.TryAddWithoutValidation("sec-ch-ua", Http.defaultUaHeaders["sec-ch-ua"]);
+        req.Headers.TryAddWithoutValidation("sec-ch-ua-mobile", "?0");
+        req.Headers.TryAddWithoutValidation("sec-ch-ua-platform", "\"Windows\"");
+        req.Headers.TryAddWithoutValidation("User-Agent", Http.UserAgent);
+        req.Headers.TryAddWithoutValidation("Accept", "*/*");
+        req.Headers.TryAddWithoutValidation("Accept-Language", "ru-RU,ru;q=0.9,uk-UA;q=0.8,uk;q=0.7,en-US;q=0.6,en;q=0.5");
         req.Headers.TryAddWithoutValidation("Authorizations", "Bearer pXzvbyDGLYyB6VkwsWZDv3iMKZtsXNzpzRyxZUcsKHXxsSeaYakbo3hw9mBFRc5VQTpqAX6BW8aDEqyLaHYcXSQiV6KHYTVTK6MYRphNAy5sBjtrevqkDzKmLqNdfMZGEU9NELjmtKfZy3RNGzCd767sNh1mXEj4tCcvqndHtzmwAbZNkhm4ghDEasodotMBewypNQ56uotJAQGX11csfeRfBAPk8DcUWWkkqzxca8vbnEw12vUFbBzT6hz8ZB3F3dzUhUXoL2cr1WM1bXQArRCS1MUNMz3X5WDMMQoZKxj2AMTRqp7QQX4dDB9B7VzEZTmyFULhm1AcHHMkoMvSVvKYoBoAKLycYAgMHeD4ECJcGEAGpnkJhrV57zQ7");
+        req.Headers.TryAddWithoutValidation("Sec-Fetch-Site", "cross-site");
+        req.Headers.TryAddWithoutValidation("Sec-Fetch-Mode", "cors");
+        req.Headers.TryAddWithoutValidation("Sec-Fetch-Dest", "empty");
+        req.Headers.TryAddWithoutValidation("Accept-Encoding", "gzip, deflate, br, zstd");
     }
 
     static async Task<string> DlText(string url, string referer, string origin)
