@@ -32,6 +32,9 @@ public class MirageController : BaseOnlineController<ModuleConf>
     static System.Net.Http.HttpClient dlClient = new System.Net.Http.HttpClient(new System.Net.Http.HttpClientHandler { AllowAutoRedirect = true }) { Timeout = TimeSpan.FromSeconds(20) };
     static Dictionary<long, (string variantUrl, string referer, List<string> segs, string initMap)> dlStates = new();
     static string edgeHash;
+    static Task<string> inFlight;
+    static long inFlightId;
+    static string inFlightToken;
     static string MirageDir(long id_file) => $"cache/mirage/{id_file}";
 
     static MirageController()
@@ -406,7 +409,21 @@ public class MirageController : BaseOnlineController<ModuleConf>
             hls = curenthsl.hls;
         else
         {
-            hls = await goMovie($"{init.linkhost}/?token_movie={token_movie}&token={init.token}", id_file);
+            Task<string> task;
+
+            lock (locker)
+            {
+                if (inFlight != null && !inFlight.IsCompleted && inFlightId == id_file && inFlightToken == token_movie)
+                    task = inFlight;
+                else
+                {
+                    inFlightId = id_file;
+                    inFlightToken = token_movie;
+                    task = inFlight = goMovie($"{init.linkhost}/?token_movie={token_movie}&token={init.token}", id_file);
+                }
+            }
+
+            hls = await task;
             if (hls == null)
                 return OnError();
 
@@ -457,7 +474,7 @@ public class MirageController : BaseOnlineController<ModuleConf>
             catch { }
         }
 
-        var timeout = TimeSpan.FromSeconds(20);
+        var timeout = TimeSpan.FromSeconds(fileName == "master.m3u8" ? 28 : 20);
         var sw = Stopwatch.StartNew();
 
         while (!System.IO.File.Exists(path) && sw.Elapsed < timeout)
@@ -587,6 +604,8 @@ public class MirageController : BaseOnlineController<ModuleConf>
             if (page == null)
                 return default;
 
+            TaskCompletionSource<bool> tcsJson = new();
+
             await page.AddInitScriptAsync(@"(() => {
                 const W = window.WebSocket;
                 function ProxyWS(...args) {
@@ -676,6 +695,7 @@ public class MirageController : BaseOnlineController<ModuleConf>
                         }).ConfigureAwait(false);
 
                         string json = await fetchResponse.TextAsync().ConfigureAwait(false);
+                        tcsJson.TrySetResult(true);
 
                         _ = Task.Run(async () =>
                         {
@@ -783,9 +803,12 @@ public class MirageController : BaseOnlineController<ModuleConf>
                                 try
                                 {
                                     await frame.EvaluateAsync(@"() => {
-                                        var b = document.querySelector('button');
-                                        if (b) b.click();
-                                        var v = document.querySelector('video');
+                                        const sel = ['.allplay__control','[data-allplay=play]','.vjs-big-play-button','.jw-display-icon-container','.play','button'];
+                                        for (const s of sel) {
+                                            const b = document.querySelector(s);
+                                            if (b) { b.click(); break; }
+                                        }
+                                        const v = document.querySelector('video');
                                         if (v) { v.muted = true; v.play().catch(() => {}); }
                                     }");
                                 }
@@ -799,26 +822,38 @@ public class MirageController : BaseOnlineController<ModuleConf>
                 catch { }
             });
 
-            bool tcsOk = false;
-            try
+            var masterTask = WaitMasterFile(id_file);
+            await Task.WhenAny(tcsJson.Task, masterTask, Task.Delay(TimeSpan.FromSeconds(25)));
+
+            if (tcsJson.Task.IsCompleted || System.IO.File.Exists($"{MirageDir(id_file)}/master.m3u8"))
             {
-                var tcsTask = tcsPageResponse.Task;
-                var masterTask = WaitMasterFile(id_file);
-                var done = await Task.WhenAny(tcsTask, masterTask);
-                if (done == tcsTask)
+                // ServerFetchHls van dang doc __edge / tai master: giu page den khi master xong roi tra slot Playwright
+                _ = Task.Run(async () =>
                 {
-                    try { tcsOk = await tcsTask.WaitAsync(TimeSpan.FromSeconds(2)); } catch { }
-                }
-            }
-            catch { }
-            if (tcsOk || System.IO.File.Exists($"{MirageDir(id_file)}/master.m3u8"))
-            {
-                // page chi can cho buoc lay master/seg dau; dong de nha slot Playwright cho module khac
-                if (page != null)
-                {
-                    try { await page.CloseAsync(); } catch { }
-                    page = null;
-                }
+                    try
+                    {
+                        var pg = page;
+
+                        for (int i = 0; i < 90; i++)
+                        {
+                            if (System.IO.File.Exists($"{MirageDir(id_file)}/master.m3u8"))
+                                break;
+
+                            await Task.Delay(500);
+                        }
+
+                        await Task.Delay(2_000);
+
+                        if (pg != null)
+                        {
+                            try { await pg.CloseAsync(); } catch { }
+
+                            if (ReferenceEquals(page, pg))
+                                page = null;
+                        }
+                    }
+                    catch { }
+                });
 
                 return $"{host}/lite/mirage/trans/{id_file}/master.m3u8";
             }
