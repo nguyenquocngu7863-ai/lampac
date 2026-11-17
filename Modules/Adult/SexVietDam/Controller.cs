@@ -20,8 +20,15 @@ public class SexVietDamController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("sexvietdam")]
-    async public Task<ActionResult> Index(string search, string c, int pg = 1, string q = null)
-        => await Core(search ?? q, c, pg);
+    async public Task<ActionResult> Index(
+        string search, string c, int pg = 1, string q = null, string rel = null)
+    {
+        // `?rel=` = danh sach "Video liên quan" cua popup long-press.
+        if (!string.IsNullOrWhiteSpace(rel))
+            return await RelatedList(rel, pg);
+
+        return await Core(search ?? q, c, pg);
+    }
 
     // Duong dan thay cho query — app diem manh hon, khong lo query bi
     // mat/chen khi no ghep them `pg=1`:
@@ -392,4 +399,186 @@ public class SexVietDamController : BaseSisiController
 
         return Redirect(HostStreamProxy(link, direct));
     }
+
+    #region popup long-press (skill lampac-popup)
+
+    // Cache RAM: (chips) khong qua hybridCache duoc (tuple/list phuc tap).
+    static readonly Dictionary<string,
+        (DateTime at, List<(string kind, string slug, string name)> chips)> _infoCache = new();
+
+    static readonly TimeSpan InfoTtl = TimeSpan.FromHours(6);
+
+    [HttpGet]
+    [Route("sexvietdam/genres")]
+    async public Task<ActionResult> Genres(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return Json(new { items = new object[0], groups = new object[0] });
+
+        string pageUrl = SvdTo.PageUrl(uri);
+
+        // uri rac / host la -> popup rong, KHONG 500 (skill lampac-popup §2).
+        if (pageUrl == null)
+            return Json(new { items = new object[0], groups = new object[0] });
+
+        var chips = await ChipsAsync(pageUrl);
+
+        // Warm nen danh sach "Lien quan" -> bam vao la co cache ngay.
+        _ = Task.Run(async () =>
+        {
+            try { await WarmRelated(pageUrl, chips); } catch { }
+        });
+
+        return InfoResult(chips, pageUrl);
+    }
+
+    // 1 fetch detail duy nhat cho ca chip lan "Lien quan".
+    async Task<List<(string kind, string slug, string name)>> ChipsAsync(string pageUrl)
+    {
+        lock (_infoCache)
+        {
+            if (_infoCache.TryGetValue(pageUrl, out var hit)
+                && DateTime.UtcNow - hit.at < InfoTtl && hit.chips != null)
+                return hit.chips;
+        }
+
+        string html = await GetPageAsync(pageUrl);
+        var chips = SvdTo.Chips(html ?? "");
+
+        lock (_infoCache)
+            _infoCache[pageUrl] = (DateTime.UtcNow, chips);
+
+        return chips;
+    }
+
+    ActionResult InfoResult(
+        List<(string kind, string slug, string name)> chips, string pageUrl)
+    {
+        var groups = new List<object>();
+
+        foreach (var (kind, title) in new[] { ("cat", "Thể loại"), ("tag", "Thẻ") })
+        {
+            var items = chips?.Where(x => x.kind == kind)
+                .Select(x => new
+                {
+                    title = x.name,
+                    url = $"{host}/sexvietdam?c="
+                        + HttpUtility.UrlEncode(kind == "tag" ? "tag/" + x.slug : "the-loai/" + x.slug)
+                }).ToList();
+
+            if (items == null || items.Count == 0)
+                continue;
+
+            groups.Add(new { title, items });
+        }
+
+        // Site khong co block "lien quan" -> "Lien quan" = list cung danh muc.
+        if (chips != null && chips.Exists(x => x.kind == "cat" || x.kind == "tag"))
+        {
+            groups.Add(new
+            {
+                title = "Liên quan",
+                items = new[]
+                {
+                    new
+                    {
+                        title = "Video liên quan",
+                        plain = true,
+                        url = $"{host}/sexvietdam?rel={HttpUtility.UrlEncode(pageUrl)}"
+                    }
+                }
+            });
+        }
+
+        return Json(new { items = new object[0], groups });
+    }
+
+    // Chi 1 trang -> total_pages = 1 (0 = "con trang vo han" voi SISI,
+    // app se nap lai dung list cu mai).
+    async Task<ActionResult> RelatedList(string rel, int pg)
+    {
+        if (pg > 1)
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        string pageUrl = SvdTo.PageUrl(rel);
+
+        // Cung guard nhu /genres: khong fetch ra ngoai site.
+        if (pageUrl == null)
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        var cache = await InvokeCacheResult<(List<PlaylistItem> playlists, int total_pages)>(
+            ipkey($"svd:rel:{pageUrl}"), 180, async e =>
+        {
+            var items = await LoadRelated(pageUrl);
+            return e.Success((items, 1));
+        });
+
+        if (!cache.IsSuccess)
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        // PlaylistResult coi list rong = loi (503) -> tra JSON rong thang.
+        if (cache.Value.playlists == null || cache.Value.playlists.Count == 0)
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        return PlaylistResult(cache.Value.playlists, cache.ISingleCache,
+            await MenuAsync(), total_pages: 1);
+    }
+
+    async Task<List<PlaylistItem>> LoadRelated(string pageUrl)
+    {
+        var chips = await ChipsAsync(pageUrl);
+
+        var key = SvdTo.RelKey(chips);
+        if (string.IsNullOrEmpty(key.slug))
+            return new List<PlaylistItem>();
+
+        string listUrl = SvdTo.Uri(init.host, null,
+            (key.kind == "tag" ? "tag/" : "the-loai/") + key.slug, 1);
+
+        string html = await GetPageAsync(listUrl);
+        var items = SvdTo.Playlist(html ?? "");
+
+        // Bo chinh video dang xem khoi danh sach lien quan.
+        items.RemoveAll(x => SamePage(x, pageUrl));
+
+        return items;
+    }
+
+    // Warm nen: nap san cache `svd:rel:*` de bam "Video lien quan" la co ngay.
+    async Task WarmRelated(
+        string pageUrl, List<(string kind, string slug, string name)> chips)
+    {
+        var key = SvdTo.RelKey(chips);
+        if (string.IsNullOrEmpty(key.slug))
+            return;
+
+        string listUrl = SvdTo.Uri(init.host, null,
+            (key.kind == "tag" ? "tag/" : "the-loai/") + key.slug, 1);
+
+        await InvokeCacheResult<(List<PlaylistItem> playlists, int total_pages)>(
+            ipkey($"svd:rel:{pageUrl}"), 180, async e =>
+        {
+            string html = await GetPageAsync(listUrl);
+            var items = SvdTo.Playlist(html ?? "");
+            items.RemoveAll(x => SamePage(x, pageUrl));
+
+            return e.Success((items, 1));
+        });
+    }
+
+    static bool SamePage(PlaylistItem x, string pageUrl)
+    {
+        string href = x?.bookmark?.href;
+        if (string.IsNullOrEmpty(href))
+            return false;
+
+        string u = href.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+            ? href
+            : SvdTo.SiteHost + "/" + href.Trim('/');
+
+        return string.Equals(u.TrimEnd('/'), pageUrl.TrimEnd('/'),
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    #endregion
 }

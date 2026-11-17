@@ -146,6 +146,100 @@ public static class SvdTo
     public static List<(string name, string path)> Tags(string html)
         => Slugs(html, "tag");
 
+    // ===== POPUP: danh muc + the cua video (khoi video__tags) =====
+    //   <div class="video__tags">
+    //     <a href="https://sexvietdam.blog/the-loai/bu-lon" class="label">
+    //       <svg ...></svg> <span>Bú Lồn</span>
+    //     </a>
+    //     <a href="https://sexvietdam.blog/tag/xnxx" class="label">…<span>Xnxx</span></a>
+    static readonly Regex ReTagsBlock = new Regex(
+        "class=\"video__tags\"([\\s\\S]{0,6000})",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    static readonly Regex ReChip = new Regex(
+        "<a\\s+href=\"(?<url>https?://[^\"]+)\"\\s+class=\"label\"[^>]*>[\\s\\S]*?<span>(?<name>[^<]+)</span>",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    public static List<(string kind, string slug, string name)> Chips(string html)
+    {
+        var list = new List<(string, string, string)>();
+        if (string.IsNullOrEmpty(html))
+            return list;
+
+        // Chi doc trong khoi video__tags (khong quet ca trang).
+        var mb = ReTagsBlock.Match(html);
+        string block = mb.Success ? mb.Groups[1].Value : "";
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (Match m in ReChip.Matches(block))
+        {
+            var mu = Regex.Match(m.Groups["url"].Value, "/(the-loai|tag)/([a-z0-9-]+)",
+                RegexOptions.IgnoreCase);
+            if (!mu.Success)
+                continue;
+
+            string kind = mu.Groups[1].Value.Equals("tag", StringComparison.OrdinalIgnoreCase)
+                ? "tag" : "cat";
+            string slug = mu.Groups[2].Value.ToLowerInvariant();
+            string name = Clean(HttpUtility.HtmlDecode(m.Groups["name"].Value));
+
+            if (name.Length == 0 || !seen.Add(kind + "/" + slug))
+                continue;
+
+            list.Add((kind, slug, name));
+        }
+
+        return list;
+    }
+
+    // "Liên quan" — site KHÔNG có khối liên quan trên trang chi tiết
+    // (đo 2026-11-17: 0 match related/liên quan/gợi ý; sidebar chỉ là bảng
+    // "Phim sex hay" nạp từ /ajax/top/1h; bundle app-*.js chỉ có
+    // /ajax/preview|view|visit). → lấy danh sách CÙNG DANH MỤC đầu tiên
+    // của video (không có thì lấy thẻ đầu tiên). Là dữ liệu thật của site.
+    public static (string kind, string slug) RelKey(
+        IEnumerable<(string kind, string slug, string name)> chips)
+    {
+        if (chips == null)
+            return (null, null);
+
+        foreach (var c in chips)
+            if (c.kind == "cat" && !string.IsNullOrEmpty(c.slug))
+                return (c.kind, c.slug);
+
+        foreach (var c in chips)
+            if (c.kind == "tag" && !string.IsNullOrEmpty(c.slug))
+                return (c.kind, c.slug);
+
+        return (null, null);
+    }
+
+    // Chuan hoa URL + chong SSRF: chi nhan trang /phim-sex/ cua chinh site nay.
+    // Tra null cho uri rac / host la -> controller tra popup rong, khong 500.
+    public static string PageUrl(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return null;
+
+        uri = uri.Trim();
+
+        string u = uri.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+            ? uri
+            : SiteHost + "/" + uri.Trim('/');
+
+        if (!System.Uri.TryCreate(u, System.UriKind.Absolute, out var abs))
+            return null;
+
+        if (!string.Equals(abs.Host, new System.Uri(SiteHost).Host, StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        if (!abs.AbsolutePath.StartsWith("/phim-sex/", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        return abs.Scheme + "://" + abs.Authority + abs.AbsolutePath;
+    }
+
     static List<(string name, string path)> Slugs(string html, string kind)
     {
         var res = new List<(string name, string path)>();
