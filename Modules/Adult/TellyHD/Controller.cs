@@ -262,6 +262,13 @@ public class TellyHDController : BaseSisiController
 
         foreach (var s in servers)
         {
+            // LU (tnmr.org) CHET site-wide (2026-11-18): user test thuc te -> den
+            // man; chinh JavGuru cung da go LU khoi trang video. Module van giu
+            // duong resolve+redirect (LuluMaster) de bat lai sau; chi can bo
+            // dong loc nay neu CDN song lai.
+            if (HdTo.IsLulu(s.name))
+                continue;
+
             string key = s.name;
             if (dict.ContainsKey(key))
                 continue;
