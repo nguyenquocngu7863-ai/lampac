@@ -235,6 +235,7 @@ public class TellyHDController : BaseSisiController
     {
         public Dictionary<string, string> links = new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, string> referers = new(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, string> kinds = new(StringComparer.OrdinalIgnoreCase);
     }
 
     [HttpGet, Staticache(manually: true)]
@@ -244,57 +245,82 @@ public class TellyHDController : BaseSisiController
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
 
-        var res = await ResolveAsync(uri);
-        if (res == null || res.links.Count == 0)
-            return OnError("stream_links", refresh_proxy: true);
-
-        return Json(res.links.ToDictionary(k => k.Key, k =>
-            $"{host}/tellyhd/video.m3u8?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(k.Key)}"));
-    }
-
-    async Task<Streams> ResolveAsync(string uri)
-    {
+        // KHONG resolve stream o day: app goi /vidosik truoc khi mo player,
+        // resolve 2-3 server (embed + token) mat 10-20s -> app timeout, popup
+        // khong bao gio mo. Chi tra danh sach server (1 request trang detail,
+        // cache 6h), server nao bam moi resolve trong /video.
         string pageUrl = HdTo.PageUrl(uri);
         if (pageUrl == null)
-            return null;
+            return OnError("stream_links", refresh_proxy: true);
 
-        string memKey = ipkey($"tellyhd:view:{pageUrl}");
+        string html = await PageCached(pageUrl);
+        var servers = HdTo.Servers(html ?? "");
+        if (servers.Count == 0)
+            return OnError("stream_links", refresh_proxy: true);
 
-        if (hybridCache.TryGetValue(memKey, out Streams cache) &&
-            cache != null && cache.links.Count > 0)
-            return cache;
+        var dict = new Dictionary<string, string>(StringComparer.Ordinal);
 
-        string page = await GetPageAsync(pageUrl);
-        if (string.IsNullOrEmpty(page))
-            return null;
-
-        var res = new Streams();
-
-        foreach (var server in HdTo.Servers(page))
+        foreach (var s in servers)
         {
-            string embed = await EmbedAsync(server, pageUrl);
-            if (string.IsNullOrEmpty(embed))
+            // LuluStream (tnmr.org) chan TLS fingerprint: /proxy/ cua Lampac
+            // (HttpClient .NET) luon 403 -> khong dua vao danh sach de tranh
+            // nguoi dung bam vao mot server chac chan loi.
+            if (HdTo.IsDeadServer(s.name))
                 continue;
 
-            var (url, referer) = await ResolveEmbedAsync(embed);
-            if (string.IsNullOrEmpty(url))
+            string key = s.name;
+            if (dict.ContainsKey(key))
                 continue;
 
-            string key = server.name;
-            int n = 2;
-            while (res.links.ContainsKey(key))
-                key = server.name + " " + (n++);
+            // Lampa bat hls.js theo duoi `.m3u8`; nguon mp4 (DoodStream) phai
+            // di qua `video.mp4` neu khong app bao "no EXTM3U delimiter".
+            string ext = HdTo.IsMp4Server(s.name) ? ".mp4" : ".m3u8";
 
-            res.links[key] = url;
-            res.referers[key] = referer;
+            dict[key] = $"{host}/tellyhd/video{ext}"
+                + $"?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(key)}";
         }
 
-        if (res.links.Count == 0)
-            return null;
+        return Json(dict);
+    }
+
+    // Cache link da resolve theo (trang, server) — player co the goi lai URL
+    // ngay sau khi mo (hls.js probe), khong duoc resolve lai tu dau.
+    async Task<(string url, string referer, string kind)> ResolveServerAsync(string pageUrl, string q)
+    {
+        string memKey = ipkey($"tellyhd:link:{pageUrl}|{q}");
+
+        if (hybridCache.TryGetValue(memKey, out Streams hit) &&
+            hit != null && hit.links.TryGetValue(q, out string cached) &&
+            !string.IsNullOrEmpty(cached))
+        {
+            hit.referers.TryGetValue(q, out string r);
+            hit.kinds.TryGetValue(q, out string k);
+            return (cached, r, k);
+        }
+
+        string html = await PageCached(pageUrl);
+        var server = HdTo.Servers(html ?? "")
+            .FirstOrDefault(s => string.Equals(s.name, q, StringComparison.OrdinalIgnoreCase));
+
+        if (server == null)
+            return (null, null, null);
+
+        string embed = await EmbedAsync(server, pageUrl);
+        if (string.IsNullOrEmpty(embed))
+            return (null, null, null);
+
+        var (url, referer, kind) = await ResolveEmbedAsync(embed);
+        if (string.IsNullOrEmpty(url))
+            return (null, null, null);
 
         // tok cua telly.xin song ~3h, token Dood song ~1h -> cache ngan.
+        var res = new Streams();
+        res.links[q] = url;
+        res.referers[q] = referer;
+        res.kinds[q] = kind;
         hybridCache.Set(memKey, res, cacheTime(5));
-        return res;
+
+        return (url, referer, kind);
     }
 
     // POST /wp-admin/admin-ajax.php  action=doo_player_ajax
@@ -322,12 +348,12 @@ public class TellyHDController : BaseSisiController
         }
     }
 
-    async Task<(string url, string referer)> ResolveEmbedAsync(string embed)
+    async Task<(string url, string referer, string kind)> ResolveEmbedAsync(string embed)
     {
         try
         {
             if (!Uri.TryCreate(embed, UriKind.Absolute, out var eu))
-                return (null, null);
+                return (null, null, null);
 
             string embedOrigin = eu.Scheme + "://" + eu.Authority;
 
@@ -342,7 +368,7 @@ public class TellyHDController : BaseSisiController
             string html = await HydraGet(embed, headers, cookies);
 
             if (string.IsNullOrEmpty(html))
-                return (null, null);
+                return (null, null, null);
 
             // telly.xin/play?v= : data-stream-url /playlist/...?tok=JWT
             string stream = HdTo.StreamAttr(html);
@@ -354,7 +380,7 @@ public class TellyHDController : BaseSisiController
                 string pl = await HydraGet(stream, headers, cookies);
 
                 if (!string.IsNullOrEmpty(pl) && pl.Contains("#EXTM3U"))
-                    return (stream, embedOrigin + "/");
+                    return (stream, embedOrigin + "/", "m3u8");
             }
 
             // DoodStream: /pass_md5/... -> base + 10 ky tu + token
@@ -375,7 +401,7 @@ public class TellyHDController : BaseSisiController
                         + "?token=" + token
                         + "&expiry=" + DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
-                    return (mp4, embed);
+                    return (mp4, embed, "mp4");
                 }
             }
 
@@ -383,11 +409,11 @@ public class TellyHDController : BaseSisiController
             // impersonate 200, nhung /proxy/ cua Lampac dung HttpClient .NET
             // (TLS khong phai Chrome) nen luon 403, ke ca khi playlist doc duoc
             // luc resolve. Khong the phat qua proxy -> bo qua server nay.
-            return (null, null);
+            return (null, null, null);
         }
         catch
         {
-            return (null, null);
+            return (null, null, null);
         }
     }
 
@@ -486,19 +512,34 @@ public class TellyHDController : BaseSisiController
 
     [HttpGet]
     [Route("tellyhd/video.m3u8")]
+    [Route("tellyhd/video.mp4")]
     async public Task<ActionResult> Video(string uri, string q)
     {
         if (await IsRequestBlocked(rch: true))
             return badInitMsg;
 
-        var res = await ResolveAsync(uri);
-        if (res == null || string.IsNullOrEmpty(q) ||
-            !res.links.TryGetValue(q, out string link) || string.IsNullOrEmpty(link))
+        string pageUrl = HdTo.PageUrl(uri);
+        if (pageUrl == null || string.IsNullOrEmpty(q))
             return OnError("stream_links", refresh_proxy: true);
 
-        res.referers.TryGetValue(q, out string referer);
+        var (link, referer, kind) = await ResolveServerAsync(pageUrl, q);
+        if (string.IsNullOrEmpty(link))
+            return OnError("stream_links", refresh_proxy: true);
+
         if (string.IsNullOrEmpty(referer))
             referer = HdTo.SiteHost + "/";
+
+        // HLS: tu relay playlist de URL con `.ts` that (nguon telly.xin tra
+        // segment duoi dang `.png`: ffmpeg va mot so player tu choi vi duoi).
+        // mp4 (DoodStream) van day qua /proxy/ nhu cu.
+        if (kind == "m3u8" || link.IndexOf(".m3u8", StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            string pl = await HydraGet(link, BrowserHeaders(referer, HdTo.SiteHost + "/"));
+            if (string.IsNullOrEmpty(pl) || !pl.Contains("#EXTM3U"))
+                return OnError("stream_links", refresh_proxy: true);
+
+            return Content(HdTo.RewriteHls(pl, link, host, referer), "application/vnd.apple.mpegurl");
+        }
 
         string origin = referer;
         if (Uri.TryCreate(referer, UriKind.Absolute, out var ru))
@@ -521,6 +562,73 @@ public class TellyHDController : BaseSisiController
         ));
 
         return Redirect(HostStreamProxy(link, direct));
+    }
+
+    // ================= HLS relay =================
+    // Playlist/variant/segment deu di qua day: URL con duoi chuan (.m3u8/.ts)
+    // de player khong tu choi, va khong phu thuoc /proxy/ (nguon telly.xin
+    // tra segment duoi `.png` + content-type image/png).
+
+    [HttpGet]
+    [Route("tellyhd/hls.m3u8")]
+    async public Task<ActionResult> HlsPlaylist(string u, string r)
+    {
+        string up = HdTo.FromB64(u);
+        if (!Uri.TryCreate(up, UriKind.Absolute, out _))
+            return OnError("stream_links", refresh_proxy: true);
+
+        string referer = HdTo.FromB64(r);
+        if (string.IsNullOrEmpty(referer))
+            referer = HdTo.SiteHost + "/";
+
+        string pl = await HydraGet(up, BrowserHeaders(referer, HdTo.SiteHost + "/"));
+        if (string.IsNullOrEmpty(pl) || !pl.Contains("#EXTM3U"))
+            return OnError("stream_links", refresh_proxy: true);
+
+        return Content(HdTo.RewriteHls(pl, up, host, referer), "application/vnd.apple.mpegurl");
+    }
+
+    [HttpGet]
+    [Route("tellyhd/hls.ts")]
+    async public Task<ActionResult> HlsSegment(string u, string r)
+    {
+        string up = HdTo.FromB64(u);
+        if (!Uri.TryCreate(up, UriKind.Absolute, out _))
+            return OnError("stream_links");
+
+        string referer = HdTo.FromB64(r);
+        if (string.IsNullOrEmpty(referer))
+            referer = HdTo.SiteHost + "/";
+
+        var headers = HeadersModel.Init(
+            ("User-Agent", HdTo.ChromeUA),
+            ("Referer", referer),
+            ("Accept", "*/*"));
+
+        byte[] bytes = await Http.Download(up, timeoutSeconds: 20, headers: headers, proxy: proxy);
+        if (bytes == null || bytes.Length == 0)
+            return OnError("stream_links", refresh_proxy: true);
+
+        return File(bytes, "video/mp2t");
+    }
+
+    [HttpGet]
+    [Route("tellyhd/hls.vtt")]
+    async public Task<ActionResult> HlsSubtitle(string u, string r)
+    {
+        string up = HdTo.FromB64(u);
+        if (!Uri.TryCreate(up, UriKind.Absolute, out _))
+            return OnError("stream_links");
+
+        string referer = HdTo.FromB64(r);
+        if (string.IsNullOrEmpty(referer))
+            referer = HdTo.SiteHost + "/";
+
+        string body = await HydraGet(up, BrowserHeaders(referer, HdTo.SiteHost + "/"));
+        if (string.IsNullOrEmpty(body))
+            return OnError("stream_links");
+
+        return Content(body, "text/vtt");
     }
 
     // ================= popup long-press =================

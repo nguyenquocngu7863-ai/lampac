@@ -1,6 +1,7 @@
 using Shared.Models.SISI.Base;
 using System;
 using System.Collections.Generic;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Web;
 
@@ -363,6 +364,18 @@ public static class HdTo
         public string name;
     }
 
+    // DoodStream tra file mp4 (khong phai HLS) -> route phai la video.mp4,
+    // neu khong Lampa bat hls.js va bao "no EXTM3U delimiter".
+    public static bool IsMp4Server(string name)
+        => !string.IsNullOrEmpty(name)
+           && name.IndexOf("dood", StringComparison.OrdinalIgnoreCase) >= 0;
+
+    // tnmr.org chi tra 200 voi TLS Chrome; /proxy/ cua Lampac khong gia duoc
+    // -> server nay khong bao gio phat duoc trong app.
+    public static bool IsDeadServer(string name)
+        => !string.IsNullOrEmpty(name)
+           && name.IndexOf("lulu", StringComparison.OrdinalIgnoreCase) >= 0;
+
     static readonly Regex ReOption = new Regex(
         "<li\\s+id='?player-option-\\d+'?[^>]*dooplay_player_option[^>]*>(?<b>[\\s\\S]{0,300}?)</li>",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -451,6 +464,111 @@ public static class HdTo
         var m = Regex.Match(html ?? "",
             "\\$\\.get\\('(?<p>[^']*pass_md5[^']*)'", RegexOptions.IgnoreCase);
         return m.Success ? m.Groups["p"].Value.Trim() : null;
+    }
+
+    // ================= HLS relay helpers =================
+
+    public static string B64(string s)
+        => string.IsNullOrEmpty(s) ? ""
+         : Convert.ToBase64String(Encoding.UTF8.GetBytes(s))
+                  .Replace('+', '-').Replace('/', '_').TrimEnd('=');
+
+    public static string FromB64(string s)
+    {
+        if (string.IsNullOrEmpty(s))
+            return null;
+
+        try
+        {
+            string t = s.Replace('-', '+').Replace('_', '/');
+            switch (t.Length % 4)
+            {
+                case 2: t += "=="; break;
+                case 3: t += "="; break;
+            }
+            return Encoding.UTF8.GetString(Convert.FromBase64String(t));
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    static readonly Regex ReUriAttr = new Regex("URI=\"(?<u>[^\"]+)\"", RegexOptions.Compiled);
+
+    static bool IsSubtitle(string url)
+        => url.IndexOf("serve-vtt", StringComparison.OrdinalIgnoreCase) >= 0
+        || url.IndexOf(".vtt", StringComparison.OrdinalIgnoreCase) >= 0;
+
+    // Doi moi URL trong playlist (dong thuong + URI="..." cua EXT-X-MEDIA)
+    // sang route relay cua module, giu duoi chuan: .m3u8 cho variant,
+    // .vtt cho phu de, .ts cho segment (nguon tra segment duoi `.png`).
+    public static string RewriteHls(string playlist, string playlistUrl, string host, string referer)
+    {
+        if (string.IsNullOrEmpty(playlist) || !System.Uri.TryCreate(playlistUrl, System.UriKind.Absolute, out var baseUri))
+            return playlist;
+
+        string r = B64(referer);
+
+        string Link(string raw, string kind)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+                return raw;
+
+            string abs = raw;
+            if (!raw.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            {
+                try { abs = new System.Uri(baseUri, raw).ToString(); }
+                catch { return raw; }
+            }
+
+            if (kind == null)
+                kind = abs.IndexOf(".m3u8", StringComparison.OrdinalIgnoreCase) >= 0 ? "m3u8"
+                     : IsSubtitle(abs) ? "vtt" : "ts";
+
+            return $"{host}/tellyhd/hls.{kind}?u={B64(abs)}&r={r}";
+        }
+
+        var sb = new StringBuilder(playlist.Length + 256);
+        bool nextIsPlaylist = false;
+
+        foreach (string line in playlist.Split('\n'))
+        {
+            string s = line.TrimEnd('\r');
+
+            if (s.StartsWith("#"))
+            {
+                // Nguon tra subtitle qua PHP (khong phai .vtt that): ffmpeg/
+                // mot so player doc phai chuoi loi va huy ca master -> bo group
+                // phu de, chi giu video/audio.
+                if (s.StartsWith("#EXT-X-MEDIA", StringComparison.OrdinalIgnoreCase)
+                    && s.IndexOf("TYPE=SUBTITLES", StringComparison.OrdinalIgnoreCase) >= 0)
+                    continue;
+
+                if (s.IndexOf("SUBTITLES=\"", StringComparison.Ordinal) >= 0)
+                    s = Regex.Replace(s, ",SUBTITLES=\"[^\"]*\"", "");
+
+                if (s.IndexOf("URI=\"", StringComparison.Ordinal) >= 0)
+                    s = ReUriAttr.Replace(s, m => "URI=\"" + Link(m.Groups["u"].Value, null) + "\"");
+
+                if (s.StartsWith("#EXT-X-STREAM-INF", StringComparison.OrdinalIgnoreCase))
+                    nextIsPlaylist = true;
+
+                sb.Append(s).Append('\n');
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(s))
+            {
+                sb.Append(s).Append('\n');
+                continue;
+            }
+
+            sb.Append(Link(s, nextIsPlaylist ? "m3u8" : null)).Append('\n');
+            nextIsPlaylist = false;
+        }
+
+        return sb.ToString();
     }
 
     // ================= menu =================
