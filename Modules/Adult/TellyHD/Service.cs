@@ -373,6 +373,31 @@ public static class HdTo
         => !string.IsNullOrEmpty(name)
            && name.IndexOf("dood", StringComparison.OrdinalIgnoreCase) >= 0;
 
+    // Vidara: embed `/e/<code>` -> 302 -> `https://<host>/e/<filecode>`; API
+    // `POST /api/stream {"filecode":..,"device":"web"}` -> JSON streaming_url.
+    public static (string apiHost, string filecode) VidaraTarget(string location)
+    {
+        if (string.IsNullOrEmpty(location))
+            return (null, null);
+
+        var m = Regex.Match(location, @"(https?://[^/]+)/e/([A-Za-z0-9]+)", RegexOptions.IgnoreCase);
+
+        return m.Success ? (m.Groups[1].Value, m.Groups[2].Value) : (null, null);
+    }
+
+    public static string VidaraStream(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return null;
+
+        var m = Regex.Match(json, @"""streaming_url""\s*:\s*""([^""]+)""", RegexOptions.IgnoreCase);
+        if (!m.Success)
+            return null;
+
+        string v = m.Groups[1].Value.Replace("\\/", "/");
+        return v.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? v : null;
+    }
+
     // tnmr.org chi tra 200 voi stack Http cua module + header toi thieu;
     // /proxy/ (defaultFullHeaders) va httpHydra (impersonate) deu 403 -> module
     // phai tu relay playlist/segment, xem Controller.LuluGet.

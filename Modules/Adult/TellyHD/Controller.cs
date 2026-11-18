@@ -371,6 +371,15 @@ public class TellyHDController : BaseSisiController
             if (string.IsNullOrEmpty(html))
                 return (null, null, null);
 
+            // Vidara (server du phong cua nhanh JAV): `/e/<code>` -> 302 ->
+            // `https://<host>/e/<filecode>` -> POST /api/stream -> streaming_url.
+            if (embed.IndexOf("vidara", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                var (vurl, vref) = await ResolveVidaraAsync(embed);
+                if (!string.IsNullOrEmpty(vurl))
+                    return (vurl, vref, "m3u8");
+            }
+
             // telly.xin/play?v= : data-stream-url /playlist/...?tok=JWT
             string stream = HdTo.StreamAttr(html);
             if (!string.IsNullOrEmpty(stream))
@@ -420,6 +429,52 @@ public class TellyHDController : BaseSisiController
         catch
         {
             return (null, null, null);
+        }
+    }
+
+    // Vidara: API tra master HLS (streaming_url), Referer phai la embedding
+    // cua chinh no (`<host>/e/<filecode>`) chu khong phai trang phim.
+    async Task<(string url, string referer)> ResolveVidaraAsync(string embed)
+    {
+        try
+        {
+            string loc = await Http.GetLocation(
+                embed,
+                timeoutSeconds: 15,
+                headers: HeadersModel.Init(
+                    ("User-Agent", HdTo.ChromeUA),
+                    ("Referer", HdTo.SiteHost + "/")),
+                httpversion: init.httpversion);
+
+            var (apiHost, code) = HdTo.VidaraTarget(loc ?? "");
+            if (string.IsNullOrEmpty(apiHost) || string.IsNullOrEmpty(code))
+                return (null, null);
+
+            string emb = apiHost + "/e/" + code;
+
+            string json;
+            using (var content = new System.Net.Http.StringContent(
+                "{\"filecode\":\"" + code + "\",\"device\":\"web\"}",
+                System.Text.Encoding.UTF8, "application/json"))
+            {
+                json = await Http.Post(
+                    apiHost + "/api/stream",
+                    content,
+                    timeoutSeconds: 15,
+                    headers: HeadersModel.Init(
+                        ("User-Agent", HdTo.ChromeUA),
+                        ("Referer", emb),
+                        ("Origin", apiHost)),
+                    httpversion: init.httpversion,
+                    disposeData: true);
+            }
+
+            string master = HdTo.VidaraStream(json ?? "");
+            return string.IsNullOrEmpty(master) ? (null, null) : (master, emb);
+        }
+        catch
+        {
+            return (null, null);
         }
     }
 
