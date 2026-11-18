@@ -16,6 +16,9 @@ public static class HdTo
     // Accept-Language cua request embed -> lech UA la 403.
     public const string ChromeUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36";
 
+    // tnmr.org (LuluStream) da tung bisect: UA Windows -> 403, UA Android -> 200.
+    // Thu lan luot trong LuluGet.
+    public const string AndroidUA = "Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Mobile Safari/537.36";
     public const string SecChUa = "\"Chromium\";v=\"146\", \"Not-A.Brand\";v=\"24\", \"Google Chrome\";v=\"146\"";
 
     public const string AcceptLanguage = "en-US,en;q=0.9";
@@ -370,11 +373,73 @@ public static class HdTo
         => !string.IsNullOrEmpty(name)
            && name.IndexOf("dood", StringComparison.OrdinalIgnoreCase) >= 0;
 
-    // tnmr.org chi tra 200 voi TLS Chrome; /proxy/ cua Lampac khong gia duoc
-    // -> server nay khong bao gio phat duoc trong app.
-    public static bool IsDeadServer(string name)
-        => !string.IsNullOrEmpty(name)
-           && name.IndexOf("lulu", StringComparison.OrdinalIgnoreCase) >= 0;
+    // tnmr.org chi tra 200 voi stack Http cua module + header toi thieu;
+    // /proxy/ (defaultFullHeaders) va httpHydra (impersonate) deu 403 -> module
+    // phai tu relay playlist/segment, xem Controller.LuluGet.
+    public static bool IsLulu(string url)
+        => !string.IsNullOrEmpty(url)
+           && (url.IndexOf("tnmr.org", StringComparison.OrdinalIgnoreCase) >= 0
+               || url.IndexOf("lulustream", StringComparison.OrdinalIgnoreCase) >= 0
+               || url.IndexOf("lulu", StringComparison.OrdinalIgnoreCase) >= 0);
+
+    public static string HostOf(string url)
+        => System.Uri.TryCreate(url, System.UriKind.Absolute, out var u) ? u.Host : (url ?? "");
+
+    // LuluStream: trang embed la P.A.C.K.E.R, link thuc nam trong jwplayer
+    // setup({ sources: [{ file: "https://<host>/hls2/.../master.m3u8?t=..&e=.." }] }).
+    // Token nam trong query -> GIU NGUYEN URL.
+    public static string LuluMaster(string html)
+    {
+        if (string.IsNullOrEmpty(html))
+            return null;
+
+        string src = Unpack(html) ?? html;
+        var m = Regex.Match(src, @"file\s*:\s*[""'](https?://[^""']+?\.m3u8[^""']*)[""']", RegexOptions.IgnoreCase);
+        if (!m.Success)
+            return null;
+
+        string v = HttpUtility.HtmlDecode(m.Groups[1].Value.Trim());
+        return v.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? v : null;
+    }
+
+    static string Unpack(string html)
+    {
+        if (string.IsNullOrEmpty(html))
+            return null;
+
+        var m = Regex.Match(html, @"\}\('([\s\S]*?)',(\d+),(\d+),'([\s\S]*?)'\.split\('\|'\)\)", RegexOptions.IgnoreCase);
+        if (!m.Success)
+            return null;
+
+        string p = m.Groups[1].Value;
+        if (!int.TryParse(m.Groups[2].Value, out int a) || !int.TryParse(m.Groups[3].Value, out int c))
+            return null;
+
+        var k = m.Groups[4].Value.Split('|');
+        for (int i = c - 1; i >= 0; i--)
+        {
+            if (i >= k.Length || string.IsNullOrEmpty(k[i]))
+                continue;
+            p = Regex.Replace(p, @"\b" + ToBase(i, a) + @"\b", _ => k[i]);
+        }
+
+        return p;
+    }
+
+    static string ToBase(int value, int b)
+    {
+        if (value == 0)
+            return "0";
+
+        var sb = new StringBuilder();
+        while (value > 0)
+        {
+            int d = value % b;
+            sb.Insert(0, (char)(d < 10 ? '0' + d : 'a' + d - 10));
+            value /= b;
+        }
+        return sb.ToString();
+    }
 
     static readonly Regex ReOption = new Regex(
         "<li\\s+id='?player-option-\\d+'?[^>]*dooplay_player_option[^>]*>(?<b>[\\s\\S]{0,300}?)</li>",

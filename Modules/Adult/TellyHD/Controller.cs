@@ -262,12 +262,6 @@ public class TellyHDController : BaseSisiController
 
         foreach (var s in servers)
         {
-            // LuluStream (tnmr.org) chan TLS fingerprint: /proxy/ cua Lampac
-            // (HttpClient .NET) luon 403 -> khong dua vao danh sach de tranh
-            // nguoi dung bam vao mot server chac chan loi.
-            if (HdTo.IsDeadServer(s.name))
-                continue;
-
             string key = s.name;
             if (dict.ContainsKey(key))
                 continue;
@@ -405,10 +399,15 @@ public class TellyHDController : BaseSisiController
                 }
             }
 
-            // LuluStream (tnmr.org): nginx chan theo TLS fingerprint - curl
-            // impersonate 200, nhung /proxy/ cua Lampac dung HttpClient .NET
-            // (TLS khong phai Chrome) nen luon 403, ke ca khi playlist doc duoc
-            // luc resolve. Khong the phat qua proxy -> bo qua server nay.
+            // Gateway (cdntelly.sbs) + LuluStream (tnmr.org): trang embed la
+            // P.A.C.K.E.R, `file:` trong jwplayer setup chinh la master.m3u8
+            // (token nam trong query, GIU NGUYEN). CDN tra 403 cho /proxy/ cua
+            // Lampac va cho httpHydra nhung 200 voi stack Http cua module
+            // -> KHONG redirect ra CDN, relay playlist/segment trong module.
+            string master = HdTo.LuluMaster(html);
+            if (!string.IsNullOrEmpty(master))
+                return (master, embed, "m3u8");
+
             return (null, null, null);
         }
         catch
@@ -532,6 +531,14 @@ public class TellyHDController : BaseSisiController
         // HLS: tu relay playlist de URL con `.ts` that (nguon telly.xin tra
         // segment duoi dang `.png`: ffmpeg va mot so player tu choi vi duoi).
         // mp4 (DoodStream) van day qua /proxy/ nhu cu.
+        // tnmr.org (LuluStream) chan TLS fingerprint: HttpClient cua .NET bi 403
+        // voi MOI bo header (da do 12 to hop: ua/ua+ref/ua+acc/full x http1/http2
+        // = 403 het), trong khi Chrome/curl_cffi 200. Khong the relay trong module
+        // -> tra thang master cho PLAYER tu tai bang TLS cua no (Chrome/ExoPlayer
+        // co the lot, co the khong -> server nay "hen xui" dung nhu ten).
+        if (HdTo.IsLulu(link))
+            return Redirect(link);
+
         if (kind == "m3u8" || link.IndexOf(".m3u8", StringComparison.OrdinalIgnoreCase) >= 0)
         {
             string pl = await HydraGet(link, BrowserHeaders(referer, HdTo.SiteHost + "/"));
@@ -606,6 +613,18 @@ public class TellyHDController : BaseSisiController
             ("Accept", "*/*"));
 
         byte[] bytes = await Http.Download(up, timeoutSeconds: 20, headers: headers, proxy: proxy);
+
+        // tnmr.org: UA Windows co the 403 -> thu them UA Android truoc khi bao loi.
+        if ((bytes == null || bytes.Length == 0) && HdTo.IsLulu(up))
+        {
+            headers = HeadersModel.Init(
+                ("User-Agent", HdTo.AndroidUA),
+                ("Referer", referer),
+                ("Accept", "*/*"));
+
+            bytes = await Http.Download(up, timeoutSeconds: 20, headers: headers, proxy: proxy);
+        }
+
         if (bytes == null || bytes.Length == 0)
             return OnError("stream_links", refresh_proxy: true);
 
