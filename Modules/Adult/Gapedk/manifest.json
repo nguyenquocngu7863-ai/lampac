@@ -1,0 +1,9 @@
+{
+  "name": "Gapedk",
+  "description": "Gapedk - Phim người lớn HD (DoodStream / MXDrop)",
+  "version": "1.0.0",
+  "author": "Lampac",
+  "site": "https://www.gapedk.com",
+  "enable": true,
+  "dynamic": true
+}
