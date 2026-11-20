@@ -276,18 +276,19 @@ public static class GapedkTo
         return list;
     }
 
-    // Chi DoodStream: MXDrop (mxdrop.to) resolve duoc URL nhung CDN
-    // mxcontent.net chan TLS/UA cua .NET (403 nginx) -> server khong phat duoc
-    // qua /proxy nen an khoi /vidosik.
+    // MXDrop (mxdrop.to) resolve duoc URL nhung CDN mxcontent.net chan TLS/UA
+    // cua .NET (403 nginx) -> khong phat duoc qua /proxy nen an khoi /vidosik.
     public static string PlayerLabel(string fn) => fn switch
     {
         "doo" => "DoodStream",
+        "voe" => "VOE",
         _ => null
     };
 
     public static string EmbedUrl(string fn, string id) => fn switch
     {
         "doo" => "https://playmogo.com/e/" + id + "/",
+        "voe" => "https://voe.sx/e/" + id,
         _ => null
     };
 

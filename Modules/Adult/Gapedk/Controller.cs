@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Playwright;
 using Shared;
 using Shared.Attributes;
 using Shared.Models.Base;
@@ -95,7 +96,7 @@ public class GapedkController : BaseSisiController
     // ===== /vidosik: chi liet ke server, KHONG resolve =====
     async Task<Dictionary<string, string>> ServersAsync(string uri)
     {
-        string memKey = ipkey($"gapedk:servers:v2:{uri}");
+        string memKey = ipkey($"gapedk:servers:v3:{uri}");
         if (hybridCache.TryGetValue(memKey, out Dictionary<string, string> cache))
             return cache;
 
@@ -128,7 +129,7 @@ public class GapedkController : BaseSisiController
     // ===== /video: resolve dung 1 server user bam =====
     async Task<string> StreamAsync(string uri, string q)
     {
-        string memKey = ipkey($"gapedk:stream:v2:{uri}:{q}");
+        string memKey = ipkey($"gapedk:stream:v3:{uri}:{q}");
         if (hybridCache.TryGetValue(memKey, out string cache))
             return cache;
 
@@ -136,9 +137,14 @@ public class GapedkController : BaseSisiController
         if (servers == null || !servers.TryGetValue(q, out string embed))
             return null;
 
-        string link = embed.Contains("playmogo.com", StringComparison.OrdinalIgnoreCase)
-            ? await DoodCffiAsync(embed)
-            : null;
+        string link;
+
+        if (embed.Contains("playmogo.com", StringComparison.OrdinalIgnoreCase))
+            link = await DoodCffiAsync(embed);
+        else if (embed.Contains("voe.sx", StringComparison.OrdinalIgnoreCase))
+            link = await VoeResolveAsync(embed);
+        else
+            link = null;
 
         if (string.IsNullOrEmpty(link))
             return null;
@@ -188,6 +194,60 @@ public class GapedkController : BaseSisiController
                 return null;
 
             return stdout;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    // VOE: HTML bi jscrambler hoa, khong decode tinh duoc. Player (jwplayer)
+    // chi goi master.m3u8 SAU khi JS chay -> mo bang Chrome that roi bat request
+    // m3u8 dau tien. VOE tu redirect voe.sx -> mirror (arianathankspecial...).
+    async Task<string> VoeResolveAsync(string embedUrl)
+    {
+        try
+        {
+            var headers = new Dictionary<string, string>
+            {
+                ["User-Agent"] = GapedkTo.ChromeUA,
+                ["Referer"] = GapedkTo.SiteHost + "/"
+            };
+
+            using var browser = new Shared.PlaywrightCore.PlaywrightBrowser();
+            IPage page = await browser.NewPageAsync("Gapedk", headers, keepopen: false);
+            if (page == null)
+                return null;
+
+            var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            page.Request += (_, req) =>
+            {
+                string u = req.Url;
+                if (!string.IsNullOrEmpty(u)
+                    && u.Contains(".m3u8", StringComparison.OrdinalIgnoreCase)
+                    && !u.Contains("jwplayer", StringComparison.OrdinalIgnoreCase))
+                {
+                    tcs.TrySetResult(u);
+                }
+            };
+
+            await page.GotoAsync(embedUrl, new PageGotoOptions
+            {
+                Timeout = 25000,
+                WaitUntil = WaitUntilState.DOMContentLoaded
+            });
+
+            if (await Task.WhenAny(tcs.Task, Task.Delay(18000)) == tcs.Task)
+                return tcs.Task.Result;
+
+            // co trang phai bam play moi tai manifest
+            try { await page.Mouse.ClickAsync(280, 260); } catch { }
+
+            if (await Task.WhenAny(tcs.Task, Task.Delay(14000)) == tcs.Task)
+                return tcs.Task.Result;
+
+            return null;
         }
         catch
         {
@@ -252,10 +312,15 @@ except Exception:
         if (string.IsNullOrEmpty(link))
             return OnError("stream_links", refresh_proxy: true);
 
-        var headers = httpHeaders(init, HeadersModel.Init(
-            ("User-Agent", GapedkTo.ChromeUA),
-            ("Referer", "https://playmogo.com/")
-        ));
+        var headers = link.Contains(".m3u8", StringComparison.OrdinalIgnoreCase)
+            ? httpHeaders(init, HeadersModel.Init(
+                ("User-Agent", GapedkTo.ChromeUA),
+                ("Referer", "https://voe.sx/")
+            ))
+            : httpHeaders(init, HeadersModel.Init(
+                ("User-Agent", GapedkTo.ChromeUA),
+                ("Referer", "https://playmogo.com/")
+            ));
         return Redirect(HostStreamProxy(link, headers));
     }
 
