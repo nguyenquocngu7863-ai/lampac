@@ -381,12 +381,24 @@ public partial class ProxyAPI
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static ReadOnlySpan<char> FindHlsPath(ReadOnlySpan<char> decrypturl)
     {
-        int lastSlash = decrypturl.LastIndexOf('/');
+        // База для относительных ссылок — только PATH, без query/fragment.
+        // У VOE (cloudwindow-route) параметр node содержит "/":
+        //   master.m3u8?t=..&node=LlhQ80/index-v1-a1.m3u8?t=..
+        // Раньше LastIndexOf('/') попадал внутрь query и base выходил кривой:
+        // относительный index-v1-a1.m3u8 склеивался с обрезанным node и CDN
+        // снова отдавал master -> бесконечная вложенность (ffmpeg: "Master
+        // Playlist tag found in a Media Playlist").
+        ReadOnlySpan<char> path = decrypturl;
+        int qIdx = path.IndexOfAny('?', '#');
+        if (qIdx >= 0)
+            path = path[..qIdx];
 
-        // Если строка заканчивается на '/', то "патч" = вся строка
-        return (lastSlash == decrypturl.Length - 1)
-            ? decrypturl
-            : decrypturl[..(lastSlash + 1)]; // до последнего '/', включая его
+        int lastSlash = path.LastIndexOf('/');
+
+        if (lastSlash < 0)
+            return ReadOnlySpan<char>.Empty;
+
+        return path[..(lastSlash + 1)]; // до последнего '/', включая его
     }
     #endregion
 }
