@@ -237,14 +237,18 @@ public class GapedkController : BaseSisiController
                 Timeout = 25000,
                 WaitUntil = WaitUntilState.DOMContentLoaded
             });
-
-            if (await Task.WhenAny(tcs.Task, Task.Delay(18000)) == tcs.Task)
-                return tcs.Task.Result;
-
-            // co trang phai bam play moi tai manifest
+            // VOE KHONG autoplay: jwplayer chi tai master.m3u8 sau khi bam play.
+            // Cho JS dung player (~1.2s) roi click vao vung video.
+            await Task.Delay(1200);
             try { await page.Mouse.ClickAsync(280, 260); } catch { }
 
-            if (await Task.WhenAny(tcs.Task, Task.Delay(14000)) == tcs.Task)
+            if (await Task.WhenAny(tcs.Task, Task.Delay(15000)) == tcs.Task)
+                return tcs.Task.Result;
+
+            // vai trang dat player thap hon / co lop phu -> click lan 2
+            try { await page.Mouse.ClickAsync(400, 420); } catch { }
+
+            if (await Task.WhenAny(tcs.Task, Task.Delay(8000)) == tcs.Task)
                 return tcs.Task.Result;
 
             return null;
