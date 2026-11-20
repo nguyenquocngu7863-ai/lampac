@@ -19,22 +19,23 @@ Skill tham chiếu: `lampac-popup` (hợp đồng route, luật UX, anti-pattern
 
 | nhóm | số module | trạng thái |
 |---|---|---|
-| **Đã có popup (genres + rel)** | **31** | xong |
+| **Đã có popup (genres + rel)** | **34** | xong |
 | Có genres, **thiếu `?rel=` route** | 1 | `Spankbang` (related nằm trong `vidosik?related=true`) |
 | Chưa có popup | 30 | Phase 1/2/3 + `PornHub` (không có `Controller.cs`) |
 
-> **2026-11-17 (đo lại cuối ngày, CHỈ đếm module đang bật — 62 module)**: **31 đủ popup** + 1 chỉ-genres
+> **2026-11-20 (đo lại sau khi thêm `JavMit`, xoá `BlogSexVN`, CHỈ đếm module đang bật — 65 module)**: **34 đủ popup** + 1 chỉ-genres
 > (`Spankbang`), **30 chưa có**. `PornHub` không có `Controller.cs` (thư mục rỗng).
+> (Trước đó 2026-11-17: 62 module, 31 đủ popup.)
 > Cách đo: `grep -E 'Route\("[a-z0-9]+/genres"\)'` + `grep -E 'RelatedList|\?rel='` trên từng
-> `Modules/Adult/*/Controller.cs` (71 thư mục Adult). Hai chỗ ghi cũ đã sai: `SexVietDam` xong từ trước,
+> `Modules/Adult/*/Controller.cs` (74 thư mục Adult). Hai chỗ ghi cũ đã sai: `SexVietDam` xong từ trước,
 > và `SevenMM` **không có** route `/genres` nào (chỉ submenu menu SISI "Thể loại …").
 > **Module đang tắt thì BỎ QUA HOÀN TOÀN** (không đếm, không nhắc, không lên kế hoạch) — user chốt 2026-11-17.
 > Hiện 9 module tắt: `dujav` `SexHihi` `PhimSexViet113` `PhimSexVN88` `Lon69` (runtime `init.conf`)
 > + `JAVSnap` `JavTsunami` `Viet69kz` `XvideosRED` (`manifest.enable:false`).
-> Danh sách **31** module đủ popup:
-> `AnySex` `AsianGirl` `Av123` `Eporner` `HeoVl` `Jable` `Jav18` `JavCt` `JavGuru` `JavHDToday`
-> `JavQuick` `Javtiful` `Manko` `Mbbg` `MissAV` `Po85` `PubJav` `QmhSex` `SakuraSins` `SexNetVc` `SexTb`
-> `SexVietDam` `SexVietop` `Suong3x` `ThichSex` `VietSexBlog` `Vietmup` `VNJav` `VnChich` `XHeoVL` `XNhau`
+> Danh sách **34** module đủ popup:
+> `AnySex` `AsianGirl` `Av123` `Eporner` `Gapedk` `HeoVl` `Jable` `Jav18` `JavCt` `JavGuru` `JavHDToday`
+> `JavMit` `JavQuick` `Javtiful` `Manko` `Mbbg` `MissAV` `Po85` `PubJav` `QmhSex` `SakuraSins` `SexNetVc` `SexTb`
+> `SexVietDam` `SexVietop` `Suong3x` `TellyHD` `ThichSex` `VietSexBlog` `Vietmup` `VNJav` `VnChich` `XHeoVL` `XNhau`
 
 ---
 
@@ -49,6 +50,7 @@ Skill tham chiếu: `lampac-popup` (hợp đồng route, luật UX, anti-pattern
 
 - [x] `HeoVl` — https://heovl.im *(2026-11-17: genres ✅ + `?rel=` ✅ — chip "Thể loại" từ breadcrumb trang detail, "Thẻ" từ khối `<!-- Tags -->` (nhiều video không có tag → chỉ còn Thể loại + Liên quan); "Liên quan" = `/ajax/suggestions/<slug>` (JSON 24 item) thay vì parse HTML, `total_pages:1`, cache RAM 6h + warm nền; `play.sh` PASS (h264 270x360))*
 - [x] `Jable` — https://en.jable.tv *(xong 2026-10-02 `7d148168`: module + menu SISI chuẩn; 2026-10-06 `0859a189`: sort theo context đo trực tiếp; 2026-11-13 `e53b6cde`: popup Diễn viên/Thể loại/Từ khoá + khối "You May Like" `?rel=`. TODO đánh `[ ]` là sót — đã sửa 2026-11-14)*
+- [x] `JavMit` — https://javmit.com *(2026-11-20: module mới `/javmit` + popup `genres` (Thể loại/Thẻ/Diễn viên + Liên quan) + `?rel=`. Home `/en/video/` phân trang thật — `/en/page/N/` bị site bỏ qua trả y trang 1; search dùng `/en/page/N/?s=` (đã đo: khác trang 1). Sort thật `date`/`views`/`title` chỉ ở `/en/video/`. Stream `rawx-quality-btn`: có `master.m3u8` → chỉ trả `AUTO`, player tự chọn 1080p/480p. Verify: 9 endpoint 200, play.sh proxy master → 2 variant)*
 - [ ] `JavMoi` — https://z.javmoi.blog
 - [ ] `JavSub` — https://javsub.blog
 - [ ] `KawaiJAV` — https://kawai-jav.com
@@ -217,3 +219,4 @@ Nguồn: `~/.config/opencode/skills/lampac-adult-module/references/card-thumbnai
       Chrome/Playwright trong cùng context rồi redirect thẳng (KHÔNG dùng HostStreamProxy), hoặc chờ site đổi player.
 
 | 2026-11-17 | **HeoVl** | **popup (genres + `?rel=`)** | Chip: `Thể loại` = `a.breadcrumb__item__link` (`/categories/<slug>`), `Thẻ` = khối sau `<!-- Tags -->` (`.featured-list__desktop__list__item__body` → tiêu đề), lọc CJK/Cyrillic; nhiều video **không có tag** → bỏ nhóm rỗng, vẫn có "Liên quan". Related KHÔNG parse HTML mà lấy `/ajax/suggestions/<slug>` (JSON `{data:[{url,title,thumbnail_file_url}]}`, 24 item) → `total_pages:1`, `pg>1` rỗng, `RemoveAll` bỏ chính video. Chặn SSRF: `PageUrl()` chỉ nhận host `heovl.im` + path `/videos/`. Cache RAM 6h cho chip, hybridCache 180' cho rel, warm nền. Verify: genres 2 nhóm + Liên quan (0.06s), uri rác/host lạ → `{items:[],groups:[]}`, rel 24 item (cold 0.64s → warm 0.004s), home 47/pg2 24/chip cat 24/chip tag 1/search 24, `play.sh` **PASS** (h264 270x360, decode 5s đầu+cuối) |
+| 2026-11-20 | **JavMit (mới)** + xoá BlogSexVN | module Adult mới `javmit.com` + popup, commit kèm xoá `BlogSexVN` | `check.sh` 0 error; parser khớp HTML capture (playlist 12/12, stream 3, chips 11, rel 10, categories 115, tags 2198, actors 100); 9 endpoint smoke đều 200 (home list 12 / `total_pages` 1946, menu 13); vidosik → `AUTO`, genres đúng `{items:[],groups:[]}`; `/javmit/video?q=AUTO` → 302 → proxy trả `master.m3u8` 2 variant (1920x1080 + 852x480). Bẫy đã đo: `/en/page/2/` trả y trang 1 → home dùng `/en/video/page/N/`; search `/en/page/2/?s=` (khác trang 1) đúng, còn `/en/video/page/2/?s=` bỏ qua query. Badge `無修正` map `UNCENSORED`. `q=1080P` → 503 là đúng (có master → chỉ trả AUTO). `BlogSexVN` xoá cả source lẫn runtime (chưa có popup, không nằm trong todo) |
