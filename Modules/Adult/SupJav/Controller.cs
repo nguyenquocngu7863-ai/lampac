@@ -252,15 +252,163 @@ public class SupJavController : BaseSisiController
     /// RaceGetAsync thấy trang challenge → bật cờ cho GetPageAsync
     static bool cfSeen;
 
+    // ===== Vượt Cloudflare "managed challenge" (2026-11-18) =====
+    // SupJav KHÔNG cần login, chỉ cần qua bước xác minh CF. Chrome headful trên
+    // Xvnc tự chạy JS của CF → cf_clearance; module replay cookie + UA đó.
+    // Cookie buộc theo IP + UA: Chrome và HttpClient PHẢI cùng IP (đều direct,
+    // xem ModInit: useproxy=false) và cùng UA thật (CfUa), KHÔNG dùng UA hardcode.
+    static readonly string CfCookieFile =
+        System.IO.Path.Combine(System.AppContext.BaseDirectory, "supjav.cookie");
+    static readonly string CfUaFile =
+        System.IO.Path.Combine(System.AppContext.BaseDirectory, "supjav.ua");
+    static readonly string CfSolveScript =
+        System.Environment.GetEnvironmentVariable("SUPJAV_LOGIN_SCRIPT")
+        ?? System.IO.Path.Combine(
+            System.Environment.GetEnvironmentVariable("HOME") ?? "/data/data/com.termux/files/home",
+            "lampac-native", "supjav-cf-login.sh");
+
+    static DateTime cfCookieStamp = default, cfUaStamp = default;
+    static string cfCookieValue, cfUaValue;
+    static DateTime cfSolveAttemptUtc = DateTime.MinValue;
+    static volatile bool cfSolving;
+
+    static string CfCookie
+    {
+        get
+        {
+            try
+            {
+                var fi = new System.IO.FileInfo(CfCookieFile);
+                if (fi.Exists && fi.LastWriteTimeUtc != cfCookieStamp)
+                {
+                    string t = System.IO.File.ReadAllText(CfCookieFile).Trim();
+                    if (!string.IsNullOrEmpty(t)) { cfCookieValue = t; cfCookieStamp = fi.LastWriteTimeUtc; }
+                }
+            }
+            catch { }
+            return cfCookieValue;
+        }
+    }
+
+    static string CfUa
+    {
+        get
+        {
+            try
+            {
+                var fi = new System.IO.FileInfo(CfUaFile);
+                if (fi.Exists && fi.LastWriteTimeUtc != cfUaStamp)
+                {
+                    string t = System.IO.File.ReadAllText(CfUaFile).Trim();
+                    if (!string.IsNullOrEmpty(t)) { cfUaValue = t; cfUaStamp = fi.LastWriteTimeUtc; }
+                }
+            }
+            catch { }
+            return cfUaValue;
+        }
+    }
+
+    // Cookie rỗng → HeadersModel.Init tự bỏ header "Cookie" (val rỗng), UA rỗng →
+    // fallback ChromeUA. Có cf_clearance → gắn kèm, CF cho qua.
+    static List<HeadersModel> CfHeaders()
+    {
+        string ua = CfUa;
+        return HeadersModel.Init(
+            ("User-Agent", string.IsNullOrEmpty(ua) ? SupJavTo.ChromeUA : ua),
+            ("Referer", SupJavTo.SiteHost + "/"),
+            ("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"),
+            ("Cookie", CfCookie));
+    }
+
+    static string CfTrunc(string s, int n = 200)
+        => string.IsNullOrEmpty(s) ? "" : (s.Length <= n ? s : s.Substring(0, n));
+
+    /// Gặp challenge: cố giải 1 lần / 10 phút. Giải được → xoá cầu dao ngay;
+    /// đã giải gần đây mà vẫn dính → nghỉ 20 phút (giới hạn trên).
+    static void HandleChallenge(string why)
+    {
+        bool canSolve = !cfSolving
+            && (cfSolveAttemptUtc == default || (DateTime.UtcNow - cfSolveAttemptUtc) > TimeSpan.FromMinutes(10));
+
+        if (canSolve)
+        {
+            cfSolveAttemptUtc = DateTime.UtcNow;
+            cfSolving = true;
+            _ = System.Threading.Tasks.Task.Run(async () =>
+            {
+                try { await RunCfSolveAsync(); }
+                finally { cfSolving = false; }
+            });
+            cfBlockedUntil = DateTime.UtcNow.AddSeconds(40);
+            Console.WriteLine($"SupJav: {why} → kich hoat giai CF (nen), nghi 40s");
+        }
+        else
+        {
+            cfBlockedUntil = DateTime.UtcNow.AddMinutes(20);
+            Console.WriteLine($"SupJav: {why} → da giai gan day, nghi 20 phut");
+        }
+    }
+
+    // Chạy script giải CF (Chrome headful). Xong + cookie mới → hết cầu dao.
+    static async Task RunCfSolveAsync()
+    {
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "bash",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false
+            };
+            psi.ArgumentList.Add(CfSolveScript);
+
+            // App chạy dotnet-host glibc: LD_LIBRARY_PATH/LD_PRELOAD của cha làm
+            // bash Termux không link được ⇒ xoá, trả PATH về Termux (mẫu XNhau).
+            string prefix = System.Environment.GetEnvironmentVariable("PREFIX")
+                ?? "/data/data/com.termux/files/usr";
+            psi.Environment.Remove("LD_LIBRARY_PATH");
+            psi.Environment.Remove("LD_PRELOAD");
+            psi.Environment["PREFIX"] = prefix;
+            psi.Environment["PATH"] = $"{prefix}/bin:/system/bin:/system/xbin";
+            psi.Environment["SUPJAV_COOKIE"] = CfCookieFile;
+            psi.Environment["SUPJAV_UA"] = CfUaFile;
+            psi.Environment["SUPJAV_URL"] = SupJavTo.SiteHost + "/";
+
+            using var p = System.Diagnostics.Process.Start(psi);
+            if (p == null) { Console.WriteLine("SupJav: khong chay duoc script giai CF"); return; }
+
+            var stdoutTask = p.StandardOutput.ReadToEndAsync();
+            var stderrTask = p.StandardError.ReadToEndAsync();
+
+            using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromMinutes(3));
+            try { await p.WaitForExitAsync(cts.Token); }
+            catch (System.OperationCanceledException)
+            {
+                try { p.Kill(true); } catch { }
+                Console.WriteLine("SupJav: script giai CF qua 3 phut");
+                return;
+            }
+
+            string stdout = (await stdoutTask).Trim();
+            string stderr = (await stderrTask).Trim();
+            Console.WriteLine($"SupJav CF solve rc={p.ExitCode} out={CfTrunc(stdout)} err={CfTrunc(stderr.Replace('\n', ' '))}");
+
+            if (p.ExitCode == 0)
+            {
+                cfCookieStamp = default; cfUaStamp = default;   // buộc đọc lại file
+                cfBlockedUntil = DateTime.MinValue;             // giải được → hết cầu dao
+            }
+        }
+        catch (Exception ex) { Console.WriteLine("SupJav: loi script giai CF: " + ex.Message); }
+    }
+
     async Task<string> GetPageAsync(string url)
     {
         if (CfCooling)
             return null;
 
-        var hdr = HeadersModel.Init(
-            ("User-Agent", SupJavTo.ChromeUA),
-            ("Referer", SupJavTo.SiteHost + "/"),
-            ("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"));
+        var hdr = CfHeaders();
 
         // 1) Probe 1 request: CF challenge trả 403/503 + "Just a moment" ⇒ nghỉ luôn.
         //    Đừng để RaceGetAsync xoay 30s rồi mới bỏ — càng gọi càng nuôi block.
@@ -274,8 +422,7 @@ public class SupJavController : BaseSisiController
 
             if (body.Contains("Just a moment") || code == 403 || code == 503)
             {
-                cfBlockedUntil = DateTime.UtcNow.AddMinutes(20);
-                Console.WriteLine($"SupJav: Cloudflare chan (HTTP {code}) → nghi 20 phut");
+                HandleChallenge($"chan (HTTP {code})");
                 return null;
             }
 
@@ -312,10 +459,7 @@ public class SupJavController : BaseSisiController
         }
 
         if (challenge)
-        {
-            cfBlockedUntil = DateTime.UtcNow.AddMinutes(20);
-            Console.WriteLine($"SupJav: Cloudflare challenge → nghi 20 phut");
-        }
+            HandleChallenge("challenge");
 
         return null;
     }
@@ -323,10 +467,7 @@ public class SupJavController : BaseSisiController
     async Task<string> RaceGetAsync(string url, int seconds)
     {
         string a = null, b = null;
-        var headers = HeadersModel.Init(
-            ("User-Agent", SupJavTo.ChromeUA),
-            ("Referer", SupJavTo.SiteHost + "/"),
-            ("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"));
+        var headers = CfHeaders();
         var t1 = Task.Run(async () =>
         {
             try { await httpHydra.GetSpan(url, span => { a = span.ToString(); }, addheaders: headers); }
