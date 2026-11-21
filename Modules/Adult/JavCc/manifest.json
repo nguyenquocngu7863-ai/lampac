@@ -1,0 +1,9 @@
+{
+  "name": "JavCc",
+  "description": "JavCc - JAV HD streaming (javcc.me)",
+  "version": "1.0.0",
+  "author": "Lampac",
+  "site": "https://javcc.me",
+  "enable": true,
+  "dynamic": true
+}
