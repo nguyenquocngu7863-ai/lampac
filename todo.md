@@ -19,23 +19,23 @@ Skill tham chiếu: `lampac-popup` (hợp đồng route, luật UX, anti-pattern
 
 | nhóm | số module | trạng thái |
 |---|---|---|
-| **Đã có popup (genres + rel)** | **34** | xong |
+| **Đã có popup (genres + rel)** | **37** | xong (kể cả 3 module mới 2026-11-21, chưa commit) |
 | Có genres, **thiếu `?rel=` route** | 1 | `Spankbang` (related nằm trong `vidosik?related=true`) |
 | Chưa có popup | 30 | Phase 1/2/3 + `PornHub` (không có `Controller.cs`) |
 
-> **2026-11-20 (đo lại sau khi thêm `JavMit`, xoá `BlogSexVN`, CHỈ đếm module đang bật — 65 module)**: **34 đủ popup** + 1 chỉ-genres
+> **2026-11-21 (cập nhật sau khi thêm `SexVietTuyChon`, `JavCc`, `Pornhat` — CHỈ đếm module đang bật — 68 module)**: **37 đủ popup** + 1 chỉ-genres
 > (`Spankbang`), **30 chưa có**. `PornHub` không có `Controller.cs` (thư mục rỗng).
-> (Trước đó 2026-11-17: 62 module, 31 đủ popup.)
+> (2026-11-20: 65 module, 34 đủ popup. Trước đó 2026-11-17: 62 module, 31 đủ popup.)
 > Cách đo: `grep -E 'Route\("[a-z0-9]+/genres"\)'` + `grep -E 'RelatedList|\?rel='` trên từng
-> `Modules/Adult/*/Controller.cs` (74 thư mục Adult). Hai chỗ ghi cũ đã sai: `SexVietDam` xong từ trước,
+> `Modules/Adult/*/Controller.cs` (77 thư mục Adult sau ngày 21). Hai chỗ ghi cũ đã sai: `SexVietDam` xong từ trước,
 > và `SevenMM` **không có** route `/genres` nào (chỉ submenu menu SISI "Thể loại …").
 > **Module đang tắt thì BỎ QUA HOÀN TOÀN** (không đếm, không nhắc, không lên kế hoạch) — user chốt 2026-11-17.
 > Hiện 9 module tắt: `dujav` `SexHihi` `PhimSexViet113` `PhimSexVN88` `Lon69` (runtime `init.conf`)
 > + `JAVSnap` `JavTsunami` `Viet69kz` `XvideosRED` (`manifest.enable:false`).
-> Danh sách **34** module đủ popup:
-> `AnySex` `AsianGirl` `Av123` `Eporner` `Gapedk` `HeoVl` `Jable` `Jav18` `JavCt` `JavGuru` `JavHDToday`
-> `JavMit` `JavQuick` `Javtiful` `Manko` `Mbbg` `MissAV` `Po85` `PubJav` `QmhSex` `SakuraSins` `SexNetVc` `SexTb`
-> `SexVietDam` `SexVietop` `Suong3x` `TellyHD` `ThichSex` `VietSexBlog` `Vietmup` `VNJav` `VnChich` `XHeoVL` `XNhau`
+> Danh sách **37** module đủ popup:
+> `AnySex` `AsianGirl` `Av123` `Eporner` `Gapedk` `HeoVl` `Jable` `Jav18` `JavCc` `JavCt` `JavGuru` `JavHDToday`
+> `JavMit` `JavQuick` `Javtiful` `Manko` `Mbbg` `MissAV` `Po85` `Pornhat` `PubJav` `QmhSex` `SakuraSins` `SexNetVc` `SexTb`
+> `SexVietDam` `SexVietop` `SexVietTuyChon` `Suong3x` `TellyHD` `ThichSex` `VietSexBlog` `Vietmup` `VNJav` `VnChich` `XHeoVL` `XNhau`
 
 ---
 
@@ -51,6 +51,7 @@ Skill tham chiếu: `lampac-popup` (hợp đồng route, luật UX, anti-pattern
 - [x] `HeoVl` — https://heovl.im *(2026-11-17: genres ✅ + `?rel=` ✅ — chip "Thể loại" từ breadcrumb trang detail, "Thẻ" từ khối `<!-- Tags -->` (nhiều video không có tag → chỉ còn Thể loại + Liên quan); "Liên quan" = `/ajax/suggestions/<slug>` (JSON 24 item) thay vì parse HTML, `total_pages:1`, cache RAM 6h + warm nền; `play.sh` PASS (h264 270x360))*
 - [x] `Jable` — https://en.jable.tv *(xong 2026-10-02 `7d148168`: module + menu SISI chuẩn; 2026-10-06 `0859a189`: sort theo context đo trực tiếp; 2026-11-13 `e53b6cde`: popup Diễn viên/Thể loại/Từ khoá + khối "You May Like" `?rel=`. TODO đánh `[ ]` là sót — đã sửa 2026-11-14)*
 - [x] `JavMit` — https://javmit.com *(2026-11-20: module mới `/javmit` + popup `genres` (Thể loại/Thẻ/Diễn viên + Liên quan) + `?rel=`. Home `/en/video/` phân trang thật — `/en/page/N/` bị site bỏ qua trả y trang 1; search dùng `/en/page/N/?s=` (đã đo: khác trang 1). Sort thật `date`/`views`/`title` chỉ ở `/en/video/`. Stream `rawx-quality-btn`: có `master.m3u8` → chỉ trả `AUTO`, player tự chọn 1080p/480p. Verify: 9 endpoint 200, play.sh proxy master → 2 variant)*
+- [x] `JavCc` — https://javcc.me *(MỚI 2026-11-21, chưa commit: module + popup. WordPress/Retrotube: home `/`, `/page/N/`, `/category|actor|studios|tag/<slug>`, search `/?s=`; menu lấy từ `wp-json/wp/v2/categories|tags` (cache 6h). Card `time` = duration site, `quality` null (site không in badge). Popup `/javcc/genres`: Diễn viên/Nhà SX/Thể loại/Thẻ + "Liên quan" (1 item `plain`, cache 6h); `?rel=` → `total_pages:1` + SSRF chặn host lạ. Stream: detail → embed `x.videplay.us` → `master.m3u8`, route `/javcc/video.m3u8` với Referer/Origin videplay. Verify: `termux-check.sh` 0 error, đã copy sang runtime; **chưa smoke live** — app tắt lúc ghi)*
 - [ ] `JavMoi` — https://z.javmoi.blog
 - [ ] `JavSub` — https://javsub.blog
 - [ ] `KawaiJAV` — https://kawai-jav.com
@@ -63,6 +64,7 @@ Skill tham chiếu: `lampac-popup` (hợp đồng route, luật UX, anti-pattern
 - [ ] `SexDep` — https://z.sexdep.co.uk
 - [x] `SexVietDam` — https://sexvietdam.blog *(2026-11-17: genres ✅ + `?rel=` ✅ — chip "Thể loại"/"Thẻ" từ khối `video__tags` + "Liên quan" = list **cùng danh mục đầu** của video (site **không có** block liên quan: 0 match related/gợi ý, sidebar chỉ là bảng "Phim sex hay" `/ajax/top/1h`); bỏ chính video đang xem, `total_pages:1`, cache RAM 6h + warm nền; `play.sh` PASS (h264 364x360)*)
 - [x] `SexVietop` — https://sexvietop.com — ✅ MỚI (2026-11-11): home/category/tag/search(path `/tim-kiem/<slug>`)/rank(ajax/top)/genres+rel/sort **BỎ HẲN dòng 2** (site không có sort thật — xem cases.md)
+- [x] `SexVietTuyChon` — https://sexviettuyenchon.com *(MỚI 2026-11-21, chưa commit: module + popup. SSR: home `/`, `/<danh-muc>/`, `/trang/N/`, search `/search/<slug>/` (slugify bỏ dấu); 5 danh mục cố định từ nav. Thumb `time` = 1 nhãn site `VN|VIETSUB`, `quality` null. Stream: detail lấy `videoId` + `data-server-id`, POST `/api/player` (`id` + `server`) → URL. Popup `/sexviettuyenchon/genres`: Thể loại/Thẻ/Liên quan, SSRF chặn host lạ; `?rel=` → `total_pages:1`. Verify: `termux-check.sh` 0 error, đã copy runtime; **chưa smoke live** — app tắt lúc ghi)*
 - [ ] `Sexgenz2` — https://x.sexgenz.blog
 - [ ] `Sieusex` — https://biphim.net
 - [ ] `SupJav` — https://supjav.com *(PAUSED: Cloudflare chặn — chỉ probe khi user xác nhận)*
@@ -87,6 +89,7 @@ Skill tham chiếu: `lampac-popup` (hợp đồng route, luật UX, anti-pattern
 - [x] `Eporner` — https://www.eporner.com *(popup: thể loại `?c=` + thẻ `?t=` (trang `/tag/`) + video liên quan `?rel=`; detail page không có pornstar/channel. Sort: home 4, cat `SORT-*` 4, tag 5 — `shortest`(cat)/`top-monthly`(cat+tag)/search = no-op nên bỏ; bằng chứng ở skill lampac-sort cases.md)*
 - [ ] `HQporner` — https://m.hqporner.com
 - [ ] `PornHub` — https://rt.pornhub.com
+- [x] `Pornhat` — https://www.pornhat.one *(MỚI 2026-11-21, chưa commit: module + popup. SSR tĩnh: home `/`, `/<n>/`, `/popular/`, `/trending/`, search `/search/<q>/`, tag menu từ `/tags/` (cache 12h), lọc nhã tag CJK/Cyrillic (Luật menu Việt/Anh). Thumb `time` = duration trong `.video-meta`, `quality` null. Stream: `<source>` `/get_file/` trên detail (Auto/360p/480p/720p) → route `/pornhat/video.m3u8` + `/vidosik`; `?rel=` → `total_pages:1`. Verify: `termux-check.sh` 0 error, đã copy runtime; **chưa smoke live** — app tắt lúc ghi. `README.md` còn ghi `/pornhat/video.mp4` nhưng controller chỉ có `/video.m3u8` — cần đối chiếu)*
 - [ ] `Porntrex` — https://www.porntrex.com
 - [x] `Spankbang` — https://ru.spankbang.com *(popup: `Diễn viên`/`Kênh`/`Thẻ` + `Liên quan`; chip mở thẳng trang site bằng `?path=` (vd `/a1e/pornstar/big+tre/`), lọc tên CJK/Nga; list: card mới của site không còn `title` → đọc `img alt`, badge `HD`/`11m` theo `data-testid`; sort thật `new_videos` / `trending_videos` / `most_popular` = `/most_popular/?p=w` — `/upcoming/` bị site trả 503 nên bỏ; trang pornstar 0 video → trả list rỗng thay vì lỗi)*
 - [ ] `Xhamster` — https://xhamster.com
@@ -226,3 +229,12 @@ Nguồn: `~/.config/opencode/skills/lampac-adult-module/references/card-thumbnai
 | 2026-11-18 | **TellyHD (mới)** | module Adult mới `tellyhd.at` (5 commit trong ngày) + popup | Route `/tellyhd/p/**` path-style, menu từ sitemap `dtyear-sitemap.xml` + `dtquality-sitemap.xml`; **site không có sort** → bỏ dòng 2. `vidosik` list-only (lazy player), resolve lúc bấm play. Lulustream: packer → `master.m3u8`, redirect thẳng vì `tnmr.org` chặn TLS fingerprint (.NET/hydra 403, Chrome 200) — bật rồi lại ẩn (site chết, JavGuru cũng bỏ). Vidara: `/e/<code>` → 302 → POST `/api/stream` → `streaming_url` HLS, Referer phải là embedding host. HLS relay `/tellyhd/hls.m3u8` + `hls.ts`: nguồn trả segment đuôi `.png` + `content-type: image/png` → đổi sang đuôi `.ts` chuẩn để ffmpeg/player không từ chối. Phụ đề `.vtt` relay riêng |
 | 2026-11-20 | **JavMit (mới)** + xoá BlogSexVN | module Adult mới `javmit.com` + popup, commit kèm xoá `BlogSexVN` | `check.sh` 0 error; parser khớp HTML capture (playlist 12/12, stream 3, chips 11, rel 10, categories 115, tags 2198, actors 100); 9 endpoint smoke đều 200 (home list 12 / `total_pages` 1946, menu 13); vidosik → `AUTO`, genres đúng `{items:[],groups:[]}`; `/javmit/video?q=AUTO` → 302 → proxy trả `master.m3u8` 2 variant (1920x1080 + 852x480). Bẫy đã đo: `/en/page/2/` trả y trang 1 → home dùng `/en/video/page/N/`; search `/en/page/2/?s=` (khác trang 1) đúng, còn `/en/video/page/2/?s=` bỏ qua query. Badge `無修正` map `UNCENSORED`. `q=1080P` → 503 là đúng (có master → chỉ trả AUTO). `BlogSexVN` xoá cả source lẫn runtime (chưa có popup, không nằm trong todo) |
 | 2026-11-20 | **Gapedk (mới)** | module Adult mới `gapedk.com` + bật VOE (3 commit) | Home/the loai/hang phim/search/popup; **site không có sort** → bỏ dòng 2. DoodStream chặn TLS .NET (Cloudflare "Just a moment") → đi qua 1 process `curl_cffi` (embed → `pass_md5` → mp4). MXDrop resolve được URL nhưng CDN `mxcontent.net` chặn TLS/UA → ẩn. VOE: HTML bị jscrambler, không decode tĩnh được; jwplayer **chỉ gọi `master.m3u8` sau khi bấm play** → mở Chrome thật, bắt request m3u8 đầu tiên, redirect `voe.sx` → mirror; h264 720p phát được. Commit cuối bỏ log debug |
+| 2026-11-20 | **Core/ProxyAPI.M3u8** | fix base tương đối theo PATH, bỏ query/fragment | commit `4cb2af0c` (08:38), đi kèm VOE của Gapedk: node m3u8 không có `/` → hết "long master". Không nằm trong log Gapedk nên ghi riêng |
+| 2026-11-21 | **SexVietTuyChon (mới)** | module Adult mới `sexviettuyenchon.com` + popup, **chưa commit** | 00:13→06:59. SSR: home/category/`trang/N`/search `/search/<slug>/` (slugify bỏ dấu); detail lấy `videoId` + `data-server-id`, POST `/api/player` (`id`+`server`) → URL. Thumb `time` = 1 nhãn site `VN|VIETSUB`. Popup Thể loại/Thẻ/Liên quan + `?rel=` `total_pages:1`, chặn SSRF. Đã copy runtime; `termux-check.sh` 0 error; **chưa smoke live** (app tắt lúc ghi) |
+| 2026-11-21 | **JavCc (mới)** | module Adult mới `javcc.me` + popup, **chưa commit** | 14:32→14:55. WordPress/Retrotube, menu `wp-json/wp/v2/categories|tags`; phân trang `/page/N`; stream detail → embed `x.videplay.us` → `master.m3u8`, route `video.m3u8` gửi Referer/Origin videplay (CDN chặn nếu thiếu). Popup 4 nhóm chip (Diễn viên/Nhà SX/Thể loại/Thẻ) + Liên quan, `?rel=` `total_pages:1`, chặn SSRF. Cf-relay allowlist += `javenglish.cc`,`javeng.b-cdn.net` (07:31). Đã copy runtime; `termux-check.sh` 0 error; **chưa smoke live** |
+| 2026-11-21 | **XNhau** | đổi domain `.meme` → `.moda` | 14:43 qua `~/lampac-native/xnhau-domain.sh xnhau.moda`: ModInit (host/referer), `Service.SiteHost`, README, cf-relay `index.js` (ALLOW mặc định), `xnhau-login.js/.sh`, comment `termux-run-lampac.sh`. Đã copy runtime; `termux-check.sh` 0 error; **chưa smoke live** |
+| 2026-11-21 | **Pornhat (mới)** | module Adult mới `pornhat.one` + popup, **chưa commit** | 16:05→17:24. SSR tĩnh, card `.item.thumb-bl-video`, duration `.video-meta`; `/popular/` `/trending/` `/search/<q>/`, tag menu `/tags/` lọc CJK/Cyrillic; detail `<source>` `/get_file/` → route `video.m3u8`; popup + `?rel=` `total_pages:1`. Đã copy runtime; `termux-check.sh` 0 error; **chưa smoke live**. `README.md` ghi `/pornhat/video.mp4` nhưng controller chỉ có `/pornhat/video.m3u8` |
+
+> **Chưa commit (tính đến 2026-11-21):** `Modules/Adult/{SexVietTuyChon,JavCc,Pornhat}/` (untracked) +
+> `SupJav/Controller.cs` (CF bypass từ 11-18), `XNhau/*`, `Tools/cf-relay/deploy.py`,
+> `termux-native/{cf-relay/index.js,xnhau-login.js,xnhau-login.sh}`, `termux-run-lampac.sh` (modified).
