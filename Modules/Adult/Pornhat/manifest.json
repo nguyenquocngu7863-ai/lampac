@@ -1,0 +1,9 @@
+{
+  "name": "Pornhat",
+  "description": "PornHat - HD porn videos",
+  "version": "1.0.0",
+  "author": "Lampac",
+  "site": "https://www.pornhat.one",
+  "enable": true,
+  "dynamic": true
+}
