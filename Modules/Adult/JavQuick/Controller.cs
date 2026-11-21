@@ -82,6 +82,9 @@ public class JavQuickController : BaseSisiController
 
     async Task<string> FetchHtmlAsync(string url, string referer = null)
     {
+        // TLS tu IP may nay bi cat -> di qua relay (xem JavQuickTo.Relay)
+        url = JavQuickTo.Relay(url);
+
         for (int attempt = 0; attempt < 2; attempt++)
         {
             try

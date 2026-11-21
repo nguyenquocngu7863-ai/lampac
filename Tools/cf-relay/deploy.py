@@ -60,9 +60,13 @@ def multipart(parts):
 def main():
     # Host duoc phep relay. JavGuru wrap jav.guru (JAVGURU_RELAY cung worker nay),
     # neu thieu se bi 403 "host not allowed" o worker.
-    allow = "xnhau.pub,xnhau.pink,jav.guru,sextb.net,thichsex.org,lh3-ggcontent.top,uptobox-ggcdn.top,javenglish.cc,javeng.b-cdn.net"
+    allow = "xnhau.pub,xnhau.pink,jav.guru,sextb.net,thichsex.org,lh3-ggcontent.top,uptobox-ggcdn.top,javenglish.cc,javeng.b-cdn.net,javquick.com"
+    # --test-host CHI doi host smoke, KHONG duoc thay the ALLOW.
+    # (2026-11-22: dung --test-host javquick.com da vo tinh ghi de ALLOW con
+    #  dung 1 host -> jav.guru/xnhau/sextb bi 403 "host not allowed".)
+    smoke_override = None
     if "--test-host" in sys.argv:
-        allow = sys.argv[sys.argv.index("--test-host") + 1]
+        smoke_override = sys.argv[sys.argv.index("--test-host") + 1]
 
     acc = call("GET", "/accounts")
     accounts = acc.get("result") or []
@@ -90,13 +94,16 @@ def main():
     sd = (sub.get("result") or {}).get("subdomain")
     url = f"https://{NAME}.{sd}.workers.dev"
     print("URL:", url)
-    # smoke: chi lay host dau tien, allow la danh sach CSV khong phai 1 host
-    smoke_host = allow.split(",")[0].strip()
+    # smoke: uu tien --test-host, khong thi host dau tien trong allow
+    smoke_host = (smoke_override or allow.split(",")[0]).strip()
     print("test:", f"{url}/{smoke_host}/")
 
     # smoke test qua worker (1 request)
     try:
-        with urllib.request.urlopen(f"{url}/{smoke_host}/", timeout=45) as resp:
+        req = urllib.request.Request(f"{url}/{smoke_host}/", headers={
+            "User-Agent": "Mozilla/5.0 (Linux; Android 14; SM-A525F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
+        })
+        with urllib.request.urlopen(req, timeout=45) as resp:
             first = resp.read(200)
             print(f"smoke: HTTP {resp.status} {resp.headers.get('content-type')} | {first[:80]!r}")
     except Exception as e:

@@ -34,6 +34,26 @@ public static class JavQuickTo
         return (string.IsNullOrEmpty(host) ? SiteHost : host).TrimEnd('/') + url;
     }
 
+    // ===== relay qua Cloudflare Worker (Tools/cf-relay) =====
+    // 2026-11-21: javquick.com (sau Cloudflare) cat TLS ngay khi client chao
+    // ALPN h2 -> "unexpected eof while reading"; ca html/trang detail/anh
+    // deu khong lay duoc tu IP may nay. Do: curl --http1.1 lan dau 200, sau do
+    // ca h1.1 cung bi cat (IP bi siet), trong khi jina (egress khac) 200.
+    // => wrap moi URL javquick/ie2 qua worker (egress Cloudflare).
+    // Bat/tat: env JAVQUICK_RELAY (mac dinh da bat trong run-lampac.sh).
+    static readonly string relayBase = System.Environment.GetEnvironmentVariable("JAVQUICK_RELAY")?.TrimEnd('/');
+
+    public static string Relay(string url)
+    {
+        if (string.IsNullOrEmpty(relayBase) || string.IsNullOrEmpty(url) || !url.StartsWith("http"))
+            return url;
+        if (url.StartsWith(relayBase, StringComparison.OrdinalIgnoreCase))
+            return url;
+        if (System.Uri.TryCreate(url, UriKind.Absolute, out var u))
+            return $"{relayBase}/{u.Host}{u.PathAndQuery}";
+        return url;
+    }
+
     // c: "" | home | release | upcoming | genre/<id>/<slug> | maker/<id>/<slug>
     public static string Uri(string host, string search, string c, int pg)
     {
@@ -97,13 +117,14 @@ public static class JavQuickTo
             {
                 video = route + "?uri=" + HttpUtility.UrlEncode(href),
                 name = name,
-                picture = poster,
+                // anh cung bi chan tu IP may nay -> di qua relay (client van nhan /proxyimg)
+                picture = Relay(poster),
                 json = true,
                 bookmark = new Bookmark()
                 {
                     site = "javquick",
                     href = href,
-                    image = poster
+                    image = Relay(poster)
                 }
             });
         }

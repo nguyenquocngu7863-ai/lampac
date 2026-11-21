@@ -41,7 +41,12 @@ public class ModInit : IModuleLoaded, IModuleSisi
         {
             displayindex = 8,
             streamproxy = true,
-            httpversion = 2,
+            // httpversion = 1 BAT BUOC (2026-11-21): javquick.com (sau Cloudflare)
+            // cat TLS ngay khi client chao ALPN h2 -> "unexpected eof while reading".
+            // Do: curl mac dinh (h2) / curl_cffi chrome124 / openssl = fail het;
+            //     curl --http1.1 + UA Chrome = 200 (2/2 lan). .NET de h2 thi module
+            //     tra 503 "playlists" sau ~50s (thu 2 lan).
+            httpversion = 1,
             rch_access = "apk",
             stream_access = "apk",
             headers_stream = HeadersModel.Init(
