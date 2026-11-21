@@ -16,7 +16,7 @@ public static class XNhauTo
     // host hien tai (ModInit.updateConf gan = conf.host moi lan reload)
     // Domain doi lien tuc: .cab -> .limo -> .free (301) -> .pub -> .band -> .pink (2026-11-02).
     // Site doi tiep thi sua o day + ModInit (host/referer).
-    public static string SiteHost = "https://xnhau.meme";
+    public static string SiteHost = "https://xnhau.moda";
 
     #region Uri
     public static string Uri(string host, string search, string sort, string c, string t, int pg,
@@ -185,7 +185,7 @@ public static class XNhauTo
     }
 
     /// <summary>
-    /// Chuan hoa href profile ve path (vd: <c>https://xnhau.meme/fisting123/</c>
+    /// Chuan hoa href profile ve path (vd: <c>https://xnhau.moda/fisting123/</c>
     /// -&gt; <c>/fisting123/</c>). Tra null neu khong doc duoc.
     /// </summary>
     public static string ProfilePath(string href)
@@ -681,7 +681,7 @@ public static class XNhauTo
         // Khoi chu video:
         //   <div class="xnyt-owner"><div class="block-user">...
         //     <span class="name"> Fisting123 <span class="blue-badge"></span> </span>
-        //     <a class="avatar" href="https://xnhau.meme/fisting123/" title="Fisting123">
+        //     <a class="avatar" href="https://xnhau.moda/fisting123/" title="Fisting123">
         int oi = html.IndexOf("xnyt-owner", StringComparison.OrdinalIgnoreCase);
         if (oi >= 0)
         {
@@ -711,8 +711,8 @@ public static class XNhauTo
 
         // The loai + tag:
         //   <div class="info-content">
-        //     <a href="https://xnhau.meme/the-loai/gai-xinh/"> Gai xinh </a>
-        //     <a href="https://xnhau.meme/tags/chu-giang/"> chu giang </a>
+        //     <a href="https://xnhau.moda/the-loai/gai-xinh/"> Gai xinh </a>
+        //     <a href="https://xnhau.moda/tags/chu-giang/"> chu giang </a>
         // Quy uoc: lay HET the loai va HET tag tren trang detail.
         int ci = html.IndexOf("class=\"info-content\"", StringComparison.OrdinalIgnoreCase);
         if (ci >= 0)

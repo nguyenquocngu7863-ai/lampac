@@ -37,7 +37,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
 
     void updateConf()
     {
-        conf = ModuleInvoke.Init("XNhau", new SisiSettings("XNhau", "https://xnhau.meme")
+        conf = ModuleInvoke.Init("XNhau", new SisiSettings("XNhau", "https://xnhau.moda")
         {
             displayindex = 10,
             streamproxy = true,
@@ -45,13 +45,13 @@ public class ModInit : IModuleLoaded, IModuleSisi
             rch_access = "apk",
             stream_access = "apk",
             headers_stream = HeadersModel.Init(
-                ("referer", "https://xnhau.meme/")
+                ("referer", "https://xnhau.moda/")
             ).ToDictionary(),
             headers_image = HeadersModel.Init(
-                ("referer", "https://xnhau.meme/")
+                ("referer", "https://xnhau.moda/")
             ).ToDictionary()
         });
 
-        XNhauTo.SiteHost = conf.host?.TrimEnd('/') ?? "https://xnhau.meme";
+        XNhauTo.SiteHost = conf.host?.TrimEnd('/') ?? "https://xnhau.moda";
     }
 }
