@@ -1,0 +1,14 @@
+{
+  "name": "FreePornVideos",
+  "description": "FreePornVideos.XXX - video người lớn tổng hợp (KVS, MP4 480p/720p/4K)",
+  "version": "1.0.0",
+  "author": "Lampac",
+  "site": "https://www.freepornvideos.xxx",
+  "enable": true,
+  "dynamic": true,
+  "tree": [
+    "Controller.cs",
+    "ModInit.cs",
+    "Service.cs"
+  ]
+}
