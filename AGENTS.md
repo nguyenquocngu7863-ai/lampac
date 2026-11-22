@@ -61,6 +61,30 @@ Các skill từ OpenCode đã được import vào `.kilo/skills/`:
 - Không tự xoá repo trùng (`lampac-src`, `lampac-native`) — hỏi user
 - Không tự xoá `~/lampac/publish/` — hỏi user
 
+## Xem ảnh (vision) — đo 2026-11-22, đã verify
+
+User gửi ảnh (đường dẫn, hoặc ảnh dán từ clipboard nằm ở `/sdcard/DCIM/Screenshots/…`)
+→ đọc bằng `~/bin/vsee`, **đừng** dùng 3 đường sau (đều chết):
+
+- `modlens_read_image` → provider `claude-cli` fail: "claude native binary not installed";
+  `agy` (antigravity) không có; `pi` không nằm trong danh sách provider của modlens
+- `read_image` (tool DSH) → model đang chạy không khai báo image input
+- `pi -p @file` → `@` chỉ nhận text, ảnh **không** được attach (model trả "No image was attached")
+
+Cách chạy thật (base64 → Kilo gateway, OpenAI-compatible):
+
+```sh
+vsee <đường-dẫn-ảnh> [prompt] [--model M]
+# vd: vsee /sdcard/DCIM/Screenshots/Screenshot_2026-11-22-10-09-34-194_io.github.dsh_app.jpg
+```
+
+- Default model: `nvidia/nemotron-3.5-super-vl:free` (đọc chữ/布局 tốt, có quota riêng)
+- Gateway: `https://api.kilo.ai/api/gateway/chat/completions`, key `~/.config/opencode/kilo.key`
+- Chỉ dùng model có `meta.input` chứa `image` (list: `~/.pi/agent/models.json`).
+  Model thường vd `baidu/ernie-5.5-flash-preview:free` **không** có vision → lỗi.
+- Model :free ăn `429 FreeUsageLimitError` theo từng model, không phải lỗi app
+- Source: `~/bin/vsee` (kèm docstring giải thích lý do)
+
 ## Commands
 
 - `~/lampac-native/csc/check.sh <module-dir>` — check compile native ~1–2 s, không bin/obj.

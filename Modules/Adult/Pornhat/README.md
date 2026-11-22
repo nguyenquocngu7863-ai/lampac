@@ -8,7 +8,7 @@ Lampac Adult dynamic module for `https://www.pornhat.one`.
 - `/pornhat?c=popular` and `/pornhat?c=trending` — site lists.
 - `/pornhat?search=milf` — search (`/search/milf/`).
 - `/pornhat/vidosik?uri=<detail>` — selected MP4 source parsed from detail HTML.
-- `/pornhat/video.mp4?uri=<detail>&q=Auto` — lazy resolves the MP4 source through Lampac stream proxy.
+- `/pornhat/video.m3u8?uri=<detail>&q=360p` — lazy resolves the HLS source through Lampac stream proxy (the site `<source>` URL is an MP4 path that actually serves an HLS master).
 - `/pornhat/genres?uri=<detail>` — detail chips and one related-video entry.
 
 ## Verified site structure
