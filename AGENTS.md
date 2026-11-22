@@ -23,17 +23,31 @@ Trong proot Ubuntu, đường dẫn là `/data/data/com.termux/files/home/lampac
 (`~/lampac` cũng resolve được qua symlink). Không dùng `cd ~/lampac` **bên trong proot**
 vì `~` ở đó là `/root`.
 
-## Skills đã import
+## Skills
 
-Các skill từ OpenCode đã được import vào `.kilo/skills/`:
+Skill nằm ở **`~/.config/opencode/skills/<name>/SKILL.md`** (KHÔNG phải `.kilo/skills/` —
+thư mục đó không tồn tại; đường dẫn cũ trong tài liệu này là sai). Danh sách thật lấy bằng
+`ls ~/.config/opencode/skills/`. Skills của DSH được load bằng tool `skill`.
+
+Nhóm lampac (làm module / build / debug / deploy):
+- `lampac-adult-module` — **LÕI**: manifest, ModInit, Service, Controller, parser, phân trang, menu SISI 2 tầng, stream HLS/MP4, cache, route runtime. Đọc trước khi viết module mới
+- `lampac-popup` — popup long-press: route `/<mod>/genres?uri=`, mục "Liên quan" `?rel=`, chip thể loại/diễn viên
+- `lampac-sort` — chuẩn SORT (đổi thứ tự) vs FILTER (đổi tập), dòng 2 menu "Sắp xếp: …"
+- `lampac-build` — build, deploy, smoke test (csc shim nhanh / proot khi đổi Core/Shared)
+- `lampac-debug` — cô lập lỗi theo tầng mạng → TLS → status → parse → route → client
+- `lampac-smoke` — verify route video PHÁT ĐƯỢC thật bằng `~/lampac-native/play.sh` (không chỉ HTTP 200)
+- `lampac-deobfuscate` — giải mã player/embed: P.A.C.K.E.R, AES-128-CBC, DoodStream pass_md5, Turbo data-hash
+- `lampac-decode-offline` — **BẮT BUỘC** trước khi bắn request ra site thật: OFFLINE-FIRST, lấy 1 lượt hết dữ liệu rồi phân tích offline
+- `lampac-curl-cffi` — mẫu `curl_cffi` impersonate trên Termux (bypass Cloudflare/TLS fingerprint)
 - `lampac-cleanup` — dọn rác build .NET (bin/obj/.playwright ~60G)
-- `lampac-build` — build, deploy, smoke test module
-- `lampac-auto` — tự động hóa task lampac
-- `lampac-debug` — debug lampac
-- `lampac-deobfuscate` — giải mã obfuscate
-- `lampac-manual` — tham khảo thủ công
-- `lampac-proxy` — proxy setup
-- `lampac-adult-module` — tạo module Adult
+- `lampac-manual` — chế độ RẢNH: user cùng làm, user tự test trên app
+- `lampac-auto` — chế độ AUTO: user bận, tự soi site → làm → test → deploy → commit
+
+Skill môi trường / công cụ:
+- `termux-fish` — sửa config.fish, alias, theme, font slot, tmux (KHÔNG sửa nếu user chưa yêu cầu)
+- `jina-reader-direct` — đọc URL → markdown qua `https://r.jina.ai`
+- `karpathy-guidelines` — kỷ luật code: đơn giản, sửa tối thiểu, nêu giả định
+- `opencode-tooling` — quy tắc gọi tool trong Code Mode (chặn lỗi tool ảo)
 
 ## Quy trình chuẩn khi làm module Adult
 
