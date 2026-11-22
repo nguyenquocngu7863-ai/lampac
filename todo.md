@@ -175,10 +175,8 @@ Nguồn: `~/.config/opencode/skills/lampac-adult-module/references/card-thumbnai
       `Sieusex` `TopGai` `Topsex` `VNsexTop1` `Viet69Av` `Viet69z` `VietSexBlog` `Vietmup` `XHeoVL` `XViet` `XszAv`
 - [ ] **Sweep bỏ sót — nhóm Tube Tây**: `Av123` `AsianGirl` `Javtiful` `SakuraSins`
       `Suong3x` `VnChich` (chỉ cần xác nhận site không in `quality` ở card list) *(Manko đã chốt: list API không trả `video_duration` → `time`/`quality` null có lý do)*
-- [ ] **Sweep bỏ sót — 4 module mới 2026-11-21/22** (app đã tắt lúc đo 01:20 → cần app chạy để soi JSON list thật):
-      `FreePornVideos` (đã xác nhận lúc làm: `time`=`span.duration`, `quality`=badge `div.k4`→`4K`) · `Pornhat`
-      (`time`=`.video-meta`, `quality`=null) · `JavCc` (`time`=duration site, `quality`=null) · `SexVietTuyChon`
-      (`time`=1 nhãn site `VN|VIETSUB`, `quality`=null) — **cần verify lại từ JSON list**
+- [x] **Sweep bỏ sót — 4 module mới 2026-11-21/22** (đã verify từ JSON list thật lúc app chạy):
+      `FreePornVideos`: `time`=`span.duration`, `quality`=badge `div.k4`→`4K` · `Pornhat`: `time`=`.video-meta`, `quality`=null · `JavCc`: `time`=duration site, `quality`=null · `SexVietTuyChon`: `time`=1 nhãn site `VN|VIETSUB`, `quality`=null
 - [ ] Bỏ qua hợp lệ (live cam không có thời lượng): `BongaCams` `Chaturbate` `Runetki`
 - [ ] Mỗi module sửa xong: soi JSON list thật, `time`/`quality` phải khớp 1:1 card trên site
 - [ ] Chốt: danh sách module cố ý để `null` (kèm lý do site không in) ghi vào README module
@@ -232,7 +230,7 @@ Nguồn: `~/.config/opencode/skills/lampac-adult-module/references/card-thumbnai
       `/genres` + `?rel=`. Cần xem site có khối liên quan/người mẫu để dựng popup.
 - [ ] **`XvideosRED`** — `manifest.enable:false` (tắt) → không tính vào kế hoạch.
 - [ ] **Sweep thumbnail 3 trường** (Phase 5) — cần app chạy để soi JSON list thật của 4 module mới + nhóm JAV.
-- [ ] **Xác minh `play.sh` báo FAIL cho `FreePornVideos`/`XNhau` là false-negative** — URL `/proxy/<hash>` không có đuôi
+- [x] **Xác minh `play.sh` báo FAIL cho `FreePornVideos`/`XNhau` là false-negative** (URL `/proxy/<hash>` không có đuôi file nên tool không đoán mp4; đã verify tay bằng `ffprobe` 2MB đầu — đều OK: FPV h264 852x480+aac 2006s, XNhau h264 384x720+aac 92s). Cân nhắc sửa `play.sh` để suy đuôi từ `Content-Type`/`Content-Range` khi URL không có đuôi.
       file nên tool không đoán được mp4; đã verify tay bằng `ffprobe` (đều OK). Cân nhắc sửa `play.sh` để suy đuôi từ
       `Content-Type`/`Content-Range` khi URL không có đuôi.
 
