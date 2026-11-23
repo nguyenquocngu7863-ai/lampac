@@ -6,6 +6,7 @@ using Shared.Models.SISI.Base;
 using Shared.Services;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -22,10 +23,14 @@ public class KawaiJAVController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("kawaijav")]
-    async public Task<ActionResult> Index(string search, string c, string sort, int pg = 1)
+    async public Task<ActionResult> Index(string search, string c, string sort, int pg = 1, string rel = null)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
+
+        // Danh sach "Related Videos" tu popup long-press.
+        if (!string.IsNullOrWhiteSpace(rel))
+            return await RelatedList(rel, pg);
 
         if (pg < 1) pg = 1;
 
@@ -262,4 +267,125 @@ public class KawaiJAVController : BaseSisiController
             ("referer", referer)));
         return Redirect(HostStreamProxy(link, h2));
     }
+
+    #region info (popup long-press) — chip channel/tag/category + "Related Videos"
+    static readonly Dictionary<string, (DateTime at, List<(string kind, string path, string name)> chips, List<PlaylistItem> rel)> _infoCache = new();
+    static readonly TimeSpan InfoTtl = TimeSpan.FromHours(6);
+
+    [HttpGet]
+    [Route("kawaijav/genres")]
+    async public Task<ActionResult> Genres(string uri)
+    {
+        // Popup khong bao gio duoc 500: moi loi -> JSON rong.
+        var empty = Json(new { items = new object[0], groups = new object[0] });
+
+        string pageUrl = KawaiJAVTo.SafeDetailUrl(uri);
+        if (string.IsNullOrEmpty(pageUrl))
+            return empty;
+
+        lock (_infoCache)
+        {
+            if (_infoCache.TryGetValue(pageUrl, out var hit) && DateTime.UtcNow - hit.at < InfoTtl)
+                return InfoResult(hit.chips, hit.rel, uri);
+        }
+
+        string html = null;
+        try { html = await GetPageAsync(pageUrl); }
+        catch { }
+
+        if (string.IsNullOrEmpty(html))
+            return empty;
+
+        var chips = KawaiJAVTo.Chips(html);
+        var rel = KawaiJAVTo.Related("kawaijav/vidosik", html);
+
+        lock (_infoCache)
+        {
+            _infoCache[pageUrl] = (DateTime.UtcNow, chips, rel);
+            if (_infoCache.Count > 300)
+            {
+                var cutoff = DateTime.UtcNow - InfoTtl;
+                foreach (string k in _infoCache.Where(x => x.Value.at < cutoff).Select(x => x.Key).ToList())
+                    _infoCache.Remove(k);
+            }
+        }
+
+        return InfoResult(chips, rel, uri);
+    }
+
+    ActionResult InfoResult(
+        List<(string kind, string path, string name)> chips,
+        List<PlaylistItem> rel, string uri)
+    {
+        var groups = new List<object>();
+
+        // Thu tu co dinh: dien vien -> kenh -> the loai -> the -> lien quan.
+        foreach (var (kind, title) in new[]
+        {
+            ("actor", "Diễn viên"), ("channel", "Kênh"),
+            ("cat", "Thể loại"), ("tag", "Thẻ")
+        })
+        {
+            var items = chips?.Where(x => x.kind == kind)
+                .Select(x => new
+                {
+                    title = x.name,
+                    url = $"{host}/kawaijav?c={HttpUtility.UrlEncode(x.path)}"
+                }).ToList();
+
+            if (items == null || items.Count == 0)
+                continue;
+
+            groups.Add(new { title, items });
+        }
+
+        if (rel != null && rel.Count > 0)
+        {
+            groups.Add(new
+            {
+                title = "Liên quan",
+                items = new[]
+                {
+                    new
+                    {
+                        title = "Video liên quan",
+                        plain = true,
+                        url = $"{host}/kawaijav?rel={HttpUtility.UrlEncode(uri)}"
+                    }
+                }
+            });
+        }
+
+        return Json(new { items = new object[0], groups });
+    }
+
+    async Task<ActionResult> RelatedList(string rel, int pg)
+    {
+        // SISI hieu total_pages:0 = "con trang vo han" -> phai tra 1.
+        if (pg > 1)
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        string pageUrl = KawaiJAVTo.SafeDetailUrl(rel);
+        if (string.IsNullOrEmpty(pageUrl))
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        var cache = await InvokeCacheResult<(List<PlaylistItem> playlists, int total_pages)>(
+            ipkey($"kawaijav:rel:{pageUrl}"), 180, async e =>
+        {
+            string html = await GetPageAsync(pageUrl);
+            var playlists = KawaiJAVTo.Related("kawaijav/vidosik", html ?? "");
+
+            if (playlists == null || playlists.Count == 0)
+                return e.Success((new List<PlaylistItem>(), 1));
+
+            return e.Success((playlists, 1));
+        });
+
+        if (!cache.IsSuccess)
+            return OnError(cache.ErrorMsg);
+
+        return PlaylistResult(cache.Value.playlists, cache.ISingleCache,
+            await MenuAsync(null, null, null), total_pages: 1);
+    }
+    #endregion
 }

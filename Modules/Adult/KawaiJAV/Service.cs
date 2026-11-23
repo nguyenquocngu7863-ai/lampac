@@ -36,8 +36,10 @@ public static class KawaiJAVTo
 
         if (!string.IsNullOrWhiteSpace(search))
         {
+            // Form site: action=/en/search.html, input name="keyword".
+            // `?q=` bi site BO QUA (tra ve nguyen trang chu) -> phai la keyword=.
             string q = System.Uri.EscapeDataString(search.Trim());
-            return pg > 1 ? host + "/en/search.html?q=" + q + "&page=" + pg : host + "/en/search.html?q=" + q;
+            return Paged(host + "/en/search.html?keyword=" + q, pg);
         }
 
         if (!string.IsNullOrWhiteSpace(c))
@@ -50,38 +52,43 @@ public static class KawaiJAVTo
             if (raw.StartsWith("tag/", StringComparison.OrdinalIgnoreCase))
             {
                 string keyword = HttpUtility.UrlDecode(raw.Substring(4)).Trim();
-                string tagUrl = host + "/en/search.html?keyword=" + HttpUtility.UrlEncode(keyword);
-                if (pg > 1) tagUrl += "&page=" + pg;
-                string sortVal = NormalizeSort(sort);
-                if (!string.IsNullOrEmpty(sortVal)) tagUrl += "&sort=" + sortVal;
-                return tagUrl;
+                return Paged(host + "/en/search.html?keyword=" + HttpUtility.UrlEncode(keyword), pg);
             }
 
-            // Category: /en/categories/<id>.<slug>.html?page=N&sort=views
+            // Category: /en/categories/<id>.<slug>.html
             if (raw.StartsWith("categories/", StringComparison.OrdinalIgnoreCase))
             {
                 string catUrl = host + "/en/" + raw;
                 if (!catUrl.EndsWith(".html", StringComparison.OrdinalIgnoreCase)) catUrl += ".html";
-                if (pg > 1) catUrl += "?page=" + pg;
-                string sortVal = NormalizeSort(sort);
-                if (!string.IsNullOrEmpty(sortVal)) catUrl += (catUrl.Contains("?") ? "&" : "?") + "sort=" + sortVal;
-                return catUrl;
+                return Paged(catUrl, pg);
             }
 
             string baseUrl = host + "/" + raw.TrimStart('/');
             if (!baseUrl.EndsWith("/")) baseUrl += "/";
-            string url = baseUrl + (baseUrl.Contains("?") ? "&page=" + pg : "?page=" + pg);
-            string s = NormalizeSort(sort);
-            if (!string.IsNullOrEmpty(s) && !url.Contains("sort="))
-                url += "&sort=" + s;
-            return url;
+            return Paged(baseUrl, pg);
         }
 
-        string homeUrl = pg > 1 ? host + "/en/most-view.html?page=" + pg : host + "/en/most-view.html";
-        string hs = NormalizeSort(sort);
-        if (!string.IsNullOrEmpty(hs) && !homeUrl.Contains("sort="))
-            homeUrl += "&sort=" + hs;
-        return homeUrl;
+        // Home: site KHONG co bang "moi nhat" phan trang (trang chu la trang tong hop
+        // khong co pagination) -> dung 3 bang xep hang phan trang cua site.
+        return Paged(RankingPath(host, sort), pg);
+    }
+
+    // Site khong he co tham so `?sort=` (da quet home/detail/category/most-view: 0 ket qua).
+    // Sap xep duoc chon bang CHINH DUONG DAN. Them ?sort= vao la chet.
+    // Do 2026-11-23: `/en/video.html` -> 404, nen khong co bang "moi nhat" phan trang.
+    public static string RankingPath(string host, string sort)
+    {
+        switch (NormalizeSort(sort))
+        {
+            case "top-rated": return host + "/en/top-rate.html";
+            default: return host + "/en/most-view.html";
+        }
+    }
+
+    static string Paged(string url, int pg)
+    {
+        if (pg <= 1) return url;
+        return url + (url.Contains('?') ? "&" : "?") + "page=" + pg;
     }
 
     public static int Pages(string html)
@@ -191,6 +198,121 @@ public static class KawaiJAVTo
         return (hd, sd);
     }
 
+    // ========== POPUP (long-press) ==========
+    // Trang chi tiet: khong co nhan "dien vien" rieng. Trong tab info (giua
+    // "Channel:" va "Added on:") co 3 nhom:
+    //   Channel:   /en/channel/<id>/<slug>
+    //   Tags:      /en/search.html?keyword=<kw>
+    //   Categories:/en/categories/<id>.<slug>.html
+    // Chi lay trong doan nay: nav mega-menu cung tro /en/categories/ va /en/pornstars/
+    // nhung do la toan bo danh muc, khong phai cua phim.
+    public static List<(string kind, string path, string name)> Chips(string html)
+    {
+        var list = new List<(string, string, string)>();
+        if (string.IsNullOrWhiteSpace(html)) return list;
+
+        int from = html.IndexOf("Channel:", StringComparison.OrdinalIgnoreCase);
+        int to = html.IndexOf("Added on:", StringComparison.OrdinalIgnoreCase);
+        if (from < 0 || to <= from) return list;
+
+        string seg = html.Substring(from, to - from);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (Match m in Regex.Matches(seg,
+            @"<a\b[^>]*\bhref\s*=\s*""([^""]+)""[^>]*>(.*?)</a>",
+            RegexOptions.IgnoreCase | RegexOptions.Singleline))
+        {
+            string kind, path, name;
+
+            if (m.Groups[1].Value.Contains("/en/categories/", StringComparison.OrdinalIgnoreCase))
+            {
+                path = PathOf(m.Groups[1].Value);
+                if (string.IsNullOrEmpty(path) || !path.StartsWith("/en/categories/", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                kind = "cat";
+            }
+            else if (m.Groups[1].Value.Contains("/en/channel/", StringComparison.OrdinalIgnoreCase))
+            {
+                path = PathOf(m.Groups[1].Value);
+                if (string.IsNullOrEmpty(path) || !path.StartsWith("/en/channel/", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                kind = "channel";
+            }
+            else if (m.Groups[1].Value.Contains("keyword=", StringComparison.OrdinalIgnoreCase))
+            {
+                // Tag: giu nguyen keyword (khong dung path) vi route la ?c=tag/<keyword>
+                string kw = System.Web.HttpUtility.UrlDecode(
+                    (Regex.Match(m.Groups[1].Value, @"keyword=([^&]+)", RegexOptions.IgnoreCase).Groups[1].Value)).Trim();
+                if (string.IsNullOrEmpty(kw)) continue;
+                path = "tag/" + kw;
+                kind = "tag";
+            }
+            else continue;
+
+            if (!seen.Add(kind + "/" + path)) continue;
+
+            name = Clean(Regex.Replace(HttpUtility.HtmlDecode(m.Groups[2].Value), "<[^>]+>", " "));
+            if (string.IsNullOrEmpty(name)) continue;
+
+            list.Add((kind, path, name));
+        }
+
+        return list;
+    }
+
+    // `https://kawai-jav.com/en/categories/17.sod-stars.html` -> `/en/categories/17.sod-stars.html`
+    public static string PathOf(string href)
+    {
+        if (string.IsNullOrWhiteSpace(href)) return null;
+
+        string p = href.Trim();
+        int scheme = p.IndexOf("://", StringComparison.Ordinal);
+        if (scheme >= 0)
+        {
+            int slash = p.IndexOf('/', scheme + 3);
+            if (slash < 0) return null;
+            p = p.Substring(slash);
+        }
+
+        if (!p.StartsWith("/")) return null;
+
+        int cut = p.IndexOfAny(new[] { '?', '#' });
+        if (cut >= 0) p = p.Substring(0, cut);
+
+        p = p.TrimEnd('/');
+        return p.Length > 1 ? p : null;
+    }
+
+    // URI do client gui vao: chi nhan host site + path hop le (chong SSRF).
+    public static string SafeDetailUrl(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri)) return null;
+
+        string url = uri.Trim();
+        if (url.StartsWith("//")) url = "https:" + url;
+        else if (url.StartsWith("/")) url = SiteHost + url;
+        else if (!url.StartsWith("http", StringComparison.OrdinalIgnoreCase)) url = SiteHost + "/" + url.Trim('/');
+
+        if (!System.Uri.TryCreate(url, UriKind.Absolute, out var u)) return null;
+        if (u.Scheme != System.Uri.UriSchemeHttp && u.Scheme != System.Uri.UriSchemeHttps) return null;
+        if (!u.Host.EndsWith("kawai-jav.com", StringComparison.OrdinalIgnoreCase)) return null;
+        if (!u.AbsolutePath.StartsWith("/en/watch/", StringComparison.OrdinalIgnoreCase)) return null;
+
+        return u.GetLeftPart(global::System.UriPartial.Path);
+    }
+
+    // "Related Videos" nam sau <h2> do; truoc no co 2 link /en/watch/ (share/self)
+    // -> phai cat tu heading, khong thi list se lan ca chinh phim dang xem.
+    public static List<PlaylistItem> Related(string route, string html)
+    {
+        if (string.IsNullOrWhiteSpace(html)) return new List<PlaylistItem>();
+
+        int i = html.IndexOf("Related Videos", StringComparison.OrdinalIgnoreCase);
+        if (i < 0) return new List<PlaylistItem>();
+
+        return Playlist(route, html.Substring(i));
+    }
+
     // ========== Taxonomies: Categories ==========
     public static List<(string slug, string name)> Categories(string html)
     {
@@ -230,22 +352,24 @@ public static class KawaiJAVTo
     }
 
     // ========== Sort ==========
-    public static readonly (string name, string sort)[] TaxSorts =
-    {
-        ("Theo ngày", ""),
-        ("Theo lượt xem", "views"),
-    };
+    // Truoc day co TaxSorts + IsTaxonomy (sort cho category/tag). Do 2026-11-23:
+    // site khong ho tro sort tren category/tag (khong tham so, khong path khac) ->
+    // da bo, chi con sort cho danh sach goc.
 
-    public static bool IsTaxonomy(string c) =>
-        !string.IsNullOrWhiteSpace(c) &&
-        (c.StartsWith("categories/") || c.StartsWith("pornstars/"));
+    // 3 bang xep hang phan trang cua site. Sort = null nghia la "Pho bien".
+    // `premium-hd.html` la trang nang cap (0 item, doi dang nhap) -> khong phai danh sach.
+    public static readonly (string name, string sort)[] HomeSorts =
+    {
+        ("Phổ biến", "views"),
+        ("Đánh giá cao", "top-rated"),
+    };
 
     public static (string name, string sort)[] SortsFor(string search, string c)
     {
         if (!string.IsNullOrWhiteSpace(search)) return null;
-        if (string.IsNullOrWhiteSpace(c)) return null;
-        if (IsTaxonomy(c)) return TaxSorts;
-        return null;
+        // Category/tag: site khong co sort (khong tham so, khong path khac) -> khong hien dong sort.
+        if (!string.IsNullOrWhiteSpace(c)) return null;
+        return HomeSorts;
     }
 
     public static string ClampSort(string sort, string search, string c)
@@ -261,13 +385,22 @@ public static class KawaiJAVTo
     public static string NormalizeSort(string sort)
     {
         if (string.IsNullOrWhiteSpace(sort)) return null;
-        sort = sort.Trim().ToLowerInvariant();
-        return sort == "views" ? "views" : null;
+        switch (sort.Trim().ToLowerInvariant())
+        {
+            case "views": case "most-view": case "popular": return "views";
+            case "top-rated": case "top-rate": case "rating": return "top-rated";
+            default: return null;
+        }
     }
 
-    public static string SortLabel(string sort) =>
-        string.IsNullOrEmpty(sort) ? "ngày"
-        : sort == "views" ? "lượt xem" : sort;
+    public static string SortLabel(string sort)
+    {
+        switch (NormalizeSort(sort))
+        {
+            case "top-rated": return "đánh giá cao";
+            default: return "phổ biến";
+        }
+    }
 
     // ===== head của menu =====
     public static List<MenuItem> MenuHead(string host, string search, string sort, string c)
@@ -282,8 +415,13 @@ public static class KawaiJAVTo
         if (opts == null || opts.Length == 0) return res;
         var sub = new List<MenuItem>(opts.Length);
         foreach (var (name, s) in opts)
-            sub.Add(new MenuItem(name, root + "?c=" + HttpUtility.UrlEncode(c)
-                + (string.IsNullOrEmpty(s) ? "" : "&sort=" + s)));
+        {
+            // Home: khong co `?c=`, sort nam o &sort=. Taxonomy: giu ?c=.
+            string u = string.IsNullOrWhiteSpace(c)
+                ? root + "?sort=" + s
+                : root + "?c=" + HttpUtility.UrlEncode(c) + "&sort=" + s;
+            sub.Add(new MenuItem(name, u));
+        }
         res.Add(new MenuItem(){ title = $"Sắp xếp: {SortLabel(sort)}", playlist_url = "submenu", submenu = sub });
         return res;
     }
@@ -294,12 +432,13 @@ public static class KawaiJAVTo
         host = host.TrimEnd('/');
         string url(string c, string sort = null) => host + "/kawaijav?c=" + HttpUtility.UrlEncode(c)
             + (string.IsNullOrEmpty(sort) ? "" : "&sort=" + sort);
+        // "Bang xep hang" = chon bang xep hang cua site (sort -> path, khong phai ?sort=).
+        var rank = new List<MenuItem>(HomeSorts.Length);
+        foreach (var (name, s) in HomeSorts)
+            rank.Add(new MenuItem(name, host + "/kawaijav?sort=" + s));
         var root = new List<MenuItem>(4)
         {
-            new MenuItem(){ title = "Bảng xếp hạng", playlist_url = "submenu", submenu = new List<MenuItem>(){
-                new("Mới nhất", url("")),
-                new("Phổ biến", url("most-view.html", "views")),
-            }}
+            new MenuItem(){ title = "Bảng xếp hạng", playlist_url = "submenu", submenu = rank }
         };
         if (cats != null && cats.Count > 0)
         {
