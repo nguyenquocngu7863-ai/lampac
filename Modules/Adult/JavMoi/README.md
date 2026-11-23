@@ -89,6 +89,9 @@ Route **không** có tiền tố `/lite` (`/lite/javmoi` → 404).
 - `check.sh`: **0 error** (33 warning, toàn `CS8603/CS8625/CS8600` nullable — cùng loại với code cũ)
 - Stream: playlist **1426 segment**; segment qua `/proxy/<hash>` là **TS**, `ffprobe` ra
   `h264 1280x720 + aac`, 5.07s.
-- `play.sh`: báo FAIL vì segment qua `/proxy/<hash>` **không có đuôi file** → ffmpeg từ chối
-  (`not in allowed_segment_extensions`). **False-negative của tool**, không phải stream hỏng —
-  xem skill `scraper-parser-verification`. Không dựng relay `.ts` chỉ để tool hài lòng.
+- `play.sh`: **PASS** — `hls=true`, `cold/warm 0.77/0.63s`, segment 1426/1426 qua Lampac,
+  `h264 1280x720 · 7173.8s`, decode 5s đầu ✔ / 5s cuối ✔, không cần proxy.
+  *(Lần đo đầu báo FAIL vì `python3` trong PATH trỏ venv thiếu `curl_cffi` — lỗi môi trường,
+  không phải stream. Chạy lại với `PATH=/data/data/com.termux/files/usr/bin:$PATH`.)*
+  Lưu ý: `ffprobe` **thẳng vào URL playlist** vẫn báo `not in allowed_segment_extensions` do
+  segment qua `/proxy/<hash>` không đuôi — đó là giới hạn của ffprobe, không phải của route.
