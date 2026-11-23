@@ -22,10 +22,14 @@ public class JavSubController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("javsub")]
-    async public Task<ActionResult> Index(string search, string c, string sort, int pg = 1)
+    async public Task<ActionResult> Index(string search, string c, string sort, int pg = 1, string rel = null)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
+
+        // Danh sach "Video lien quan" tu popup long-press.
+        if (!string.IsNullOrWhiteSpace(rel))
+            return await RelatedList(rel, pg);
 
         if (pg < 1) pg = 1;
 
@@ -155,6 +159,25 @@ public class JavSubController : BaseSisiController
         return !string.IsNullOrEmpty(a) ? a : b;
     }
 
+    // AJAX JSON rieng: KHONG dung GetPageAsync (ham do doi HTML >= 3000B + retry
+    // 30s, JSON ngan se bi coi la that bai va vuot budget cua InvokeCacheResult).
+    async Task<string> FetchJsonAsync(string url)
+    {
+        try
+        {
+            string body = null;
+            var headers = HeadersModel.Init(
+                ("User-Agent", JavSubTo.ChromeUA),
+                ("Referer", JavSubTo.SiteHost + "/"),
+                ("Accept", "application/json, text/plain, */*"),
+                ("X-Requested-With", "XMLHttpRequest"));
+
+            await httpHydra.GetSpan(url, span => { body = span.ToString(); }, addheaders: headers);
+            return body;
+        }
+        catch { return null; }
+    }
+
     // ========== PLAYER: LAZY-RESOLVE (§11c2) ==========
     // Detail co 2 nut Server 1/2 (data-source -> player JW tren streamforester/
     // vcast). /vidosik chi liet ke (1 fetch); /video POST config resolve DUNG
@@ -163,7 +186,9 @@ public class JavSubController : BaseSisiController
     {
         if (string.IsNullOrWhiteSpace(uri))
             return null;
-        string pageUrl = uri.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? uri : JavSubTo.SiteHost + "/" + uri.Trim('/');
+        // Uri do client gui -> bat buoc dung host site + path /phim-sex/.
+        string pageUrl = JavSubTo.SafeDetailUrl(uri);
+        if (string.IsNullOrEmpty(pageUrl)) return null;
         string memKey = ipkey($"javsub:servers:{pageUrl}");
         if (hybridCache.TryGetValue(memKey, out List<(string label, string link)> cached) && cached != null && cached.Count > 0)
             return cached;
@@ -190,7 +215,9 @@ public class JavSubController : BaseSisiController
             if (dict.ContainsKey(label))
                 continue;
             dict[label] =
-                $"{host}/javsub/video"
+                // Bat buoc co duoi .m3u8: app chon player theo duoi URL, `/javsub/video`
+                // (body la HLS) bi coi la file thuong -> "no supported source".
+                $"{host}/javsub/video.m3u8"
               + $"?uri={HttpUtility.UrlEncode(uri)}&srv={HttpUtility.UrlEncode(label)}";
         }
         return Json(dict);
@@ -313,4 +340,136 @@ public class JavSubController : BaseSisiController
         return ct.Contains("mpegurl") || ct.Contains("mp2t") || ct.Contains("octet-stream")
             || ct.Contains("video/") || ct.Contains("application/vnd.apple");
     }
+
+    #region info (popup long-press) — chip the loai/tag + "Xem them phim sex"
+    static readonly Dictionary<string, (DateTime at, List<(string kind, string path, string name)> chips, List<PlaylistItem> rel)> _infoCache = new();
+    static readonly TimeSpan InfoTtl = TimeSpan.FromHours(6);
+
+    [HttpGet]
+    [Route("javsub/genres")]
+    async public Task<ActionResult> Genres(string uri)
+    {
+        var empty = Json(new { items = new object[0], groups = new object[0] });
+
+        string pageUrl = JavSubTo.SafeDetailUrl(uri);
+        if (string.IsNullOrEmpty(pageUrl))
+            return empty;
+
+        lock (_infoCache)
+        {
+            if (_infoCache.TryGetValue(pageUrl, out var hit) && DateTime.UtcNow - hit.at < InfoTtl)
+                return InfoResult(hit.chips, hit.rel, uri);
+        }
+
+        string html = null;
+        try { html = await GetPageAsync(pageUrl); }
+        catch { }
+
+        if (string.IsNullOrEmpty(html))
+            return empty;
+
+        var chips = JavSubTo.Chips(html);
+
+        // "Video lien quan" nam trong AJAX Alpine.js, khong co trong HTML.
+        var rel = new List<PlaylistItem>();
+        string suggestUrl = JavSubTo.SuggestUrl(pageUrl);
+        if (!string.IsNullOrEmpty(suggestUrl))
+        {
+            try
+            {
+                string json = await FetchJsonAsync(suggestUrl);
+                rel = JavSubTo.Suggestions(json ?? "", "javsub/vidosik");
+            }
+            catch { }
+        }
+
+        lock (_infoCache)
+        {
+            _infoCache[pageUrl] = (DateTime.UtcNow, chips, rel);
+            if (_infoCache.Count > 300)
+            {
+                var cutoff = DateTime.UtcNow - InfoTtl;
+                foreach (string k in _infoCache.Where(x => x.Value.at < cutoff).Select(x => x.Key).ToList())
+                    _infoCache.Remove(k);
+            }
+        }
+
+        return InfoResult(chips, rel, uri);
+    }
+
+    ActionResult InfoResult(
+        List<(string kind, string path, string name)> chips,
+        List<PlaylistItem> rel, string uri)
+    {
+        var groups = new List<object>();
+
+        // Thu tu co dinh: dien vien -> the loai -> the -> lien quan.
+        foreach (var (kind, title) in new[]
+        {
+            ("actor", "Diễn viên"), ("cat", "Thể loại"), ("tag", "Thẻ")
+        })
+        {
+            var items = chips?.Where(x => x.kind == kind)
+                .Select(x => new
+                {
+                    title = x.name,
+                    url = $"{host}/javsub?c={HttpUtility.UrlEncode(x.path)}"
+                }).ToList();
+
+            if (items == null || items.Count == 0)
+                continue;
+
+            groups.Add(new { title, items });
+        }
+
+        if (rel != null && rel.Count > 0)
+        {
+            groups.Add(new
+            {
+                title = "Liên quan",
+                items = new[]
+                {
+                    new
+                    {
+                        title = "Video liên quan",
+                        plain = true,
+                        url = $"{host}/javsub?rel={HttpUtility.UrlEncode(uri)}"
+                    }
+                }
+            });
+        }
+
+        return Json(new { items = new object[0], groups });
+    }
+
+    async Task<ActionResult> RelatedList(string rel, int pg)
+    {
+        // SISI hieu total_pages:0 = "con trang vo han" -> phai tra 1.
+        if (pg > 1)
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        string pageUrl = JavSubTo.SafeDetailUrl(rel);
+        string suggestUrl = JavSubTo.SuggestUrl(pageUrl);
+        if (string.IsNullOrEmpty(suggestUrl))
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        var cache = await InvokeCacheResult<(List<PlaylistItem> playlists, int total_pages)>(
+            ipkey($"javsub:rel:{pageUrl}"), 180, async e =>
+        {
+            string json = await FetchJsonAsync(suggestUrl);
+            var playlists = JavSubTo.Suggestions(json ?? "", "javsub/vidosik");
+
+            if (playlists == null || playlists.Count == 0)
+                return e.Success((new List<PlaylistItem>(), 1));
+
+            return e.Success((playlists, 1));
+        });
+
+        if (!cache.IsSuccess)
+            return OnError(cache.ErrorMsg);
+
+        return PlaylistResult(cache.Value.playlists, cache.ISingleCache,
+            await MenuAsync(null, null, null), total_pages: 1);
+    }
+    #endregion
 }

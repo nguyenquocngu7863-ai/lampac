@@ -69,6 +69,26 @@ public static class JavSubTo
         return max;
     }
 
+    // Do 2026-11-23: site co 2 ten mien CUNG mot site — trang phuc vu tu
+    // `javsub.blog` nhung MOI href tuyen doi tro `javsubnet.com`
+    // (md5 trang chi tiet trung nhau). Neo host o day lam list ra 0 item -> 503.
+    // => Parser khong duoc neo host, chi khop duong dan. Rang buoc host chi dat o
+    // cho URI do NGUOI DUNG gui vao (SafeDetailUrl) de chong SSRF.
+    public static readonly string[] MirrorHosts = { "javsub.blog", "javsubnet.com" };
+
+    public static bool IsSiteHost(string host)
+    {
+        if (string.IsNullOrEmpty(host)) return false;
+        foreach (string h in MirrorHosts)
+        {
+            if (host.Equals(h, StringComparison.OrdinalIgnoreCase)
+                || host.EndsWith("." + h, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
+    }
+
+    // Parse href -> URL tuyet doi. KHONG gioi han host (xem ghi chu tren).
     public static string NormalizePageUrl(string value)
     {
         if (string.IsNullOrWhiteSpace(value)) return null;
@@ -79,8 +99,24 @@ public static class JavSubTo
         else if (value.StartsWith("/")) value = SiteHost + value;
         else if (!value.StartsWith("http", StringComparison.OrdinalIgnoreCase)) value = SiteHost + "/" + value;
         if (!System.Uri.TryCreate(value, UriKind.Absolute, out var parsed)) return null;
-        if (!parsed.Host.EndsWith("javsub.blog", StringComparison.OrdinalIgnoreCase)) return null;
+        if (parsed.Scheme != System.Uri.UriSchemeHttp && parsed.Scheme != System.Uri.UriSchemeHttps) return null;
         return value;
+    }
+
+    // URI do client gui vao (popup / vidosik): bat buoc dung host site + dung
+    // dang trang phim. Sai -> null, khong nem loi.
+    public static string SafeDetailUrl(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri)) return null;
+        string url = uri.Trim();
+        if (url.StartsWith("//")) url = "https:" + url;
+        else if (url.StartsWith("/")) url = SiteHost + url;
+        else if (!url.StartsWith("http", StringComparison.OrdinalIgnoreCase)) url = SiteHost + "/" + url.Trim('/');
+        if (!System.Uri.TryCreate(url, UriKind.Absolute, out var u)) return null;
+        if (u.Scheme != System.Uri.UriSchemeHttp && u.Scheme != System.Uri.UriSchemeHttps) return null;
+        if (!IsSiteHost(u.Host)) return null;
+        if (!u.AbsolutePath.StartsWith("/phim-sex/", StringComparison.OrdinalIgnoreCase)) return null;
+        return u.GetLeftPart(global::System.UriPartial.Path);
     }
 
     public static string NormalizeMediaUrl(string value)
@@ -120,6 +156,131 @@ public static class JavSubTo
                 bookmark = new Bookmark() { site = "javsub", href = pageUrl, image = poster }
             });
         }
+        return list;
+    }
+
+    // ========== POPUP (long-press) ==========
+    // Trang chi tiet: `<div class="video__tags">` chua cac <a class="label">
+    //   <a href=".../the-loai/<slug>"><svg…/><span>Ten</span></a>   -> cat
+    //   <a href=".../tag/<slug>"><svg…/><span>Ten</span></a>        -> tag
+    // (do 2026-11-23: 1 phim ra 2 the-loai + 12 tag)
+    static readonly Regex _tagsRe = new Regex(
+        "<div class=\"video__tags\">(.*?)</div>",
+        RegexOptions.IgnoreCase | RegexOptions.Singleline);
+
+    static readonly Regex _tagLinkRe = new Regex(
+        "<a\\s+href=\"([^\"]+)\"[^>]*>\\s*(?:<svg\\b.*?</svg>\\s*)?<span>([^<]+)</span>",
+        RegexOptions.IgnoreCase | RegexOptions.Singleline);
+
+    public static List<(string kind, string path, string name)> Chips(string html)
+    {
+        var list = new List<(string, string, string)>();
+        if (string.IsNullOrWhiteSpace(html)) return list;
+
+        var block = _tagsRe.Match(html);
+        if (!block.Success) return list;
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (Match a in _tagLinkRe.Matches(block.Groups[1].Value))
+        {
+            string path = PathOf(a.Groups[1].Value);
+            if (string.IsNullOrEmpty(path)) continue;
+
+            string kind = path.StartsWith("/the-loai/", StringComparison.OrdinalIgnoreCase) ? "cat"
+                : path.StartsWith("/tag/", StringComparison.OrdinalIgnoreCase) ? "tag" : null;
+
+            if (kind == null || !seen.Add(kind + "/" + path)) continue;
+
+            string name = Clean(WebUtility.HtmlDecode(a.Groups[2].Value));
+            if (string.IsNullOrEmpty(name)) continue;
+
+            list.Add((kind, path, name));
+        }
+
+        return list;
+    }
+
+    // `https://javsubnet.com/tag/x?y=1` -> `/tag/x`
+    public static string PathOf(string href)
+    {
+        if (string.IsNullOrWhiteSpace(href)) return null;
+
+        string p = href.Trim();
+
+        int scheme = p.IndexOf("://", StringComparison.Ordinal);
+        if (scheme >= 0)
+        {
+            int slash = p.IndexOf('/', scheme + 3);
+            if (slash < 0) return null;
+            p = p.Substring(slash);
+        }
+
+        if (!p.StartsWith("/")) return null;
+
+        int cut = p.IndexOfAny(new[] { '?', '#' });
+        if (cut >= 0) p = p.Substring(0, cut);
+
+        p = p.TrimEnd('/');
+        return p.Length > 1 ? p : null;
+    }
+
+    // "Video lien quan" KHONG co trong HTML: khoi do la Alpine.js
+    // `x-data="list('/ajax/suggestions/<slug>', true, 8)"` -> phai goi AJAX.
+    public static string SuggestUrl(string pageUrl)
+    {
+        if (string.IsNullOrEmpty(pageUrl)) return null;
+
+        const string marker = "/phim-sex/";
+        int i = pageUrl.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (i < 0) return null;
+
+        string slug = pageUrl.Substring(i + marker.Length).Trim('/');
+        int cut = slug.IndexOfAny(new[] { '?', '#' });
+        if (cut >= 0) slug = slug.Substring(0, cut);
+        slug = slug.Trim('/');
+        if (slug.Length == 0) return null;
+
+        return SiteHost + "/ajax/suggestions/" + slug + "?limit=8";
+    }
+
+    // JSON: { "data": [ { title, url, thumbnail_file_url, ... } ] }
+    public static List<PlaylistItem> Suggestions(string json, string route)
+    {
+        var list = new List<PlaylistItem>();
+        if (string.IsNullOrWhiteSpace(json)) return list;
+
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+
+            if (!doc.RootElement.TryGetProperty("data", out var arr)
+                || arr.ValueKind != System.Text.Json.JsonValueKind.Array)
+                return list;
+
+            foreach (var el in arr.EnumerateArray())
+            {
+                string title = el.TryGetProperty("title", out var t) ? t.GetString() : null;
+                string url = el.TryGetProperty("url", out var u) ? u.GetString() : null;
+                string thumb = el.TryGetProperty("thumbnail_file_url", out var th) ? th.GetString() : null;
+
+                string pageUrl = SafeDetailUrl(url);
+                if (string.IsNullOrEmpty(pageUrl) || string.IsNullOrWhiteSpace(title)) continue;
+
+                string pic = NormalizeMediaUrl(thumb);
+
+                list.Add(new PlaylistItem()
+                {
+                    video = route + "?uri=" + HttpUtility.UrlEncode(pageUrl),
+                    name = Clean(title),
+                    picture = pic,
+                    json = true,
+                    bookmark = new Bookmark() { site = "javsub", href = pageUrl, image = pic }
+                });
+            }
+        }
+        catch { }
+
         return list;
     }
 
