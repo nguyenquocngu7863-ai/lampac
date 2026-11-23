@@ -19,10 +19,14 @@ public class JavMoiController : BaseSisiController
     [HttpGet, Staticache(manually: true)]
     [Route("javmoi")]
     async public Task<ActionResult> Index(
-        string search, string c, int pg = 1)
+        string search, string c, int pg = 1, string rel = null)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
+
+        // Danh sach "Co the ban thich?" tu popup long-press.
+        if (!string.IsNullOrWhiteSpace(rel))
+            return await RelatedList(rel, pg);
 
         if (pg < 1)
             pg = 1;
@@ -309,4 +313,129 @@ public class JavMoiController : BaseSisiController
 
         return Redirect(HostStreamProxy(url, headers));
     }
+
+    #region info (popup long-press) — chip the loai/tu khoa + "Co the ban thich?"
+    // Cache RAM tinh (ValueTuple khong serialize lai duoc qua hybridCache).
+    static readonly Dictionary<string, (DateTime at, List<(string kind, string path, string name)> chips, List<PlaylistItem> rel)> _infoCache = new();
+    static readonly TimeSpan InfoTtl = TimeSpan.FromHours(6);
+
+    [HttpGet]
+    [Route("javmoi/genres")]
+    async public Task<ActionResult> Genres(string uri)
+    {
+        // Popup khong bao gio duoc 500: moi loi -> JSON rong.
+        var empty = Json(new { items = new object[0], groups = new object[0] });
+
+        string pageUrl = JavMoiTo.DetailUrl(uri);
+        if (string.IsNullOrEmpty(pageUrl))
+            return empty;
+
+        lock (_infoCache)
+        {
+            if (_infoCache.TryGetValue(uri, out var hit)
+                && DateTime.UtcNow - hit.at < InfoTtl)
+            {
+                return InfoResult(hit.chips, hit.rel, uri);
+            }
+        }
+
+        string html = null;
+        try { html = await FetchHtmlAsync(pageUrl); }
+        catch { }
+
+        if (string.IsNullOrEmpty(html))
+            return empty;
+
+        var chips = JavMoiTo.Chips(html);
+        var rel = JavMoiTo.PlaylistRelated("javmoi/vidosik", html);
+
+        lock (_infoCache)
+        {
+            _infoCache[uri] = (DateTime.UtcNow, chips, rel);
+            if (_infoCache.Count > 300)
+            {
+                var cutoff = DateTime.UtcNow - InfoTtl;
+                foreach (string k in _infoCache.Where(x => x.Value.at < cutoff)
+                    .Select(x => x.Key).ToList())
+                    _infoCache.Remove(k);
+            }
+        }
+
+        return InfoResult(chips, rel, uri);
+    }
+
+    ActionResult InfoResult(
+        List<(string kind, string path, string name)> chips,
+        List<PlaylistItem> rel, string uri)
+    {
+        var groups = new List<object>();
+
+        // Thu tu co dinh: dien vien -> the loai -> the -> lien quan.
+        foreach (var (kind, title) in new[]
+        {
+            ("actor", "Diễn viên"), ("cat", "Thể loại"), ("tag", "Thẻ")
+        })
+        {
+            var items = chips?.Where(x => x.kind == kind)
+                .Select(x => new
+                {
+                    title = x.name,
+                    url = $"{host}/javmoi?c={HttpUtility.UrlEncode(x.path)}"
+                }).ToList();
+
+            if (items == null || items.Count == 0)
+                continue;
+
+            groups.Add(new { title, items });
+        }
+
+        if (rel != null && rel.Count > 0)
+        {
+            groups.Add(new
+            {
+                title = "Liên quan",
+                items = new[]
+                {
+                    new
+                    {
+                        title = "Video liên quan",
+                        plain = true,
+                        url = $"{host}/javmoi?rel={HttpUtility.UrlEncode(uri)}"
+                    }
+                }
+            });
+        }
+
+        return Json(new { items = new object[0], groups });
+    }
+
+    async Task<ActionResult> RelatedList(string rel, int pg)
+    {
+        // SISI hieu total_pages:0 = "con trang vo han" -> phai tra 1.
+        if (pg > 1)
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        string pageUrl = JavMoiTo.DetailUrl(rel);
+        if (string.IsNullOrEmpty(pageUrl))
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        var cache = await InvokeCacheResult<(List<PlaylistItem> playlists, int total_pages)>(
+            ipkey($"javmoi:rel:{rel}"), 180, async e =>
+        {
+            string html = await FetchHtmlAsync(pageUrl);
+            var playlists = JavMoiTo.PlaylistRelated("javmoi/vidosik", html ?? "");
+
+            if (playlists == null || playlists.Count == 0)
+                return e.Success((new List<PlaylistItem>(), 1));
+
+            return e.Success((playlists, 1));
+        });
+
+        if (!cache.IsSuccess)
+            return OnError(cache.ErrorMsg);
+
+        return PlaylistResult(cache.Value.playlists, cache.ISingleCache,
+            await MenuAsync(), total_pages: 1);
+    }
+    #endregion
 }

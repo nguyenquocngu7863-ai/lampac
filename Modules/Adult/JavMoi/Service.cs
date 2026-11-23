@@ -99,9 +99,14 @@ public static class JavMoiTo
     // KHONG hardcode `x.` hay `z.` — site doi subdomain giua `x.javmoi.blog`
     // va `z.javmoi.blog`, hardcode se tra 0 phim ngay. Chi khop duong dan
     // `/phim/` la duoc, domain lay tu chinh href.
+    // Do 2026-11-23: `/danh-sach/phim-moi` phat link TUYET DOI sang host
+    // `javchat.blog` (cung noi dung, md5 trang chi tiet y het z.javmoi.blog),
+    // trong khi trang chu `/` van phat `z.javmoi.blog`. Regex cu doi cung
+    // `javmoi\.` nen list phim-moi ra 0 item (home 503). Chi khop duong dan
+    // `/phim/`, host lay tu chinh href.
     static readonly Regex _itemRe = new Regex(
         "<a class=\"m-block movie-item\" "
-        + "href=\"(https?://[a-z0-9.-]*javmoi\\.[a-z]+/phim/[^\"]+)\" "
+        + "href=\"(https?://[^\"]+/phim/[^\"]+)\" "
         + "title=\"([^\"]*)\"",
         RegexOptions.IgnoreCase);
 
@@ -123,6 +128,27 @@ public static class JavMoiTo
     }
 
     public static List<PlaylistItem> Playlist(string uri, string html)
+        => Items(uri, html);
+
+    // "Co the ban thich?" = khoi `<ul id="more-movie">` cua trang chi tiet.
+    // Khong tim thay khoi -> list rong (popup van co chip).
+    static readonly Regex _moreRe = new Regex(
+        "<ul[^>]*id=\"more-movie\"[^>]*>(.*?)</ul>",
+        RegexOptions.IgnoreCase | RegexOptions.Singleline);
+
+    public static List<PlaylistItem> PlaylistRelated(string uri, string html)
+    {
+        if (string.IsNullOrEmpty(html))
+            return new List<PlaylistItem>();
+
+        var m = _moreRe.Match(html);
+        if (!m.Success)
+            return new List<PlaylistItem>();
+
+        return Items(uri, m.Groups[1].Value);
+    }
+
+    static List<PlaylistItem> Items(string uri, string html)
     {
         var list = new List<PlaylistItem>();
         if (string.IsNullOrEmpty(html))
@@ -188,6 +214,120 @@ public static class JavMoiTo
         }
 
         return list;
+    }
+
+    // ===== POPUP (long-press) =====
+    // Trang chi tiet in cac khoi `<div id="extras">`:
+    //   <i class="fa-user-tag"></i>&nbsp;Diễn viên:  (thuong RONG)
+    //   <i class="fa-bars"></i>&nbsp;Thể loại:      <a href="/the-loai/x" title="...">
+    //   <i class="fa-tag"></i>&nbsp;Từ khóa:        <a href="/tu-khoa/x" title="...">
+    // Link la TUYET DOI sang javchat.blog du trang phuc vu tu z.javmoi.blog
+    // -> chi lay PATH, khong lay host.
+    static readonly Regex _extrasRe = new Regex(
+        "<div id=\"extras\">(.*?)</div>",
+        RegexOptions.IgnoreCase | RegexOptions.Singleline);
+
+    static readonly Regex _chipLinkRe = new Regex(
+        "<a href=\"([^\"]+)\" title=\"([^\"]*)\"",
+        RegexOptions.IgnoreCase);
+
+    // kind: "cat" = /the-loai/…, "tag" = /tu-khoa/…
+    public static List<(string kind, string path, string name)> Chips(string html)
+    {
+        var list = new List<(string, string, string)>();
+        if (string.IsNullOrWhiteSpace(html))
+            return list;
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (Match m in _extrasRe.Matches(html))
+        {
+            foreach (Match a in _chipLinkRe.Matches(m.Groups[1].Value))
+            {
+                string path = ChipPath(a.Groups[1].Value);
+                if (string.IsNullOrEmpty(path))
+                    continue;
+
+                string kind = path.StartsWith("/the-loai/", StringComparison.OrdinalIgnoreCase)
+                    ? "cat"
+                    : path.StartsWith("/tu-khoa/", StringComparison.OrdinalIgnoreCase)
+                        ? "tag" : null;
+
+                if (kind == null || !seen.Add(kind + "/" + path))
+                    continue;
+
+                string name = WebUtility.HtmlDecode(a.Groups[2].Value.Trim());
+                if (string.IsNullOrEmpty(name))
+                    continue;
+
+                list.Add((kind, path, name));
+            }
+        }
+
+        return list;
+    }
+
+    // `https://javchat.blog/the-loai/x?y=1` -> `/the-loai/x`
+    public static string ChipPath(string href)
+    {
+        if (string.IsNullOrWhiteSpace(href))
+            return null;
+
+        string p = href.Trim();
+
+        int scheme = p.IndexOf("://", StringComparison.Ordinal);
+        if (scheme >= 0)
+        {
+            int slash = p.IndexOf('/', scheme + 3);
+            if (slash < 0)
+                return null;
+            p = p.Substring(slash);
+        }
+
+        if (!p.StartsWith("/"))
+            return null;
+
+        int cut = p.IndexOfAny(new[] { '?', '#' });
+        if (cut >= 0)
+            p = p.Substring(0, cut);
+
+        p = p.TrimEnd('/');
+        return p.Length > 1 ? p : null;
+    }
+
+    // Chi nhan URI thuoc site + dung dang trang phim (chong SSRF).
+    public static readonly string[] AllowedHosts = { "javmoi.blog", "javchat.blog" };
+
+    public static string DetailUrl(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return null;
+
+        string url = uri.Trim();
+        if (!url.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            url = SiteHost + "/" + url.Trim('/');
+
+        if (!System.Uri.TryCreate(url, UriKind.Absolute, out var u))
+            return null;
+
+        if (u.Scheme != System.Uri.UriSchemeHttp && u.Scheme != System.Uri.UriSchemeHttps)
+            return null;
+
+        bool hostOK = false;
+        foreach (string h in AllowedHosts)
+        {
+            if (u.Host.Equals(h, StringComparison.OrdinalIgnoreCase)
+                || u.Host.EndsWith("." + h, StringComparison.OrdinalIgnoreCase))
+            {
+                hostOK = true;
+                break;
+            }
+        }
+
+        if (!hostOK || !u.AbsolutePath.StartsWith("/phim/", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        return u.GetLeftPart(System.UriPartial.Path);
     }
 
     // Trang phim: <a class="server" data-link="/storage/m3u8/<slug>/<x>.m3u8"
