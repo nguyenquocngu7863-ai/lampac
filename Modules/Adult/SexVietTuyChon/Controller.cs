@@ -118,7 +118,7 @@ public class SexVietTuyChonController : BaseSisiController
 
                 string resp = null;
                 await httpHydra.PostSpan(
-                    SexVietTuyChonTo.SiteHost + "/api/player",
+                    SexVietTuyChonTo.Origin(detailUrl) + "/api/player",
                     body, span => { resp = span.ToString(); },
                     addheaders: playHeaders, statusCodeOK: false);
 

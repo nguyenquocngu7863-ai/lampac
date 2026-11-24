@@ -8,7 +8,20 @@ namespace SexVietTuyChon;
 
 public static class SexVietTuyChonTo
 {
-    public const string SiteHost = "https://sexviettuyenchon.com";
+    // 2026-11-24: sexviettuyenchon.com da 301 -> dongsexviet.com.
+    // POST /api/player tren host cu tra 404 (redirect bien POST thanh GET)
+    // => phai goi API tren origin that cua trang detail.
+    public const string SiteHost = "https://dongsexviet.com";
+
+    // origin (scheme://host) cua mot URL bat ky trong site
+    public static string Origin(string url)
+    {
+        if (string.IsNullOrEmpty(url))
+            return SiteHost;
+        if (System.Uri.TryCreate(url, System.UriKind.Absolute, out var u))
+            return u.Scheme + "://" + u.Host;
+        return SiteHost;
+    }
 
     public const string ChromeUA =
         "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";

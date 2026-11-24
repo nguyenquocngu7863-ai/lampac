@@ -37,7 +37,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
 
     void updateConf()
     {
-        conf = ModuleInvoke.Init("SexVietTuyChon", new SisiSettings("SexVietTuyChon", "https://sexviettuyenchon.com")
+        conf = ModuleInvoke.Init("SexVietTuyChon", new SisiSettings("SexVietTuyChon", "https://dongsexviet.com")
         {
             displayindex = 8,
             streamproxy = true,
@@ -45,7 +45,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
             stream_access = "apk,cors",
             headers_stream = HeadersModel.Init(
                 ("User-Agent", SexVietTuyChonTo.ChromeUA),
-                ("Referer", "https://sexviettuyenchon.com/")
+                ("Referer", "https://dongsexviet.com/")
             ).ToDictionary(),
             headers_image = HeadersModel.Init(
                 ("User-Agent", SexVietTuyChonTo.ChromeUA)
