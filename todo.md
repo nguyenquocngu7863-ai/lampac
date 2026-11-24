@@ -20,12 +20,12 @@ Skill tham chiếu: `lampac-popup` (hợp đồng route, luật UX, anti-pattern
 | nhóm | số module | đang bật | có popup (`genres`) | có cả `?rel=` |
 |---|---|---|---|---|
 | **A. Gốc upstream** (`lampac-nextgen/lampac`) | 14 | 13 | 2 (`Eporner`, `Spankbang`) | 2 |
-| **B. Tự làm** (upstream không có) | 67 | 64 | 53 | 53 |
-| **tổng** | **81** | **77** | **55** | **55** |
+| **B. Tự làm** (upstream không có) | 67 | 65 | 54 | 54 |
+| **tổng** | **81** | **78** | **56** | **56** |
 
 - Cả **53 module có `genres` đều đã có `?rel=`** → không còn module nào "nửa vời".
-- **Chưa có popup: 22** = **11 nhóm A** (`BongaCams`, `Chaturbate`, `Ebalovo`, `HQporner`, `PornHub`,
-  `Porntrex`, `Runetki`, `Tizam`, `Xhamster`, `Xnxx`, `Xvideos`) + **11 nhóm B** (`Lon69`, `PhimSexVN88`,
+- **Chưa có popup: 21** = **11 nhóm A** (`BongaCams`, `Chaturbate`, `Ebalovo`, `HQporner`, `PornHub`,
+  `Porntrex`, `Runetki`, `Tizam`, `Xhamster`, `Xnxx`, `Xvideos`) + **10 nhóm B** (`PhimSexVN88`,
   `PhimSexViet113`, `SexDep`, `SexHihi`, `Sexgenz2`, `Sieusex`, `SupJav` PAUSED, `TangThon`, `TopGai`, `Viet69Av`).
 - **Đếm bằng route thật** (`Route("<x>/genres")` + `string rel`), KHÔNG grep chữ `genres`: cách cũ đếm oan
   `SexHihi`/`JavTsunami` (chỉ có chữ "Thể loại" trong menu, không có route).
@@ -51,6 +51,19 @@ Thứ tự ưu tiên từ nay:
 1. Bug đang chặn phát (`no supported source`, `stream_links`, domain 301) — nhóm B trước.
 2. Popup còn thiếu — **10 module nhóm B** trước, nhóm A để sau.
 3. Việc nhóm A chỉ làm khi user yêu cầu rõ ràng hoặc site đó user đang dùng.
+
+> **2026-11-25 (24)**: **`Lon69` — dựng lại module + popup** (module đang **tắt**, site đổi `lon69.site` →
+> **`lon69.ink`** và đổi theme sang **vlxx** nên parser cũ `article.movie-card` trả 0 item). Viết lại
+> `Service.cs` + `Controller.cs`: list theo `div.video-item` (`nv-dur` → `time`, `nv-q` → `quality`), phân
+> trang `/page/N/`, menu nav `/phim-sex-*/` + `onlyfans` + tag; **site mới KHÔNG có sort** → bỏ hẳn dòng 2.
+> Popup: **Thể loại** (`div.category-tag`) · **Thẻ** (`div.actress-tag` → `/tag/<slug>/`) · **Liên quan**
+> (`aside.related_single` → `?rel=`, 30 item, `tp 1`). Player: detail → iframe `sever1.playphe3x.space/play.php?id=`
+> → HTML player có `let SRC = "…/hls.php?…&p=master.m3u8&token=…"` → route `video.m3u8`. **Bẫy**: trang detail
+> luôn có ad preroll `sever3.playphe3x.space/tvc.mp4` (31s/18MB) — quét `.mp4` bừa trả nhầm ad; nay chỉ đọc
+> `SRC`/`hls.php` + `IsAd()` loại `tvc.mp4|/tvc|advideo`, thử UA mobile **rồi** desktop + `&autoplay=1` +
+> `sever1..4`. Đo: home 30/tp 73 · pg2 30 · `phim-sex-viet-nam` 30/tp 71 · `onlyfans` 23/tp 1 ·
+> `tag/chim-to` 7 · search "jav" 30/tp 4 · genres 1+9+1 · rel 30/tp 1 · rel pg2 rỗng · SSRF rỗng ·
+> `play.sh` **PASS** (h264 430x720 · 597.2s). Bật lại module trong `~/lampac-run/init.conf`.
 
 > **2026-11-24 (23)**: **JavBangers — thêm row "Đang xem"** (user: "đưa being watching vào một dòng menu").
 > Trang chủ có 2 row: `list_videos_videos_watched_right_now_items` (**20 card, không phân trang**) và row chính
@@ -166,7 +179,7 @@ Thứ tự ưu tiên từ nay:
 > **2026-11-24 (4)**: `XViet` xong popup (1 lần fetch detail): `genres?uri=` → `Thể loại` (`/the-loai/<slug>` trong `<article id="post-N">` → `?c=the-loai/...`, 4 chip) + `Thẻ` (`rel="tag"` → `?c=tag/...`, 25 chip) + `Liên quan` `plain:true` → `?rel=<uri>` (khoi `<h1>Video liên quan</h1>` cuối trang → 8 item, `total_pages: 1`, pg>1 → rỗng) → **47 đủ popup** / 0 thiếu rel / **28 chưa có**. `play.sh` → **PASS** (h264 720x1280, segment 24/24, decode 5s đầu/cuối OK).
 
 > **2026-11-24 (3) — đếm lại bằng script** (`Route("<x>/genres")` + `string rel` + manifest `enable`): **75 module đang bật** (4 tắt) → **46 đủ popup** / **0 thiếu `?rel=`** / **29 chưa có**. Lệch với số 44/25 trước đó vì lần trước đếm tay trên bản cũ (69 module) và bỏ sót module có route khác tên thư mục (`Eporner`→`epr`, `FreePornVideos`→`fpv`, `Spankbang`→`sbg`, `SexVietTuyChon`) → từ giờ lấy script làm chuẩn.
-> 29 module chưa có popup: `BongaCams`, `Chaturbate`, `Ebalovo`, `HQporner`, `Lon69`, `PhimSexVN88`, `PhimSexVi`, `PhimSexViet113`, `PornHub`, `Porntrex`, `Runetki`, `SevenMM`, `SexDep`, `SexHihi`, `Sexgenz2`, `Sieusex`, `SupJav` (PAUSED), `TangThon`, `Tizam`, `TopGai`, `VNsexTop1`, `Viet69Av`, `Viet69z`, `Vlxx`, `XViet`, `Xhamster`, `Xnxx`, `XszAv`, `Xvideos`.
+> 29 module chưa có popup: `BongaCams`, `Chaturbate`, `Ebalovo`, `HQporner`, `PhimSexVN88`, `PhimSexVi`, `PhimSexViet113`, `PornHub`, `Porntrex`, `Runetki`, `SevenMM`, `SexDep`, `SexHihi`, `Sexgenz2`, `Sieusex`, `SupJav` (PAUSED), `TangThon`, `Tizam`, `TopGai`, `VNsexTop1`, `Viet69Av`, `Viet69z`, `Vlxx`, `XViet`, `Xhamster`, `Xnxx`, `XszAv`, `Xvideos`.
 
 > **2026-11-24 (2)**: `Vjav` xong: thêm `genres?uri=` (chip `Thể loại` từ `categories` + `Thẻ` từ `tags` của `/api/json/video/...json`, `Liên quan` `plain:true`) + `?rel=<uri>` (API `videos_related2/432000/...`, `total_pages: 1`, pg>1 → rỗng) — **bắt buộc** `VJAV_RELAY` vì TLS từ IP máy bị cắt; `pages` từ JSON nên `total_pages` giờ thật (7539) thay vì 0 → **(số cũ) 44 đủ popup** / 0 chỉ-genres / **25 chưa có**.
 
@@ -370,7 +383,7 @@ Nguồn: `~/.config/opencode/skills/lampac-adult-module/references/card-thumbnai
 
 ## Việc còn lại (đo lại 2026-11-24, tách nhóm)
 
-- [ ] **Popup 11 module nhóm B**: `Lon69`, `PhimSexVN88`, `PhimSexViet113`, `SexDep`, `SexHihi`,
+- [ ] **Popup 11 module nhóm B**: `PhimSexVN88`, `PhimSexViet113`, `SexDep`, `SexHihi`,
       `Sexgenz2`, `Sieusex`, `TangThon`, `TopGai`, `Viet69Av` (+ `SupJav` khi bỏ PAUSED) — mỗi module: route
       `/<mod>/genres?uri=` + `?rel=<uri>` (`total_pages:1`), SSRF guard, cache, smoke 6 endpoint, `play.sh` PASS.
       Thứ tự gợi ý: `SexHihi` (site nhỏ, dễ) → `SexDep` → `Sexgenz2` → `Sieusex` → …
