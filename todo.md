@@ -52,6 +52,18 @@ Thứ tự ưu tiên từ nay:
 2. Popup còn thiếu — **10 module nhóm B** trước, nhóm A để sau.
 3. Việc nhóm A chỉ làm khi user yêu cầu rõ ràng hoặc site đó user đang dùng.
 
+> **2026-11-24 (19)**: **JavBangers — sửa sai về detail/popup** (user chỉ ra: "card phim có user, không cần login").
+> Lỗi của mình: luôn thêm `/` cuối nên `/video/<id>/<slug>/` trả **404**, kết luận oan "guest không xem được".
+> Đúng: **`/video/<id>/<slug>` (KHÔNG `/` cuối) = 200**, và trang detail có đủ: `div.block-user` (uploader →
+> `/members/8/` tên **tarpi**), `flashvars.video_categories` (Blowjob·Cumshot·Hardcore), `video_tags`,
+> `div.related-videos` (**10 phim**). ⇒ popup giờ 4 nhóm: **Người đăng · Thể loại · Diễn viên · Liên quan**
+> (`?rel=` parse `div.related-videos`); `ResolveAsync` lấy stream từ **detail** (1 request), fallback `/embed/<id>`.
+> Member page mở **không cần login** (`?c=members/8` → 5 video/trang) nhưng **phân trang AJAX**
+> (`/members/8/2/` = 404) ⇒ chỉ trang 1 (`total_pages:1`). Bug `total_pages` cũng sửa: đọc link của **chính
+> context** (`/<c>/<N>/`), trước đó member/8 trả `8447` (số rác) thay vì `150`. Tags vẫn không có (site
+> không có trang tag: `/tags/`=502). Đo: member/8 tp 1/5 item, genres user **tarpi** + 3 thể loại + rel 10,
+> rel pg2 rỗng, `play.sh` **PASS** (h264 854x480 · 907.5s · 72.291.466 B).
+
 > **2026-11-24 (18)**: **Module MỚI `JavBangers`** (`https://www.javbangers.com`, KVS/Porntrex theme
 > "javwhores") — **sort đo riêng từng context** (yêu cầu user: "sort cho mọi page, category, tags"):
 > `?sort_by=duration|video_viewed|rating` **ăn** ở `categories/*` (chứng minh: 740:35 > 506:56 > 482:09 > 458:12,

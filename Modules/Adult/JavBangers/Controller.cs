@@ -18,7 +18,7 @@ public class JavBangersController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("javbangers")]
-    async public Task<ActionResult> Index(string search, string c, string sort, int pg = 1)
+    async public Task<ActionResult> Index(string search, string c, string sort, int pg = 1, string rel = null)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
@@ -26,12 +26,19 @@ public class JavBangersController : BaseSisiController
         if (pg < 1)
             pg = 1;
 
+        if (!string.IsNullOrWhiteSpace(rel))
+            return await RelatedList(rel, pg);
+
         // clamp TRUOC cache key (context khong sort duoc -> ve mac dinh cua context)
         sort = JbTo.ClampSort(sort, search, c);
 
         // search cua site KHONG phan trang bang URL (/search/<kw>/2/ = 404, &page= bi bo qua,
         // ajax get_block tra ve y het trang 1) => chi tra trang 1
         if (!string.IsNullOrWhiteSpace(search) && pg > 1)
+            pg = 1;
+
+        // /members/<id>/<N>/ = 404 (member page phan trang bang ajax) => chi trang 1
+        if (JbTo.IsMemberPath(c) && pg > 1)
             pg = 1;
 
         var menuTask = MenuAsync(search, c, sort);
@@ -49,7 +56,9 @@ public class JavBangersController : BaseSisiController
                 return e.Fail("playlists", refresh_proxy: true);
 
             var playlists = JbTo.Playlist("javbangers/vidosik", html);
-            int total = string.IsNullOrWhiteSpace(search) ? JbTo.Pages(html) : 1;
+            int total = string.IsNullOrWhiteSpace(search) && !JbTo.IsMemberPath(c)
+                ? JbTo.Pages(html, c)
+                : 1;
             return e.Success((playlists, total));
         });
 
@@ -151,8 +160,21 @@ public class JavBangersController : BaseSisiController
         if (hybridCache.TryGetValue(memKey, out string cached) && !string.IsNullOrEmpty(cached))
             return cached;
 
-        string embed = await GetPageAsync(JbTo.EmbedUrl(init.host, id), embed: true);
-        string stream = JbTo.StreamFromEmbed(embed);
+        // trang detail (KHONG co "/" cuoi) chua ca flashvars.video_url -> 1 request la du
+        string stream = null;
+        string path = JbTo.DetailPath(uri);
+        if (path != null)
+        {
+            string detail = await GetPageAsync(JbTo.SiteHost + path);
+            stream = JbTo.StreamFromEmbed(detail);
+        }
+
+        if (string.IsNullOrEmpty(stream))
+        {
+            string embed = await GetPageAsync(JbTo.EmbedUrl(init.host, id), embed: true);
+            stream = JbTo.StreamFromEmbed(embed);
+        }
+
         if (string.IsNullOrEmpty(stream))
             return null;
 
@@ -161,13 +183,8 @@ public class JavBangersController : BaseSisiController
     }
 
     #region popup (long-press)
-    // Trang detail 404 => thong tin phim lay tu flashvars cua /embed/<id>:
-    //   video_categories: 'Creampie, Censored, Hardcore'
-    //   video_models:     '...' (thuong rong)
-    //   video_tags:       'Hardcore, Blowjob, pov'
-    // The loai/Models duoc gan link qua index /categories/ va /models/ (cache 12h).
-    // Tags: site KHONG co trang tag (/tags/ = 502, /tags/<slug>/ = 404, sitemap khong co type=tags)
-    //       => khong tao chip. Lien quan: khong co block related (khong co trang detail) => bo.
+    // Trang detail (KHONG co "/" cuoi) cho: uploader (div.block-user), the loai/dien vien (flashvars),
+    // va khoi related (div.related-videos). Tags: site khong co trang tag (/tags/ = 502) -> khong chip.
     [HttpGet]
     [Route("javbangers/genres")]
     async public Task<ActionResult> Genres(string uri)
@@ -181,18 +198,34 @@ public class JavBangersController : BaseSisiController
         if (id == null)
             return Json(empty);
 
-        string cacheKey = ipkey($"javbangers:info:{id}");
-        if (!hybridCache.TryGetValue(cacheKey, out string embed) || string.IsNullOrEmpty(embed))
+        string cacheKey = ipkey($"javbangers:info:v2:{id}");
+        if (!hybridCache.TryGetValue(cacheKey, out string detail) || string.IsNullOrEmpty(detail))
         {
-            embed = await GetPageAsync(JbTo.EmbedUrl(init.host, id), embed: true);
-            if (string.IsNullOrEmpty(embed))
+            string path = JbTo.DetailPath(uri);
+            detail = await GetPageAsync(path != null ? JbTo.SiteHost + path : JbTo.EmbedUrl(init.host, id));
+            if (string.IsNullOrEmpty(detail))
                 return Json(empty);
-            hybridCache.Set(cacheKey, embed, cacheTime(360));
+            hybridCache.Set(cacheKey, detail, cacheTime(360));
         }
 
         var groups = new List<object>();
 
-        var catNames = JbTo.Names(embed, "video_categories");
+        // 1. Nguoi dang (user that)
+        var (memberPath, memberName) = JbTo.Uploader(detail);
+        if (!string.IsNullOrEmpty(memberPath) && !string.IsNullOrEmpty(memberName))
+        {
+            groups.Add(new
+            {
+                title = "Người đăng",
+                items = new[]
+                {
+                    new { title = memberName, url = JbTo.MenuUrl(host, memberPath) }
+                }
+            });
+        }
+
+        // 2. The loai
+        var catNames = JbTo.Names(detail, "video_categories");
         if (catNames.Count > 0)
         {
             var map = await IndexMapAsync("categories");
@@ -205,7 +238,8 @@ public class JavBangersController : BaseSisiController
                 groups.Add(new { title = "Thể loại", items });
         }
 
-        var modelNames = JbTo.Names(embed, "video_models");
+        // 3. Dien vien
+        var modelNames = JbTo.Names(detail, "video_models");
         if (modelNames.Count > 0)
         {
             var map = await IndexMapAsync("models");
@@ -218,6 +252,24 @@ public class JavBangersController : BaseSisiController
                 groups.Add(new { title = "Diễn viên", items });
         }
 
+        // 4. Lien quan
+        if (JbTo.RelatedBlock(detail) != null)
+        {
+            groups.Add(new
+            {
+                title = "Liên quan",
+                items = new[]
+                {
+                    new
+                    {
+                        title = "Phim liên quan",
+                        plain = true,
+                        url = $"{host}/javbangers?rel={HttpUtility.UrlEncode(uri)}"
+                    }
+                }
+            });
+        }
+
         if (groups.Count == 0)
             return Json(empty);
 
@@ -226,7 +278,7 @@ public class JavBangersController : BaseSisiController
 
     async Task<Dictionary<string, string>> IndexMapAsync(string section)
     {
-        string key = ipkey($"javbangers:idx:{section}");
+        string key = ipkey($"javbangers:idx:v2:{section}");
         if (hybridCache.TryGetValue(key, out Dictionary<string, string> hit) && hit != null && hit.Count > 0)
             return hit;
 
@@ -243,6 +295,35 @@ public class JavBangersController : BaseSisiController
             hybridCache.Set(key, map, cacheTime(720), true);
 
         return map;
+    }
+
+    // ?rel= : khoi "Related Videos" ngay trong trang detail
+    async Task<ActionResult> RelatedList(string rel, int pg)
+    {
+        if (pg > 1)
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        var cache = await InvokeCacheResult(
+            ipkey($"javbangers:rel:v2:{rel}"),
+            180, jsonContext.ListPlaylistItem, async e =>
+        {
+            string path = JbTo.DetailPath(rel);
+            if (path == null)
+                return e.Success(new List<PlaylistItem>());
+
+            string detail = await GetPageAsync(JbTo.SiteHost + path);
+            var playlists = JbTo.RelatedPlaylist("javbangers/vidosik", JbTo.RelatedBlock(detail));
+
+            return e.Success(playlists ?? new List<PlaylistItem>());
+        });
+
+        if (!cache.IsSuccess)
+            return OnError(cache.ErrorMsg);
+
+        if (cache.Value == null || cache.Value.Count == 0)
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        return PlaylistResult(cache, await MenuAsync(null, null, null), total_pages: 1);
     }
     #endregion
 

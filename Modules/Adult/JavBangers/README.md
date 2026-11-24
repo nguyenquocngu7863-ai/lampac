@@ -13,7 +13,8 @@ Module Lampac cho `https://www.javbangers.com` (JAV HD tube, engine KVS/Porntrex
 | `javbangers?search=<kw>` | tìm kiếm (`/search/?q=`) |
 | `javbangers/vidosik?uri=<videoUrl>` | trả `MP4` (json) |
 | `javbangers/video.mp4?uri=<videoUrl>` | resolve + proxy MP4 |
-| `javbangers/genres?uri=<videoUrl>` | popup long-press (Thể loại + Diễn viên) |
+| `javbangers/genres?uri=<videoUrl>` | popup long-press (Người đăng · Thể loại · Diễn viên · Liên quan) |
+| `javbangers?rel=<videoUrl>` | danh sách "Liên quan" |
 
 `c`: `latest-updates` (mặc định) · `top-rated` · `most-popular` ·
 `categories/<slug>` · `models/<slug>` · `members/<id>`.
@@ -38,20 +39,24 @@ Card:
 
 → dedupe theo **id** (mỗi card có 2 link cùng video), `time` = duration.
 
-## Player — **trang detail trả 404 cho guest**
+## Player — trang detail CHỈ 200 KHI **KHÔNG có `/` cuối**
 
-`GET /video/<id>/…` → **404** (đo bằng cả curl_cffi và Chrome thật, có cookie) ⇒ **không dùng được detail**.
-Lấy stream từ **`GET /embed/<id>`** (200):
+`/video/117657/japornxxx-…` → **200**; `/video/117657/japornxxx-…/` (thêm `/`) → **404**.
+(Lần đầu đo sai vì luôn thêm `/`; sửa 2026-11-24 theo user.)
+
+Trang detail có sẵn mọi thứ trong 1 request:
 
 ```
-flashvars: video_id, video_title,
-           video_categories: 'Creampie, Censored, Hardcore',
-           video_models: '',  video_tags: 'Hardcore, Blowjob, pov',
-           video_url: 'https://www.javbangers.com/get_file/4/…/<id>.mp4/?v-acctoken=…&embed=true',
-           video_alt_url: '…/video/<id>/<slug>'   ← 720p nhưng là REDIRECT về trang detail 404
+<div class="block-user"><div class="username"><a href="/members/8/"> tarpi </a></div>
+flashvars: video_categories: 'Blowjob, Cumshot, Hardcore'
+           video_tags: 'Japornxxx, -31, Jun, Sakura, Sex, Cyborg-Blowjob'
+           video_models: ''
+           video_url: 'https://www.javbangers.com/get_file/5/…/<id>.mp4/?v-acctoken=…'
+<div class="related-videos" id="list_videos_related_videos"> … 10 card video-item
 ```
 
-⇒ chỉ có **MP4 480p** (đo được: h264 854x480, 5675s, 761.645.181 B). Route phải có đuôi `.mp4`.
+⇒ `ResolveAsync` dùng detail trước (1 request), **fallback `/embed/<id>`** nếu detail fail.
+Chỉ có **MP4 480p** (đo: h264 854x480 · 907.5s · 72.291.466 B với video 117657; 5675.2s với 412813).
 
 ## SORT — bảng đo (skill `lampac-sort`)
 
@@ -86,30 +91,31 @@ Search: **không có dòng 3** (search lọc theo keyword).
 
 ## Popup (long-press)
 
-Lấy từ `/embed/<id>` (vì detail 404), map tên → link qua index `/categories/` và `/models/` (cache 12h):
-
-| nhóm | nguồn | ví dụ |
+| nhóm | nguồn trên trang detail | ví dụ (video 117657) |
 |---|---|---|
-| `Thể loại` | `video_categories` → index `/categories/` | Creampie · Censored · Hardcore |
-| `Diễn viên` | `video_models` → index `/models/` | (rỗng với phần lớn video) |
+| `Người đăng` | `div.block-user .username a[href=/members/<id>/]` | **tarpi** → `?c=members/8` |
+| `Thể loại` | `flashvars.video_categories` → index `/categories/` | Blowjob · Cumshot · Hardcore |
+| `Diễn viên` | `flashvars.video_models` → index `/models/` | (rỗng với phần lớn video) |
+| `Liên quan` | `div.related-videos` cùng trang (`plain:true` → `?rel=`) | 10 phim |
 
-- **Không có nhóm "Người đăng"**: trang detail (nơi có link uploader) **404**; `/embed/` không chứa
-  uploader (acctoken `1048|260146|0|…` giống nhau ở mọi video = session, không phải user).
-  Member page có thật (`/members/13/`) nhưng phải **biết id** → hỗ trợ qua `?c=members/<id>`.
-- **Không có nhóm "Thẻ/tags"**: site **không có trang tag** — `/tags/` trả **502**, `/tags/<slug>/` 404,
-  `sitemap.xml?type=other` không có mục tags (chỉ latest-updates, top-rated, most-popular, categories,
-  models, channels, playlists, albums). Tag chỉ tồn tại dạng chữ trong `video_tags`.
-- **Không có "Liên quan"**: không có trang detail ⇒ không có block related.
+- **User thật**: `/members/<id>/` mở được **không cần login** (vd `/members/8/` = "tarpi", 5 video/trang);
+  hỗ trợ qua `?c=members/<id>`. Member page **phân trang bằng AJAX** (`/members/8/2/` = 404) ⇒ module
+  chỉ trả **trang 1** (`total_pages: 1`, `pg>1` ép về 1).
+- **Tags**: `video_tags` chỉ là chữ; site **không có trang tag** — `/tags/` = **502**, `/tags/<slug>/` = 404,
+  sitemap không có `type=tags` ⇒ **không có nhóm Thẻ**.
 - SSRF: `uri` chỉ nhận `/video/<id>` trên `*.javbangers.com`; sai → `{"items":[],"groups":[]}`.
 
 ## Bẫy đã dính
 
 1. **Detail 404**: đừng cố fetch `/video/...` — lấy mọi thứ từ `/embed/<id>`.
-2. **`&page=N` và `/search/<kw>/2/` đều không có tác dụng** (404 / trả trang 1); ajax
+2. **Detail 404 nếu có `/` cuối** — luôn fetch đúng href của card (không trailing slash).
+3. **`&page=N` và `/search/<kw>/2/` đều không có tác dụng** (404 / trả trang 1); ajax
    `?action=get_block&block_id=list_videos_videos_list_search_result&from_videos=N` cũng trả y trang 1
    ⇒ search **chỉ 1 trang** (`total_pages = 1`).
-3. `video_alt_url` (720p) là **redirect** về trang detail 404 → không dùng.
-4. Mỗi card có **2 link** cùng video → dedupe theo id, nếu không list bị nhân đôi.
+4. `video_alt_url` (720p) là **redirect** về trang detail → không dùng trực tiếp.
+5. Mỗi card có **2 link** cùng video → dedupe theo id, nếu không list bị nhân đôi.
+6. `total_pages` phải đọc từ link của **chính context** (`/<c>/<N>/`); nếu quét chung `from:` sẽ ra số rác
+   (member/8 từng trả `8447` thay vì `150`).
 
 ## Đo trên app (2026-11-24)
 
@@ -122,9 +128,11 @@ Lấy từ `/embed/<id>` (vì detail 404), map tên → link qua index `/categor
 | `?c=categories/creampie&sort=duration&pg=2` | 305:34 > 303:58 (pagination chạy dưới sort) |
 | `?c=categories/creampie&sort=video_viewed` / `=rating` | đổi thứ tự |
 | `?c=models/yi-yuna` / `&sort=duration` | 24 item · 29:14 > 22:39 |
-| `?c=members/13` | 5 item · không có dòng 2 |
+| `?c=members/8` (user tarpi) | 5 item · tp 1 · không có dòng 2 (site bỏ qua sort) |
+| `/genres` video 117657 | Người đăng **tarpi** · Thể loại 3 · Liên quan |
+| `?rel=…` | 10 item · tp 1 · `pg=2` → rỗng |
 | `?c=top-rated` / `?c=most-popular` | 24 item · tp 7539 |
 | `?search=japan` / `&sort=duration` | 71 / 73 item · tp 1 |
-| `/genres` | Thể loại 3 (Creampie·Censored·Hardcore) |
+| `/genres` video 412813 | Thể loại 3 (Creampie·Censored·Hardcore) |
 | `/genres` host lạ | `{"items":[],"groups":[]}` |
 | `play.sh` | **PASS** — h264 854x480 · 5675.2s · 206 · 761.645.181 B |

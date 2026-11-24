@@ -82,10 +82,12 @@ public static class JbTo
 
         foreach (string part in Regex.Split(html, @"class=""video-item"))
         {
-            var hm = Regex.Match(part, @"href=""https?://[^""/]+/video/(\d+)/[^""]*""");
+            // BAY: trang detail chi 200 khi KHONG co "/" cuoi => giu nguyen href cua card
+            var hm = Regex.Match(part, @"href=""(https?://[^""/]+/video/(\d+)/[^""]*)""");
             if (!hm.Success) continue;
 
-            string id = hm.Groups[1].Value;
+            string href = hm.Groups[1].Value;
+            string id = hm.Groups[2].Value;
             if (!seen.Add(id)) continue;
 
             string name = Clean(Match1(part, @"\stitle=""([^""]+)"""));
@@ -99,14 +101,14 @@ public static class JbTo
             res.Add(new PlaylistItem()
             {
                 name = name,
-                video = $"{route}?uri={HttpUtility.UrlEncode(Base(null) + "/video/" + id + "/")}",
+                video = $"{route}?uri={HttpUtility.UrlEncode(href)}",
                 picture = Abs(pic),
                 time = string.IsNullOrEmpty(dur) ? views : dur,
                 json = true,
                 bookmark = new Bookmark()
                 {
                     site = "javbangers",
-                    href = $"{SiteHost}/video/{id}/",
+                    href = href,
                     image = Abs(pic)
                 }
             });
@@ -293,6 +295,58 @@ public static class JbTo
         return m.Success ? m.Groups[1].Value : null;
     }
 
+    // Trang detail chi 200 khi KHONG co dau "/" cuoi: /video/117657/slug  ✔   /video/117657/slug/  ✘ 404
+    public static string DetailPath(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri)) return null;
+        uri = uri.Trim();
+
+        if (uri.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!Uri.TryCreate(uri, UriKind.Absolute, out var u)) return null;
+            if (!u.Host.EndsWith("javbangers.com", StringComparison.OrdinalIgnoreCase)) return null;
+            uri = u.AbsolutePath;
+        }
+
+        if (!uri.StartsWith('/')) uri = "/" + uri;
+        uri = uri.TrimEnd('/');
+
+        return Regex.IsMatch(uri, @"^/video/\d+/[^/]+$", RegexOptions.IgnoreCase) ? uri : null;
+    }
+
+    // <div class="block-user"> <div class="username"><a href=".../members/8/"> tarpi </a></div>
+    public static (string path, string name) Uploader(string html)
+    {
+        if (string.IsNullOrEmpty(html)) return (null, null);
+
+        int i = html.IndexOf("class=\"block-user\"", StringComparison.Ordinal);
+        if (i < 0) return (null, null);
+
+        var m = Regex.Match(html.Substring(i, Math.Min(1200, html.Length - i)),
+            @"<a href=""https?://[^""/]+/(members/[^""/]+)/""[^>]*>\s*([^<]*?)\s*</a>",
+            RegexOptions.Singleline);
+
+        if (!m.Success) return (null, null);
+
+        string name = Clean(m.Groups[2].Value);
+        return (m.Groups[1].Value, string.IsNullOrEmpty(name) ? null : name);
+    }
+
+    // <div class="related-videos" id="list_videos_related_videos"> ... card video-item
+    public static string RelatedBlock(string html)
+    {
+        if (string.IsNullOrEmpty(html)) return null;
+        int i = html.IndexOf("class=\"related-videos\"", StringComparison.Ordinal);
+        return i < 0 ? null : html.Substring(i);
+    }
+
+    public static List<PlaylistItem> RelatedPlaylist(string route, string html)
+        => string.IsNullOrEmpty(html) ? new List<PlaylistItem>() : Playlist(route, html);
+
+    public static bool IsMemberPath(string c)
+        => !string.IsNullOrWhiteSpace(c) &&
+           c.Trim().Trim('/').StartsWith("members/", StringComparison.OrdinalIgnoreCase);
+
     public static string EmbedUrl(string host, string id)
         => $"{Base(host)}/embed/{id}";
 
@@ -354,19 +408,23 @@ public static class JbTo
         return url;
     }
 
-    // phan trang: data-parameters="sort_by:post_date;from:6011" (ajax) + link /.../N/
-    public static int Pages(string html)
+    // phan trang — uu tien link cua CHINH context dang mo ("/<c>/<N>/"), sau do moi den ajax "from..."
+    // (bay: trang member co link /members/8/150/ nhung trong HTML con "from:8447" cua block khac)
+    public static int Pages(string html, string c)
     {
         if (string.IsNullOrEmpty(html)) return 0;
 
         int max = 0;
-        // ajax pagination: sort_by:post_date;from:6011  |  search: from_videos+from_albums:02
-        foreach (Match m in Regex.Matches(html, @"from[A-Za-z_\+]*:(\d+)"))
+        string p = (c ?? "").Trim().Trim('/');
+        if (p.Length == 0) p = "latest-updates";
+
+        foreach (Match m in Regex.Matches(html, Regex.Escape("/" + p + "/") + @"(\d+)/"))
             if (int.TryParse(m.Groups[1].Value, out int n) && n > max) max = n;
 
         if (max > 0) return max;
 
-        foreach (Match m in Regex.Matches(html, @"/(?:latest-updates|top-rated|most-popular|categories/[a-z0-9\-]+|models/[a-z0-9\-]+|members/\d+)/(\d+)/"))
+        // ajax: sort_by:post_date;from:6011  |  search: from_videos+from_albums:02
+        foreach (Match m in Regex.Matches(html, @"from[A-Za-z_\+]*:(\d+)"))
             if (int.TryParse(m.Groups[1].Value, out int n) && n > max) max = n;
 
         return max;
