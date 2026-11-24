@@ -19,9 +19,11 @@ Skill tham chiếu: `lampac-popup` (hợp đồng route, luật UX, anti-pattern
 
 | nhóm | số module | trạng thái |
 |---|---|---|
-| **Đã có popup (genres + rel)** | **50** | xong (kể cả `Viet69z` 2026-11-24) |
+| **Đã có popup (genres + rel)** | **51** | xong (kể cả `VNsexTop1` 2026-11-24) |
 | Có genres, **thiếu `?rel=` route** | 0 | — |
-| Chưa có popup | 25 | Phase 1/2/3 + `PornHub` + `SevenMM` |
+| Chưa có popup | 24 | Phase 1/2/3 + `PornHub` + `SevenMM` |
+
+> **2026-11-24 (8)**: `VNsexTop1` xong popup: `genres?uri=` → `Thể loại` 12 từ khối `div.video__tags` (`<a href=".../the-loai/<slug>" class="label"><span>TÊN</span>`) → `?c=the-loai/<slug>`, `Liên quan` `plain:true` → `?rel=<uri>`. Related phải gọi `GET /ajax/suggestions/<slug>` vì block "Xem Thêm Phim Sex" render bằng Alpine (JSON `{"data":[...]}` → 20 item, `total_pages: 1`, pg>1 → rỗng, uri lạ → 200 rỗng). `play.sh` → **PASS** (h264 640x360, segment 2/2, decode 5s đầu/cuối OK) → **51 đủ popup** / 0 thiếu rel / **24 chưa có**.
 
 > **2026-11-24 (7)**: `Viet69z` xong popup (site WordPress SSR, 1 lần fetch detail): `genres?uri=` → `Thể loại` 3 (class `category-<slug>` trên `<article ... hentry ...>` → `?c=<slug>`, tên lấy từ anchor text: `Sex Việt`) + `Thẻ` 15 (`href="/tag/<slug>/"` → `?c=tag/<slug>`) + `Liên quan` `plain:true` → `?rel=<uri>` (cắt HTML từ heading `Có thể bạn sẽ thích`, bỏ bài đang xem → 6 item, `total_pages: 1`, pg>1 → rỗng, uri lạ → 200 rỗng). `play.sh` → **PASS** (h264 1280x720, segment 31/31 đuôi `.png`, decode 5s đầu/cuối OK) → **50 đủ popup** / 0 thiếu rel / **25 chưa có**.
 
@@ -91,7 +93,7 @@ Skill tham chiếu: `lampac-popup` (hợp đồng route, luật UX, anti-pattern
 - [ ] `Tizam` — https://amu.tizam.org
 - [ ] `TopGai` — https://topgai.net
 - [x] ~~`Topsex`~~ — ĐÃ XOÁ 2026-11-13: web die (domain NXDOMAIN, xem `notes/SITE-HONG.md`)
-- [ ] `VNsexTop1` — https://vnsextop1.com
+- [x] `VNsexTop1` — *(popup 2026-11-24: `Thể loại` 12 từ `div.video__tags` → `?c=the-loai/<slug>`, `Liên quan` `plain:true` → `?rel=` dùng `/ajax/suggestions/<slug>` (20 item, tp 1); caliber: h264 640x360, segment 2/2, decode 5s đầu/cuối OK)* https://vnsextop1.com
 - [x] `VNJav` — https://vnjav.net — ✅ MỚI (2026-11-13): 2 server LoadVid(HLS)/StreamTape(mp4) + genres(chips Danh mục/Thẻ/Diễn viên) + rel(total_pages:1). helvid/upload18 để Treo (CF chặn server-side). Lưu ý: nhiều phim chỉ còn 1 nguồn (StreamTape) sau khi bỏ helvid, phim mới chưa có sources → 503.
 - [ ] `Viet69Av` — https://viet69av.com
 - [x] `Viet69z` — https://viet69z.to *(popup 2026-11-24: `Thể loại` 3 từ class `category-<slug>` → `?c=<slug>`, `Thẻ` 15 từ `/tag/<slug>/` → `?c=tag/<slug>`, `Liên quan` `plain:true` → `?rel=` cắt từ heading "Có thể bạn sẽ thích" (6 item, tp 1); caliber: h264 1280x720, segment 31/31, decode 5s đầu/cuối OK)*

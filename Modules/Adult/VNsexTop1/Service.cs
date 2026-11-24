@@ -215,6 +215,95 @@ public static class VNsexTop1To
     public static string NormalizeSort(string sort) => null;
     public static string SortLabel(string sort) => "mới nhất";
     public static (string name, string sort)[] SortsFor(string search, string c) => null;
+
+    public static string NormalizePageUrl(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        value = HttpUtility.HtmlDecode(value.Trim());
+        if (value.StartsWith("//")) value = "https:" + value;
+        else if (value.StartsWith("/")) value = SiteHost + value;
+        else if (!value.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            value = SiteHost + "/" + value.Trim('/');
+        if (!System.Uri.TryCreate(value, UriKind.Absolute, out var parsed)) return null;
+        string h = parsed.Host.ToLowerInvariant();
+        if (h != "vnsextop1.com" && !h.EndsWith(".vnsextop1.com")) return null;
+        return value;
+    }
+
+    // <div class="video__tags"> ... <a href=".../the-loai/<slug>" class="label"> <svg/> <span>TÊN</span> </a>
+    public static List<(string name, string path)> Chips(string html)
+    {
+        var list = new List<(string name, string path)>();
+        if (string.IsNullOrEmpty(html)) return list;
+
+        int idx = html.IndexOf("video__tags", StringComparison.Ordinal);
+        if (idx < 0) return list;
+
+        int end = html.IndexOf("</div>", idx);
+        string block = end > idx ? html.Substring(idx, end - idx) : html.Substring(idx);
+
+        var seen = new HashSet<string>();
+        foreach (Match m in Regex.Matches(block, @"<a[^>]*href=""https?://vnsextop1\.com/the-loai/([a-z0-9\-]+)""[^>]*class=""label""(.*?)</a>", RegexOptions.Singleline))
+        {
+            string slug = m.Groups[1].Value;
+            if (!seen.Add(slug)) continue;
+
+            string name = "";
+            var sp = Regex.Match(m.Groups[2].Value, @"<span[^>]*>(.*?)</span>", RegexOptions.Singleline);
+            if (sp.Success)
+                name = Regex.Replace(HttpUtility.HtmlDecode(sp.Groups[1].Value), @"\s+", " ").Trim();
+            if (string.IsNullOrEmpty(name))
+                name = slug.Replace('-', ' ');
+
+            list.Add((name, "the-loai/" + slug));
+        }
+
+        return list;
+    }
+
+    // Related: trang detail render bang Alpine -> /ajax/suggestions/<slug>?.. tra {"data":[{url,title,thumbnail_file_url}]}
+    public static List<Shared.Models.SISI.Base.PlaylistItem> Suggestions(string uri, string json)
+    {
+        var playlists = new List<Shared.Models.SISI.Base.PlaylistItem>();
+        if (string.IsNullOrEmpty(json)) return playlists;
+
+        var seen = new HashSet<string>();
+        foreach (Match m in Regex.Matches(json, @"\{""id"":\d+.*?(?=\},\{""id"":|\}\])", RegexOptions.Singleline))
+        {
+            string block = m.Value;
+            var u = Regex.Match(block, @"""url""\s*:\s*""([^""]+)""");
+            var t = Regex.Match(block, @"""title""\s*:\s*""((?:[^""\\]|\\.)*)""");
+            if (!u.Success || !t.Success) continue;
+
+            string href = u.Groups[1].Value.Replace("\\/", "/");
+            if (!href.StartsWith("http")) continue;
+            if (!seen.Add(href)) continue;
+
+            string name = Regex.Unescape(t.Groups[1].Value).Replace("\\/", "/");
+
+            string poster = "";
+            var p = Regex.Match(block, @"""thumbnail_file_url""\s*:\s*""([^""]+)""");
+            if (p.Success)
+                poster = p.Groups[1].Value.Replace("\\/", "/").Replace(" ", "%20");
+
+            playlists.Add(new Shared.Models.SISI.Base.PlaylistItem()
+            {
+                video = uri + "?uri=" + HttpUtility.UrlEncode(href),
+                name = HttpUtility.HtmlDecode(name),
+                picture = poster,
+                json = true,
+                bookmark = new Shared.Models.SISI.Base.Bookmark()
+                {
+                    site = "vnsextop1",
+                    href = href,
+                    image = poster
+                }
+            });
+        }
+
+        return playlists;
+    }
+
     public static string ClampSort(string sort, string search, string c) => null;
 
     // ===== head: Tim kiem (dung moi request, re) =====

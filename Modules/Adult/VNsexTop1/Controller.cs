@@ -23,8 +23,11 @@ public class VNsexTop1Controller : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("vnsextop1")]
-    async public Task<ActionResult> Index(string search, string c, string sort, int pg = 1)
+    async public Task<ActionResult> Index(string search, string c, string sort, int pg = 1, string rel = null)
     {
+        if (!string.IsNullOrWhiteSpace(rel))
+            return await Related(rel, pg);
+
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
 
@@ -58,6 +61,128 @@ public class VNsexTop1Controller : BaseSisiController
             StatiCacheDisabled = true;
 
         return PlaylistResult(cache, menu);
+    }
+
+    static object EmptyPopup() => new { items = new object[0], groups = new object[0] };
+
+    async Task<string> FetchHtmlAsync(string url, string accept = null)
+    {
+        string body = null;
+        var headers = new List<(string, string)>
+        {
+            ("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"),
+            ("Referer", VNsexTop1To.SiteHost + "/")
+        };
+        if (!string.IsNullOrEmpty(accept))
+            headers.Add(("Accept", accept));
+
+        try
+        {
+            await httpHydra.GetSpan(url, span => { body = span.ToString(); },
+                addheaders: HeadersModel.Init(headers.ToArray()));
+        }
+        catch { }
+        if (!string.IsNullOrEmpty(body) && body.Length > 200)
+            return body;
+        try
+        {
+            body = await Http.Get(url, timeoutSeconds: 20, httpversion: init.httpversion, proxy: proxy,
+                headers: HeadersModel.Init(headers.ToArray()));
+        }
+        catch { }
+        return body;
+    }
+
+    static string SlugFromPage(string pageUrl)
+    {
+        var m = Regex.Match(pageUrl ?? "", @"/phim-sex/([a-z0-9\-]+)");
+        return m.Success ? m.Groups[1].Value : null;
+    }
+
+    [HttpGet]
+    [Route("vnsextop1/genres")]
+    async public Task<ActionResult> Genres(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return Json(EmptyPopup());
+
+        if (await IsRequestBlocked(rch: true))
+            return badInitMsg;
+
+        string pageUrl = VNsexTop1To.NormalizePageUrl(uri);
+        if (string.IsNullOrEmpty(pageUrl))
+            return Json(EmptyPopup());
+
+        string memKey = ipkey($"vnsextop1:info:{pageUrl}");
+        if (!hybridCache.TryGetValue(memKey, out List<(string name, string path)> chips))
+        {
+            string page = await FetchHtmlAsync(pageUrl);
+            chips = VNsexTop1To.Chips(page);
+            if (chips != null && chips.Count > 0)
+                hybridCache.Set(memKey, chips, cacheTime(360));
+        }
+
+        var groups = new List<object>();
+
+        if (chips != null && chips.Count > 0)
+            groups.Add(new
+            {
+                title = "Thể loại",
+                items = chips.Select(x => new
+                {
+                    title = x.name,
+                    url = $"{host}/vnsextop1?c={HttpUtility.UrlEncode(x.path)}"
+                }).ToList()
+            });
+
+        groups.Add(new
+        {
+            title = "Liên quan",
+            items = new[]
+            {
+                new
+                {
+                    title = "Phim liên quan",
+                    url = $"{host}/vnsextop1?rel={HttpUtility.UrlEncode(pageUrl)}",
+                    plain = true
+                }
+            }
+        });
+
+        return Json(new { items = new object[0], groups });
+    }
+
+    async Task<ActionResult> Related(string uri, int pg)
+    {
+        if (pg > 1)
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        if (await IsRequestBlocked(rch: true))
+            return badInitMsg;
+
+        string pageUrl = VNsexTop1To.NormalizePageUrl(uri);
+        string slug = SlugFromPage(pageUrl);
+        if (string.IsNullOrEmpty(pageUrl) || string.IsNullOrEmpty(slug))
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        var cache = await InvokeCacheResult<List<PlaylistItem>>(
+            ipkey($"vnsextop1:rel:{slug}"), 20, async e =>
+        {
+            string json = await FetchHtmlAsync(
+                $"{VNsexTop1To.SiteHost}/ajax/suggestions/{slug}",
+                "application/json, text/plain, */*");
+
+            var playlists = VNsexTop1To.Suggestions("vnsextop1/vidosik", json);
+            if (playlists == null || playlists.Count == 0)
+                return e.Success(new List<PlaylistItem>());
+
+            return e.Success(playlists);
+        });
+
+        if (!cache.IsSuccess)
+            return OnError(cache.ErrorMsg);
+
+        return PlaylistResult(cache.Value, cache.ISingleCache, null, total_pages: 1);
     }
 
     async Task<(Dictionary<string, string> links, bool userch)> ResolveLinksAsync(string uri)
