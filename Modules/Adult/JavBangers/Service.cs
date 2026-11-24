@@ -73,6 +73,22 @@ public static class JbTo
 
     #region playlist
     // card: div.video-item ... moi card co 2 link cung 1 video (thumb + ten) -> dedupe theo id
+    // Row "Being/watched right now" nam trong TRANG CHU (20 card, khong phan trang)
+    public static bool IsWatched(string c)
+        => string.Equals((c ?? "").Trim().Trim('/'), "watched", StringComparison.OrdinalIgnoreCase);
+
+    public static string WatchedHtml(string html)
+    {
+        if (string.IsNullOrEmpty(html)) return html;
+
+        var m = Regex.Match(html, @"id=""list_videos_[a-z0-9_]*watched_right_now_items""");
+        if (!m.Success) return null;
+
+        string tail = html.Substring(m.Index);
+        var next = Regex.Match(tail.Substring(m.Length), @"id=""list_videos_[a-z0-9_]+(_items)?""|class=""pagination""");
+        return next.Success ? tail.Substring(0, m.Length + next.Index) : tail;
+    }
+
     // Trang co NHIEU row (home: "watched right now"; member: favourite + uploaded; detail: related)
     // => chon block "_items" NHIEU CARD NHAT (bo qua watched_right_now), cat den id ke tiep / pagination.
     public static string RowHtml(string html)
@@ -101,12 +117,12 @@ public static class JbTo
         return best ?? html;
     }
 
-    public static List<PlaylistItem> Playlist(string route, string html)
+    public static List<PlaylistItem> Playlist(string route, string html, bool raw = false)
     {
         var res = new List<PlaylistItem>();
         if (string.IsNullOrEmpty(html)) return res;
 
-        html = RowHtml(html);
+        if (!raw) html = RowHtml(html);
 
         var seen = new HashSet<string>(StringComparer.Ordinal);
 
@@ -183,7 +199,7 @@ public static class JbTo
         //   "/" 9627d496 · "/?sort_by=duration" 58b905de · "?video_viewed" 2633a39d · "?rating" fd519a8e
         if (p.Length == 0) return Sorts;
 
-        // top-rated / most-popular / members/* : site bo qua sort_by (da do)
+        // top-rated / most-popular / members/* / row "dang xem" : khong co sort
         return NoSort;
     }
 
@@ -297,7 +313,8 @@ public static class JbTo
                 {
                     new MenuItem("Mới nhất", MenuUrl(host, "latest-updates")),
                     new MenuItem("Top đánh giá", MenuUrl(host, "top-rated")),
-                    new MenuItem("Xem nhiều", MenuUrl(host, "most-popular"))
+                    new MenuItem("Xem nhiều", MenuUrl(host, "most-popular")),
+                    new MenuItem("Đang xem", MenuUrl(host, "watched"))
                 }
             });
         }

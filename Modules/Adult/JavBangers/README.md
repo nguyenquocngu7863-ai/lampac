@@ -123,6 +123,18 @@ Search: **không có dòng 3** (search lọc theo keyword).
   sitemap không có `type=tags` ⇒ **không có nhóm Thẻ**.
 - SSRF: `uri` chỉ nhận `/video/<id>` trên `*.javbangers.com`; sai → `{"items":[],"groups":[]}`.
 
+## Row "Đang xem" (`?c=watched`)
+
+Trang chủ `/` có 2 row: `list_videos_videos_watched_right_now_items` (**20 card, không phân trang**) và
+`list_videos_most_recent_videos_items` (30 card). Module tách row đầu thành mục menu **Đang xem**
+(`Danh sách → Đang xem`), route `?c=watched`:
+
+- fetch `/` → `WatchedHtml()` cắt đúng block `*watched_right_now_items` → `Playlist(..., raw: true)`
+  (không qua `RowHtml` vì `RowHtml` cố tình bỏ block này).
+- `total_pages: 1`, `pg > 1` ép 1, không có dòng 2 (row không sort).
+- Đo: 20 item unique, menu 3 dòng (`Tìm kiếm` · `Danh sách` · `Thể loại`), `vidosik` item đầu
+  `1080p/720p/480p`, `play.sh` **PASS** (h264 1280x720 · 2142.8s).
+
 ## Bẫy đã dính (đầy đủ — 9 cái, đừng lặp lại)
 
 | # | bẫy | hậu quả | cách đúng |

@@ -52,6 +52,13 @@ Thứ tự ưu tiên từ nay:
 2. Popup còn thiếu — **10 module nhóm B** trước, nhóm A để sau.
 3. Việc nhóm A chỉ làm khi user yêu cầu rõ ràng hoặc site đó user đang dùng.
 
+> **2026-11-24 (23)**: **JavBangers — thêm row "Đang xem"** (user: "đưa being watching vào một dòng menu").
+> Trang chủ có 2 row: `list_videos_videos_watched_right_now_items` (**20 card, không phân trang**) và row chính
+> 30 card. Thêm `?c=watched` + mục menu **Danh sách → Đang xem**: fetch `/` → `WatchedHtml()` cắt đúng block
+> (không dùng `RowHtml` vì nó cố tình bỏ block này) → `Playlist(raw:true)`; `tp 1`, `pg>1` ép 1, không dòng 2.
+> Đo: 20 item unique, menu 3 dòng, `vidosik` 1080p/720p/480p, `play.sh` **PASS** (h264 1280x720 · 2142.8s).
+> Home thường vẫn 30 item/tp 6011 (không ảnh hưởng).
+
 > **2026-11-24 (22)**: **JavBangers — home CÓ sort** (user: "lấy home là row newest đúng không? row này có sort
 > rõ ràng, capture kiểu gì mà càng soi càng thấy lỗi"). Đúng: mình đo trên `/latest-updates/` (listing
 > "Latest", cùng nội dung nên tưởng là home) — trang đó cố định `post_date` ⇒ kết luận oan "no-op".

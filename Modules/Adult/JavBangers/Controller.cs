@@ -41,22 +41,40 @@ public class JavBangersController : BaseSisiController
         if (JbTo.IsMemberPath(c) && pg > 1)
             pg = 1;
 
+        // row "dang xem" = 1 khoi tinh trong trang chu (20 card, khong phan trang)
+        if (JbTo.IsWatched(c) && pg > 1)
+            pg = 1;
+
         var menuTask = MenuAsync(search, c, sort);
 
         var cache = await InvokeCacheResult<(List<PlaylistItem> playlists, int total_pages)>(
             ipkey($"javbangers:v2:{search}:{c}:{sort}:{pg}"), 10, async e =>
         {
+            bool watched = JbTo.IsWatched(c);
+
             string url = !string.IsNullOrWhiteSpace(search)
                 ? JbTo.SearchUrl(init.host, search, sort, pg)
-                : ListUrlWithSort(init.host, c, sort, pg);
+                : watched ? JbTo.SiteHost + "/" : ListUrlWithSort(init.host, c, sort, pg);
 
             string html = await GetPageAsync(url);
 
             if (JbTo.IsBlocked(html))
                 return e.Fail("playlists", refresh_proxy: true);
 
-            var playlists = JbTo.Playlist("javbangers/vidosik", html);
-            int total = string.IsNullOrWhiteSpace(search) && !JbTo.IsMemberPath(c)
+            List<PlaylistItem> playlists;
+            if (watched)
+            {
+                // chi lay khoi "watched right now" (home co nhieu block -> khong duoc parse ca trang)
+                playlists = JbTo.Playlist("javbangers/vidosik", JbTo.WatchedHtml(html), raw: true);
+                if (playlists == null || playlists.Count == 0)
+                    return e.Fail("playlists", refresh_proxy: true);
+            }
+            else
+            {
+                playlists = JbTo.Playlist("javbangers/vidosik", html);
+            }
+
+            int total = string.IsNullOrWhiteSpace(search) && !JbTo.IsMemberPath(c) && !watched
                 ? JbTo.Pages(html, c)
                 : 1;
             return e.Success((playlists, total));
