@@ -509,4 +509,119 @@ public static Dictionary<string, (string enc, string prefix)> Mvarr(string html)
         };
     }
     #endregion
+
+    #region popup (long-press)
+    // uri = /en/<x>_content/<id>/<CODE>.html  (trang detail)
+    // Chan SSRF: chi nhan path cua chinh 7mmtv.sx, dung dang _content.
+    public static string DetailPath(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri)) return null;
+        uri = uri.Trim();
+
+        if (uri.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!Uri.TryCreate(uri, UriKind.Absolute, out var u)) return null;
+            if (!u.Host.EndsWith("7mmtv.sx", StringComparison.OrdinalIgnoreCase)) return null;
+            uri = u.AbsolutePath;
+        }
+
+        if (!uri.StartsWith('/')) uri = "/" + uri;
+        if (!Regex.IsMatch(uri, @"^/[a-z]{2}/[a-z\-]+_content/\d+/[^/]+\.html$", RegexOptions.IgnoreCase))
+            return null;
+
+        return uri;
+    }
+
+    // Khoi thong tin trang detail (do 2026-11-24 tren MKON-155):
+    //   <div class='fullvideo-attr'> ... <strong>Genre</strong>
+    //     <div class='d-flex flex-wrap categories'>
+    //       <a href='https://7mmtv.sx/en/censored_category/349/Delusional/1.html'>Delusional</a>
+    //   <strong>JAV Idols</strong> -> <div class='fullvideo-idol'><a href='.../censored_avperformer/25274/Hikaru Minazuki/1.html'>
+    //   <strong>Label:</strong> -> censored_issuer/... , <strong>Studio:</strong> -> censored_makersr/...
+    // Tra ve (group, ten hien thi, path de lam `c` cho list).
+    public static List<(string group, string name, string cpath)> Chips(string html)
+    {
+        var res = new List<(string, string, string)>();
+        if (string.IsNullOrEmpty(html)) return res;
+
+        int start = html.IndexOf("fullvideo-attr", StringComparison.OrdinalIgnoreCase);
+        int end = html.IndexOf("col-related", StringComparison.OrdinalIgnoreCase);
+        if (start < 0) return res;
+        if (end <= start) end = html.Length;
+        string seg = html.Substring(start, end - start);
+
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (Match m in Regex.Matches(seg,
+            @"href=[""'](?:https?://[^""']*?)?/en/([a-z\-]+_(?:category|avperformer|makersr|issuer))/(\d+)/([^""']*?)/1\.html[""'][^>]*>([^<]*)<",
+            RegexOptions.Singleline))
+        {
+            string kind = m.Groups[1].Value;
+            string id = m.Groups[2].Value;
+            string slug = m.Groups[3].Value.Trim();
+            string name = Clean(m.Groups[4].Value);
+
+            string group =
+                kind.EndsWith("_category", StringComparison.Ordinal) ? "genre" :
+                kind.EndsWith("_avperformer", StringComparison.Ordinal) ? "actor" :
+                kind.EndsWith("_makersr", StringComparison.Ordinal) ? "studio" : "label";
+
+            if (group == "label" && (name == "----" || name.Length == 0)) continue;
+            if (string.IsNullOrEmpty(name)) name = Clean(slug);
+            if (string.IsNullOrEmpty(name)) continue;
+
+            string cpath = $"{kind}/{id}/{slug}";
+            if (!seen.Add(group + "|" + cpath)) continue;
+
+            res.Add((group, name, cpath));
+        }
+
+        return res;
+    }
+
+    // Chi lay khoi "Related videos" (card KHAC list: <div class='video video-related'>,
+    // khong co 'col-item' nen Playlist() khong bat duoc).
+    public static string RelatedBlock(string html)
+    {
+        if (string.IsNullOrEmpty(html)) return null;
+        int i = html.IndexOf("video-related", StringComparison.OrdinalIgnoreCase);
+        if (i < 0) return null;
+        int j = html.IndexOf("block-title", i + 100, StringComparison.OrdinalIgnoreCase);
+        return j > i ? html.Substring(i, j - i) : html.Substring(i);
+    }
+
+    public static List<PlaylistItem> RelatedPlaylist(string videoRoute, string html)
+    {
+        var res = new List<PlaylistItem>();
+        if (string.IsNullOrEmpty(html)) return res;
+
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (string part in html.Split("video-related"))
+        {
+            var hm = Regex.Match(part, @"href=[""'](https?://[^""']*_content/[^""']+?\.html)[""']");
+            if (!hm.Success) continue;
+            string href = hm.Groups[1].Value;
+            if (!seen.Add(href)) continue;
+
+            string name = Match1(part, @"<h3 class='video-title'>\s*<a[^>]*>([^<]+)</a>");
+            name = Clean(name);
+            if (string.IsNullOrEmpty(name))
+                name = Regex.Replace(href.Split('/')[^1], @"\.html$", "", RegexOptions.IgnoreCase);
+
+            string pic = Match1(part, @"<img[^>]*data-src='([^']+)'");
+            string preview = Match1(part, @"<video[^>]*data-src='([^']+\.mp4)'");
+
+            res.Add(new PlaylistItem()
+            {
+                name = name,
+                video = $"{videoRoute}?uri={HttpUtility.UrlEncode(href)}",
+                picture = pic,
+                preview = preview,
+                json = true
+            });
+        }
+
+        return res;
+    }
+    #endregion
 }

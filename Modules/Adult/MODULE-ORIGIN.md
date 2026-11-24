@@ -1,6 +1,6 @@
 # Nguồn gốc module Adult — 2 nguồn upstream: **SISI** và **NextHUB**
 
-> **Ưu tiên:** module **tự làm** trước; 2 nguồn upstream làm sau, từ từ (chủ repo upstream bảo trì).
+> **Ưu tiên:** module **tự làm** trước; 2 nguồn upstream (site Nga, ít dùng) **làm sau, từ từ**.
 > **KHÔNG BAO GIỜ sync/merge/pull/rebase với upstream** — xem mục 5.
 
 So trực tiếp với **`lampac-nextgen/lampac`** HEAD `7559b2c` (2026-11-24), clone nông
@@ -14,8 +14,8 @@ So trực tiếp với **`lampac-nextgen/lampac`** HEAD `7559b2c` (2026-11-24), 
 | **NextHUB** | `Modules/NextHUB` (57 `sites/*.yaml` + `Root.cs`/controller) | 57/57 yaml | **59 file / 5.049 dòng**, **55/57 yaml** đã Việt hoá, thêm `CategoryVi.cs` |
 | **ngoài 2 nguồn** | — | **65 module tự làm** | không có ở upstream |
 
-Tổng `Modules/Adult`: **79 = 14 (SISI) + 65 tự làm**. Bật 75 (13 SISI + 62 tự làm).
-Popup: 54 có `genres` (52 tự làm + `Eporner`/`Spankbang` của SISI), 52 có cả `?rel=`.
+Tổng `Modules/Adult`: **79 = 14 (SISI) + 65 tự làm**. Bật **75** (13 SISI + 62 tự làm).
+Popup: **53 module đủ** `genres` + `?rel=`; **22 chưa có popup** (11 SISI + 11 tự làm).
 
 > Đo thêm: 57 site NextHUB **không trùng domain** với 65 module tự làm (chỉ `rt.pornhub.com`),
 > tức 65 module này **không phải port từ NextHUB** mà viết mới.
@@ -87,7 +87,7 @@ Popup: 54 có `genres` (52 tự làm + `Eporner`/`Spankbang` của SISI), 52 có
 | `JAVSnap` | `javsnap` | **off** | ⚠️ thiếu `?rel=` | 2026-10-26 | nguyenquocngu7863-ai |
 | `JavSub` | `javsub` | on | ✅ | 2026-10-09 | nguyenquocngu7863-ai |
 | `Javtiful` | `javtiful` | on | ✅ | 2026-09-22 | nguyenquocngu7863-ai |
-| `JavTsunami` | `javtsunami` | **off** | ⚠️ thiếu `?rel=` | 2026-09-23 | nguyenquocngu7863-ai |
+| `JavTsunami` | `javtsunami` | **off** | — | 2026-09-23 | nguyenquocngu7863-ai |
 | `KawaiJAV` | `kawaijav` | on | ✅ | 2026-10-25 | nguyenquocngu7863-ai |
 | `Lon69` | `lon69` | on | — | 2026-10-26 | nguyenquocngu7863-ai |
 | `Manko` | `manko` | on | ✅ | 2026-10-14 | opencode |
@@ -102,10 +102,10 @@ Popup: 54 có `genres` (52 tự làm + `Eporner`/`Spankbang` của SISI), 52 có
 | `PubJav` | `pubjav` | on | ✅ | 2026-09-30 | nguyenquocngu7863-ai |
 | `QmhSex` | `qmhsex` | on | ✅ | 2026-11-04 | nguyenquocngu7863-ai |
 | `SakuraSins` | `sakurasins` | on | ✅ | 2026-11-07 | nguyenquocngu7863-ai |
-| `SevenMM` | `sevenmm` | on | ⚠️ thiếu `?rel=` | 2026-10-17 | nguyenquocngu7863-ai |
+| `SevenMM` | `sevenmm` | on | ✅ | 2026-10-17 | nguyenquocngu7863-ai |
 | `SexDep` | `sexdep` | on | — | 2026-09-20 | nguyenquocngu7863-ai |
 | `Sexgenz2` | `sgz2` | on | — | 2026-10-24 | nguyenquocngu7863-ai |
-| `SexHihi` | `sexhihi` | on | ⚠️ thiếu `?rel=` | 2026-10-26 | nguyenquocngu7863-ai |
+| `SexHihi` | `sexhihi` | on | — | 2026-10-26 | nguyenquocngu7863-ai |
 | `SexNetVc` | `sexnetvc` | on | ✅ | 2026-11-13 | nguyenquocngu7863-ai |
 | `SexTb` | `sextb` | on | ✅ | 2026-10-01 | nguyenquocngu7863-ai |
 | `SexVietDam` | `sexvietdam` | on | ✅ | 2026-10-03 | nguyenquocngu7863-ai |
@@ -135,11 +135,10 @@ Popup: 54 có `genres` (52 tự làm + `Eporner`/`Spankbang` của SISI), 52 có
 
 ## 4. Việc phát hiện
 
-- `SevenMM`, `SexHihi`: có `genres`, **thiếu `?rel=`** → sửa trước (rẻ nhất).
-- 21 module bật chưa có popup: **11 nguồn SISI** (`BongaCams`, `Chaturbate`, `Ebalovo`, `HQporner`,
-  `PornHub`, `Porntrex`, `Runetki`, `Tizam`, `Xhamster`, `Xnxx`, `Xvideos`) + **10 tự làm** (`Lon69`,
-  `PhimSexVN88`, `PhimSexViet113`, `SexDep`, `Sexgenz2`, `Sieusex`, `SupJav` PAUSED, `TangThon`,
-  `TopGai`, `Viet69Av`).
+- **22 module bật chưa có popup** — 11 nguồn SISI: `BongaCams`, `Chaturbate`, `Ebalovo`, `HQporner`, `PornHub`, `Porntrex`, `Runetki`, `Tizam`, `Xhamster`, `Xnxx`, `Xvideos`.
+  11 tự làm: `Lon69`, `PhimSexVN88`, `PhimSexViet113`, `SexDep`, `SexHihi`, `Sexgenz2`, `Sieusex`, `SupJav`, `TangThon`, `TopGai`, `Viet69Av`.
+- Đếm bằng route thật (`Route("<x>/genres")` + `string rel`), không grep chữ `genres`:
+  grep chữ thường đếm oan `SexHihi`/`JavTsunami` (chỉ có chữ trong menu, **không có route**).
 - Đang tắt: `XvideosRED` (SISI), `Viet69kz` (tự làm).
 - NextHUB: 57 yaml, 52 enable — cả 57 đều có ở upstream, mình chỉ sửa nội dung.
 
@@ -148,7 +147,7 @@ Popup: 54 có `genres` (52 tự làm + `Eporner`/`Spankbang` của SISI), 52 có
 - **KHÔNG BAO GIỜ sync/merge/pull/rebase với upstream** (`lampac-nextgen/lampac`).
   Mọi module đã bị sửa khác đi (popup, harden, đổi domain, fix player, Việt hoá menu); merge sẽ
   **ghi đè và mất toàn bộ công sức**. Upstream chỉ để **đọc tham khảo** → `diff -r` → **port tay**.
-- Nhóm gốc upstream (SISI + NextHUB): **làm sau, từ từ**; nhóm tự làm: **ưu tiên**.
+- 2 nguồn upstream đều là **site Nga, ít dùng** ⇒ xếp **ưu tiên cuối**; nhóm tự làm: **ưu tiên**.
 
 ## 6. Chạy lại
 

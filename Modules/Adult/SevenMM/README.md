@@ -114,3 +114,22 @@ nút thắt là hls.js (xem skill F19 Bẫy 8), đã fix ở client
   — chưa verify được response khi bị CF chặn.
 - **Không spam `curl`** vào site (xem luật cứng trong skill): dùng `curl_cffi impersonate="chrome124"`,
   retry 3–8 lần; recon nặng thì đi jina.
+
+## Popup (long-press) — 2026-11-24
+
+- `GET /sevenmm/genres?uri=<detail-url>` → `{items:[],groups:[...]}` (cache 360 phút theo path).
+  Chip đọc khối `div.fullvideo-attr` của trang detail:
+  - **Thể loại** — `div.categories a` → `censored_category/<id>/<name>` (10 chip trên MKON-155)
+  - **Diễn viên** — `div.fullvideo-idol a` → `censored_avperformer/<id>/<name>`
+  - **Hãng** — `Studio:` → `censored_makersr/<id>/<name>` (`Label:` = `----` nên bỏ)
+  - **Liên quan** — mục `plain:true` trỏ `?rel=<uri>` (không phải list con).
+- `GET /sevenmm?rel=<detail-url>` → `{count:8,total_pages:1,...}` từ khối `div.related`
+  (card `<div class='video video-related'>` — **khác** card list nên phải parser riêng
+  `RelatedPlaylist`, không dùng `Playlist`). `pg>1` → `{total_pages:1,list:[]}`.
+  Lần 1 fetch có thể ra trang thiếu khối related (TLS drop) → `RelatedList` **thử lại 1 lần**,
+  vẫn thiếu thì trả **rỗng** (không 503) để popup không vỡ.
+- Chặn SSRF: `SevenMMTo.DetailPath` chỉ nhận `/xx/<x>_content/<id>/<CODE>.html`, host phải `*.7mmtv.sx`;
+  uri rác / host lạ → `{items:[],groups:[]}` và `{total_pages:1,list:[]}`.
+- Đo 2026-11-24: genres `Thể loại 10 · Diễn viên 1 · Hãng 1 · Liên quan 1`; rel `count 8`;
+  chip link chạy thật (`censored_category/128/Small Tits` → list khác home, `censored_makersr/3854/GOS` → `KAGP-403…`);
+  `play.sh` **PASS** (VH, h264 852x480, 7534.7s, segment 3/3).

@@ -20,14 +20,16 @@ Skill tham chiếu: `lampac-popup` (hợp đồng route, luật UX, anti-pattern
 | nhóm | số module | đang bật | có popup (`genres`) | có cả `?rel=` |
 |---|---|---|---|---|
 | **A. Gốc upstream** (`lampac-nextgen/lampac`) | 14 | 13 | 2 (`Eporner`, `Spankbang`) | 2 |
-| **B. Tự làm** (upstream không có) | 65 | 62 | 52 | 50 |
-| **tổng** | **79** | **75** | **54** | **52** |
+| **B. Tự làm** (upstream không có) | 65 | 62 | 51 | 51 |
+| **tổng** | **79** | **75** | **53** | **53** |
 
-- **Có genres, thiếu `?rel=`**: `SevenMM`, `SexHihi` (đều nhóm B) → sửa trước, rẻ nhất.
-- **Chưa có popup**: 21 = **11 nhóm A** (`BongaCams`, `Chaturbate`, `Ebalovo`, `HQporner`, `PornHub`,
-  `Porntrex`, `Runetki`, `Tizam`, `Xhamster`, `Xnxx`, `Xvideos`) + **10 nhóm B** (`Lon69`, `PhimSexVN88`,
-  `PhimSexViet113`, `SexDep`, `Sexgenz2`, `Sieusex`, `SupJav` PAUSED, `TangThon`, `TopGai`, `Viet69Av`).
-- `XvideosRED` (nhóm A) đang tắt. `Viet69kz` (nhóm B) đang tắt.
+- Cả **53 module có `genres` đều đã có `?rel=`** → không còn module nào "nửa vời".
+- **Chưa có popup: 22** = **11 nhóm A** (`BongaCams`, `Chaturbate`, `Ebalovo`, `HQporner`, `PornHub`,
+  `Porntrex`, `Runetki`, `Tizam`, `Xhamster`, `Xnxx`, `Xvideos`) + **11 nhóm B** (`Lon69`, `PhimSexVN88`,
+  `PhimSexViet113`, `SexDep`, `SexHihi`, `Sexgenz2`, `Sieusex`, `SupJav` PAUSED, `TangThon`, `TopGai`, `Viet69Av`).
+- **Đếm bằng route thật** (`Route("<x>/genres")` + `string rel`), KHÔNG grep chữ `genres`: cách cũ đếm oan
+  `SexHihi`/`JavTsunami` (chỉ có chữ "Thể loại" trong menu, không có route).
+- `XvideosRED` (nhóm A) và `Viet69kz` (nhóm B) đang tắt.
 
 ## Phân nhóm theo nguồn gốc — LUẬT ƯU TIÊN
 
@@ -40,7 +42,7 @@ Chi tiết + số dòng lệch upstream: **`Modules/Adult/MODULE-ORIGIN.md`**.
 
 | nhóm | ai bảo trì | cách làm |
 |---|---|---|
-| **A. 14 module Adult gốc** (`BongaCams`, `Chaturbate`, `Ebalovo`, `Eporner`, `HQporner`, `PornHub`, `Porntrex`, `Runetki`, `Spankbang`, `Tizam`, `Xhamster`, `Xnxx`, `Xvideos`, `XvideosRED`) | chủ repo upstream | **LÀM SAU, từ từ** — site chết thì port tay từ upstream bản mới, không merge. Không đụng nếu không có yêu cầu |
+| **A. 14 module Adult gốc** (`BongaCams`, `Chaturbate`, `Ebalovo`, `Eporner`, `HQporner`, `PornHub`, `Porntrex`, `Runetki`, `Spankbang`, `Tizam`, `Xhamster`, `Xnxx`, `Xvideos`, `XvideosRED`) | chủ repo upstream | **ƯU TIÊN CUỐI CÙNG** — đều là **site Nga, user ít dùng** (user chốt 2026-11-24). Site chết thì port tay, không merge |
 | **B. 65 module Adult tự làm** | mình | **ƯU TIÊN** — mọi việc popup/fix player/đổi domain làm ở nhóm này trước |
 | **C. NextHUB** (nguồn adult thứ 2 của upstream, `Modules/NextHUB`) | chủ repo upstream | **LÀM SAU như nhóm A** — mình đã Việt hoá **55/57 `sites/*.yaml`** + thêm `CategoryVi.cs` (59 file / 5.049 dòng) ⇒ merge là mất sạch |
 | **D. Tự làm ngoài Adult** | mình | `Modules/DevFetch`, `Modules/OnlineVN`, `Modules/Tg-notify.bot` |
@@ -49,6 +51,8 @@ Thứ tự ưu tiên từ nay:
 1. Bug đang chặn phát (`no supported source`, `stream_links`, domain 301) — nhóm B trước.
 2. Popup còn thiếu — **10 module nhóm B** trước, nhóm A để sau.
 3. Việc nhóm A chỉ làm khi user yêu cầu rõ ràng hoặc site đó user đang dùng.
+
+> **2026-11-24 (15)**: **`SevenMM` có popup** (trước đây chỉ có menu "Thể loại …", chưa có route). Từ **trang detail** (SSR: khối `div.fullvideo-attr`) dựng 3 nhóm chip: **Thể loại** (`div.categories`, 10) · **Diễn viên** (`div.fullvideo-idol` → `censored_avperformer/25274/Hikaru Minazuki`) · **Hãng** (`Studio:` → `censored_makersr/3854/GOS`; `Label: ----` bỏ) + mục "Liên quan" `plain:true` → `?rel=`. `?rel=` parse khối `div.related` bằng parser RIÊNG (`RelatedPlaylist`, vì card là `video video-related` chứ không phải `col-item`) → **count 8, `total_pages:1`**; `pg>1` → rỗng; fetch thiếu khối (TLS drop ~60% của `7mmtv.sx`) → **thử lại 1 lần rồi trả rỗng**, không 503. SSRF: `DetailPath` chỉ nhận `/<xx>/<x>_content/<id>/<CODE>.html` trên `*.7mmtv.sx`, host lạ → rỗng. Đo: chip link chạy thật (`censored_category/128/Small Tits`, `censored_makersr/3854/GOS` → `KAGP-403…`), `play.sh` **PASS** (VH h264 852x480 · 7534.7s · segment 3/3). ⇒ nâng lên **53 module có popup đủ (genres + `?rel=`)**; đếm lại bằng route thật thấy `SexHihi`/`JavTsunami` **không có route** (grep chữ trước đây đếm oan).
 
 > **2026-11-24 (14)**: **Chốt phạm vi so sánh = đúng 2 nguồn adult của upstream**: **SISI** (`Modules/Adult` 14 balancer + `SISI/`) và **NextHUB** (`Modules/NextHUB`, 57 `sites/*.yaml`). Đo: SISI — **14/14 module đã sửa** (4…488 dòng), `SISI/plugins/sisi.js` +326 dòng + `sisi-restyle.js` (file riêng), `SISI/Controllers` 2 file/8 dòng. NextHUB — **59 file / 5.049 dòng**, **55/57 yaml đã Việt hoá**, thêm `CategoryVi.cs`, `Root.cs` đổi `Поиск`→`Tìm kiếm` / `Сортировка`→`Sắp xếp`. 57 site NextHUB **không trùng domain** với 65 module tự làm (chỉ `rt.pornhub.com`) ⇒ 65 module đó là **viết mới**, không phải port NextHUB. Báo cáo: `Modules/Adult/MODULE-ORIGIN.md`.
 
@@ -277,13 +281,12 @@ Nguồn: `~/.config/opencode/skills/lampac-adult-module/references/card-thumbnai
 
 ## Việc còn lại (đo lại 2026-11-24, tách nhóm)
 
-- [ ] **`SevenMM` + `SexHihi` (nhóm B)** — có `genres` nhưng **thiếu `?rel=`** → bổ mục "Liên quan".
-      Rẻ nhất, làm trước để đưa "thiếu rel" về 0.
-- [ ] **Popup 10 module nhóm B**: `Lon69`, `PhimSexVN88`, `PhimSexViet113`, `SexDep`, `Sexgenz2`,
-      `Sieusex`, `TangThon`, `TopGai`, `Viet69Av` (+ `SupJav` khi bỏ PAUSED) — mỗi module: route
+- [ ] **Popup 11 module nhóm B**: `Lon69`, `PhimSexVN88`, `PhimSexViet113`, `SexDep`, `SexHihi`,
+      `Sexgenz2`, `Sieusex`, `TangThon`, `TopGai`, `Viet69Av` (+ `SupJav` khi bỏ PAUSED) — mỗi module: route
       `/<mod>/genres?uri=` + `?rel=<uri>` (`total_pages:1`), SSRF guard, cache, smoke 6 endpoint, `play.sh` PASS.
+      Thứ tự gợi ý: `SexHihi` (site nhỏ, dễ) → `SexDep` → `Sexgenz2` → `Sieusex` → …
 - [ ] **Popup 11 module nhóm A** (`BongaCams`, `Chaturbate`, `Ebalovo`, `HQporner`, `PornHub`,
-      `Porntrex`, `Runetki`, `Tizam`, `Xhamster`, `Xnxx`, `Xvideos`) — **để sau**, chủ upstream bảo trì.
+      `Porntrex`, `Runetki`, `Tizam`, `Xhamster`, `Xnxx`, `Xvideos`) — **để CUỐI**, site Nga/ít dùng.
 - [ ] **`SupJav`** — đã có bypass CF qua persistent Chrome profile (commit `33b7cbcc`) nhưng **chưa verify live**
       (module đang PAUSED). Cần: bật app → `/supjav` 200 → `vidosik` ra link → `play.sh` PASS.
 - [ ] **`XvideosRED`** — `manifest.enable:false` (tắt, nhóm A) → không tính vào kế hoạch.

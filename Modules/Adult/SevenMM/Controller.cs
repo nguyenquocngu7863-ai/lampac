@@ -151,10 +151,13 @@ public class SevenMMController : BaseSisiController
 
     [HttpGet, Staticache]
     [Route("sevenmm")]
-    async public Task<ActionResult> Index(string search, string c, int pg = 1)
+    async public Task<ActionResult> Index(string search, string c, int pg = 1, string rel = null)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
+
+        if (!string.IsNullOrWhiteSpace(rel))
+            return await RelatedList(rel, pg);
 
     rhubFallback:
         var cache = await InvokeCacheResult(ipkey($"sevenmm:{search}:{c}:{pg}"), 10, jsonContext.ListPlaylistItem, async e =>
@@ -191,8 +194,7 @@ public class SevenMMController : BaseSisiController
         return PlaylistResult(cache, await MenuAsync());
     }
 
-    // Menu 2 tang: Danh muc (muc cha + sub lay dong tu nav) + The loai (genre).
-    // Harvest genre UNCENSORED. Site khong co trang index -> phai doc pill Genre tung trang detail,
+    // Menu 2 tang: Danh muc (muc cha + sub lay dong tu nav) + The loai (genre).    // Harvest genre UNCENSORED. Site khong co trang index -> phai doc pill Genre tung trang detail,
     // nen PHAI co ngan sach: moi lan toi da ~25s / 3 luong, ket qua CONG DON (cache 7 ngay).
     // Vai lan build la du ~200 genre ma khong doi mot lan (site siet khi bi goi don dap).
     async Task<Dictionary<string, string>> UncenSetAsync()
@@ -380,6 +382,103 @@ public class SevenMMController : BaseSisiController
         hybridCache.Set(key, menu, cacheTime(360));
         return menu;
     }
+
+    #region popup (long-press)
+    // chip: The loai / Dien vien / Hang (doc khoi fullvideo-attr cua trang detail)
+    // + "Lien quan" tro ?rel=<uri> (khoi "Related videos")
+    [HttpGet]
+    [Route("sevenmm/genres")]
+    async public Task<ActionResult> Genres(string uri)
+    {
+        var empty = new { items = new object[0], groups = new object[0] };
+
+        if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
+            return badInitMsg;
+
+        string path = SevenMMTo.DetailPath(uri);
+        if (path == null)
+            return Json(empty);
+
+        string key = ipkey($"sevenmm:chips:{path}");
+        if (!hybridCache.TryGetValue(key,
+            out List<(string group, string name, string cpath)> chips) || chips == null)
+        {
+            string html = await GetPageAsync(SevenMMTo.SiteHost + path);
+            chips = SevenMMTo.Chips(html);
+            if (chips.Count == 0)
+                return Json(empty);
+            hybridCache.Set(key, chips, cacheTime(360));
+        }
+
+        return InfoResult(chips, uri);
+    }
+
+    ActionResult InfoResult(List<(string group, string name, string cpath)> chips, string uri)
+    {
+        var groups = new List<object>();
+
+        foreach (var (grp, label) in new[] { ("genre", "Thể loại"), ("actor", "Diễn viên"), ("studio", "Hãng") })
+        {
+            var items = chips.Where(x => x.group == grp).Select(x => new
+            {
+                title = x.name,
+                url = SevenMMTo.MenuUrl(host, x.cpath)
+            }).ToList();
+
+            if (items.Count == 0) continue;
+            groups.Add(new { title = label, items });
+        }
+
+        groups.Add(new
+        {
+            title = "Liên quan",
+            items = new[]
+            {
+                new
+                {
+                    title = "Phim liên quan",
+                    plain = true,
+                    url = $"{host}/sevenmm?rel={HttpUtility.UrlEncode(uri)}"
+                }
+            }
+        });
+
+        return Json(new { items = new object[0], groups });
+    }
+
+    async Task<ActionResult> RelatedList(string rel, int pg)
+    {
+        if (pg > 1)
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        var cache = await InvokeCacheResult(
+            ipkey($"sevenmm:rel:{rel}"),
+            180, jsonContext.ListPlaylistItem, async e =>
+        {
+            string path = SevenMMTo.DetailPath(rel);
+            if (path == null)
+                return e.Success(new List<PlaylistItem>());
+
+            // 7mmtv.sx drop TLS ~60% -> trang tra ve co the la ban mobile/thieu khoi related.
+            // Thu lai 1 lan; van khong co thi tra RONG (khong bao loi, popup van hien).
+            string block = SevenMMTo.RelatedBlock(await GetPageAsync(SevenMMTo.SiteHost + path));
+            if (block == null)
+                block = SevenMMTo.RelatedBlock(await GetPageAsync(SevenMMTo.SiteHost + path));
+
+            var playlists = SevenMMTo.RelatedPlaylist("sevenmm/vidosik", block);
+            return e.Success(playlists ?? new List<PlaylistItem>());
+        });
+
+        if (!cache.IsSuccess)
+            return OnError(cache.ErrorMsg);
+
+        // trang cu / khong co khoi "Related videos" -> rong, khong bao loi
+        if (cache.Value == null || cache.Value.Count == 0)
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        return PlaylistResult(cache, await MenuAsync(), total_pages: 1);
+    }
+    #endregion
 
     // Trang detail + mvarr + inline key. Cache ngan (20s) vi Vidosik/Video co the
     // goi lien tiep. Tra ve: html, vars (key/xor/aesKey/aesIv) va mvarr.
