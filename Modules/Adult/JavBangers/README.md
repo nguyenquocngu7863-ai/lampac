@@ -11,8 +11,8 @@ Module Lampac cho `https://www.javbangers.com` (JAV HD tube, engine KVS/Porntrex
 | `javbangers?c=<path>&pg=N` | listing / category / model / member |
 | `javbangers?sort=<sort_by>` | **SORT** — chỉ sống ở context đã đo |
 | `javbangers?search=<kw>` | tìm kiếm (`/search/?q=`) |
-| `javbangers/vidosik?uri=<videoUrl>` | trả `MP4` (json) |
-| `javbangers/video.mp4?uri=<videoUrl>` | resolve + proxy MP4 |
+| `javbangers/vidosik?uri=<videoUrl>` | trả **danh sách chất lượng**: 1080p · 720p · 480p |
+| `javbangers/video.mp4?uri=<videoUrl>&q=<label>` | resolve + proxy MP4 (mặc định **cao nhất**) |
 | `javbangers/genres?uri=<videoUrl>` | popup long-press (Người đăng · Thể loại · Diễn viên · Liên quan) |
 | `javbangers?rel=<videoUrl>` | danh sách "Liên quan" |
 
@@ -55,8 +55,21 @@ flashvars: video_categories: 'Blowjob, Cumshot, Hardcore'
 <div class="related-videos" id="list_videos_related_videos"> … 10 card video-item
 ```
 
-⇒ `ResolveAsync` dùng detail trước (1 request), **fallback `/embed/<id>`** nếu detail fail.
-Chỉ có **MP4 480p** (đo: h264 854x480 · 907.5s · 72.291.466 B với video 117657; 5675.2s với 412813).
+### Chất lượng — 3 mức từ flashvars (KHÔNG mặc định 480p)
+
+| flashvar | nhãn | file |
+|---|---|---|
+| `video_url` (+`video_url_text`) | 480p | `…/<id>.mp4` |
+| `video_alt_url` (+`_text`) | 720p | `…/<id>_720p.mp4` |
+| `video_alt_url2` (+`_text`) | **1080p** | `…/<id>_1080p.mp4` |
+
+- `vidosik` trả **dict nhãn → route** (`1080p`/`720p`/`480p`, sắp cao→thấp); app hiện menu chọn chất lượng.
+- `video.mp4?q=<nhãn>`; **không có `q` → chất lượng cao nhất**. Chỉ nhận URL có `/get_file/`
+  (bỏ `video_alt_url*` trỏ về trang detail).
+- Đo thật: **video 412809 → 1080p h264 1920x1080** (1.843.665.444 B), 720p 936.340.126 B (đúng gấp đôi);
+  video 117657 → site khai 1080p nhưng **trả cùng file 720p** (130.023.485 B) — lỗi của site, không phải module
+  (vẫn hiện đủ 3 mức).
+- `ResolveStreams` cache 120 s theo id; fallback `/embed/<id>` nếu detail fail (embed chỉ có 480p/720p).
 
 ## SORT — bảng đo (skill `lampac-sort`)
 

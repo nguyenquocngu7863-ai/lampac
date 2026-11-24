@@ -52,6 +52,14 @@ Thứ tự ưu tiên từ nay:
 2. Popup còn thiếu — **10 module nhóm B** trước, nhóm A để sau.
 3. Việc nhóm A chỉ làm khi user yêu cầu rõ ràng hoặc site đó user đang dùng.
 
+> **2026-11-24 (20)**: **JavBangers — trả lại chọn CHẤT LƯỢNG** (user: "web up to 1080 mà bỏ hết phần chọn
+> chất lượng?? mặc định 480px?"). Trang detail có **3 mức**: `video_url`=**480p**, `video_alt_url`=**720p**
+> (`_720p.mp4`), `video_alt_url2`=**1080p** (`_1080p.mp4`). Đã sửa: `Streams(detail)` gom 3 mức (chỉ nhận
+> URL `/get_file/`, sắp cao→thấp) → `vidosik` trả dict `1080p/720p/480p` (app hiện menu chọn), route
+> `video.mp4?uri=..&q=<nhãn>`, **không có `q` = chất lượng cao nhất**. Đo thật: video **412809 → 1080p
+> h264 1920x1080** (1.843.665.444 B) vs 720p 936.340.126 B (gấp đôi ⇒ 1080 thật); video 117657 site khai
+> 1080p nhưng trả cùng file 720p (130 MB) — lỗi site. `play.sh` q=1080p **PASS** (1920x1080 · 3335.5s).
+
 > **2026-11-24 (19)**: **JavBangers — sửa sai về detail/popup** (user chỉ ra: "card phim có user, không cần login").
 > Lỗi của mình: luôn thêm `/` cuối nên `/video/<id>/<slug>/` trả **404**, kết luận oan "guest không xem được".
 > Đúng: **`/video/<id>/<slug>` (KHÔNG `/` cuối) = 200**, và trang detail có đủ: `div.block-user` (uploader →

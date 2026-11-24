@@ -118,25 +118,37 @@ public class JavBangersController : BaseSisiController
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
 
-        string stream = await ResolveAsync(uri);
-        if (string.IsNullOrEmpty(stream))
+        var streams = await ResolveStreamsAsync(uri);
+        if (streams == null || streams.Count == 0)
             return OnError("stream_links", refresh_proxy: true);
 
-        return Json(new Dictionary<string, string>()
-        {
-            ["MP4"] = $"{host}/javbangers/video.mp4?uri={HttpUtility.UrlEncode(uri)}"
-        });
+        var res = new Dictionary<string, string>();
+        foreach (var (label, _) in streams)
+            res[label] = $"{host}/javbangers/video.mp4?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(label)}";
+
+        return Json(res);
     }
 
     // ================= Video =================
     [HttpGet]
     [Route("javbangers/video.mp4")]
-    async public Task<ActionResult> Video(string uri)
+    async public Task<ActionResult> Video(string uri, string q)
     {
         if (await IsRequestBlocked(rch: true))
             return badInitMsg;
 
-        string stream = await ResolveAsync(uri);
+        var streams = await ResolveStreamsAsync(uri);
+
+        string stream = null;
+        if (streams != null && streams.Count > 0)
+        {
+            if (!string.IsNullOrEmpty(q))
+                stream = streams.FirstOrDefault(x => x.label == q).url;
+
+            if (string.IsNullOrEmpty(stream))
+                stream = streams[0].url;   // mac dinh: chat luong cao nhat
+        }
+
         if (string.IsNullOrEmpty(stream))
             return OnError("stream_links", refresh_proxy: true);
 
@@ -149,37 +161,37 @@ public class JavBangersController : BaseSisiController
     }
 
     // ================= Resolve =================
-    // trang /video/<id>/ tra 404 cho guest => lay stream tu /embed/<id>
-    async Task<string> ResolveAsync(string uri)
+    // detail (KHONG "/" cuoi) chua flashvars cua CA 3 chat luong: 480p / 720p / 1080p
+    async Task<List<(string label, string url)>> ResolveStreamsAsync(string uri)
     {
         string id = JbTo.VideoId(uri);
         if (string.IsNullOrEmpty(id))
             return null;
 
-        string memKey = ipkey($"javbangers:view:{id}");
-        if (hybridCache.TryGetValue(memKey, out string cached) && !string.IsNullOrEmpty(cached))
+        string memKey = ipkey($"javbangers:streams:v2:{id}");
+        if (hybridCache.TryGetValue(memKey, out List<(string label, string url)> cached) && cached != null && cached.Count > 0)
             return cached;
 
-        // trang detail (KHONG co "/" cuoi) chua ca flashvars.video_url -> 1 request la du
-        string stream = null;
+        var streams = new List<(string label, string url)>();
+
         string path = JbTo.DetailPath(uri);
         if (path != null)
         {
             string detail = await GetPageAsync(JbTo.SiteHost + path);
-            stream = JbTo.StreamFromEmbed(detail);
+            streams = JbTo.Streams(detail);
         }
 
-        if (string.IsNullOrEmpty(stream))
+        if (streams.Count == 0)
         {
             string embed = await GetPageAsync(JbTo.EmbedUrl(init.host, id), embed: true);
-            stream = JbTo.StreamFromEmbed(embed);
+            streams = JbTo.Streams(embed);
         }
 
-        if (string.IsNullOrEmpty(stream))
+        if (streams.Count == 0)
             return null;
 
-        hybridCache.Set(memKey, stream, cacheTime(120));
-        return stream;
+        hybridCache.Set(memKey, streams, cacheTime(120));
+        return streams;
     }
 
     #region popup (long-press)

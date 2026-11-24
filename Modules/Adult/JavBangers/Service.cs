@@ -362,6 +362,50 @@ public static class JbTo
         return url.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? url : null;
     }
 
+    // CHAT LUONG: trang detail co 3 flashvars (do 2026-11-24, video 117657):
+    //   video_url / video_url_text          = .../117657.mp4       480p
+    //   video_alt_url / _text               = .../117657_720p.mp4   720p  (video_alt_url_hd: '1')
+    //   video_alt_url2 / _text              = .../117657_1080p.mp4  1080p (video_alt_url2_hd: '1')
+    // Chi nhan link file that (/get_file/), bo qua alt tro ve trang detail.
+    public static List<(string label, string url)> Streams(string html)
+    {
+        var res = new List<(string label, string url)>();
+        if (string.IsNullOrEmpty(html)) return res;
+
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        void add(string key, string keyText)
+        {
+            string url = Match1(html, key + @":\s*'([^']+)'");
+            if (string.IsNullOrEmpty(url)) return;
+
+            url = HttpUtility.HtmlDecode(url.Trim());
+            if (!url.Contains("/get_file/", StringComparison.OrdinalIgnoreCase)) return;
+            if (!seen.Add(url)) return;
+
+            string label = Clean(Match1(html, keyText + @":\s*'([^']*)'"));
+            if (string.IsNullOrEmpty(label)) label = "auto";
+
+            res.Add((label, url));
+        }
+
+        add("video_url", "video_url_text");
+        add("video_alt_url", "video_alt_url_text");
+        add("video_alt_url2", "video_alt_url2_text");
+        add("video_alt_url3", "video_alt_url3_text");
+
+        // cao -> thap: 1080p truoc, 480p sau
+        static int rank(string l)
+        {
+            string t = (l ?? "").ToLowerInvariant();
+            if (t.Contains("4k") || t.Contains("2160")) return 1000;
+            var m = Regex.Match(t, @"(\d{3,4})");
+            return m.Success ? int.Parse(m.Groups[1].Value) : 0;
+        }
+
+        return res.OrderByDescending(x => rank(x.label)).ToList();
+    }
+
     // flashvars: video_categories / video_models / video_tags = ten cach nhau dau phay
     public static List<string> Names(string html, string key)
     {
