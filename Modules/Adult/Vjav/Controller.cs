@@ -23,8 +23,13 @@ public class VjavController : BaseSisiController
     [HttpGet, Staticache(manually: true)]
     [Route("vjav")]
     async public Task<ActionResult> Index(string search, string c, int pg = 1,
-        string q = null, string sort = null)
-        => await Core(search ?? q, c, pg, sort);
+        string q = null, string sort = null, string rel = null)
+    {
+        if (!string.IsNullOrWhiteSpace(rel))
+            return await Related(rel, pg);
+
+        return await Core(search ?? q, c, pg, sort);
+    }
 
     async Task<ActionResult> Core(string search, string c, int pg, string sort)
     {
@@ -35,12 +40,11 @@ public class VjavController : BaseSisiController
             pg = 1;
 
         // cache key PHAI du search + c + sort + pg (skill 9e)
-        var cache = await InvokeCacheResult(
-            ipkey($"vjav:{search}:{c}:{sort}:{pg}"),
-            10, jsonContext.ListPlaylistItem, async e =>
+        var cache = await InvokeCacheResult<(List<PlaylistItem> playlists, int total_pages)>(
+            ipkey($"vjav:{search}:{c}:{sort}:{pg}"), 10, async e =>
         {
-            string json = await GetJsonAsync(VjavTo.ApiUrl(
-                init.host, search, c, pg, sort));
+            string json = await GetJsonAsync(VjavTo.Relay(VjavTo.ApiUrl(
+                init.host, search, c, pg, sort)));
 
             var playlists = string.IsNullOrEmpty(json)
                 ? null
@@ -48,15 +52,20 @@ public class VjavController : BaseSisiController
 
             // Search khong co ket qua -> tra SUCCESS + list rong, khong Fail
             if (playlists != null && playlists.Count == 0)
-                return e.Success(playlists);
+                return e.Success((playlists, 1));
 
             if (playlists == null && !string.IsNullOrWhiteSpace(search))
-                return e.Success(new List<PlaylistItem>());
+                return e.Success((new List<PlaylistItem>(), 1));
 
             if (playlists == null)
                 return e.Fail("playlists", refresh_proxy: true);
 
-            return e.Success(playlists);
+            // SISI hieu total_pages 0 = "con trang vo han" -> lay `pages` tu JSON
+            int tp = VjavTo.TotalPages(json);
+            if (tp < 1)
+                tp = 1;
+
+            return e.Success((playlists, tp));
         });
 
         if (rch?.enable == true)
@@ -64,7 +73,8 @@ public class VjavController : BaseSisiController
 
         var menuTask = MenuAsync();
 
-        return PlaylistResult(cache, await menuTask);
+        return PlaylistResult(cache.Value.playlists, cache.ISingleCache,
+            await menuTask, total_pages: cache.Value.total_pages);
     }
 
     // ───────── MENU ─────────
@@ -119,8 +129,8 @@ public class VjavController : BaseSisiController
             // PHAI dung SiteHost, KHONG dung hostLocal. `host` trong
             // controller = http://127.0.0.1:9118 (Lampac). Gọi hostLocal +
             // "/api/..." se tro ve chinh Lampac -> 404 -> rơi fallback 12 muc.
-            string json = await GetJsonAsync(
-                VjavTo.SiteHost + "/api/json/categories/14400/str.all.en.json", 12);
+            string json = await GetJsonAsync(VjavTo.Relay(
+                VjavTo.SiteHost + "/api/json/categories/14400/str.all.en.json"), 12);
 
             var got = VjavTo.Categories(json);
             if (got.Count > 0)
@@ -212,6 +222,107 @@ public class VjavController : BaseSisiController
         return !string.IsNullOrEmpty(a) ? a : b;
     }
 
+    // ───────── POPUP ─────────
+    // Chip lay tu /api/json/video/{...}/{id}.json (HTML la SPA rong).
+    //   categories -> ?c=cat/<dir>  (list API nhan `categories.<dir>`)
+    //   tags       -> ?search=<title> (site khong co trang tag rieng)
+    static object EmptyPopup() => new { items = new object[0], groups = new object[0] };
+
+    [HttpGet]
+    [Route("vjav/genres")]
+    async public Task<ActionResult> Genres(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return Json(EmptyPopup());
+
+        if (await IsRequestBlocked(rch: true))
+            return badInitMsg;
+
+        string id = VideoId(uri);
+        if (string.IsNullOrEmpty(id))
+            return Json(EmptyPopup());
+
+        string memKey = ipkey($"vjav:info:{id}");
+        if (!hybridCache.TryGetValue(memKey, out VjavTo.InfoBox info) || info == null)
+        {
+            string json = await GetJsonAsync(VjavTo.Relay(VjavTo.VideoApiUrl(id)), 12);
+            info = VjavTo.Info(json);
+            if (info != null)
+                hybridCache.Set(memKey, info, cacheTime(360));
+        }
+
+        var groups = new List<object>();
+
+        if (info != null)
+        {
+            if (info.categories.Count > 0)
+                groups.Add(new
+                {
+                    title = "Thể loại",
+                    items = info.categories.Select(x => new
+                    {
+                        title = x.title,
+                        url = $"{host}/vjav?c=cat/{HttpUtility.UrlEncode(x.dir)}"
+                    }).ToList()
+                });
+
+            if (info.tags.Count > 0)
+                groups.Add(new
+                {
+                    title = "Thẻ",
+                    items = info.tags.Select(x => new
+                    {
+                        title = x.title,
+                        url = $"{host}/vjav?search={HttpUtility.UrlEncode(x.title)}"
+                    }).ToList()
+                });
+        }
+
+        groups.Add(new
+        {
+            title = "Liên quan",
+            items = new[]
+            {
+                new
+                {
+                    title = "Video liên quan",
+                    url = $"{host}/vjav?rel={HttpUtility.UrlEncode(uri)}",
+                    plain = true
+                }
+            }
+        });
+
+        return Json(new { items = new object[0], groups });
+    }
+
+    // ?rel=<uri video> — 1 trang (SISI: total_pages 0 = con trang vo han).
+    async Task<ActionResult> Related(string uri, int pg)
+    {
+        if (pg > 1)
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        string id = VideoId(uri);
+        if (string.IsNullOrEmpty(id))
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        var cache = await InvokeCacheResult<(List<PlaylistItem> playlists, int total_pages)>(
+            ipkey($"vjav:rel:{id}"), 20, async e =>
+        {
+            string json = await GetJsonAsync(VjavTo.Relay(VjavTo.RelatedApiUrl(id)), 15);
+            var playlists = string.IsNullOrEmpty(json) ? null : VjavTo.Playlist(json);
+
+            if (playlists == null || playlists.Count == 0)
+                return e.Success((new List<PlaylistItem>(), 1));
+
+            return e.Success((playlists, 1));
+        });
+
+        if (!cache.IsSuccess)
+            return OnError(cache.ErrorMsg);
+
+        return PlaylistResult(cache.Value.playlists, cache.ISingleCache, null, total_pages: 1);
+    }
+
     // ───────── STREAM ─────────
     // /videos/<id>/<dir>/ -> /api/videofile.php?video_id=<id>
     //   -> [{ "format":"_hq.mp4", "video_url":"<MA HOA>" }]
@@ -250,7 +361,7 @@ public class VjavController : BaseSisiController
             ("User-Agent", VjavTo.ChromeUA),
             ("Referer", VjavTo.SiteHost + "/")));
 
-        return Redirect(HostStreamProxy(link, direct));
+        return Redirect(HostStreamProxy(VjavTo.Relay(link), direct));
     }
 
     static string VideoId(string uri)
@@ -282,8 +393,8 @@ public class VjavController : BaseSisiController
             hit != null && hit.Count > 0)
             return hit;
 
-        string json = await GetJsonAsync(VjavTo.SiteHost
-            + "/api/videofile.php?video_id=" + id + "&lifetime=864000000", 12);
+        string json = await GetJsonAsync(VjavTo.Relay(VjavTo.SiteHost
+            + "/api/videofile.php?video_id=" + id + "&lifetime=864000000"), 12);
 
         if (string.IsNullOrEmpty(json))
             return null;

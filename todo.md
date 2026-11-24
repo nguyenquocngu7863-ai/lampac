@@ -19,9 +19,11 @@ Skill tham chiếu: `lampac-popup` (hợp đồng route, luật UX, anti-pattern
 
 | nhóm | số module | trạng thái |
 |---|---|---|
-| **Đã có popup (genres + rel)** | **43** | xong (kể cả `Spankbang` `?rel=` mới 2026-11-24) |
+| **Đã có popup (genres + rel)** | **44** | xong (kể cả `Vjav` 2026-11-24 qua relay CF) |
 | Có genres, **thiếu `?rel=` route** | 0 | — |
-| Chưa có popup | 26 | Phase 1/2/3 + `PornHub` + `SevenMM` |
+| Chưa có popup | 25 | Phase 1/2/3 + `PornHub` + `SevenMM` |
+
+> **2026-11-24 (2)**: `Vjav` xong: thêm `genres?uri=` (chip `Thể loại` từ `categories` + `Thẻ` từ `tags` của `/api/json/video/...json`, `Liên quan` `plain:true`) + `?rel=<uri>` (API `videos_related2/432000/...`, `total_pages: 1`, pg>1 → rỗng) — **bắt buộc** `VJAV_RELAY` vì TLS từ IP máy bị cắt; `pages` từ JSON nên `total_pages` giờ thật (7539) thay vì 0 → **44 đủ popup** / 0 chỉ-genres / **25 chưa có**.
 
 > **2026-11-24**: `Spankbang` thêm `?rel=` (dùng chung cache `spankbang:view:{uri}` với `vidosik`, `total_pages: 1`, pg>1 → list rỗng) + mục "Video liên quan" trong popup đổi sang `plain: true` trỏ `?rel=` → **43 đủ popup** / 0 chỉ-genres / **26 chưa có**.
 > **2026-11-23**: `JavMoi` + `JavSub` + `KawaiJAV` + `Phe69` xong popup → **42 đủ popup** / 1 chỉ-genres (`Spankbang`) / **26 chưa có**.
@@ -85,7 +87,7 @@ Skill tham chiếu: `lampac-popup` (hợp đồng route, luật UX, anti-pattern
 - [ ] `Vlxx` — https://vlxx.phd
 - [ ] `XViet` — https://xviet.live
 - [ ] `XszAv` — https://xsz-av.com
-- [ ] `Vjav` — https://vjav.com
+- [x] `Vjav` — https://vjav.com *(popup 2026-11-24: `genres?uri=` chip `Thể loại` (`categories` → `?c=cat/<dir>`) + `Thẻ` (`tags` → `?search=<title>`) từ `/api/json/video/{lt}/{id/1e6}/{1e3*(id/1e3)}/{id}.json`; `Liên quan` `plain:true` → `?rel=<uri>` dùng `/api/json/videos_related2/432000/60/.../<id>.relevance.1.json` (`lifetime` khác → `invalid_lifetime`), `total_pages: 1`, pg>1 → `{tp:1,list:[]}`, uri lạ/rỗng → 200 rỗng. **Site là SPA**: HTML chỉ có `<div id="app">` → mọi dữ liệu (list/detail/stream) đi qua JSON API. TLS từ IP máy bị cắt (`SSL_connect: Connection closed`) với cả h1.1/h2 → **bắt buộc** `VJAV_RELAY` (worker `xn-relay`, ALLOW thêm `vjav.com,tn.vjav.com`); ảnh `tn.vjav.com` cũng qua relay. `total_pages` lấy từ `pages` của JSON. Lưu ý: seek xa (>10MB) qua relay rất chậm do origin — `play.sh` báo `PHÁT ĐƯỢC (cảnh báo)`)*
 
 ## Phase 2 — Tube phương Tây (chip = thể loại / pornstar / channel / tag)
 

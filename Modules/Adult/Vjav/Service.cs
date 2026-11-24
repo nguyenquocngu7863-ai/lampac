@@ -42,6 +42,39 @@ public static class VjavTo
     static string H(string host)
         => (string.IsNullOrEmpty(host) ? SiteHost : host).TrimEnd('/');
 
+    // TLS tu IP may nay bi cat (SSL_connect: Connection closed) — ca h1.1 lan h2.
+    // => wrap moi URL vjav/tn.vjav qua Cloudflare Worker (egress CF).
+    // Bat/tat: env VJAV_RELAY (dat trong termux-run-lampac.sh).
+    static readonly string relayBase = System.Environment.GetEnvironmentVariable("VJAV_RELAY")?.TrimEnd('/');
+
+    public static string Relay(string url)
+    {
+        if (string.IsNullOrEmpty(relayBase) || string.IsNullOrEmpty(url) || !url.StartsWith("http"))
+            return url;
+        if (url.StartsWith(relayBase, StringComparison.OrdinalIgnoreCase))
+            return url;
+        if (System.Uri.TryCreate(url, UriKind.Absolute, out var u))
+            return $"{relayBase}/{u.Host}{u.PathAndQuery}";
+        return url;
+    }
+
+    // /api/json/video/{lt}/{id/1e6}/{1e3*(id/1e3)}/{id}.json -> chip popup
+    public static string VideoApiUrl(string id)
+    {
+        if (!long.TryParse(id, out long n) || n <= 0)
+            return null;
+        return $"{SiteHost}/api/json/video/86400/{n / 1_000_000}/{n / 1000 * 1000}/{n}.json";
+    }
+
+    // /api/json/videos_related2/{lt}/{count}/{id/1e6}/{1e3*(id/1e3)}/{id}.{type}.{pg}.json
+    // `lifetime` PHAI = 432000 (khac -> {"error":1,"code":"invalid_lifetime"}).
+    public static string RelatedApiUrl(string id)
+    {
+        if (!long.TryParse(id, out long n) || n <= 0)
+            return null;
+        return $"{SiteHost}/api/json/videos_related2/432000/60/{n / 1_000_000}/{n / 1000 * 1000}/{n}.relevance.1.json";
+    }
+
     // URL JSON API cho list. `c` rong = list thuong; `cat/<dir>` = danh muc.
     public static string ApiUrl(string host, string search, string c, int pg, string sort)
     {
@@ -150,7 +183,7 @@ public static class VjavTo
                 if (!seen.Add(uri))
                     continue;
 
-                string poster = Poster(v, id);
+                string poster = Relay(Poster(v, id));
                 string time = Clean(Str(v, "duration"));
 
                 list.Add(new PlaylistItem()
@@ -171,6 +204,97 @@ public static class VjavTo
         }
 
         return list;
+    }
+
+    // Tong so trang: JSON list co `pages` (so nguyen). Loi -> 0 (de caller tu quyet).
+    public static int TotalPages(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return 0;
+
+        JsonDocument doc;
+        try { doc = JsonDocument.Parse(json); }
+        catch { return 0; }
+
+        using (doc)
+        {
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object
+                || !root.TryGetProperty("pages", out var p))
+                return 0;
+
+            if (p.ValueKind == JsonValueKind.Number)
+                return p.TryGetInt32(out int n) ? n : 0;
+
+            return int.TryParse(p.ToString(), out int m) ? m : 0;
+        }
+    }
+
+    // ── Popup: chip lay tu /api/json/video/{...}/{id}.json ──
+    //   categories = {"9": {"title":"Amateur","dir":"amateur"}, ...}
+    //   tags       = {"17915": {"title":"Amateur MILF","dir":"amateur-milf"}, ...}
+    public class Chip
+    {
+        public string title { get; set; }
+        public string dir { get; set; }
+    }
+
+    public class InfoBox
+    {
+        public List<Chip> categories { get; set; }
+        public List<Chip> tags { get; set; }
+    }
+
+    public static InfoBox Info(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return null;
+
+        JsonDocument doc;
+        try { doc = JsonDocument.Parse(json); }
+        catch { return null; }
+
+        using (doc)
+        {
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object
+                || !root.TryGetProperty("video", out var v)
+                || v.ValueKind != JsonValueKind.Object)
+                return null;
+
+            var box = new InfoBox
+            {
+                categories = Chips(v, "categories"),
+                tags = Chips(v, "tags")
+            };
+
+            return box.categories.Count == 0 && box.tags.Count == 0 ? null : box;
+        }
+    }
+
+    static List<Chip> Chips(JsonElement v, string key)
+    {
+        var res = new List<Chip>();
+        if (!v.TryGetProperty(key, out var o) || o.ValueKind != JsonValueKind.Object)
+            return res;
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var p in o.EnumerateObject())
+        {
+            if (p.Value.ValueKind != JsonValueKind.Object)
+                continue;
+
+            string title = Clean(HttpUtility.HtmlDecode(Str(p.Value, "title")));
+            string dir = Str(p.Value, "dir").Trim('/').ToLowerInvariant();
+
+            if (title.Length == 0 || dir.Length == 0 || !seen.Add(dir))
+                continue;
+
+            res.Add(new Chip { title = title, dir = dir });
+        }
+
+        return res;
     }
 
     // /api/json/categories/14400/str.all.en.json -> 156 muc
