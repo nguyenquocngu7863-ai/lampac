@@ -78,6 +78,14 @@ public class JavBangersController : BaseSisiController
     // sort chi gui khi context do co sort (ClampSort da bao dam gia tri hop le)
     static string ListUrlWithSort(string host, string c, string sort, int pg)
     {
+        // HOME + sort: phai mo "/" (trang /latest-updates/ bo qua sort_by), phan trang bang "from:0N"
+        if (string.IsNullOrEmpty((c ?? "").Trim().Trim('/')) && !string.IsNullOrEmpty(sort))
+        {
+            string u = JbTo.SiteHost + "/?sort_by=" + HttpUtility.UrlEncode(sort);
+            if (pg > 1) u += "&from=0" + pg;
+            return u;
+        }
+
         string url = JbTo.ListUrl(host, c, pg);
         if (!string.IsNullOrEmpty(sort))
             url += (url.Contains('?') ? "&" : "?") + "sort_by=" + HttpUtility.UrlEncode(sort);

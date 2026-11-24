@@ -52,6 +52,17 @@ Thứ tự ưu tiên từ nay:
 2. Popup còn thiếu — **10 module nhóm B** trước, nhóm A để sau.
 3. Việc nhóm A chỉ làm khi user yêu cầu rõ ràng hoặc site đó user đang dùng.
 
+> **2026-11-24 (22)**: **JavBangers — home CÓ sort** (user: "lấy home là row newest đúng không? row này có sort
+> rõ ràng, capture kiểu gì mà càng soi càng thấy lỗi"). Đúng: mình đo trên `/latest-updates/` (listing
+> "Latest", cùng nội dung nên tưởng là home) — trang đó cố định `post_date` ⇒ kết luận oan "no-op".
+> Home thật `/` có control `#list_videos_most_recent_videos_sort_list` (Most Viewed / Top Rated / Longest /
+> Most Commented / Most Favourited) và `?sort_by=` **sống**: sha 24 id `/`=`9627d496`, duration=`58b905de`
+> (1587:20 > 1504:38 > 740:35), video_viewed=`2633a39d`, rating=`fd519a8e`. Đã thêm dòng 2 cho home; trang ≥2
+> đã sort dùng **`/?sort_by=<s>&from=0N`** (đo p2: 425:33 > 421:24 > 413:27). Bug phụ phát hiện khi sửa:
+> trang "/" và member có **nhiều block** ⇒ parser nuốt cả row "watched right now" (60 item) / block favourite
+> ⇒ thêm `RowHtml` chọn block `_items` **nhiều card nhất** (bỏ `watched_right_now`) → home 30 item, member/8
+> 5 item đúng. Cập nhật README + `kvs-tube.md` §3b (bẫy "đo sort trên URL sai") + `lampac-sort/cases.md`.
+
 > **2026-11-24 (21)**: **Ghi lại bẫy JavBangers** (user: "ghi lại bẫy đi, làm một module mà lỗi hơi nhiều").
 > Tạo `~/.agents/skills/lampac-adult-module/references/kvs-tube.md` — công thức engine **KVS/Porntex** +
 > **9 bẫy đã dính** (detail 404 vì `/` cuối, 3 lớp chất lượng, `total_pages` theo context, member AJAX,

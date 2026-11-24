@@ -73,10 +73,40 @@ public static class JbTo
 
     #region playlist
     // card: div.video-item ... moi card co 2 link cung 1 video (thumb + ten) -> dedupe theo id
+    // Trang co NHIEU row (home: "watched right now"; member: favourite + uploaded; detail: related)
+    // => chon block "_items" NHIEU CARD NHAT (bo qua watched_right_now), cat den id ke tiep / pagination.
+    public static string RowHtml(string html)
+    {
+        if (string.IsNullOrEmpty(html)) return html;
+
+        string best = null;
+        int bestCards = -1;
+
+        foreach (Match m in Regex.Matches(html, @"id=""list_videos_[a-z0-9_]+_items"""))
+        {
+            if (m.Groups[0].Value.Contains("watched_right_now")) continue;
+
+            string tail = html.Substring(m.Index);
+            var next = Regex.Match(tail.Substring(m.Length), @"id=""list_videos_[a-z0-9_]+(_items)?""|class=""pagination""");
+            string seg = next.Success ? tail.Substring(0, m.Length + next.Index) : tail;
+
+            int cards = Regex.Matches(seg, @"class=""video-item").Count;
+            if (cards > bestCards)
+            {
+                bestCards = cards;
+                best = seg;
+            }
+        }
+
+        return best ?? html;
+    }
+
     public static List<PlaylistItem> Playlist(string route, string html)
     {
         var res = new List<PlaylistItem>();
         if (string.IsNullOrEmpty(html)) return res;
+
+        html = RowHtml(html);
 
         var seen = new HashSet<string>(StringComparer.Ordinal);
 
@@ -147,7 +177,13 @@ public static class JbTo
         string p = (c ?? "").Trim().Trim('/');
         if (p.StartsWith("categories/", StringComparison.OrdinalIgnoreCase)) return Sorts;
         if (p.StartsWith("models/", StringComparison.OrdinalIgnoreCase)) return Sorts;
-        // latest-updates / top-rated / most-popular / members/* : site bo qua sort_by (da do)
+
+        // HOME (c rong): sort THAT, nhung chi tren "/" — "/latest-updates/" KHONG nhan sort_by.
+        // Do 2026-11-24 (sha sequence, 24 id dau):
+        //   "/" 9627d496 · "/?sort_by=duration" 58b905de · "?video_viewed" 2633a39d · "?rating" fd519a8e
+        if (p.Length == 0) return Sorts;
+
+        // top-rated / most-popular / members/* : site bo qua sort_by (da do)
         return NoSort;
     }
 

@@ -73,22 +73,27 @@ flashvars: video_categories: 'Blowjob, Cumshot, Hardcore'
 
 ## SORT — bảng đo (skill `lampac-sort`)
 
-Đo bằng **sequence id + sha1 30 video**, kiểm chứng thêm bằng chính dữ liệu trên card (duration/views/rating):
+Đo bằng **sequence id + sha1 24–30 video**, kiểm chứng thêm bằng chính dữ liệu trên card (duration):
 
-| context | base | `?sort_by=duration` | `?sort_by=video_viewed` | `?sort_by=rating` | kết luận |
+| context | base | `duration` | `video_viewed` | `rating` | kết luận |
 |---|---|---|---|---|---|
-| `/latest-updates/` | `f08c292c` | `f08c292c` | `f08c292c` | `f08c292c` | **NO-OP → không có dòng 2** |
-| `/members/13/` | `0c741a14` | `0c741a14` | — | — | **NO-OP → không có dòng 2** |
-| `/categories/creampie/` | `4b5a2d07` | `73f82883` | đổi (views giảm dần: 566 131 > 293 693 > 247 065 …) | đổi (100% > …) | **SORT thật** |
-| `/models/yi-yuna/` | `9fb20b0b` | `2edcf9a6` (29:14 > 22:39 > 19:38 > 19:32) | — | — | **SORT thật** |
+| **home `/`** (row *New Videos*, first = 300MAAN 412813) | `9627d496` | `58b905de` → 1587:20 > 1504:38 > 740:35 | `2633a39d` | `fd519a8e` | **SORT thật — dòng 2** |
+| home `/latest-updates/` (listing "Latest") | `f08c292c` | `f08c292c` | `f08c292c` | `f08c292c` | NO-OP (trang này cố định `post_date`) |
+| `/members/13/` | `0c741a14` | `0c741a14` | — | — | NO-OP → không dòng 2 |
+| `/categories/creampie/` | `4b5a2d07` | `73f82883` | views giảm dần thật | 100% > … | **SORT thật** |
+| `/models/yi-yuna/` | `9fb20b0b` | `2edcf9a6` (29:14 > 22:39 > 19:38) | — | — | **SORT thật** |
 | `/search/?q=japan` | `535ab69b` | `8a32933d` | — | — | **SORT thật** |
 
-Bằng chứng "sort thật" = **thứ tự property đúng chiều**: category + duration cho 740:35 > 506:56 > 482:09 >
-458:12 (>400 phút), trang 2 tiếp tục 305:34 > 303:58; model + duration 29:14 > 22:39 > 19:38.
+Bẫy đã dính: đo sort home trên `/latest-updates/` ⇒ kết luận oan "home không sort được".
+Site có **sort control ngay trên row** `#list_videos_most_recent_videos_sort_list` (Most Viewed / Top Rated /
+Longest / Most Commented / Most Favourited) và `?sort_by=` **chỉ sống trên `/`**, không sống trên
+`/latest-updates/`. Trang 2 của home đã sort: `/?sort_by=duration&from=02` (đo: 425:33 > 421:24 > 413:27 —
+tiếp đúng chiều) ⇒ phân trang sorted home dùng `&from=0N`, không dùng `/latest-updates/N/`.
 
 Whitelist = `""` (Mới nhất) · `video_viewed` (Xem nhiều) · `rating` (Đánh giá cao) · `duration` (Dài nhất);
 `ClampSort` chạy **trước** cache key; sort lạ → Mới nhất (không 503).
-`?latest-updates/?sort_by=most_favourited` cũng no-op → không có trong whitelist.
+`most_commented` / `most_favourited` có trên control của site nhưng **chưa đo** được trên `/` ⇒ chưa đưa vào
+whitelist (không đoán).
 
 ## Menu (tiếng Việt/Anh)
 
