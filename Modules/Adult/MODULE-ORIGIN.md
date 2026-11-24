@@ -12,10 +12,11 @@ So trực tiếp với **`lampac-nextgen/lampac`** HEAD `7559b2c` (2026-11-24), 
 |---|---|---|---|
 | **SISI** | `Modules/Adult` (14 balancer) + `SISI/` (plugin + controller) | 14/14 + `SISI/` | 14/14 module đã sửa; `SISI/plugins` +326 dòng, thêm `sisi-restyle.js` |
 | **NextHUB** | `Modules/NextHUB` (57 `sites/*.yaml` + `Root.cs`/controller) | 57/57 yaml | **59 file / 5.049 dòng**, **55/57 yaml** đã Việt hoá, thêm `CategoryVi.cs` |
-| **ngoài 2 nguồn** | — | **65 module tự làm** | không có ở upstream |
+| **ngoài 2 nguồn** | — | **66 module tự làm** | không có ở upstream |
 
-Tổng `Modules/Adult`: **79 = 14 (SISI) + 65 tự làm**. Bật **75** (13 SISI + 62 tự làm).
-Popup: **53 module đủ** `genres` + `?rel=`; **22 chưa có popup** (11 SISI + 11 tự làm).
+Tổng `Modules/Adult`: **80 = 14 (SISI) + 66 tự làm**. Bật **76** (13 SISI + 63 tự làm).
+(KissJav thêm 2026-11-24, sau lần đếm gốc.)
+Popup: **54 module đủ** `genres` + `?rel=`; **22 chưa có popup** (11 SISI + 11 module cũ tự làm).
 
 > Đo thêm: 57 site NextHUB **không trùng domain** với 65 module tự làm (chỉ `rt.pornhub.com`),
 > tức 65 module này **không phải port từ NextHUB** mà viết mới.
@@ -63,7 +64,7 @@ Popup: **53 module đủ** `genres` + `?rel=`; **22 chưa có popup** (11 SISI +
 
 ⇒ Đây là chỗ merge upstream **phá nhiều nhất**: 55 file yaml + bảng dịch sẽ bị ghi đè.
 
-## 3. 65 module Adult tự làm (không thuộc SISI/NextHUB)
+## 3. 66 module Adult tự làm (không thuộc SISI/NextHUB)
 
 | module | route | bật | popup | ngày thêm | tác giả |
 |---|---|---|---|---|---|
@@ -89,6 +90,7 @@ Popup: **53 module đủ** `genres` + `?rel=`; **22 chưa có popup** (11 SISI +
 | `Javtiful` | `javtiful` | on | ✅ | 2026-09-22 | nguyenquocngu7863-ai |
 | `JavTsunami` | `javtsunami` | **off** | — | 2026-09-23 | nguyenquocngu7863-ai |
 | `KawaiJAV` | `kawaijav` | on | ✅ | 2026-10-25 | nguyenquocngu7863-ai |
+| `KissJav` | `kissjav` | on | ✅ | 2026-11-24 | nguyenquocngu7863-ai |
 | `Lon69` | `lon69` | on | — | 2026-10-26 | nguyenquocngu7863-ai |
 | `Manko` | `manko` | on | ✅ | 2026-10-14 | opencode |
 | `Mbbg` | `mbbg` | on | ✅ | 2026-10-04 | nguyenquocngu7863-ai |

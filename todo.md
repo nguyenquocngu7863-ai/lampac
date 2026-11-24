@@ -20,8 +20,8 @@ Skill tham chiếu: `lampac-popup` (hợp đồng route, luật UX, anti-pattern
 | nhóm | số module | đang bật | có popup (`genres`) | có cả `?rel=` |
 |---|---|---|---|---|
 | **A. Gốc upstream** (`lampac-nextgen/lampac`) | 14 | 13 | 2 (`Eporner`, `Spankbang`) | 2 |
-| **B. Tự làm** (upstream không có) | 65 | 62 | 51 | 51 |
-| **tổng** | **79** | **75** | **53** | **53** |
+| **B. Tự làm** (upstream không có) | 66 | 63 | 52 | 52 |
+| **tổng** | **80** | **76** | **54** | **54** |
 
 - Cả **53 module có `genres` đều đã có `?rel=`** → không còn module nào "nửa vời".
 - **Chưa có popup: 22** = **11 nhóm A** (`BongaCams`, `Chaturbate`, `Ebalovo`, `HQporner`, `PornHub`,
@@ -51,6 +51,19 @@ Thứ tự ưu tiên từ nay:
 1. Bug đang chặn phát (`no supported source`, `stream_links`, domain 301) — nhóm B trước.
 2. Popup còn thiếu — **10 module nhóm B** trước, nhóm A để sau.
 3. Việc nhóm A chỉ làm khi user yêu cầu rõ ràng hoặc site đó user đang dùng.
+
+> **2026-11-24 (16)**: **Module MỚI `KissJav`** (`https://kissjav.li`, Korean/JAV tube) — user bỏ ý định
+> sửa `SexHihi` (domain mới `gaisexhihi.pro` quá ít dữ liệu, không đáng) → **revert toàn bộ** thay đổi SexHihi
+> về HEAD, viết module mới từ site thật (chỉ 2 request: home + 1 detail). Theme riêng (không WordPress):
+> list `/latest-updates/[pg]/`, danh mục `/categories/<slug>/`, sort `?sort_by=`, search `/search/?q=`,
+> card `div.thumb.thumb_rel.item` **30 phim/trang**, detail `/video/<id>/<slug>/`. Player: `flashvars.video_url`
+> = **base64**(`/get_file/11/…/<id>.mp4/?br=1014`) → **MP4 progressive** (không HLS); `video_url_hd: 'MQ=='` là
+> **sentinel** phải bỏ qua. Popup: **Thể loại** = thẻ riêng của phim (`a.btn.gold.button` → `/categories/…`,
+> KHÔNG lấy link nav header 8 danh mục chung) + **Liên quan** (`#list_videos_related_videos_items`, 6 phim).
+> Menu 3 tầng dữ liệu: Tìm kiếm · Danh mục (parse nav, fallback 10) · Sắp xếp (6 kiểu). Đo: home 30 item/tp 9,
+> pg2 OK, `categories/jav` OK, `sort=video_viewed` đổi thứ tự thật, search 20 item, genres 2 chip + rel 6,
+> host lạ → rỗng; stream `206 · video/mp4 · ftypisom · 35.453.233 B`; `play.sh` **PASS** (h264 720x1252 · 273.2s).
+> ⇒ **80 module Adult = 14 SISI + 65 tự làm + KissJav**, tổng có popup đủ **54**.
 
 > **2026-11-24 (15)**: **`SevenMM` có popup** (trước đây chỉ có menu "Thể loại …", chưa có route). Từ **trang detail** (SSR: khối `div.fullvideo-attr`) dựng 3 nhóm chip: **Thể loại** (`div.categories`, 10) · **Diễn viên** (`div.fullvideo-idol` → `censored_avperformer/25274/Hikaru Minazuki`) · **Hãng** (`Studio:` → `censored_makersr/3854/GOS`; `Label: ----` bỏ) + mục "Liên quan" `plain:true` → `?rel=`. `?rel=` parse khối `div.related` bằng parser RIÊNG (`RelatedPlaylist`, vì card là `video video-related` chứ không phải `col-item`) → **count 8, `total_pages:1`**; `pg>1` → rỗng; fetch thiếu khối (TLS drop ~60% của `7mmtv.sx`) → **thử lại 1 lần rồi trả rỗng**, không 503. SSRF: `DetailPath` chỉ nhận `/<xx>/<x>_content/<id>/<CODE>.html` trên `*.7mmtv.sx`, host lạ → rỗng. Đo: chip link chạy thật (`censored_category/128/Small Tits`, `censored_makersr/3854/GOS` → `KAGP-403…`), `play.sh` **PASS** (VH h264 852x480 · 7534.7s · segment 3/3). ⇒ nâng lên **53 module có popup đủ (genres + `?rel=`)**; đếm lại bằng route thật thấy `SexHihi`/`JavTsunami` **không có route** (grep chữ trước đây đếm oan).
 
