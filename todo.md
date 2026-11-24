@@ -52,6 +52,15 @@ Thứ tự ưu tiên từ nay:
 2. Popup còn thiếu — **10 module nhóm B** trước, nhóm A để sau.
 3. Việc nhóm A chỉ làm khi user yêu cầu rõ ràng hoặc site đó user đang dùng.
 
+> **2026-11-24 (21)**: **Ghi lại bẫy JavBangers** (user: "ghi lại bẫy đi, làm một module mà lỗi hơi nhiều").
+> Tạo `~/.agents/skills/lampac-adult-module/references/kvs-tube.md` — công thức engine **KVS/Porntex** +
+> **9 bẫy đã dính** (detail 404 vì `/` cuối, 3 lớp chất lượng, `total_pages` theo context, member AJAX,
+> search không phân trang, không có trang tag, card 2 link, related lẫn block, `video_alt_url` là redirect)
+> + **5 bài học quy trình** (đừng kết luận từ URL sai; đo đầu ra cuối chứ không phải HTTP 200; grep số liệu
+> là bẫy; thử ≥2 đường trước khi nói "site không có"; ghi bẫy vào README ngay). Link vào bảng references
+> của SKILL.md. Đo sort JavBangers (5 context, base/sha) thêm vào `lampac-sort/references/cases.md`.
+> README module: mục "Bẫy đã dính" nâng thành bảng 9 dòng.
+
 > **2026-11-24 (20)**: **JavBangers — trả lại chọn CHẤT LƯỢNG** (user: "web up to 1080 mà bỏ hết phần chọn
 > chất lượng?? mặc định 480px?"). Trang detail có **3 mức**: `video_url`=**480p**, `video_alt_url`=**720p**
 > (`_720p.mp4`), `video_alt_url2`=**1080p** (`_1080p.mp4`). Đã sửa: `Streams(detail)` gom 3 mức (chỉ nhận

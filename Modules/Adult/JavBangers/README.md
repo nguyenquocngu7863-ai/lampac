@@ -118,34 +118,18 @@ Search: **không có dòng 3** (search lọc theo keyword).
   sitemap không có `type=tags` ⇒ **không có nhóm Thẻ**.
 - SSRF: `uri` chỉ nhận `/video/<id>` trên `*.javbangers.com`; sai → `{"items":[],"groups":[]}`.
 
-## Bẫy đã dính
+## Bẫy đã dính (đầy đủ — 9 cái, đừng lặp lại)
 
-1. **Detail 404**: đừng cố fetch `/video/...` — lấy mọi thứ từ `/embed/<id>`.
-2. **Detail 404 nếu có `/` cuối** — luôn fetch đúng href của card (không trailing slash).
-3. **`&page=N` và `/search/<kw>/2/` đều không có tác dụng** (404 / trả trang 1); ajax
-   `?action=get_block&block_id=list_videos_videos_list_search_result&from_videos=N` cũng trả y trang 1
-   ⇒ search **chỉ 1 trang** (`total_pages = 1`).
-4. `video_alt_url` (720p) là **redirect** về trang detail → không dùng trực tiếp.
-5. Mỗi card có **2 link** cùng video → dedupe theo id, nếu không list bị nhân đôi.
-6. `total_pages` phải đọc từ link của **chính context** (`/<c>/<N>/`); nếu quét chung `from:` sẽ ra số rác
-   (member/8 từng trả `8447` thay vì `150`).
+| # | bẫy | hậu quả | cách đúng |
+|---|---|---|---|
+| 1 | tự ghép `/video/<id>/<slug>/` (**có `/` cuối**) | 404 → kết luận oan "guest bị chặn", phải lấy stream từ `/embed` | giữ **nguyên `href`** của card; detail **không** `/` cuối mới 200 |
+| 2 | chỉ lấy `video_url` | chỉ có **480p**, mất 720p/1080p | đọc cả `video_alt_url`, `video_alt_url2` → `vidosik` trả 3 nhãn |
+| 3 | `total_pages` quét chung `from:(\d+)` | `member/8` ra **8447** (số của block khác) | đọc link `/<c>/<N>/` của **chính context**, fallback mới tới `from:` |
+| 4 | tưởng member page phân trang URL | `/members/8/2/` = 404 → app báo lỗi `playlists` | member dùng AJAX ⇒ `tp 1`, `pg>1` ép 1 |
+| 5 | tưởng search phân trang được | `/search/<kw>/2/` = 404, `&page=` bị bỏ qua, ajax trả y trang 1 | `tp 1` cho search |
+| 6 | bịa chip tag từ `video_tags` | `/tags/` = **502**, `/tags/<slug>/` = 404 | không có trang tag ⇒ **không nhóm Thẻ** |
+| 7 | không dedupe card | mỗi video 2 `<a>` ⇒ list nhân đôi | dedupe theo id |
+| 8 | parse related bằng regex cả trang | nuốt luôn card của block khác | cắt `div.related-videos` trước |
+| 9 | `video_alt_url` coi là file | có video là **redirect về trang detail** | chỉ nhận URL chứa `/get_file/` |
 
-## Đo trên app (2026-11-24)
-
-| endpoint | kết quả |
-|---|---|
-| `/javbangers` | 200 · 30 item · tp 6011 |
-| `?pg=2` | 30 item khác trang 1 |
-| `?c=categories/creampie` | 24 item · tp 1291 |
-| `?c=categories/creampie&sort=duration` | 24 item (740:35 > 506:56 > 482:09) · tp 1295 |
-| `?c=categories/creampie&sort=duration&pg=2` | 305:34 > 303:58 (pagination chạy dưới sort) |
-| `?c=categories/creampie&sort=video_viewed` / `=rating` | đổi thứ tự |
-| `?c=models/yi-yuna` / `&sort=duration` | 24 item · 29:14 > 22:39 |
-| `?c=members/8` (user tarpi) | 5 item · tp 1 · không có dòng 2 (site bỏ qua sort) |
-| `/genres` video 117657 | Người đăng **tarpi** · Thể loại 3 · Liên quan |
-| `?rel=…` | 10 item · tp 1 · `pg=2` → rỗng |
-| `?c=top-rated` / `?c=most-popular` | 24 item · tp 7539 |
-| `?search=japan` / `&sort=duration` | 71 / 73 item · tp 1 |
-| `/genres` video 412813 | Thể loại 3 (Creampie·Censored·Hardcore) |
-| `/genres` host lạ | `{"items":[],"groups":[]}` |
-| `play.sh` | **PASS** — h264 854x480 · 5675.2s · 206 · 761.645.181 B |
+Ghi chú chung cho engine KVS: `~/.agents/skills/lampac-adult-module/references/kvs-tube.md`.
