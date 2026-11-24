@@ -173,10 +173,37 @@ public class VsMovController : BaseOnlineController
         if (await IsRequestBlocked(rch: true, rch_check: false))
             return badInitMsg;
 
-        string stream = HostStreamProxy(source, headers: StreamHeaders());
-        return string.IsNullOrWhiteSpace(stream)
-            ? OnError("segment", refresh_proxy: true)
-            : RedirectToPlay(stream);
+        // Segment VsMov là "polyglot": header PNG + payload MPEG-TS phía sau.
+        // Trả nguyên file cho player thì demuxer chết => phải tải bytes và cắt header.
+        byte[] data = await Http.Download(source, timeoutSeconds: 60, headers: StreamHeaders(), useDefaultHeaders: false);
+        if (data == null || data.Length == 0)
+            return OnError("segment", refresh_proxy: true);
+
+        int offset = TsOffset(data);
+        if (offset > 0)
+            data = data.AsSpan(offset).ToArray();
+
+        return File(data, "video/mp2t");
+    }
+
+    /// <summary>Độ lệch byte đầu tiên của gói TS (segment bọc header PNG), 0 = không có header.</summary>
+    static int TsOffset(byte[] data)
+    {
+        if (data == null || data.Length < 565)
+            return 0;
+
+        bool png = data[0] == 0x89 && data[1] == 0x50 && data[2] == 0x4E && data[3] == 0x47;
+        if (!png)
+            return 0;
+
+        int limit = Math.Min(data.Length - 564, 8192);
+        for (int i = 0; i < limit; i++)
+        {
+            if (data[i] == 0x47 && data[i + 188] == 0x47 && data[i + 376] == 0x47 && data[i + 564] == 0x47)
+                return i;
+        }
+
+        return 0;
     }
 
     IReadOnlyList<HeadersModel> StreamHeaders()
@@ -439,7 +466,7 @@ public class VsMovController : BaseOnlineController
     string VideoLink(string source, string title, string slug)
     {
         return accsArgs(
-            $"{host}/lite/vsmov/video?uri={EncryptQuery(source)}" +
+            $"{host}/lite/vsmov/video.m3u8?uri={EncryptQuery(source)}" +
             $"&title={HttpUtility.UrlEncode(title)}&slug={HttpUtility.UrlEncode(slug)}"
         );
     }
@@ -516,12 +543,14 @@ public class VsMovController : BaseOnlineController
 
         try
         {
-            // VsMov pattern: https://v1.streamvsmov.com/video/{hash} → stream/{hash}/master.m3u8
+            // VsMov pattern: https://v{HOST}.streamvsmov.com/video/{hash} → https://{HOST}/stream/{hash}/master.m3u8
+            // Host đổi theo từng tập (v1/v8/v9/v15…), KHÔNG được hardcode.
             if (embed.Contains("streamvsmov.com/video/", StringComparison.OrdinalIgnoreCase))
             {
-                string hash = embed.Split('/').LastOrDefault();
+                var vsUri = new Uri(embed, UriKind.Absolute);
+                string hash = vsUri.AbsolutePath.Trim('/').Split('/').LastOrDefault();
                 if (!string.IsNullOrWhiteSpace(hash))
-                    return $"https://v1.streamvsmov.com/stream/{hash}/master.m3u8";
+                    return $"https://{vsUri.Host}/stream/{hash}/master.m3u8";
             }
 
             var uri = new Uri(embed, UriKind.Absolute);
