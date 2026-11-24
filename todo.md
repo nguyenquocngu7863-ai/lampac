@@ -52,6 +52,18 @@ Thứ tự ưu tiên từ nay:
 2. Popup còn thiếu — **10 module nhóm B** trước, nhóm A để sau.
 3. Việc nhóm A chỉ làm khi user yêu cầu rõ ràng hoặc site đó user đang dùng.
 
+> **2026-11-24 (17)**: **KissJav — SORT đúng chuẩn dòng 2** (sửa lỗi làm sai lần đầu: đặt sort thành dòng 3
+> "Danh mục/Sắp xếp" + sort không giữ context). Đo lại theo `lampac-sort` LUẬT 3 (so **sequence 30 id** + sha1,
+> không so set): `sort_by=video_viewed` `52579f08` · `rating` `e97c5a9a` = **SORT thật**; `duration`,
+> `most_commented`, `most_favourited` = **`2f1a7799` y hệt base ⇒ NO-OP, loại khỏi whitelist**. Ăn cả ở
+> `/categories/*` và `/search/korean/` (đổi sang dạng path `/search/<kw>/` vì `/search/?q=` không phân trang).
+> **Bẫy**: trang ≥2 **bỏ qua `sort_by`** (`/latest-updates/2/?sort_by=video_viewed` = trang 2 không sort,
+> 0 trùng/30 với trang 1 đã sort) ⇒ đang sort thì **chỉ trả trang 1** (`total_pages:1`, `pg>1` ép về 1).
+> Menu giờ 3 dòng: `Tìm kiếm` · **`Sắp xếp: <đang mở>`** (giữ `c`/`search`, luôn về trang 1) · `Thể loại`;
+> `?rel=` **không có dòng 2**; `ClampSort` trước cache key (`?sort=post__in` → Mới nhất, không 503);
+> cache key `kissjav:v2:` có đủ `search+c+sort+pg`. Đo: menu home/cat/search giữ context đúng, sort lạ clamp OK,
+> `rel` 2 dòng, `play.sh` **PASS** (h264 720x1252 · 273.2s).
+
 > **2026-11-24 (16)**: **Module MỚI `KissJav`** (`https://kissjav.li`, Korean/JAV tube) — user bỏ ý định
 > sửa `SexHihi` (domain mới `gaisexhihi.pro` quá ít dữ liệu, không đáng) → **revert toàn bộ** thay đổi SexHihi
 > về HEAD, viết module mới từ site thật (chỉ 2 request: home + 1 detail). Theme riêng (không WordPress):

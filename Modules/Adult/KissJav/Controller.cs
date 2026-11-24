@@ -26,16 +26,23 @@ public class KissJavController : BaseSisiController
         if (pg < 1)
             pg = 1;
 
+        // clamp TRUOC cache key (sort la -> mac dinh cua context, khong sinh entry rac)
+        sort = KissJavTo.ClampSort(sort, search, c);
+
+        // site BO QUA sort_by o trang >= 2 -> dang sort thi chi co trang 1
+        if (!string.IsNullOrEmpty(sort) && pg > 1)
+            pg = 1;
+
         if (!string.IsNullOrWhiteSpace(rel))
             return await RelatedList(rel, pg);
 
-        var menuTask = MenuAsync(c, sort);
+        var menuTask = MenuAsync(search, c, sort);
 
         var cache = await InvokeCacheResult<(List<PlaylistItem> playlists, int total_pages)>(
-            ipkey($"kissjav:v1:{search}:{c}:{sort}:{pg}"), 10, async e =>
+            ipkey($"kissjav:v2:{search}:{c}:{sort}:{pg}"), 10, async e =>
         {
             string url = !string.IsNullOrWhiteSpace(search)
-                ? KissJavTo.SearchUrl(init.host, search, pg)
+                ? KissJavTo.SearchUrl(init.host, search, sort, pg)
                 : KissJavTo.ListUrl(init.host, c, sort, pg);
 
             string html = await GetPageAsync(url);
@@ -44,7 +51,8 @@ public class KissJavController : BaseSisiController
                 return e.Fail("playlists", refresh_proxy: true);
 
             var playlists = KissJavTo.Playlist("kissjav/vidosik", html);
-            return e.Success((playlists, KissJavTo.Pages(html)));
+            int total = string.IsNullOrEmpty(sort) ? KissJavTo.Pages(html) : 1;
+            return e.Success((playlists, total));
         });
 
         if (rch?.enable == true)
@@ -61,7 +69,7 @@ public class KissJavController : BaseSisiController
     }
 
     // ================= Menu (danh muc + sort) =================
-    async Task<List<MenuItem>> MenuAsync(string c, string sort)
+    async Task<List<MenuItem>> MenuAsync(string search, string c, string sort, bool allowSort = true)
     {
         string memKey = ipkey("kissjav:nav:v1");
         var nav = KissJavTo.FallbackNav;
@@ -83,7 +91,7 @@ public class KissJavController : BaseSisiController
             catch { }
         }
 
-        return KissJavTo.Menu(host, nav, c, sort);
+        return KissJavTo.Menu(host, nav, search, c, sort, allowSort);
     }
 
     // ================= Vidosik =================
@@ -226,7 +234,7 @@ public class KissJavController : BaseSisiController
         if (cache.Value == null || cache.Value.Count == 0)
             return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
 
-        return PlaylistResult(cache, await MenuAsync(null, null), total_pages: 1);
+        return PlaylistResult(cache, await MenuAsync(null, null, null, allowSort: false), total_pages: 1);
     }
     #endregion
 

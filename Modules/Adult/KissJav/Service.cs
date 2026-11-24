@@ -60,10 +60,13 @@ public static class KissJavTo
         return u;
     }
 
-    public static string SearchUrl(string host, string kw, int pg)
+    // Do 2026-11-24: dang path /search/<kw>/ moi co phan trang (/search/<kw>/2/), va sort_by an o day
+    // (/search/?q=       sha=b304122f ; /search/?q=..&sort_by=video_viewed sha=5ea706d6 => DOI thu tu).
+    public static string SearchUrl(string host, string kw, string sort, int pg)
     {
-        string u = Base(host) + "/search/?q=" + HttpUtility.UrlEncode((kw ?? "").Trim());
-        if (pg > 1) u += "&page=" + pg;
+        string u = Base(host) + "/search/" + HttpUtility.UrlEncode((kw ?? "").Trim().Replace("/", " ")) + "/";
+        if (pg > 1) u += pg + "/";
+        if (!string.IsNullOrEmpty(sort)) u += "?sort_by=" + HttpUtility.UrlEncode(sort);
         return u;
     }
 
@@ -131,8 +134,9 @@ public static class KissJavTo
         if (string.IsNullOrEmpty(html)) return res;
 
         var seen = new HashSet<string>(StringComparer.Ordinal);
+        // chi lay danh muc: latest-updates / most-popular la LISTING, khong phai taxonomy
         foreach (Match m in Regex.Matches(html,
-            @"href=""https?://[^""/]+/((?:latest-updates|most-popular|categories/[a-z0-9\-]+))/?""[^>]*>\s*([^<]{1,40})\s*<"))
+            @"href=""https?://[^""/]+/(categories/[a-z0-9\-]+)/""[^>]*>\s*([^<]{1,40})\s*<"))
         {
             string path = m.Groups[1].Value;
             string name = Clean(m.Groups[2].Value);
@@ -143,10 +147,9 @@ public static class KissJavTo
         return res;
     }
 
+    // "most-popular" la LISTING (= latest-updates xep theo view), khong phai danh muc -> khong dua vao menu.
     public static List<(string path, string name)> FallbackNav = new List<(string, string)>()
     {
-        ("latest-updates", "Mới nhất"),
-        ("most-popular", "Xem nhiều"),
         ("categories/korean-porn", "Korean Porn"),
         ("categories/korean-bj", "Korean BJ"),
         ("categories/jav", "Uncensored"),
@@ -157,40 +160,98 @@ public static class KissJavTo
         ("categories/voyeur-jp", "Voyeur")
     };
 
-    static readonly (string sort, string label)[] Sorts =
+    #region SORT — DO 2026-11-24 (skill lampac-sort: chi giu cai DOI THU TU that)
+    // Do tren /latest-updates/ (30 card/trang), so SEQUENCE id + sha1 30 id:
+    //   base             sha=2f1a7799
+    //   ?sort_by=video_viewed   sha=52579f08  -> DOI thu tu  => SORT THAT
+    //   ?sort_by=rating         sha=e97c5a9a  -> DOI thu tu  => SORT THAT
+    //   ?sort_by=duration       sha=2f1a7799  -> y het base => NO-OP, loai
+    //   ?sort_by=most_commented sha=2f1a7799  -> NO-OP, loai
+    //   ?sort_by=most_favourited sha=2f1a7799 -> NO-OP, loai
+    // Context khac: /categories/korean-porn/ (b0c5469c -> e496b81b) DOI; /search/?q=korean
+    //   (b304122f -> 5ea706d6) DOI; /latest-updates/3/?sort_by= 0 trung id trang 1 => paging chay.
+    // BAY: trang >= 2 BO QUA sort_by (/latest-updates/2/?sort_by=video_viewed == trang 2 khong sort,
+    //   0 trung/30 voi trang 1 da sort) => khi dang sort CHI tra trang 1 (total_pages = 1),
+    //   de nguoi dung khong thay list "sort xong roi loan" o trang 2.
+    public static readonly (string id, string name)[] Sorts =
     {
         ("", "Mới nhất"),
         ("video_viewed", "Xem nhiều"),
-        ("rating", "Đánh giá cao"),
-        ("duration", "Dài nhất"),
-        ("most_commented", "Nhiều bình luận"),
-        ("most_favourited", "Nhiều yêu thích")
+        ("rating", "Đánh giá cao")
     };
 
-    public static List<MenuItem> Menu(string host, List<(string path, string name)> nav, string c, string sort)
+    public static string NormalizeSort(string sort)
+    {
+        if (string.IsNullOrWhiteSpace(sort)) return "";
+        sort = sort.Trim().ToLowerInvariant();
+        foreach (var s in Sorts) if (s.id == sort) return sort;
+        return null;
+    }
+
+    // Cung mot tap sort cho moi context (da do: home, category, search deu an).
+    public static (string id, string name)[] SortsFor(string search, string c) => Sorts;
+
+    public static string ClampSort(string sort, string search, string c)
+    {
+        var ok = SortsFor(search, c);
+        string n = NormalizeSort(sort);
+        if (n != null)
+            foreach (var s in ok) if (s.id == n) return n;
+        return ok.Length > 0 ? ok[0].id : "";
+    }
+
+    public static string SortLabel(string sort)
+    {
+        foreach (var s in Sorts) if (s.id == (sort ?? "")) return s.name;
+        return "Mới nhất";
+    }
+
+    // Link sort GIU NGUYEN context dang mo (search / c), va luon ve trang 1.
+    public static string SortUrl(string host, string search, string c, string sort)
+    {
+        string q = !string.IsNullOrWhiteSpace(search)
+            ? "search=" + HttpUtility.UrlEncode(search)
+            : !string.IsNullOrWhiteSpace(c) ? "c=" + HttpUtility.UrlEncode(c.Trim().Trim('/')) : "";
+
+        if (!string.IsNullOrEmpty(sort))
+            q = (q.Length == 0 ? "" : q + "&") + "sort=" + HttpUtility.UrlEncode(sort);
+
+        return $"{Base(host)}/kissjav" + (q.Length == 0 ? "" : "?" + q);
+    }
+    #endregion
+
+    public static List<MenuItem> Menu(string host, List<(string path, string name)> nav,
+        string search, string c, string sort, bool allowSort = true)
     {
         if (nav == null || nav.Count == 0) nav = FallbackNav;
 
-        string cur = (c ?? "").Trim().Trim('/');
-        if (string.IsNullOrEmpty(cur)) cur = "latest-updates";
-
-        // Muc dang mo: ten that cua no + cac muc con la danh muc
-        var sections = nav
-            .Where(x => !x.path.StartsWith("most-popular", StringComparison.Ordinal))
-            .Select(x => new MenuItem(x.name, MenuUrl(host, x.path)))
-            .ToList();
-
-        // Sort chi co nghia voi trang danh sach (khong phai search)
-        var sortMenu = new List<MenuItem>();
-        foreach (var (s, label) in Sorts)
-            sortMenu.Add(new MenuItem(label, MenuUrl(host, cur, s)));
-
-        return new List<MenuItem>()
+        var res = new List<MenuItem>()
         {
-            new MenuItem() { title = "Tìm kiếm", search_on = "search_on", playlist_url = $"{host}/kissjav" },
-            new MenuItem() { title = "Danh mục", playlist_url = "submenu", submenu = sections },
-            new MenuItem() { title = "Sắp xếp", playlist_url = "submenu", submenu = sortMenu }
+            new MenuItem() { title = "Tìm kiếm", search_on = "search_on", playlist_url = $"{Base(host)}/kissjav" }
         };
+
+        // dong 2 — chi khi context co sort (rel / popup thi khong)
+        if (allowSort)
+        {
+            res.Add(new MenuItem()
+            {
+                title = "Sắp xếp: " + SortLabel(sort),
+                playlist_url = "submenu",
+                submenu = SortsFor(search, c)
+                    .Select(s => new MenuItem(s.name, SortUrl(host, search, c, s.id)))
+                    .ToList()
+            });
+        }
+
+        // day la taxonomy (khong phai sort)
+        res.Add(new MenuItem()
+        {
+            title = "Thể loại",
+            playlist_url = "submenu",
+            submenu = nav.Select(x => new MenuItem(x.name, MenuUrl(host, x.path))).ToList()
+        });
+
+        return res;
     }
     #endregion
 
@@ -289,7 +350,7 @@ public static class KissJavTo
         if (string.IsNullOrEmpty(html)) return 0;
 
         int max = 0;
-        foreach (Match m in Regex.Matches(html, @"/(?:latest-updates|most-popular|categories/[a-z0-9\-]+)/(\d+)/"))
+        foreach (Match m in Regex.Matches(html, @"/(?:latest-updates|most-popular|categories/[a-z0-9\-]+|search/[^/""]+)/(\d+)/"))
             if (int.TryParse(m.Groups[1].Value, out int n) && n > max) max = n;
 
         return max;
