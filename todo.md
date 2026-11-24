@@ -19,11 +19,14 @@ Skill tham chiếu: `lampac-popup` (hợp đồng route, luật UX, anti-pattern
 
 | nhóm | số module | trạng thái |
 |---|---|---|
-| **Đã có popup (genres + rel)** | **44** | xong (kể cả `Vjav` 2026-11-24 qua relay CF) |
+| **Đã có popup (genres + rel)** | **46** | xong (kể cả `Vjav` 2026-11-24 qua relay CF) |
 | Có genres, **thiếu `?rel=` route** | 0 | — |
-| Chưa có popup | 25 | Phase 1/2/3 + `PornHub` + `SevenMM` |
+| Chưa có popup | 29 | Phase 1/2/3 + `PornHub` + `SevenMM` |
 
-> **2026-11-24 (2)**: `Vjav` xong: thêm `genres?uri=` (chip `Thể loại` từ `categories` + `Thẻ` từ `tags` của `/api/json/video/...json`, `Liên quan` `plain:true`) + `?rel=<uri>` (API `videos_related2/432000/...`, `total_pages: 1`, pg>1 → rỗng) — **bắt buộc** `VJAV_RELAY` vì TLS từ IP máy bị cắt; `pages` từ JSON nên `total_pages` giờ thật (7539) thay vì 0 → **44 đủ popup** / 0 chỉ-genres / **25 chưa có**.
+> **2026-11-24 (3) — đếm lại bằng script** (`Route("<x>/genres")` + `string rel` + manifest `enable`): **75 module đang bật** (4 tắt) → **46 đủ popup** / **0 thiếu `?rel=`** / **29 chưa có**. Lệch với số 44/25 trước đó vì lần trước đếm tay trên bản cũ (69 module) và bỏ sót module có route khác tên thư mục (`Eporner`→`epr`, `FreePornVideos`→`fpv`, `Spankbang`→`sbg`, `SexVietTuyChon`) → từ giờ lấy script làm chuẩn.
+> 29 module chưa có popup: `BongaCams`, `Chaturbate`, `Ebalovo`, `HQporner`, `Lon69`, `PhimSexVN88`, `PhimSexVi`, `PhimSexViet113`, `PornHub`, `Porntrex`, `Runetki`, `SevenMM`, `SexDep`, `SexHihi`, `Sexgenz2`, `Sieusex`, `SupJav` (PAUSED), `TangThon`, `Tizam`, `TopGai`, `VNsexTop1`, `Viet69Av`, `Viet69z`, `Vlxx`, `XViet`, `Xhamster`, `Xnxx`, `XszAv`, `Xvideos`.
+
+> **2026-11-24 (2)**: `Vjav` xong: thêm `genres?uri=` (chip `Thể loại` từ `categories` + `Thẻ` từ `tags` của `/api/json/video/...json`, `Liên quan` `plain:true`) + `?rel=<uri>` (API `videos_related2/432000/...`, `total_pages: 1`, pg>1 → rỗng) — **bắt buộc** `VJAV_RELAY` vì TLS từ IP máy bị cắt; `pages` từ JSON nên `total_pages` giờ thật (7539) thay vì 0 → **(số cũ) 44 đủ popup** / 0 chỉ-genres / **25 chưa có**.
 
 > **2026-11-24**: `Spankbang` thêm `?rel=` (dùng chung cache `spankbang:view:{uri}` với `vidosik`, `total_pages: 1`, pg>1 → list rỗng) + mục "Video liên quan" trong popup đổi sang `plain: true` trỏ `?rel=` → **43 đủ popup** / 0 chỉ-genres / **26 chưa có**.
 > **2026-11-23**: `JavMoi` + `JavSub` + `KawaiJAV` + `Phe69` xong popup → **42 đủ popup** / 1 chỉ-genres (`Spankbang`) / **26 chưa có**.
