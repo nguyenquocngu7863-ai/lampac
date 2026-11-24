@@ -20,8 +20,8 @@ Skill tham chiếu: `lampac-popup` (hợp đồng route, luật UX, anti-pattern
 | nhóm | số module | đang bật | có popup (`genres`) | có cả `?rel=` |
 |---|---|---|---|---|
 | **A. Gốc upstream** (`lampac-nextgen/lampac`) | 14 | 13 | 2 (`Eporner`, `Spankbang`) | 2 |
-| **B. Tự làm** (upstream không có) | 66 | 63 | 52 | 52 |
-| **tổng** | **80** | **76** | **54** | **54** |
+| **B. Tự làm** (upstream không có) | 67 | 64 | 53 | 53 |
+| **tổng** | **81** | **77** | **55** | **55** |
 
 - Cả **53 module có `genres` đều đã có `?rel=`** → không còn module nào "nửa vời".
 - **Chưa có popup: 22** = **11 nhóm A** (`BongaCams`, `Chaturbate`, `Ebalovo`, `HQporner`, `PornHub`,
@@ -51,6 +51,23 @@ Thứ tự ưu tiên từ nay:
 1. Bug đang chặn phát (`no supported source`, `stream_links`, domain 301) — nhóm B trước.
 2. Popup còn thiếu — **10 module nhóm B** trước, nhóm A để sau.
 3. Việc nhóm A chỉ làm khi user yêu cầu rõ ràng hoặc site đó user đang dùng.
+
+> **2026-11-24 (18)**: **Module MỚI `JavBangers`** (`https://www.javbangers.com`, KVS/Porntrex theme
+> "javwhores") — **sort đo riêng từng context** (yêu cầu user: "sort cho mọi page, category, tags"):
+> `?sort_by=duration|video_viewed|rating` **ăn** ở `categories/*` (chứng minh: 740:35 > 506:56 > 482:09 > 458:12,
+> trang 2 tiếp 305:34 > 303:58; views 566 131 > 293 693 > 247 065), `models/*` (29:14 > 22:39 > 19:38),
+> `search`; **no-op** ở `/latest-updates/` (4 tham số cùng sha `f08c292c`) và `/members/13/` (`0c741a14`) ⇒
+> **không có dòng 2** ở 2 context đó. Menu 4 dòng: Tìm kiếm · **Sắp xếp: <đang mở>** · Danh sách (latest ·
+> top-rated · most-popular = **listing**, không phải sort) · Thể loại (31, cache 12h). **Player**: trang
+> `/video/<id>/` trả **404 cho guest** (đo cả curl_cffi + Chrome thật) ⇒ lấy stream từ **`/embed/<id>`**
+> (`flashvars.video_url` = MP4 480p + `v-acctoken`; `video_alt_url` 720p là redirect về detail 404).
+> Popup: Thể loại/Diễn viên map từ `video_categories`/`video_models` qua index `/categories/`,`/models/`;
+> **không có tags** (site không có trang tag: `/tags/`=502, `/tags/<slug>`=404, sitemap không có type=tags),
+> **không có Người đăng** (detail 404, acctoken `1048|260146|0|…` giống mọi video = session), **không có rel**.
+> Bẫy: search **chỉ 1 trang** (`&page=`, `/search/<kw>/2/`, ajax `get_block` đều trả trang 1);
+> mỗi card 2 link → dedupe theo id. Đo: 30 item/tp 6011, pg2 OK, member 5, search 71/73 (tp 1),
+> genres 3 chip, SSRF chặn, `play.sh` **PASS** (h264 854x480 · 5675.2s · 761.645.181 B).
+> ⇒ **81 module Adult = 14 SISI + 67 tự làm**, popup đủ **55**.
 
 > **2026-11-24 (17)**: **KissJav — SORT đúng chuẩn dòng 2** (sửa lỗi làm sai lần đầu: đặt sort thành dòng 3
 > "Danh mục/Sắp xếp" + sort không giữ context). Đo lại theo `lampac-sort` LUẬT 3 (so **sequence 30 id** + sha1,
