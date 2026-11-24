@@ -103,6 +103,59 @@ public static class VlxxTo
         return playlists;
     }
 
+    // ========== POPUP ==========
+    // Trang detail: <div class="video-tags"> gom
+    //   <div class="actress-tag"><a href="/cast/<slug>/">Ten</a></div>
+    //   <div class="category-tag"><a href="/<slug>/">Ten</a>...</div>
+    // va khoi "Phim liên quan" = <div id="video-list">...
+    public static string NormalizePageUrl(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        value = HttpUtility.HtmlDecode(value.Trim());
+        if (value.StartsWith("//")) value = "https:" + value;
+        else if (value.StartsWith("/")) value = SiteHost + value;
+        else if (!value.StartsWith("http", System.StringComparison.OrdinalIgnoreCase))
+            value = SiteHost + "/" + value.Trim('/') + "/";
+        if (!System.Uri.TryCreate(value, UriKind.Absolute, out var parsed)) return null;
+        string host = parsed.Host.ToLowerInvariant();
+        if (!host.EndsWith("vlxx.phd") && !host.EndsWith("vlxx.net")) return null;
+        return value;
+    }
+
+    public static List<(string name, string path)> Chips(string html, bool actresses)
+    {
+        var res = new List<(string, string)>();
+        if (string.IsNullOrEmpty(html)) return res;
+
+        string cls = actresses ? "actress-tag" : "category-tag";
+        var box = Regex.Match(html, @"<div[^>]*class=""" + cls + @"""[^>]*>(.*?)</div>",
+            RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        if (!box.Success) return res;
+
+        string pattern = actresses
+            ? @"<a\b[^>]*href\s*=\s*[""']/cast/([^""'/]+)/[""'][^>]*>(.*?)</a>"
+            : @"<a\b[^>]*href\s*=\s*[""']/([^""'/]+)/[""'][^>]*>(.*?)</a>";
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (Match m in Regex.Matches(box.Groups[1].Value, pattern,
+            RegexOptions.IgnoreCase | RegexOptions.Singleline))
+        {
+            string slug = m.Groups[1].Value.Trim();
+            string name = Regex.Replace(HttpUtility.HtmlDecode(m.Groups[2].Value), "<[^>]+>", " ").Trim();
+            if (slug.Length == 0 || name.Length == 0 || name.Length > 60 || !seen.Add(slug)) continue;
+            res.Add((name, actresses ? "cast/" + slug : slug));
+        }
+        return res;
+    }
+
+    public static List<Shared.Models.SISI.Base.PlaylistItem> Related(string route, string html)
+    {
+        if (string.IsNullOrEmpty(html)) return new List<Shared.Models.SISI.Base.PlaylistItem>();
+        var m = Regex.Match(html, @"<div[^>]*id=[""']video-list[""'][^>]*>", RegexOptions.IgnoreCase);
+        if (!m.Success) return new List<Shared.Models.SISI.Base.PlaylistItem>();
+        return Playlist(route, html.Substring(m.Index));
+    }
+
     public static List<(string server, string vid)> GetServers(string html, string pageUrl)
     {
         var list = new List<(string server, string vid)>();
