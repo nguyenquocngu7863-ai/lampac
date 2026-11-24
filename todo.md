@@ -19,9 +19,11 @@ Skill tham chiếu: `lampac-popup` (hợp đồng route, luật UX, anti-pattern
 
 | nhóm | số module | trạng thái |
 |---|---|---|
-| **Đã có popup (genres + rel)** | **46** | xong (kể cả `Vjav` 2026-11-24 qua relay CF) |
+| **Đã có popup (genres + rel)** | **47** | xong (kể cả `XViet` 2026-11-24) |
 | Có genres, **thiếu `?rel=` route** | 0 | — |
-| Chưa có popup | 29 | Phase 1/2/3 + `PornHub` + `SevenMM` |
+| Chưa có popup | 28 | Phase 1/2/3 + `PornHub` + `SevenMM` |
+
+> **2026-11-24 (4)**: `XViet` xong popup (1 lần fetch detail): `genres?uri=` → `Thể loại` (`/the-loai/<slug>` trong `<article id="post-N">` → `?c=the-loai/...`, 4 chip) + `Thẻ` (`rel="tag"` → `?c=tag/...`, 25 chip) + `Liên quan` `plain:true` → `?rel=<uri>` (khoi `<h1>Video liên quan</h1>` cuối trang → 8 item, `total_pages: 1`, pg>1 → rỗng) → **47 đủ popup** / 0 thiếu rel / **28 chưa có**. `play.sh` → **PASS** (h264 720x1280, segment 24/24, decode 5s đầu/cuối OK).
 
 > **2026-11-24 (3) — đếm lại bằng script** (`Route("<x>/genres")` + `string rel` + manifest `enable`): **75 module đang bật** (4 tắt) → **46 đủ popup** / **0 thiếu `?rel=`** / **29 chưa có**. Lệch với số 44/25 trước đó vì lần trước đếm tay trên bản cũ (69 module) và bỏ sót module có route khác tên thư mục (`Eporner`→`epr`, `FreePornVideos`→`fpv`, `Spankbang`→`sbg`, `SexVietTuyChon`) → từ giờ lấy script làm chuẩn.
 > 29 module chưa có popup: `BongaCams`, `Chaturbate`, `Ebalovo`, `HQporner`, `Lon69`, `PhimSexVN88`, `PhimSexVi`, `PhimSexViet113`, `PornHub`, `Porntrex`, `Runetki`, `SevenMM`, `SexDep`, `SexHihi`, `Sexgenz2`, `Sieusex`, `SupJav` (PAUSED), `TangThon`, `Tizam`, `TopGai`, `VNsexTop1`, `Viet69Av`, `Viet69z`, `Vlxx`, `XViet`, `Xhamster`, `Xnxx`, `XszAv`, `Xvideos`.
@@ -88,7 +90,7 @@ Skill tham chiếu: `lampac-popup` (hợp đồng route, luật UX, anti-pattern
 - [ ] `Viet69Av` — https://viet69av.com
 - [ ] `Viet69z` — https://viet69z.to
 - [ ] `Vlxx` — https://vlxx.phd
-- [ ] `XViet` — https://xviet.live
+- [x] `XViet` — https://xviet.live *(popup 2026-11-24: `genres?uri=` 1 lần fetch detail → `Thể loại` 4 (`/the-loai/<slug>` trong `<article id="post-N">`) + `Thẻ` 25 (`rel="tag"` → `/tag/<slug>`), cả 2 dùng `?c=<path>` sẵn có; `Liên quan` `plain:true` → `?rel=<uri>` lấy 8 article trong khối `<h1>Video liên quan</h1>` cuối trang, `total_pages: 1`, pg>1 → rỗng, uri lạ → 200 rỗng. Đo: home 20/tp299, `pg2` 20, `search=teen` 20/tp249, `c=the-loai/teen` 20/tp2, `c=tag/sinh-vien` 20/tp148; `play.sh` PASS (h264 720x1280, 72s, segment 24/24)*
 - [ ] `XszAv` — https://xsz-av.com
 - [x] `Vjav` — https://vjav.com *(popup 2026-11-24: `genres?uri=` chip `Thể loại` (`categories` → `?c=cat/<dir>`) + `Thẻ` (`tags` → `?search=<title>`) từ `/api/json/video/{lt}/{id/1e6}/{1e3*(id/1e3)}/{id}.json`; `Liên quan` `plain:true` → `?rel=<uri>` dùng `/api/json/videos_related2/432000/60/.../<id>.relevance.1.json` (`lifetime` khác → `invalid_lifetime`), `total_pages: 1`, pg>1 → `{tp:1,list:[]}`, uri lạ/rỗng → 200 rỗng. **Site là SPA**: HTML chỉ có `<div id="app">` → mọi dữ liệu (list/detail/stream) đi qua JSON API. TLS từ IP máy bị cắt (`SSL_connect: Connection closed`) với cả h1.1/h2 → **bắt buộc** `VJAV_RELAY` (worker `xn-relay`, ALLOW thêm `vjav.com,tn.vjav.com`); ảnh `tn.vjav.com` cũng qua relay. `total_pages` lấy từ `pages` của JSON. Lưu ý: seek xa (>10MB) qua relay rất chậm do origin — `play.sh` báo `PHÁT ĐƯỢC (cảnh báo)`)*
 

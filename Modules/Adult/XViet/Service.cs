@@ -232,6 +232,56 @@ public static class XVietTo
         return outSb.ToString();
     }
 
+    // ========== Popup: chip lay tu trang detail ==========
+    //   the loai: <a href="/the-loai/<slug>">Ten</a>   (trong <article id="post-N">)
+    //   the     : <a href="/tag/<slug>" rel="tag">Ten</a>
+    // Gioi han trong article chinh de khong lay link cua menu/nav.
+    public static (List<(string name, string path)> cats, List<(string name, string path)> tags) Chips(string html)
+    {
+        var cats = new List<(string, string)>();
+        var tags = new List<(string, string)>();
+        if (string.IsNullOrEmpty(html)) return (cats, tags);
+
+        string main = html;
+        var am = Regex.Match(html,
+            @"<article\b[^>]*\bid\s*=\s*""post-\d+""[^>]*>(.*?)</article>",
+            RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        if (am.Success) main = am.Groups[1].Value;
+
+        var seenC = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (Match m in Regex.Matches(main,
+            @"<a\b[^>]*href\s*=\s*""/the-loai/([a-z0-9\-]+)""[^>]*>(.*?)</a>",
+            RegexOptions.IgnoreCase | RegexOptions.Singleline))
+        {
+            string slug = Clean(m.Groups[1].Value);
+            string name = Clean(Regex.Replace(HttpUtility.HtmlDecode(m.Groups[2].Value), "<[^>]+>", " "));
+            if (slug.Length == 0 || name.Length == 0 || name.Length > 40 || !seenC.Add(slug)) continue;
+            cats.Add((name, "the-loai/" + slug));
+        }
+
+        var seenT = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (Match m in Regex.Matches(main,
+            @"<a\b[^>]*href\s*=\s*""/tag/([a-z0-9\-]+)""[^>]*>(.*?)</a>",
+            RegexOptions.IgnoreCase | RegexOptions.Singleline))
+        {
+            string slug = Clean(m.Groups[1].Value);
+            string name = Clean(Regex.Replace(HttpUtility.HtmlDecode(m.Groups[2].Value), "<[^>]+>", " "));
+            if (slug.Length == 0 || name.Length == 0 || name.Length > 40 || !seenT.Add(slug)) continue;
+            tags.Add((name, "tag/" + slug));
+        }
+
+        return (cats, tags);
+    }
+
+    // Khoi "Video liên quan" cuoi trang detail (~8 article) — tin hieu la <h1>.
+    public static List<PlaylistItem> Related(string route, string html)
+    {
+        if (string.IsNullOrEmpty(html)) return new List<PlaylistItem>();
+        int i = html.IndexOf("Video liên quan", StringComparison.OrdinalIgnoreCase);
+        if (i < 0) return new List<PlaylistItem>();
+        return Playlist(route, html.Substring(i));
+    }
+
     // ========== Menu ==========
     public static List<MenuItem> MenuHead(string host, string search)
     {

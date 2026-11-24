@@ -21,8 +21,11 @@ public class XVietController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("xviet")]
-    async public Task<ActionResult> Index(string search, string c, int pg = 1)
+    async public Task<ActionResult> Index(string search, string c, int pg = 1, string rel = null)
     {
+        if (!string.IsNullOrWhiteSpace(rel))
+            return await Related(rel, pg);
+
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
 
@@ -150,6 +153,103 @@ public class XVietController : BaseSisiController
         }
         if (!string.IsNullOrEmpty(a)) return a;
         return !string.IsNullOrEmpty(b) ? b : null;
+    }
+
+    // ========== POPUP ==========
+    static object EmptyPopup() => new { items = new object[0], groups = new object[0] };
+
+    [HttpGet]
+    [Route("xviet/genres")]
+    async public Task<ActionResult> Genres(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return Json(EmptyPopup());
+
+        if (await IsRequestBlocked(rch: true))
+            return badInitMsg;
+
+        string pageUrl = XVietTo.NormalizePageUrl(uri);
+        if (string.IsNullOrEmpty(pageUrl))
+            return Json(EmptyPopup());
+
+        string memKey = ipkey($"xviet:info:{pageUrl}");
+        if (!hybridCache.TryGetValue(memKey,
+            out (List<(string name, string path)> cats, List<(string name, string path)> tags) info))
+        {
+            string page = await GetPageAsync(pageUrl);
+            info = XVietTo.Chips(page);
+            if (info.cats.Count > 0 || info.tags.Count > 0)
+                hybridCache.Set(memKey, info, cacheTime(360));
+        }
+
+        var groups = new List<object>();
+
+        if (info.cats != null && info.cats.Count > 0)
+            groups.Add(new
+            {
+                title = "Thể loại",
+                items = info.cats.Select(x => new
+                {
+                    title = x.name,
+                    url = $"{host}/xviet?c={HttpUtility.UrlEncode(x.path)}"
+                }).ToList()
+            });
+
+        if (info.tags != null && info.tags.Count > 0)
+            groups.Add(new
+            {
+                title = "Thẻ",
+                items = info.tags.Select(x => new
+                {
+                    title = x.name,
+                    url = $"{host}/xviet?c={HttpUtility.UrlEncode(x.path)}"
+                }).ToList()
+            });
+
+        groups.Add(new
+        {
+            title = "Liên quan",
+            items = new[]
+            {
+                new
+                {
+                    title = "Video liên quan",
+                    url = $"{host}/xviet?rel={HttpUtility.UrlEncode(pageUrl)}",
+                    plain = true
+                }
+            }
+        });
+
+        return Json(new { items = new object[0], groups });
+    }
+
+    // ?rel=<uri detail> — 1 trang (SISI: total_pages 0 = con trang vo han).
+    async Task<ActionResult> Related(string uri, int pg)
+    {
+        if (pg > 1)
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        string pageUrl = XVietTo.NormalizePageUrl(uri);
+        if (string.IsNullOrEmpty(pageUrl))
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        var cache = await InvokeCacheResult<(List<PlaylistItem> playlists, int total_pages)>(
+            ipkey($"xviet:rel:{pageUrl}"), 20, async e =>
+        {
+            string page = await GetPageAsync(pageUrl);
+            var playlists = XVietTo.Related("xviet/vidosik", page ?? "");
+
+            if (playlists == null || playlists.Count == 0)
+                return e.Success((new List<PlaylistItem>(), 1));
+
+            return e.Success((playlists, 1));
+        });
+
+        if (!cache.IsSuccess)
+            return OnError(cache.ErrorMsg);
+
+        return PlaylistResult(cache.Value.playlists, cache.ISingleCache,
+            await MenuAsync(null), total_pages: 1);
     }
 
     // ========== DETAIL: lay VB_PLAY tokens ==========
