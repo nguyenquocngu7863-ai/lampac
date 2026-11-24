@@ -1,5 +1,5 @@
 #!/data/data/com.termux/files/usr/bin/bash
-# xnhau-login.sh — refresh cookie đăng nhập xnhau.moda (dùng bởi module Adult/XNhau).
+# xnhau-login.sh — refresh cookie đăng nhập xnhau.plus (dùng bởi module Adult/XNhau).
 #
 #   ~/lampac-native/xnhau-login.sh [user] [pass]
 #
