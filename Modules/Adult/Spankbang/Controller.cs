@@ -28,10 +28,13 @@ public class SpankbangController : BaseSisiController
 
     [HttpGet, Staticache]
     [Route("sbg")]
-    async public Task<ActionResult> Index(string search, string sort, string path, int pg = 1)
+    async public Task<ActionResult> Index(string search, string sort, string path, string rel, int pg = 1)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
+
+        if (!string.IsNullOrWhiteSpace(rel))
+            return await Related(rel, pg);
 
     rhubFallback:
         var cache = await InvokeCacheResult($"sbg:{search}:{sort}:{path}:{pg}", 10, jsonContext.ListPlaylistItem, async e =>
@@ -159,7 +162,8 @@ public class SpankbangController : BaseSisiController
                 new
                 {
                     title = "Video liên quan",
-                    url = $"{host}/sbg/vidosik?uri={HttpUtility.UrlEncode(uri)}&related=true"
+                    url = $"{host}/sbg?rel={HttpUtility.UrlEncode(uri)}",
+                    plain = true
                 }
             }
         });
@@ -177,28 +181,7 @@ public class SpankbangController : BaseSisiController
     rhubFallback:
         var cache = await InvokeCacheResult($"spankbang:view:{uri}", 20, jsonContext.StreamItem, async e =>
         {
-            string url = SpankbangTo.StreamLinksUri(init.host, uri);
-            if (url == null)
-                return e.Fail("uri");
-
-            StreamItem stream_links = null;
-
-            if (rch?.enable == true || init.priorityBrowser == "http")
-            {
-                await httpHydra.GetSpan(url, span =>
-                {
-                    stream_links = SpankbangTo.StreamLinks("sbg/vidosik", span);
-                });
-            }
-            else
-            {
-                var headers = httpHeaders(init);
-
-                await PlaywrightHttp.GetSpan(init.plugin, init.cors(url, headers, requestInfo), span =>
-                {
-                    stream_links = SpankbangTo.StreamLinks("sbg/vidosik", span);
-                }, headers, proxy_data);
-            }
+            var stream_links = await FetchStream(uri);
 
             if (stream_links?.qualitys == null || stream_links.qualitys.Count == 0)
                 return e.Fail("stream_links", refresh_proxy: true);
@@ -219,5 +202,61 @@ public class SpankbangController : BaseSisiController
         }
 
         return OnResult(cache);
+    }
+
+    // 1 lan fetch trang chi tiet, dung chung cho vidosik va ?rel= (cung cache key).
+    async Task<StreamItem> FetchStream(string uri)
+    {
+        string url = SpankbangTo.StreamLinksUri(init.host, uri);
+        if (url == null)
+            return null;
+
+        StreamItem stream_links = null;
+
+        if (rch?.enable == true || init.priorityBrowser == "http")
+        {
+            await httpHydra.GetSpan(url, span =>
+            {
+                stream_links = SpankbangTo.StreamLinks("sbg/vidosik", span);
+            });
+        }
+        else
+        {
+            var headers = httpHeaders(init);
+
+            await PlaywrightHttp.GetSpan(init.plugin, init.cors(url, headers, requestInfo), span =>
+            {
+                stream_links = SpankbangTo.StreamLinks("sbg/vidosik", span);
+            }, headers, proxy_data);
+        }
+
+        return stream_links;
+    }
+
+    // ?rel=<uri detail> — "Video lien quan", 1 trang (LUAT: total_pages = 1, khong phai 0).
+    async Task<ActionResult> Related(string uri, int pg)
+    {
+        if (pg > 1 || SpankbangTo.PageUri(init.host, uri) == null)
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+    rhubFallback:
+        var cache = await InvokeCacheResult($"spankbang:view:{uri}", 20, jsonContext.StreamItem, async e =>
+        {
+            var stream_links = await FetchStream(uri);
+
+            if (stream_links?.qualitys == null || stream_links.qualitys.Count == 0)
+                return e.Fail("stream_links", refresh_proxy: true);
+
+            return e.Success(stream_links);
+        });
+
+        if (IsRhubFallback(cache))
+            goto rhubFallback;
+
+        var recomends = cache.Value?.recomends;
+        if (recomends == null || recomends.Count == 0)
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        return PlaylistResult(recomends, cache.ISingleCache, null, total_pages: 1);
     }
 }
