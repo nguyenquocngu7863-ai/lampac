@@ -53,7 +53,7 @@ public static class ConfigSectionGroups
 
         // ── Nguồn theo đúng thư mục Modules/ trên GitHub ──
         new("src-vn", "Nguồn · Việt Nam (Modules/OnlineVN)", "Các nguồn phim Việt tùy biến, không cần Playwright.",
-            new[] { "K20", "KKPhim", "VsMov" }),
+            new[] { "KKPhim", "VsMov" }),
 
         new("src-eng", "Nguồn · Tiếng Anh (Modules/OnlineENG)", "Embed/Stremio tiếng Anh. Phần lớn chạy bằng embed; cần disableEng: false để hiện trong Lampa.",
             new[]
