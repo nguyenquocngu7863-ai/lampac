@@ -120,17 +120,21 @@ public static class PhimSexViTo
         return list;
     }
 
-    // Trang chi tiet /video/<slug> co iframe embed:
-    //   <iframe src="https://embed.phimsexvi.com/embed/<id>/p1?...">
+    // Trang chi tiet /video/<slug> co iframe embed. Host embed DOI THEO MIRROR:
+    //   <iframe src="https://embed.beyazotokiralama.com/embed/<id>/p1?...">
+    // (truoc day hardcode embed.kidayteknoloji.com nen detail lay tu mirror khac
+    //  -> khong match -> vidosik "stream_links")
     static readonly Regex _embedRe = new Regex(
-        "embed\\.kidayteknoloji\\.com/embed/(?<id>[a-zA-Z0-9]+)/p1",
+        "https?://(?<host>embed\\.[a-z0-9.\\-]+)/embed/(?<id>[a-zA-Z0-9]+)/p1",
         RegexOptions.IgnoreCase);
-    public static string ExtractVideoId(string html)
+    public static (string host, string id) ExtractEmbed(string html)
     {
         if (string.IsNullOrEmpty(html))
-            return null;
+            return (null, null);
         var m = _embedRe.Match(html);
-        return m.Success ? m.Groups["id"].Value : null;
+        return m.Success
+            ? (m.Groups["host"].Value, m.Groups["id"].Value)
+            : (null, null);
     }
 
     // Trang embed chua bien JS:
@@ -148,8 +152,69 @@ public static class PhimSexViTo
         return m.Groups["path"].Value.Replace("\\/", "/");
     }
 
-    // Cong thuc menu 9g — 2 tang, KHONG muc root nao thieu submenu:
-    //   1. Tim kiem — search_on (duoc phep o root)
+    // ===== popup (long-press) =====
+    // Site chay nhieu mirror (kidayteknoloji.com, beyazotokiralama.com, ...) nhung
+    // path giong het nhau => popup/rel LUON fetch `SiteHost + path`:
+    //   - chong SSRF (khong bao gio fetch host la)
+    //   - doi mirror khong phai sua code (card tra ve href tuyet doi cua mirror)
+    public static string DetailPath(string uri)
+    {
+        if (string.IsNullOrEmpty(uri))
+            return null;
+        string path = uri;
+        if (System.Uri.TryCreate(uri, System.UriKind.Absolute, out var u))
+            path = u.PathAndQuery;
+        if (!path.StartsWith("/"))
+            path = "/" + path;
+        return path.StartsWith("/video/", StringComparison.OrdinalIgnoreCase)
+            ? path : null;
+    }
+
+    // <p class="term-block"><span class="term-label">Thể loại:</span>
+    //   <a class="pill" href="https://<host>/category/<slug>" rel="tag">Ten</a></p>
+    // <p class="term-block"><span class="term-label">Tags:</span>
+    //   <a class="pill" href="https://<host>/tag/<slug>" rel="tag">Ten</a></p>
+    public static List<(string group, string name, string cpath)> Chips(string html)
+    {
+        var list = new List<(string, string, string)>();
+        if (string.IsNullOrEmpty(html))
+            return list;
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (Match m in Regex.Matches(html, "<p class=\"term-block\">.*?</p>",
+            RegexOptions.IgnoreCase | RegexOptions.Singleline))
+        {
+            foreach (Match a in Regex.Matches(m.Value,
+                "href=\"(?:https?://[^\"'/]+)?/(category|tag)/([a-z0-9\\-]+)\"[^>]*>([^<]*)<",
+                RegexOptions.IgnoreCase))
+            {
+                string kind = a.Groups[1].Value.ToLowerInvariant();
+                string slug = a.Groups[2].Value;
+                string name = WebUtility.HtmlDecode(a.Groups[3].Value.Trim());
+                if (string.IsNullOrEmpty(slug) || string.IsNullOrEmpty(name))
+                    continue;
+                string cpath = kind + "/" + slug;
+                if (seen.Add(cpath))
+                    list.Add((kind == "tag" ? "tag" : "category", name, cpath));
+            }
+        }
+        return list;
+    }
+
+    // "Phim liên quan": <section aria-labelledby="related-title"> ... </section>
+    // (ben trong la `article.video-card` y nhu trang list => dung lai Playlist)
+    public static string RelatedBlock(string html)
+    {
+        if (string.IsNullOrEmpty(html))
+            return null;
+        int i = html.IndexOf("id=\"related-title\"", StringComparison.OrdinalIgnoreCase);
+        if (i < 0)
+            return null;
+        int end = html.IndexOf("</section>", i, StringComparison.OrdinalIgnoreCase);
+        return end > i ? html.Substring(i, end - i) : html.Substring(i);
+    }
+
+    // Cong thuc menu 9g — 2 tang, KHONG muc root nao thieu submenu:    //   1. Tim kiem — search_on (duoc phep o root)
     //   2. Sap xep — submenu (chi "Moi nhat", site khong co sort khac)
     //   3. The loai — submenu tu trang chu
     public static List<MenuItem> Menu(

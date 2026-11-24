@@ -5,10 +5,12 @@ public class PhimSexViController : BaseSisiController
     [HttpGet, Staticache(manually: true)]
     [Route("phimsexvi")]
     async public Task<ActionResult> Index(
-        string search, string c, int pg = 1)
+        string search, string c, int pg = 1, string rel = null)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
+        if (!string.IsNullOrWhiteSpace(rel))
+            return await RelatedList(rel, pg);
         if (pg < 1)
             pg = 1;
         var cache = await InvokeCacheResult(
@@ -27,6 +29,100 @@ public class PhimSexViController : BaseSisiController
             StatiCacheDisabled = true;
         return PlaylistResult(cache, await MenuAsync());
     }
+    #region popup (long-press)
+    // chip: The loai + The (tu p.term-block cua trang detail)
+    // + "Lien quan" tro ?rel=<uri>
+    [HttpGet]
+    [Route("phimsexvi/genres")]
+    async public Task<ActionResult> Genres(string uri)
+    {
+        var empty = new { items = new object[0], groups = new object[0] };
+
+        string path = PhimSexViTo.DetailPath(uri);
+        if (path == null)
+            return Json(empty);
+
+        string cacheKey = ipkey($"phimsexvi:info:{path}");
+        if (hybridCache.TryGetValue(cacheKey,
+            out List<(string group, string name, string cpath)> chips) && chips != null)
+            return InfoResult(chips, uri);
+
+        string html = await FetchHtmlAsync(PhimSexViTo.SiteHost + path);
+        chips = PhimSexViTo.Chips(html);
+        if (chips.Count == 0)
+            return Json(empty);
+        hybridCache.Set(cacheKey, chips, cacheTime(360));
+
+        return InfoResult(chips, uri);
+    }
+
+    ActionResult InfoResult(List<(string group, string name, string cpath)> chips, string uri)
+    {
+        var groups = new List<object>();
+
+        foreach (var (grp, label) in new[] { ("category", "Thể loại"), ("tag", "Thẻ") })
+        {
+            var items = chips.Where(x => x.group == grp).Select(x => new
+            {
+                title = x.name,
+                url = $"{host}/phimsexvi?c={HttpUtility.UrlEncode(x.cpath)}"
+            }).ToList();
+
+            if (items.Count == 0) continue;
+            groups.Add(new { title = label, items });
+        }
+
+        groups.Add(new
+        {
+            title = "Liên quan",
+            items = new[]
+            {
+                new
+                {
+                    title = "Phim liên quan",
+                    plain = true,
+                    url = $"{host}/phimsexvi?rel={HttpUtility.UrlEncode(uri)}"
+                }
+            }
+        });
+
+        return Json(new { items = new object[0], groups });
+    }
+
+    async Task<ActionResult> RelatedList(string rel, int pg)
+    {
+        if (pg > 1)
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        var cache = await InvokeCacheResult(
+            ipkey($"phimsexvi:rel:{rel}"),
+            180, jsonContext.ListPlaylistItem, async e =>
+        {
+            string path = PhimSexViTo.DetailPath(rel);
+            if (path == null)
+                return e.Success(new List<PlaylistItem>());
+
+            string html = await FetchHtmlAsync(PhimSexViTo.SiteHost + path);
+            var playlists = PhimSexViTo.Playlist(
+                "phimsexvi/vidosik", PhimSexViTo.RelatedBlock(html) ?? "");
+
+            if (playlists == null || playlists.Count == 0)
+                return e.Success(new List<PlaylistItem>());
+
+            return e.Success(playlists);
+        });
+
+        if (!cache.IsSuccess)
+            return OnError(cache.ErrorMsg);
+
+        // uri la / trang detail khong co block "Phim liên quan" -> rong, khong bao loi
+        if (cache.Value == null || cache.Value.Count == 0)
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        return PlaylistResult(cache, await MenuAsync(), total_pages: 1);
+    }
+    #endregion
+
     async Task<List<MenuItem>> MenuAsync()
     {
         string key = ipkey("phimsexvi:nav");
@@ -99,17 +195,17 @@ public class PhimSexViController : BaseSisiController
         string detailHtml = await FetchHtmlAsync(uri);
         if (string.IsNullOrEmpty(detailHtml))
             return null;
-        string videoId = PhimSexViTo.ExtractVideoId(detailHtml);
-        if (string.IsNullOrEmpty(videoId))
+        var (embedHost, videoId) = PhimSexViTo.ExtractEmbed(detailHtml);
+        if (string.IsNullOrEmpty(videoId) || string.IsNullOrEmpty(embedHost))
             return null;
-        string embedUrl = $"{PhimSexViTo.EmbedHost}/embed/{videoId}/p1?logo=10&autoplay=1";
+        string embedUrl = $"https://{embedHost}/embed/{videoId}/p1?logo=10&autoplay=1";
         string embedHtml = await FetchHtmlAsync(embedUrl);
         if (string.IsNullOrEmpty(embedHtml))
             return null;
         string m3u8Path = PhimSexViTo.ExtractM3u8Path(embedHtml);
         if (string.IsNullOrEmpty(m3u8Path))
             return null;
-        string streamUrl = PhimSexViTo.EmbedHost + "/" + m3u8Path;
+        string streamUrl = $"https://{embedHost}/" + m3u8Path;
         if (!await HasSegmentsAsync(streamUrl))
             return null;
         hybridCache.Set(memKey, streamUrl, cacheTime(20));
