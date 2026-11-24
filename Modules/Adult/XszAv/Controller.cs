@@ -22,8 +22,11 @@ public class XszAvController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("xszav")]
-    async public Task<ActionResult> Index(string search, string c, string sort, int pg = 1)
+    async public Task<ActionResult> Index(string search, string c, string sort, int pg = 1, string rel = null)
     {
+        if (!string.IsNullOrWhiteSpace(rel))
+            return await Related(rel, pg);
+
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
 
@@ -109,6 +112,103 @@ public class XszAvController : BaseSisiController
         catch { }
         Console.WriteLine("XszAv: menu fail");
         return XszAvTo.Menu(hostLocal, null);
+    }
+
+    // ========== POPUP ==========
+    static object EmptyPopup() => new { items = new object[0], groups = new object[0] };
+
+    [HttpGet]
+    [Route("xszav/genres")]
+    async public Task<ActionResult> Genres(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return Json(EmptyPopup());
+
+        if (await IsRequestBlocked(rch: true))
+            return badInitMsg;
+
+        string pageUrl = XszAvTo.NormalizePageUrl(uri);
+        if (string.IsNullOrEmpty(pageUrl))
+            return Json(EmptyPopup());
+
+        string memKey = ipkey($"xszav:info:{pageUrl}");
+        if (!hybridCache.TryGetValue(memKey,
+            out (List<(string name, string path)> actresses, List<(string name, string path)> keywords) info))
+        {
+            string page = await GetPageAsync(pageUrl);
+            info = (XszAvTo.Chips(page, true), XszAvTo.Chips(page, false));
+            if (info.actresses.Count > 0 || info.keywords.Count > 0)
+                hybridCache.Set(memKey, info, cacheTime(360));
+        }
+
+        var groups = new List<object>();
+
+        if (info.actresses != null && info.actresses.Count > 0)
+            groups.Add(new
+            {
+                title = "Diễn viên",
+                items = info.actresses.Select(x => new
+                {
+                    title = x.name,
+                    url = $"{host}/xszav?c={HttpUtility.UrlEncode(x.path)}"
+                }).ToList()
+            });
+
+        if (info.keywords != null && info.keywords.Count > 0)
+            groups.Add(new
+            {
+                title = "Thẻ",
+                items = info.keywords.Select(x => new
+                {
+                    title = x.name,
+                    url = $"{host}/xszav?search={HttpUtility.UrlEncode(x.name)}"
+                }).ToList()
+            });
+
+        groups.Add(new
+        {
+            title = "Liên quan",
+            items = new[]
+            {
+                new
+                {
+                    title = "Video liên quan",
+                    url = $"{host}/xszav?rel={HttpUtility.UrlEncode(pageUrl)}",
+                    plain = true
+                }
+            }
+        });
+
+        return Json(new { items = new object[0], groups });
+    }
+
+    // ?rel=<uri detail> — 1 trang (SISI: total_pages 0 = con trang vo han).
+    async Task<ActionResult> Related(string uri, int pg)
+    {
+        if (pg > 1)
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        string pageUrl = XszAvTo.NormalizePageUrl(uri);
+        if (string.IsNullOrEmpty(pageUrl))
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        var cache = await InvokeCacheResult<(List<PlaylistItem> playlists, int total_pages)>(
+            ipkey($"xszav:rel:{pageUrl}"), 20, async e =>
+        {
+            string page = await GetPageAsync(pageUrl);
+            var playlists = XszAvTo.Related("xszav/vidosik", page ?? "", pageUrl);
+
+            if (playlists == null || playlists.Count == 0)
+                return e.Success((new List<PlaylistItem>(), 1));
+
+            return e.Success((playlists, 1));
+        });
+
+        if (!cache.IsSuccess)
+            return OnError(cache.ErrorMsg);
+
+        return PlaylistResult(cache.Value.playlists, cache.ISingleCache,
+            await MenuAsync(null, null, null), total_pages: 1);
     }
 
     async Task<string> GetPageAsync(string url)

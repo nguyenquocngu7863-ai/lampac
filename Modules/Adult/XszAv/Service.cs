@@ -157,7 +157,64 @@ public static class XszAvTo
         return m.Success ? m.Groups[1].Value : null;
     }
 
-    // Tags parsed from /tags
+    // ========== POPUP ==========
+    // Trang detail (SSR): khoi thong tin video nam giua <h1> va card dau tien
+    // (class="thumbnail") — gom link /actresses/<ten> va /search/videos/<kw>.
+    static string InfoBlock(string html)
+    {
+        if (string.IsNullOrEmpty(html)) return "";
+        int a = html.IndexOf("<h1", StringComparison.OrdinalIgnoreCase);
+        if (a < 0) return "";
+        int b = html.IndexOf("class=\"thumbnail\"", a, StringComparison.OrdinalIgnoreCase);
+        return b > a ? html[a..b] : html[a..];
+    }
+
+    // path: "actresses/<ten>" (dung ?c=) hoac "search:<kw>" (dung ?search=)
+    public static List<(string name, string path)> Chips(string html, bool actresses)
+    {
+        var res = new List<(string, string)>();
+        if (string.IsNullOrEmpty(html)) return res;
+        string block = InfoBlock(html);
+        if (block.Length == 0) return res;
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        if (actresses)
+        {
+            foreach (Match m in Regex.Matches(block,
+                @"<a\b[^>]*href\s*=\s*""/actresses/([^""?]+)""[^>]*>(.*?)</a>",
+                RegexOptions.IgnoreCase | RegexOptions.Singleline))
+            {
+                string slug = HttpUtility.UrlDecode(m.Groups[1].Value).Trim();
+                string name = Clean(Regex.Replace(HttpUtility.HtmlDecode(m.Groups[2].Value), "<[^>]+>", " "));
+                if (slug.Length == 0 || name.Length == 0 || !seen.Add(slug)) continue;
+                res.Add((name, "actresses/" + slug));
+            }
+            return res;
+        }
+
+        foreach (Match m in Regex.Matches(block,
+            @"<a\b[^>]*href\s*=\s*""/search/videos/[^""]*""[^>]*>(.*?)</a>",
+            RegexOptions.IgnoreCase | RegexOptions.Singleline))
+        {
+            string name = Clean(Regex.Replace(HttpUtility.HtmlDecode(m.Groups[1].Value), "<[^>]+>", " "));
+            if (name.Length == 0 || name.Length > 40 || !seen.Add(name)) continue;
+            res.Add((name, "search:" + name));
+        }
+        return res;
+    }
+
+    // Card "cung the loai / cung dien vien" nam sau card thong tin.
+    public static List<PlaylistItem> Related(string route, string html, string pageUrl)
+    {
+        if (string.IsNullOrEmpty(html)) return new List<PlaylistItem>();
+        int i = html.IndexOf("class=\"thumbnail\"", StringComparison.OrdinalIgnoreCase);
+        if (i < 0) return new List<PlaylistItem>();
+        var list = Playlist(route, html[i..]);
+        list.RemoveAll(x => string.Equals(x.bookmark?.href, pageUrl, StringComparison.OrdinalIgnoreCase));
+        return list;
+    }
+
     public static List<(string slug, string name)> Tags(string html)
     {
         var res = new List<(string slug, string name)>();
