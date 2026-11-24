@@ -22,8 +22,11 @@ public class Viet69zController : BaseSisiController
 
     [HttpGet]
     [Route("viet69z")]
-    async public Task<ActionResult> Index(string search, string sort, string c, string t, int pg = 1)
+    async public Task<ActionResult> Index(string search, string sort, string c, string t, int pg = 1, string rel = null)
     {
+        if (!string.IsNullOrWhiteSpace(rel))
+            return await Related(rel, pg);
+
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
 
@@ -46,6 +49,130 @@ public class Viet69zController : BaseSisiController
             StatiCacheDisabled = true;
 
         return PlaylistResult(cache, Viet69To.Menu(host));
+    }
+
+    static object EmptyPopup() => new { items = new object[0], groups = new object[0] };
+
+    async Task<string> FetchHtmlAsync(string url)
+    {
+        string html = null;
+        try
+        {
+            await httpHydra.GetSpan(url, span => { html = span.ToString(); }, addheaders: HeadersModel.Init(
+                ("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"),
+                ("Referer", Viet69To.SiteHost + "/")));
+        }
+        catch { }
+        if (!string.IsNullOrEmpty(html) && html.Length > 1000)
+            return html;
+        try
+        {
+            html = await Http.Get(url, timeoutSeconds: 20, httpversion: init.httpversion, proxy: proxy,
+                headers: HeadersModel.Init(
+                    ("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"),
+                    ("Referer", Viet69To.SiteHost + "/")));
+        }
+        catch { }
+        return html;
+    }
+
+    [HttpGet]
+    [Route("viet69z/genres")]
+    async public Task<ActionResult> Genres(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return Json(EmptyPopup());
+
+        if (await IsRequestBlocked(rch: true))
+            return badInitMsg;
+
+        string pageUrl = Viet69To.NormalizePageUrl(uri);
+        if (string.IsNullOrEmpty(pageUrl))
+            return Json(EmptyPopup());
+
+        string memKey = ipkey($"viet69z:info:{pageUrl}");
+        if (!hybridCache.TryGetValue(memKey, out List<(string name, string path)> chips))
+        {
+            string page = await FetchHtmlAsync(pageUrl);
+            chips = Viet69To.Chips(page);
+            if (chips != null && chips.Count > 0)
+                hybridCache.Set(memKey, chips, cacheTime(360));
+        }
+
+        var groups = new List<object>();
+
+        var cats = (chips ?? new List<(string name, string path)>())
+            .Where(x => !x.path.StartsWith("tag/")).ToList();
+        var tags = (chips ?? new List<(string name, string path)>())
+            .Where(x => x.path.StartsWith("tag/")).ToList();
+
+        if (cats.Count > 0)
+            groups.Add(new
+            {
+                title = "Thể loại",
+                items = cats.Select(x => new
+                {
+                    title = x.name,
+                    url = $"{host}/viet69z?c={HttpUtility.UrlEncode(x.path)}"
+                }).ToList()
+            });
+
+        if (tags.Count > 0)
+            groups.Add(new
+            {
+                title = "Thẻ",
+                items = tags.Select(x => new
+                {
+                    title = x.name,
+                    url = $"{host}/viet69z?c={HttpUtility.UrlEncode(x.path)}"
+                }).ToList()
+            });
+
+        groups.Add(new
+        {
+            title = "Liên quan",
+            items = new[]
+            {
+                new
+                {
+                    title = "Phim liên quan",
+                    url = $"{host}/viet69z?rel={HttpUtility.UrlEncode(pageUrl)}",
+                    plain = true
+                }
+            }
+        });
+
+        return Json(new { items = new object[0], groups });
+    }
+
+    async Task<ActionResult> Related(string uri, int pg)
+    {
+        if (pg > 1)
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        if (await IsRequestBlocked(rch: true))
+            return badInitMsg;
+
+        string pageUrl = Viet69To.NormalizePageUrl(uri);
+        if (string.IsNullOrEmpty(pageUrl))
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        var cache = await InvokeCacheResult<List<PlaylistItem>>(
+            ipkey($"viet69z:rel:{pageUrl}"), 20, async e =>
+        {
+            string page = await FetchHtmlAsync(pageUrl);
+            var playlists = Viet69To.Related("viet69z/vidosik", page ?? "", pageUrl);
+
+            if (playlists == null || playlists.Count == 0)
+                return e.Success(new List<PlaylistItem>());
+
+            return e.Success(playlists);
+        });
+
+        if (!cache.IsSuccess)
+            return OnError(cache.ErrorMsg);
+
+        return PlaylistResult(cache.Value, cache.ISingleCache, Viet69To.Menu(host), total_pages: 1);
     }
 
     async Task<(Dictionary<string, string> links, bool userch)> ResolveLinksAsync(string uri)

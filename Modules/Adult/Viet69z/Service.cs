@@ -153,6 +153,89 @@ public static class Viet69To
         return o.Trim('-');
     }
 
+
+    public const string SiteHost = "https://viet69z.to";
+
+    public static string NormalizePageUrl(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        value = HttpUtility.HtmlDecode(value.Trim());
+        if (value.StartsWith("//")) value = "https:" + value;
+        else if (value.StartsWith("/")) value = SiteHost + value;
+        else if (!value.StartsWith("http", System.StringComparison.OrdinalIgnoreCase))
+            value = SiteHost + "/" + value.Trim('/') + "/";
+        if (!System.Uri.TryCreate(value, UriKind.Absolute, out var parsed)) return null;
+        string h = parsed.Host.ToLowerInvariant();
+        if (h != "viet69z.to" && !h.EndsWith(".viet69z.to")) return null;
+        return value;
+    }
+
+    static string Pretty(string slug)
+    {
+        slug = (slug ?? "").Replace('-', ' ').Replace('_', ' ').Trim();
+        if (slug.Length == 0) return slug;
+        var words = slug.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+        for (int i = 0; i < words.Length; i++)
+            words[i] = char.ToUpperInvariant(words[i][0]) + words[i].Substring(1);
+        return string.Join(" ", words);
+    }
+
+    static string AnchorText(string html, string href)
+    {
+        var m = Regex.Match(html, $@"<a[^>]*href=""{Regex.Escape(href)}""[^>]*>([^<]{{1,60}})</a>");
+        if (m.Success)
+        {
+            string t = HttpUtility.HtmlDecode(m.Groups[1].Value).Trim();
+            if (t.Length > 0) return t;
+        }
+        return null;
+    }
+
+    public static List<(string name, string path)> Chips(string html)
+    {
+        var list = new List<(string name, string path)>();
+        if (string.IsNullOrEmpty(html)) return list;
+
+        var seen = new HashSet<string>();
+
+        // The loai: class "category-<slug>" tren <article> cua bai -> permalink /<slug>/
+        var artClass = Regex.Match(html, @"<article[^>]*class=""([^""]*\bhentry\b[^""]*)""");
+        string cls = artClass.Success ? artClass.Groups[1].Value : "";
+        foreach (Match m in Regex.Matches(cls, @"(?:^|\s)category-([a-z0-9][a-z0-9\-]*)"))
+        {
+            string slug = m.Groups[1].Value;
+            if (slug == "uncategorized") continue;
+            if (!seen.Add("c:" + slug)) continue;
+            string name = AnchorText(html, SiteHost + "/" + slug + "/");
+            list.Add((string.IsNullOrEmpty(name) ? Pretty(slug) : name, slug));
+        }
+
+        // The (tag): href /tag/<slug>/
+        foreach (Match m in Regex.Matches(html, @"href=""https?://viet69z\.to/tag/([a-z0-9\-]+)/?"""))
+        {
+            string slug = m.Groups[1].Value;
+            if (!seen.Add("t:" + slug)) continue;
+            list.Add((Pretty(slug), "tag/" + slug));
+        }
+
+        return list;
+    }
+
+    public static List<Shared.Models.SISI.Base.PlaylistItem> Related(string uri, string html, string pageUrl)
+    {
+        if (string.IsNullOrEmpty(html)) return new List<Shared.Models.SISI.Base.PlaylistItem>();
+
+        int idx = html.IndexOf("Có thể bạn sẽ thích", StringComparison.Ordinal);
+        if (idx < 0) idx = 0;
+
+        var list = Playlist(uri, html.Substring(idx));
+        if (list.Count == 0) return list;
+
+        string self = (pageUrl ?? "").TrimEnd('/');
+        list.RemoveAll(x => (x.bookmark?.href ?? "").TrimEnd('/') == self);
+        return list;
+    }
+
     public static List<Shared.Models.SISI.Base.MenuItem> Menu(string host)
     {
         return new List<Shared.Models.SISI.Base.MenuItem>()
