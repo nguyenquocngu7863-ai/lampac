@@ -48,6 +48,10 @@ Trang list **30 phim/trang**; `total_pages` đo từ link `/<listing>/<N>/` tron
   KHÔNG dùng link `/categories/…` ở nav header (nav có 8 danh mục chung → chip sai phim).
 - **Liên quan**: khối `#list_videos_related_videos_items` trên chính trang detail (6 phim mẫu).
 - Site **không có** tag/model link (flashvars `video_tags` thường rỗng) → không có nhóm Diễn viên/Thẻ.
+- **Không có nhóm "Người đăng"** (đo 2026-11-24, user chốt bỏ): mọi post đều là
+  `<a href="/members/2/" class="sub-btn tag button"><em> Anonymous </em><span class="count">85</span></a>`
+  = **ngụy trang**, và `/members/2/` trả **404** (`/members/` Community thì 200, member thật vd `/members/655/`
+  chỉ 20 video + phân trang AJAX `from_fav_videos` nên không dựng được thành list) → không gắn chip user.
 - SSRF: `uri` chỉ nhận `/video/<id>/<slug>` (bắt buộc host `kissjav.li`), sai → `{"items":[],"groups":[]}`.
 - `rel` với `pg>1` → list rỗng (giữ popup sống, không 503).
 
