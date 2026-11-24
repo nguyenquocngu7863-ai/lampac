@@ -1,40 +1,54 @@
-# Nguồn gốc module Adult (gốc upstream vs tự làm)
+# Nguồn gốc module & hạ tầng (gốc upstream vs tự làm)
 
-So sánh với repo upstream **`lampac-nextgen/lampac`** — HEAD `7559b2c` (2026-11-24),
-clone nông `--depth 1 --filter=blob:none` rồi `diff -r` từng module.
+> **Ưu tiên:** nhóm **tự làm** trước; module **gốc upstream** làm sau, từ từ (chủ repo upstream
+> bảo trì). **Không sync upstream** — xem luật ở mục 5.
 
-| nhóm | số module | đang bật | có popup (genres) |
-|---|---|---|---|
-| **gốc upstream** | 14 | 13 | 2 |
-| **tự làm** | 65 | 62 | 52 |
-| **tổng** | 79 | 75 | 54 |
+So sánh trực tiếp với repo upstream **`lampac-nextgen/lampac`** — HEAD `7559b2c` (2026-11-24),
+clone nông `--depth 1 --filter=blob:none` + sparse-checkout, rồi `diff -r` từng thư mục
+(bỏ `bin/`, `obj/`, `*.dll/pdb/so`).
 
-## 1. Module gốc upstream (14) — có trong `lampac-nextgen/lampac`, mình chỉ sửa thêm
+## 0. Tổng quan
 
-`dòng khác` = số dòng khác upstream hiện tại (`diff -r | grep '^[<>]'`).
+| khu vực | gốc upstream | trong đó đã sửa | không đổi | tự làm | upstream có / mình không |
+|---|---|---|---|---|---|
+| `Modules/Adult` | 14 | 14 | 0 | **65** | 0 |
+| `Modules/*` khác | 34 | 25 | 7 | 3 | 2 (`NativeAppleTV`, `SeriesNotify`) |
+| `Online/` | 1 | 1 | 0 | 0 | 1 (`Online/tests`) |
+| `SISI/` | 4 | 2 | 2 | 0 | 0 |
+| `Core/` + `Shared/` | 2 | 2 | 0 | 0 | 0 |
+| **tổng module** | **48** | 39 | 9 | **68** | 3 |
+
+> Ghi chú: `Modules/*` khác = 34 thư mục upstream (35 trừ `Adult`); 2 cái upstream mới thêm chưa có
+> ở mình → 32 thư mục chung = **25 đã sửa** + **7 nguyên bản**. Còn 3 thư mục mình tự thêm.
+> `đã sửa` gồm cả thay đổi nội dung file lẫn file/thư mục chỉ một bên có.
+
+## 1. `Modules/Adult` — gốc upstream (14)
+
+`dòng khác` = số dòng khác upstream (`diff -r | grep '^[<>]'`).
 
 | module | route | bật | dòng khác | popup | ghi chú |
 |---|---|---|---|---|---|
+| `Xnxx` | `xnx` | on | 4 | — | sửa nhẹ |
+| `Tizam` | `tizam` | on | 10 | — | sửa nhẹ |
+| `HQporner` | `hqr` | on | 18 | — | sửa nhẹ |
+| `Porntrex` | `ptx` | on | 22 | — | sửa nhẹ |
+| `XvideosRED` | `xdsred` | **off** | 24 | — | sửa nhẹ |
+| `Xvideos` | `xds` | on | 101 | — | sửa vừa |
+| `Runetki` | `runetki` | on | 179 | — | sửa vừa |
 | `BongaCams` | `bgs` | on | 180 | — | sửa vừa |
 | `Chaturbate` | `chu` | on | 214 | — | **sửa nhiều** |
 | `Ebalovo` | `elo` | on | 264 | — | **sửa nhiều** |
-| `Eporner` | `epr` | on | 488 | ✅ | **sửa nhiều** |
-| `HQporner` | `hqr` | on | 18 | — | sửa nhẹ |
 | `PornHub` | `phub` | on | 290 | — | **sửa nhiều** |
-| `Porntrex` | `ptx` | on | 22 | — | sửa nhẹ |
-| `Runetki` | `runetki` | on | 179 | — | sửa vừa |
 | `Spankbang` | `sbg` | on | 359 | ✅ | **sửa nhiều** |
-| `Tizam` | `tizam` | on | 10 | — | sửa nhẹ |
 | `Xhamster` | `xmr` | on | 363 | — | **sửa nhiều** |
-| `Xnxx` | `xnx` | on | 4 | — | sửa nhẹ |
-| `Xvideos` | `xds` | on | 101 | — | sửa vừa |
-| `XvideosRED` | `xdsred` | **off** | 24 | — | sửa nhẹ |
+| `Eporner` | `epr` | on | 488 | ✅ | **sửa nhiều** |
 
-> Upstream không đổi gì ở 14 module này khi mình thêm popup/harden — nghĩa là **sync upstream
-> sẽ đụng** các file đã sửa. Khi merge: giữ phần của mình ở `Controller.cs` (route `genres`/`rel`),
-> lấy phần upstream ở parser/Service nếu nó sửa site.
+> **LUẬT: KHÔNG BAO GIỜ sync/merge/pull/rebase với upstream** — cả 14 module này đã bị sửa khác
+> upstream (popup, harden, đổi domain, fix player); merge sẽ ghi đè và **mất toàn bộ công sức**.
+> Upstream chỉ để **đọc tham khảo** (`diff -r`), cần gì **port tay** đúng phần đó.
+> Nhóm này do chủ repo upstream bảo trì ⇒ **làm sau, từ từ**.
 
-## 2. Module tự làm (65) — upstream KHÔNG có
+## 2. `Modules/Adult` — tự làm (65)
 
 | module | route | bật | popup | ngày thêm | tác giả |
 |---|---|---|---|---|---|
@@ -104,32 +118,89 @@ clone nông `--depth 1 --filter=blob:none` rồi `diff -r` từng module.
 | `XszAv` | `xszav` | on | ✅ | 2026-10-14 | Codex |
 | `XViet` | `xviet` | on | ✅ | 2026-11-01 | nguyenquocngu7863-ai |
 
-## 3. Khác biệt ngoài Adult
+## 3. Module ngoài Adult
 
-| đường | trạng thái |
+### 3a. Gốc upstream, ĐÃ SỬA (25 thư mục)
+
+| thư mục | file khác | dòng khác | ghi chú |
+|---|---|---|---|
+| `NextHUB` | 59 | 5049 | **sửa nhiều nhất** (+1 file riêng) |
+| `WatchTogether` | 6 | 4422 | +4 file riêng, 3 file upstream không có ở mình |
+| `Music` | 42 | 4309 | 3 file upstream không có ở mình |
+| `LogUserRequest-Lite` | 13 | 3750 |  |
+| `LampaWeb` | 14 | 2580 | +16 file riêng, 2 file upstream |
+| `Sync` | 16 | 2567 |  |
+| `OnlineRUS` | 26 | 1956 | +1 riêng, 10 file upstream không có ở mình |
+| `OnlineENG` | 13 | 1747 | +9 file riêng |
+| `DatabaseEditor` | 7 | 1180 |  |
+| `GStreamer` | 16 | 1105 | +1 riêng, 1 file upstream |
+| `AdminPanel` | 6 | 1001 | +1 file riêng |
+| `Tracks` | 2 | 729 |  |
+| `OnlinePaid` | 17 | 459 |  |
+| `Community` | 5 | 212 | 2 file upstream không có ở mình |
+| `OnlineAnime` | 17 | 204 | 1 file upstream không có ở mình |
+| `PidTor` | 1 | 86 |  |
+| `Proxy` | 3 | 63 |  |
+| `JacRed` | 4 | 51 |  |
+| `TorrServer` | 5 | 33 |  |
+| `DLNA` | 2 | 33 |  |
+| `Kit` | 2 | 15 |  |
+| `OnlineGEO` | 5 | 13 |  |
+| `OnlineUKR` | 5 | 10 |  |
+| `ForkPlayerXML` | 1 | 2 |  |
+| `Transcoding` | 1 | 2 |  |
+
+### 3b. Gốc upstream, KHÔNG ĐỔI (7 thư mục)
+
+`Catalog`, `ExternalBind`, `LampacApk`, `MsxNative`, `Potok`, `Telemetry`, `WebLog`
+
+### 3c. Tự làm (upstream không có)
+
+| module | đường dẫn |
 |---|---|
-| `Modules/DevFetch`, `Modules/OnlineVN`, `Modules/Tg-notify.bot` | **tự làm** (upstream không có) |
-| `Modules/NativeAppleTV`, `Modules/SeriesNotify` | **upstream có, repo mình không có** |
-| `Modules/Adult/*` 14 module ở mục 1, `Core/`, `Shared/`, `SISI/` | dùng chung upstream, sửa tại chỗ |
+| `DevFetch` | `Modules/DevFetch` |
+| `OnlineVN` | `Modules/OnlineVN` |
+| `Tg-notify.bot` | `Modules/Tg-notify.bot` |
 
-## 4. Việc phát hiện khi soi
+### 3d. Upstream có, repo mình KHÔNG có
 
-- `SevenMM`, `SexHihi`: có route `genres` nhưng **không có `?rel=`** → popup hiện nhưng mục
-  "Liên quan" thiếu. Sửa 2 module này là rẻ nhất trong nhóm popup.
-- 21 module đang bật **chưa có popup**: 11 gốc upstream (`BongaCams`, `Chaturbate`, `Ebalovo`,
-  `HQporner`, `PornHub`, `Porntrex`, `Runetki`, `Tizam`, `Xhamster`, `Xnxx`, `Xvideos`) +
-  10 tự làm (`Lon69`, `PhimSexVN88`, `PhimSexViet113`, `SexDep`, `Sexgenz2`, `Sieusex`,
-  `SupJav` PAUSED, `TangThon`, `TopGai`, `Viet69Av`).
-- `XvideosRED` đang tắt (`enable: false`) — module gốc.
-- Số trong `todo.md` cũ (52 đủ popup) chỉ đúng phần `?rel=`; đếm lại: **54 có `genres`**, 52 có cả `rel`.
+`Modules/NativeAppleTV`, `Modules/SeriesNotify`, `Online/tests` — không có ở mình (đã xoá hoặc upstream thêm sau).
 
-## 5. Chạy lại phép so sánh
+## 4. Hạ tầng dùng chung (không phải module)
+
+| đường | file khác | dòng khác | ghi chú |
+|---|---|---|---|
+| `Online/` | 2 | — | `ModInit.cs`, `plugin.js` sửa; thiếu `Online/tests` |
+| `SISI/Controllers` | 2 | 8 | |
+| `SISI/plugins` | 2 | 326 | +1 file riêng |
+| `SISI/Models`, `SISI/SQL` | 0 | 0 | y upstream |
+| `Core/` | 13 | 421 | |
+| `Shared/` | 18 | 724 | |
+
+⇒ Sửa `Core/`/`Shared/`/`.csproj` thì phải build bằng proot (xem skill `lampac-build`),
+không dùng được `csc/check.sh` cho phần core.
+
+## 5. LUẬT + việc phát hiện khi soi
+
+- **KHÔNG BAO GIỜ sync/merge với upstream** (đã ghi vào memory). Chỉ đọc tham khảo + port tay.
+- `SevenMM`, `SexHihi` (nhóm tự làm): có `genres` nhưng **thiếu `?rel=`** → sửa trước, rẻ nhất.
+- 21 module Adult đang bật chưa có popup: **11 gốc upstream** (`BongaCams`, `Chaturbate`, `Ebalovo`,
+  `HQporner`, `PornHub`, `Porntrex`, `Runetki`, `Tizam`, `Xhamster`, `Xnxx`, `Xvideos`) + **10 tự làm**
+  (`Lon69`, `PhimSexVN88`, `PhimSexViet113`, `SexDep`, `Sexgenz2`, `Sieusex`, `SupJav` PAUSED,
+  `TangThon`, `TopGai`, `Viet69Av`).
+- Đếm lại bằng script: **54 module có `genres`**, **52 có cả `?rel=`** (todo cũ ghi 52 chỉ đúng phần rel).
+- `XvideosRED` (gốc) và `Viet69kz` (tự làm) đang tắt.
+- `NextHUB` là module gốc bị sửa nhiều nhất (59 file / 5.049 dòng) — **không merge**, chỉ port tay.
+
+## 6. Chạy lại phép so sánh
 
 ```sh
 TMP="${TMPDIR:-$PREFIX/tmp}"; rm -rf "$TMP/up-lampac"
 git clone --depth 1 --filter=blob:none --no-checkout \
   https://github.com/lampac-nextgen/lampac.git "$TMP/up-lampac"
 cd "$TMP/up-lampac" && git sparse-checkout init --cone && \
-  git sparse-checkout set Modules/Adult && git checkout
-cd ~/lampac-clean && diff -r "$TMP/up-lampac/Modules/Adult/Xnxx" Modules/Adult/Xnxx
+  git sparse-checkout set Modules Online SISI Core Shared && git checkout
+cd ~/lampac-clean
+# so từng thư mục, bỏ rác build
+diff -rq -x bin -x obj -x "*.dll" "$TMP/up-lampac/Modules/NextHUB" Modules/NextHUB | head
 ```

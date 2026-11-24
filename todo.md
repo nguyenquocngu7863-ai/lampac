@@ -15,13 +15,42 @@ Skill tham chiếu: `lampac-popup` (hợp đồng route, luật UX, anti-pattern
 - [ ] (Nếu site đổi domain trong lúc làm) cập nhật `SiteHost` + manifest + README
 - [ ] Dọn rác build (`lampac-cleanup` §2) trước khi bàn giao
 
-## Trạng thái tổng
+## Trạng thái tổng (đo lại 2026-11-24, tách theo nguồn gốc)
 
-| nhóm | số module | trạng thái |
+| nhóm | số module | đang bật | có popup (`genres`) | có cả `?rel=` |
+|---|---|---|---|---|
+| **A. Gốc upstream** (`lampac-nextgen/lampac`) | 14 | 13 | 2 (`Eporner`, `Spankbang`) | 2 |
+| **B. Tự làm** (upstream không có) | 65 | 62 | 52 | 50 |
+| **tổng** | **79** | **75** | **54** | **52** |
+
+- **Có genres, thiếu `?rel=`**: `SevenMM`, `SexHihi` (đều nhóm B) → sửa trước, rẻ nhất.
+- **Chưa có popup**: 21 = **11 nhóm A** (`BongaCams`, `Chaturbate`, `Ebalovo`, `HQporner`, `PornHub`,
+  `Porntrex`, `Runetki`, `Tizam`, `Xhamster`, `Xnxx`, `Xvideos`) + **10 nhóm B** (`Lon69`, `PhimSexVN88`,
+  `PhimSexViet113`, `SexDep`, `Sexgenz2`, `Sieusex`, `SupJav` PAUSED, `TangThon`, `TopGai`, `Viet69Av`).
+- `XvideosRED` (nhóm A) đang tắt. `Viet69kz` (nhóm B) đang tắt.
+
+## Phân nhóm theo nguồn gốc — LUẬT ƯU TIÊN
+
+Chi tiết + số dòng lệch upstream: **`Modules/Adult/MODULE-ORIGIN.md`**.
+
+> **KHÔNG BAO GIỜ sync/merge với upstream** (`lampac-nextgen/lampac`). Mỗi module trong repo này đã
+> bị sửa cho khác đi (popup, harden, đổi domain, fix player); merge upstream sẽ **ghi đè và mất toàn bộ
+> công sức**. Upstream chỉ dùng để **đọc tham khảo** (`git clone` nông ở `$TMPDIR/up-lampac`, `diff -r`)
+> rồi **port tay** đúng phần cần, không `git merge`/`git pull`/`git rebase` từ upstream.
+
+| nhóm | ai bảo trì | cách làm |
 |---|---|---|
-| **Đã có popup (genres + rel)** | **52** | xong (kể cả `PhimSexVi` 2026-11-24) |
-| Có genres, **thiếu `?rel=` route** | 0 | — |
-| Chưa có popup | 23 | Phase 1/2/3 + `PornHub` + `SevenMM` |
+| **A. 14 module Adult gốc** (`BongaCams`, `Chaturbate`, `Ebalovo`, `Eporner`, `HQporner`, `PornHub`, `Porntrex`, `Runetki`, `Spankbang`, `Tizam`, `Xhamster`, `Xnxx`, `Xvideos`, `XvideosRED`) | chủ repo upstream | **LÀM SAU, từ từ** — site chết thì port tay từ upstream bản mới, không merge. Không đụng nếu không có yêu cầu |
+| **B. 65 module Adult tự làm** | mình | **ƯU TIÊN** — mọi việc popup/fix player/đổi domain làm ở nhóm này trước |
+| **C. Module ngoài Adult** (`Modules/NextHUB`, `Music`, `WatchTogether`, `LampaWeb`, `Sync`, `OnlineRUS/ENG/…`, `AdminPanel`, `GStreamer`…) | upstream, **đã Việt hoá/sửa rất nhiều** (NextHUB: 59 file / 5.049 dòng + `CategoryVi.cs`, 55/57 `sites/*.yaml`) | **LÀM SAU như nhóm A**; đây là chỗ merge upstream sẽ mất nhiều nhất |
+| **D. Tự làm ngoài Adult** | mình | `Modules/DevFetch`, `Modules/OnlineVN`, `Modules/Tg-notify.bot` |
+
+Thứ tự ưu tiên từ nay:
+1. Bug đang chặn phát (`no supported source`, `stream_links`, domain 301) — nhóm B trước.
+2. Popup còn thiếu — **10 module nhóm B** trước, nhóm A để sau.
+3. Việc nhóm A chỉ làm khi user yêu cầu rõ ràng hoặc site đó user đang dùng.
+
+> **2026-11-24 (14)**: **Quét lại TOÀN BỘ cây module** (lần trước chỉ quét `Modules/Adult` — thiếu `NextHUB` và các root khác). Số đo: **`Modules/*` ngoài Adult = 34 thư mục upstream → 25 đã sửa / 7 nguyên bản**, mình thêm 3 (`DevFetch`, `OnlineVN`, `Tg-notify.bot`), upstream có mà mình không có 2 (`NativeAppleTV`, `SeriesNotify`). Sửa nhiều nhất: **`NextHUB` 59 file / 5.049 dòng** (đã Việt hoá menu: `CategoryVi.cs` + `title = "Tìm kiếm"` / `"Sắp xếp: …"`, 55/57 file `sites/*.yaml`) → `WatchTogether` 4.422 · `Music` 4.309 · `LogUserRequest-Lite` 3.750 · `LampaWeb` 2.580 · `Sync` 2.567. Hạ tầng: `Core/` 13 file/421 dòng, `Shared/` 18 file/724 dòng, `Online/` 2 file (`ModInit.cs`, `plugin.js`) + thiếu `Online/tests`, `SISI/plugins` 326 dòng. Báo cáo đầy đủ + lệnh chạy lại trong `Modules/Adult/MODULE-ORIGIN.md`.
 
 > **2026-11-24 (13)**: **Phân loại nguồn gốc module** — so trực tiếp với upstream `lampac-nextgen/lampac` (clone nông `--depth 1 --filter=blob:none`, HEAD `7559b2c` 2026-11-24, `diff -r` từng module). Kết quả ghi ở **`Modules/Adult/MODULE-ORIGIN.md`**: **79 module Adult = 14 module gốc upstream** (đều đã bị mình sửa: `Xnxx` 4 dòng → `Eporner` 488 dòng) **+ 65 module tự làm**. Bật: 75 (13 gốc + 62 tự làm). Popup: **54 có `genres`** (52 tự làm + `Eporner`/`Spankbang` gốc), **52 có cả `?rel=`** → **`SevenMM` + `SexHihi` có genres nhưng thiếu `?rel=`** (rẻ nhất, sửa trước). Ngoài Adult: mình có thêm `Modules/DevFetch`, `Modules/OnlineVN`, `Modules/Tg-notify.bot`; upstream có `NativeAppleTV`, `SeriesNotify` mà mình không có. Số 52 trong todo cũ chỉ đúng phần `?rel=`.
 
@@ -246,16 +275,18 @@ Nguồn: `~/.config/opencode/skills/lampac-adult-module/references/card-thumbnai
 | 2026-11-17 | **SexVietDam** | **popup (genres + `?rel=`)** — commit `5c074125` | Đo trước: trang chi tiết **không có** khối liên quan nào (0 match `related`/`liên quan`/`gợi ý`; sidebar `layout__right` chỉ là "Phim sex hay" nạp từ `/ajax/top/1h`; bundle `app-*.js` chỉ có `/ajax/preview\|view\|visit`) ⇒ "Liên quan" = **danh sách cùng danh mục đầu** của video (không có danh mục → thẻ đầu), `RemoveAll` bỏ chính video đang xem → 23 item. Chip đọc trong `video__tags` (`the-loai/` + `tag/`, site có cả `tag/tuoi69` không nằm ở nav). Cache RAM 6h (`_infoCache`) + warm nền `svd:rel:*` 180s. Verify: genres 4 chip + "Liên quan" (0.95s cold / 0.05s cached), uri rác + host lạ → `{items:[],groups:[]}` 200, rel 23 item `total_pages:1`, `pg=2` → rỗng, home 24 / pg2 / chip `the-loai` / chip `tag` / search / path-route OK, `play.sh` **PASS** (h264 364x360, decode 5s đầu+cuối). Bẫy test: `q` phải để **dấu `+` thật** (`q=StreamQQ+Plan+VIP`) — encode `%2B` → server decode ra `+` ≠ key `"StreamQQ Plan VIP"` → 503 giả |
 | 2026-11-17 | **(audit todo.md)** | đo lại toàn bộ trạng thái popup offline, sửa số liệu sai | 71 thư mục Adult: **31 đủ popup** (genres route + `?rel=`), **2 chỉ-genres** (`Spankbang` — related trong `vidosik?related=true`; `JAVSnap` — `manifest.enable:false`), **38 chưa có** (gồm `PornHub` không Controller). `SevenMM` trước ghi "genres ✅" là **sai**: chỉ có submenu menu SISI. So repo ↔ `~/lampac-run/module/Adult`: **0 diff**, 0 module chưa deploy. App lúc đo **không chạy** (port 9118 down) nên không smoke live. `Todo` Phase 5 (thumbnail 3 trường) + Phase 4b `XvideosRED` vẫn treo |
 
-## Việc còn lại (đo 2026-11-23)
+## Việc còn lại (đo lại 2026-11-24, tách nhóm)
 
-- [ ] **Popup 29 module chưa có** (Phase 1/2/3 + `PornHub` + `SevenMM`) — mỗi module: route `/<mod>/genres?uri=`
-      + mục "Liên quan" `?rel=<uri>` (`total_pages:1`), SSRF guard, cache, smoke 6 endpoint, `play.sh` PASS.
-      Ưu tiên theo Phase: JAV/Á-Việt (17) → Tube Tây (10) → Cam live (3).
+- [ ] **`SevenMM` + `SexHihi` (nhóm B)** — có `genres` nhưng **thiếu `?rel=`** → bổ mục "Liên quan".
+      Rẻ nhất, làm trước để đưa "thiếu rel" về 0.
+- [ ] **Popup 10 module nhóm B**: `Lon69`, `PhimSexVN88`, `PhimSexViet113`, `SexDep`, `Sexgenz2`,
+      `Sieusex`, `TangThon`, `TopGai`, `Viet69Av` (+ `SupJav` khi bỏ PAUSED) — mỗi module: route
+      `/<mod>/genres?uri=` + `?rel=<uri>` (`total_pages:1`), SSRF guard, cache, smoke 6 endpoint, `play.sh` PASS.
+- [ ] **Popup 11 module nhóm A** (`BongaCams`, `Chaturbate`, `Ebalovo`, `HQporner`, `PornHub`,
+      `Porntrex`, `Runetki`, `Tizam`, `Xhamster`, `Xnxx`, `Xvideos`) — **để sau**, chủ upstream bảo trì.
 - [ ] **`SupJav`** — đã có bypass CF qua persistent Chrome profile (commit `33b7cbcc`) nhưng **chưa verify live**
       (module đang PAUSED). Cần: bật app → `/supjav` 200 → `vidosik` ra link → `play.sh` PASS.
-- [ ] **`PornHub`** — có controller (`Controllers/PornHub.cs`, route `phub`/`phubgay`/`phubsml`) nhưng **chưa có**
-      `/genres` + `?rel=`. Cần xem site có khối liên quan/người mẫu để dựng popup.
-- [ ] **`XvideosRED`** — `manifest.enable:false` (tắt) → không tính vào kế hoạch.
+- [ ] **`XvideosRED`** — `manifest.enable:false` (tắt, nhóm A) → không tính vào kế hoạch.
 - [ ] **Sweep thumbnail 3 trường** (Phase 5) — cần app chạy để soi JSON list thật của 4 module mới + nhóm JAV.
 - [x] **Xác minh `play.sh` báo FAIL cho `FreePornVideos`/`XNhau` là false-negative** (URL `/proxy/<hash>` không có đuôi file nên tool không đoán mp4; đã verify tay bằng `ffprobe` 2MB đầu — đều OK: FPV h264 852x480+aac 2006s, XNhau h264 384x720+aac 92s). Cân nhắc sửa `play.sh` để suy đuôi từ `Content-Type`/`Content-Range` khi URL không có đuôi.
       file nên tool không đoán được mp4; đã verify tay bằng `ffprobe` (đều OK). Cân nhắc sửa `play.sh` để suy đuôi từ
