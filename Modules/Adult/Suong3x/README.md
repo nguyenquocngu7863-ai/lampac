@@ -42,6 +42,27 @@ Segment của CDN có **prefix PNG** (kiểu `IMG_xxx_0000.png`) → hls.js tự
 `/suong3x/vidosik` trả map `{label: url}` (app đọc label để chọn chất lượng),
 `/suong3x/video?uri=&q=` redirect qua `HostStreamProxy` (giữ Referer/Origin cho CDN).
 
+### Sửa 2026-11-24 (2 lỗi làm app KHÔNG phát)
+
+1. **Route thiếu đuôi** — app chọn player theo **đuôi URL**; `vidosik` trả
+   `/suong3x/video?...` (không đuôi) nên bị coi là file thường → `no supported source`.
+   Nay có `[Route("suong3x/video.m3u8")]` / `[Route("suong3x/video.mp4")]`
+   (giữ route cũ `suong3x/video` cho client đã cache).
+2. **Embed trả MP4, không chỉ HLS** — một số video dùng CDN xvideos:
+   `"file":"https://mp4-cdn77.xvideos-cdn.com/.../video_240p.mp4?secure=..."`.
+   `EndsWith(".mp4")` trên URL còn query → **false** ⇒ `stream_links`.
+   Nay `StreamFromEmbed` cắt query trước khi kiểm đuôi, và `Vidosik` trả nhãn
+   `HLS`/`MP4` + route tương ứng theo đuôi thật của file.
+
+## Đã đo (2026-11-24)
+
+- home 40 item `tp=382` · `pg=2` 40 · `sort=title_asc` 20 (tp 764 — cùng tổng 15280 item)
+- `search=em` 40 `tp=146` · `c=cat/clip-sex-telegram` 40 `tp=84` · `c=tag/chongtoico` 40 `tp=23`
+- `genres?uri=` → **Danh mục 3** + **Thẻ 16** + **Liên quan 1**; `?rel=` 10 item `tp=1`
+- 12/12 video (home + pg2 + pg3) resolve được: 8 **HLS** + 4 **MP4**
+- `play.sh`: HLS **PASS** (h264 720x1280 · 339.6s, segment 41/41 đuôi `.png` ngụy trang,
+  decode 5s đầu + cuối) · MP4 **PASS** (h264 444x250 · 979.4s và 3959.3s, decode OK)
+
 ## Popup long-press
 
 `GET /suong3x/genres?uri={url detail}` → `{items:[], groups:[...]}`:

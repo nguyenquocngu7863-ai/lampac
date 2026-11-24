@@ -274,13 +274,24 @@ public class Suong3xController : BaseSisiController
         if (string.IsNullOrEmpty(m3u8))
             return OnError("stream_links", refresh_proxy: true);
 
+        // Embed co the tra HLS hoac MP4 (mp4 cua xvideos CDN) -> route + nhan tuong ung
+        bool hls = m3u8.IndexOf(".m3u8", StringComparison.OrdinalIgnoreCase) >= 0;
+
         return Json(new Dictionary<string, string>(StringComparer.Ordinal)
         {
-            { "HLS", $"{host}/suong3x/video?uri={HttpUtility.UrlEncode(uri)}&q=HLS" }
+            // duoi .m3u8/.mp4 la BAT BUOC: app chon player theo duoi URL,
+            // thieu duoi -> coi la file thuong -> "no supported source"
+            {
+                hls ? "HLS" : "MP4",
+                $"{host}/suong3x/" + (hls ? "video.m3u8" : "video.mp4")
+                    + $"?uri={HttpUtility.UrlEncode(uri)}&q=" + (hls ? "HLS" : "MP4")
+            }
         });
     }
 
     [HttpGet]
+    [Route("suong3x/video.m3u8")]
+    [Route("suong3x/video.mp4")]
     [Route("suong3x/video")]
     async public Task<ActionResult> Video(string uri, string q)
     {

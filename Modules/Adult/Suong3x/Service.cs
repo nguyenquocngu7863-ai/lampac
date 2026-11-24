@@ -399,6 +399,7 @@ public static class Suong3xTo
     }
 
     // Trang embed (JWPlayer): sources: [{"file":"https://sv1.cdn-78-vid.top/<id1>/<tok>.m3u8","label":"0","type":"hls"}]
+    // Hoac MP4 (cdn xvideos): "file":"https://mp4-cdn77.xvideos-cdn.com/.../video_240p.mp4?secure=.."
     // Host embed có Cloudflare: bắt buộc fetch kèm Referer = site.
     public static string StreamFromEmbed(string html)
     {
@@ -407,7 +408,14 @@ public static class Suong3xTo
             return null;
 
         string u = m.Groups["u"].Value.Replace("\\/", "/");
-        return (u.EndsWith(".m3u8", StringComparison.OrdinalIgnoreCase) || u.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase))
+
+        // Kiem duoi SAU KHI bo query: mp4 cua xvideos CDN co `?secure=..`
+        // -> truoc day EndsWith(".mp4") false => vidosik "stream_links".
+        int q = u.IndexOf('?');
+        string path = q > 0 ? u.Substring(0, q) : u;
+
+        return (path.EndsWith(".m3u8", StringComparison.OrdinalIgnoreCase)
+            || path.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase))
             ? u : null;
     }
     #endregion
