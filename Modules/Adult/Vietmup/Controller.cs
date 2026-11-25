@@ -180,9 +180,58 @@ public class VietmupController : BaseSisiController
 
     async Task<List<MenuItem>> MenuBaseAsync()
     {
-        var cats = await CategoriesAsync();
-        var tags = await TagsAsync();
-        return VietmupTo.Menu(host, cats, tags);
+        var catsTask = CategoriesAsync();
+        var tagsTask = TagsAsync();
+        var extrasTask = FooterExtrasAsync();
+        await Task.WhenAll(catsTask, tagsTask, extrasTask);
+
+        var tags = tagsTask.Result;
+        var (trends, sugg) = extrasTask.Result;
+
+        // "Tags gợi ý" (footer) đứng trước, sau đó tới /tag; dedup theo slug
+        if (sugg.Count > 0)
+        {
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var merged = new List<(string name, string slug)>(sugg.Count + tags.Count);
+
+            foreach (var t in sugg)
+                if (seen.Add(t.slug))
+                    merged.Add(t);
+
+            foreach (var t in tags)
+                if (seen.Add(t.slug))
+                    merged.Add(t);
+
+            tags = merged;
+        }
+
+        return VietmupTo.Menu(host, catsTask.Result, tags, trends);
+    }
+
+    // Footer mọi trang có "Mọi người đang tìm" + "Tags gợi ý" — 1 lần fetch home, cache 6h
+    async Task<(List<string> trends, List<(string name, string slug)> tags)> FooterExtrasAsync()
+    {
+        string tk = ipkey("vietmup:trends");
+        string sk = ipkey("vietmup:suggtags");
+
+        bool hasTrends = hybridCache.TryGetValue(tk, out List<string> trends) && trends != null;
+        bool hasTags = hybridCache.TryGetValue(sk, out List<(string name, string slug)> sugg) && sugg != null;
+
+        if (hasTrends && hasTags)
+            return (trends, sugg);
+
+        string html = await FetchHtmlAsync(VietmupTo.SiteHost + "/");
+        trends = VietmupTo.SearchTrends(html ?? "");
+        sugg = VietmupTo.SuggestedTags(html ?? "");
+
+        if (trends.Count > 0)
+            hybridCache.Set(tk, trends, cacheTime(360));
+
+        if (sugg.Count > 0)
+            hybridCache.Set(sk, sugg, cacheTime(360));
+
+        Console.WriteLine($"Vietmup: trends={trends.Count} suggtags={sugg.Count}");
+        return (trends, sugg);
     }
 
     async Task<List<(string name, string slug)>> CategoriesAsync()

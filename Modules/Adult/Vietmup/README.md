@@ -42,9 +42,10 @@
 
 - Dòng 1: Tìm kiếm
 - Dòng 2: `Sắp xếp: <đang mở>` (submenu theo ngữ cảnh; ẩn ở search/series)
+- `Mọi người đang tìm`: 15 từ khoá **lấy động từ footer** (`/search?q=`), mỗi mục mở `?search=<kw>`, cache `vietmup:trends` 360 phút
 - `Phim` → `?c=films`, `Phim ngắn` → `?c=drama`
 - `Thể loại`: 59 mục lấy từ `/category` (home chỉ có 12), cache `vietmup:categories:v2` 360 phút
-- `Thẻ`: 115 tag từ `/tag` (site có ~10.097 tag trong sitemap — không đưa hết vào menu), bỏ dấu nháy/`#` khi hiển thị, cache `vietmup:tags:v2` 720 phút
+- `Thẻ`: **15 tag "Tags gợi ý" (footer) + 115 tag `/tag`** = 123 sau dedup, bỏ dấu nháy/`#`, cache `vietmup:tags:v2` / `vietmup:suggtags` 360–720 phút (sitemap có ~10.097 tag — không nhồi hết vào menu)
 
 ## Popup nhấn giữ (`/vietmup/genres?uri=`)
 
@@ -80,7 +81,8 @@ Vì vậy khi test nên chọn `Vip` (m3u8), `Abyss`, hoặc server phim `VIP`.
 ## Smoke (2026-11-25)
 
 - home 25 `tp=0` · pg2 25 khác trang 1 · cat/tag 25 · tag pg2 khác · films 30 `tp=0` · films pg2 30 khác · drama 33 / hot 42 / finished 17 `tp=1` · series 13 tập `tp=1`, pg2 rỗng · search 25 `tp=1`, pg2 lặp trang 1 (site không phân trang), kw rác → `count=0`
-- menu 6 dòng; Thể loại 59; Thẻ 115; quét CJK/Cyrillic/Thai/Hàn → 0
+- Thể loại 59; quét CJK/Cyrillic/Thai/Hàn → 0
+- menu 7 dòng: Mọi người đang tìm 15 (bấm 1 keyword → 25 item) · Thẻ 123 (gợi ý 15 + `/tag` 115)
 - popup: watch (1+1+Liên quan 12 `tp=1`) · films (10+15+Liên quan 12 `tp=1`)
 - `play.sh`: **PASS** Vip HLS (h264 720x1280, 614.8 s, decode 5 s đầu/cuối) · **PASS** Abyss mp4 (h264 720x1280, 614.8 s) · **PASS** drama ep-1 HLS (h264 720x1280, 280.4 s)
 

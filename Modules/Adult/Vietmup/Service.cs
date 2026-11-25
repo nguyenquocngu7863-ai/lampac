@@ -316,6 +316,67 @@ public static class VietmupTo
         return list;
     }
 
+    // ===== FOOTER: "Mọi người đang tìm" + "Tags gợi ý" =====
+    // Hai khối nằm trong footer mọi trang (đo 2026-11-25), KHÔNG có trong taxonomy/menu chính:
+    //   <h3>Mọi người đang tìm</h3><a href="/search?q=<kw>">TỪ KHOÁ</a>   (15)
+    //   <h3>Tags gợi ý</h3><a href="/tag/<slug>">tên</a>                  (15)
+    static string FooterBlock(string html, string marker, int max = 8000)
+    {
+        int i = html.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (i < 0)
+            return null;
+
+        string region = html.Substring(i, Math.Min(max, html.Length - i));
+        int end = region.IndexOf("</div>", StringComparison.OrdinalIgnoreCase);
+        return end > 0 ? region.Substring(0, end) : region;
+    }
+
+    public static List<string> SearchTrends(string html)
+    {
+        var list = new List<string>();
+        if (string.IsNullOrEmpty(html))
+            return list;
+
+        string block = FooterBlock(html, "Mọi người đang tìm");
+        if (block == null)
+            return list;
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (Match m in Regex.Matches(block, "href=\"/search\\?q=[^\"]*\"[^>]*>([^<]+)</a>"))
+        {
+            string kw = HttpUtility.HtmlDecode(m.Groups[1].Value).Trim();
+            if (kw.Length == 0 || !seen.Add(kw))
+                continue;
+            list.Add(kw);
+        }
+
+        return list;
+    }
+
+    public static List<(string name, string slug)> SuggestedTags(string html)
+    {
+        var list = new List<(string, string)>();
+        if (string.IsNullOrEmpty(html))
+            return list;
+
+        string block = FooterBlock(html, "Tags gợi ý");
+        if (block == null)
+            return list;
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (Match m in Regex.Matches(block, "href=\"/tag/([^\"/]+)\"[^>]*>([^<]*)</a>"))
+        {
+            string slug = m.Groups[1].Value.Trim();
+            if (slug.Length == 0 || !seen.Add(slug))
+                continue;
+
+            string name = HttpUtility.HtmlDecode(m.Groups[2].Value).Trim().TrimStart('#').Trim();
+            list.Add((string.IsNullOrEmpty(name) ? (slug.Replace('-', ' ')) : name, slug));
+        }
+
+        return list;
+    }
+
     // ===== CHIP của video (popup) =====
     // Trang detail có 1 khối duy nhất:
     //   <div class="flex flex-wrap gap-2 pt-1">
@@ -574,9 +635,20 @@ public static class VietmupTo
     }
 
     public static List<Shared.Models.SISI.Base.MenuItem> Menu(string host, List<(string name, string slug)> categories = null,
-        List<(string name, string slug)> tags = null)
+        List<(string name, string slug)> tags = null, List<string> trends = null)
     {
         var menu = new List<Shared.Models.SISI.Base.MenuItem>();
+
+        if (trends != null && trends.Count > 0)
+        {
+            menu.Add(new Shared.Models.SISI.Base.MenuItem()
+            {
+                title = "Mọi người đang tìm",
+                playlist_url = "submenu",
+                submenu = trends.Select(kw => new Shared.Models.SISI.Base.MenuItem(
+                    kw, host + "/vietmup?search=" + HttpUtility.UrlEncode(kw))).ToList()
+            });
+        }
 
         menu.Add(new Shared.Models.SISI.Base.MenuItem("Phim", host + "/vietmup?c=films"));
         menu.Add(new Shared.Models.SISI.Base.MenuItem("Phim ngắn", host + "/vietmup?c=drama"));
