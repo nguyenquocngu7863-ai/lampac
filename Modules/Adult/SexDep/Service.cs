@@ -10,7 +10,10 @@ namespace SexDep;
 
 public static class SexDepTo
 {
-    public static string SiteHost = "https://z.sexdep.co.uk";
+    // 2026-11-25: site doi domain `z.sexdep.co.uk` -> `sexngot.blog` (va `z.` da chet
+    // TLS server-side: m3u8 + anh deu fail). Phong mirror doi tiep: poster lay theo
+    // host cua card, con stream lay theo host cua trang detail (Playlist/StreamLinks).
+    public static string SiteHost = "https://sexngot.blog";
 
     // Do 5 lan thi chi 1-2 lan tra 200, con lai treo het 15s. Can 4 lan
     // thu moi chac co phim. Mot lan la khong du — 2/3 so lan manh hinh trong.
@@ -146,9 +149,16 @@ public static class SexDepTo
                         poster = bgImg.Groups[1].Value;
                 }
 
-                // Relative -> absolute (app khong load duoc relative)
+                // Relative -> absolute (app khong load duoc relative).
+                // Base lay theo host cua chinh card (mirror `s.`/`z.` doi nhau), khong
+                // dung SiteHost co dinh — `z.` co luc chet TLS lam anh trang.
+                string baseHost = SiteHost;
+                if (href.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+                    && System.Uri.TryCreate(href, System.UriKind.Absolute, out System.Uri cardUri))
+                    baseHost = cardUri.Scheme + "://" + cardUri.Host;
+
                 if (poster.StartsWith("/"))
-                    poster = SiteHost + poster;
+                    poster = baseHost + poster;
             }
 
             playlists.Add(new PlaylistItem()
@@ -169,49 +179,81 @@ public static class SexDepTo
         return playlists;
     }
 
-    public static Dictionary<string, string> StreamLinks(string html)
+    static string Origin(string url)
+    {
+        if (string.IsNullOrEmpty(url))
+            return SiteHost;
+        url = url.TrimEnd('/');
+        int i = url.IndexOf("://", StringComparison.Ordinal);
+        if (i < 0)
+            return SiteHost;
+        int slash = url.IndexOf('/', i + 3);
+        return slash > 0 ? url.Substring(0, slash) : url;
+    }
+
+    // Danh sach server: <a class="server" data-id data-link data-type="m3u8|embed">
+    //  - `/storage/m3u8/...`  -> HLS cua site (host theo trang detail, mirror nao cung vay)
+    //  - `blogger.com/video.g`-> embed Blogger, phai boc them 1 lop (BloggerMp4)
+    public static Dictionary<string, string> StreamLinks(string html, string origin = null)
     {
         var stream_links = new Dictionary<string, string>(3);
         if (string.IsNullOrEmpty(html))
             return stream_links;
 
-        // Pattern: data-link="/storage/m3u8/{slug}/index.m3u8" (relative, can kem host)
-        var m3u8 = Regex.Match(html, @"data-link\s*=\s*""/storage/m3u8/([^""]+)""");
-        if (!m3u8.Success)
-            m3u8 = Regex.Match(html, @"link\s*=\s*""/storage/m3u8/([^""]+)""");
-        if (m3u8.Success)
+        origin = Origin(origin);
+
+        foreach (Match tag in Regex.Matches(html, @"<a\s[^>]*data-link\s*=[^>]*>", RegexOptions.Singleline | RegexOptions.IgnoreCase))
         {
-            string path = m3u8.Groups[1].Value;
-            stream_links.TryAdd("HLS", SiteHost + "/storage/m3u8/" + path.TrimStart('/'));
+            var lm = Regex.Match(tag.Value, @"data-link\s*=\s*""([^""]+)""", RegexOptions.IgnoreCase);
+            if (!lm.Success)
+                continue;
+
+            string link = HttpUtility.HtmlDecode(lm.Groups[1].Value.Trim());
+            if (string.IsNullOrEmpty(link) || link.Contains("${"))
+                continue;
+
+            if (link.StartsWith("/storage/m3u8/", StringComparison.OrdinalIgnoreCase))
+                stream_links.TryAdd("HLS", origin + link);
+            else if (link.IndexOf(".m3u8", StringComparison.OrdinalIgnoreCase) >= 0)
+                stream_links.TryAdd("HLS", link.StartsWith("/", StringComparison.Ordinal) ? origin + link : link);
+            else if (link.IndexOf("blogger.com/video.g", StringComparison.OrdinalIgnoreCase) >= 0)
+                stream_links.TryAdd("Blogger", link);
+            else if (link.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                stream_links.TryAdd("embed", link);
         }
 
-        // Fallback: try data-source
+        // Fallback: data-source
         if (stream_links.Count == 0)
         {
             var dataSource = Regex.Match(html, @"data-source\s*=\s*['""]([^'""]+)['""]");
-            if (dataSource.Success)
+            if (dataSource.Success && !dataSource.Groups[1].Value.Contains("${"))
             {
                 string embed = dataSource.Groups[1].Value.Replace("&amp;", "&");
-                stream_links.TryAdd("HLS", embed);
+                stream_links.TryAdd("embed", embed.StartsWith("//") ? "https:" + embed : embed);
             }
         }
 
-        // Fallback: try iframe
+        // Fallback: iframe that (bo qua template `${link}` cua site)
         if (stream_links.Count == 0)
         {
-            var iframe = Regex.Match(html, @"<iframe[^>]+src=[""']([^""']+)[""']");
-            if (iframe.Success)
+            foreach (Match m in Regex.Matches(html, @"<iframe[^>]+src=[""']([^""']+)[""']", RegexOptions.IgnoreCase))
             {
-                string src = iframe.Groups[1].Value;
-                if (src.StartsWith("//"))
+                string src = m.Groups[1].Value;
+                if (string.IsNullOrEmpty(src) || src.Contains("${"))
+                    continue;
+                if (src.StartsWith("//", StringComparison.Ordinal))
                     src = "https:" + src;
-                else if (src.StartsWith("/"))
-                    src = SiteHost + src;
-                stream_links.TryAdd("embed", src);
+                else if (src.StartsWith("/", StringComparison.Ordinal))
+                    src = origin + src;
+                if (src.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                {
+                    stream_links.TryAdd("embed", src);
+                    break;
+                }
             }
         }
 
-        // Fallback: try file: pattern
+        // Fallback: jwplayer "file": "..."
         if (stream_links.Count == 0)
         {
             var filePattern = Regex.Match(html, @"""file""\s*:\s*""(https?://[^""]+)""");
@@ -224,6 +266,200 @@ public static class SexDepTo
         }
 
         return stream_links.Count > 0 ? stream_links : null;
+    }
+
+    // Trang `blogger.com/video.g?token=` nhung san URL googlevideo videoplayback (mp4).
+    // JSON cua no escape `\\u003d`/`\\u0026` nen phai giai truoc khi bat URL.
+    public static string BloggerMp4(string html)
+    {
+        if (string.IsNullOrEmpty(html))
+            return null;
+
+        // &quot;/&amp; phai giai TRUOC khi bat URL, neu khong URL bi cat sai cho
+        string h = HttpUtility.HtmlDecode(html
+            .Replace("\\u003d", "=")
+            .Replace("\\u0026", "&")
+            .Replace("\\/", "/"));
+
+        var m = Regex.Match(h, @"(https://[a-z0-9.\-]*googlevideo\.com/videoplayback\?[^""'\s]+)");
+        if (!m.Success)
+            return null;
+
+        return m.Groups[1].Value;
+    }
+
+    // ===== POPUP (genres + ?rel=) =====
+
+    // Host hop le cho uri detail (chan SSRF). Site doi domain/mirror lien tuc:
+    // `z.`/`s.sexdep.co.uk` -> `sexngot.blog` (2026-11-25), nen nhan ca host cu de
+    // bookmark/cache cu con mo duoc.
+    static readonly string[] DetailHosts = { "sexngot.blog", "sexdep.co.uk" };
+
+    public static bool IsDetailHost(string hostName)
+    {
+        if (string.IsNullOrEmpty(hostName))
+            return false;
+        hostName = hostName.ToLowerInvariant();
+        foreach (var h in DetailHosts)
+        {
+            if (hostName == h || hostName.EndsWith("." + h, StringComparison.Ordinal))
+                return true;
+        }
+        return false;
+    }
+
+    // uri -> URL detail day du; null = khong hop le (host la / khong phai trang phim)
+    public static string DetailUrl(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return null;
+
+        string u = uri.Trim();
+
+        if (u.StartsWith("//", StringComparison.Ordinal))
+            u = "https:" + u;
+
+        if (u.StartsWith("/", StringComparison.Ordinal))
+            return SiteHost + u;
+
+        if (!u.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+            || !System.Uri.TryCreate(u, System.UriKind.Absolute, out System.Uri parsed))
+            return null;
+
+        if (!IsDetailHost(parsed.Host))
+            return null;
+
+        if (!parsed.AbsolutePath.StartsWith("/phim/", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        return u;
+    }
+
+    public static string DetailPath(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri)
+            || !System.Uri.TryCreate(uri.Trim(), System.UriKind.Absolute, out System.Uri parsed))
+            return null;
+        return parsed.AbsolutePath.TrimEnd('/');
+    }
+
+    static void AddLinks(string block, string kind, List<(string name, string path)> into, HashSet<string> seen)
+    {
+        foreach (Match tag in Regex.Matches(block, @"<a\s[^>]*>", RegexOptions.Singleline | RegexOptions.IgnoreCase))
+        {
+            var hm = Regex.Match(tag.Value, @"href\s*=\s*""([^""]+)""", RegexOptions.IgnoreCase);
+            if (!hm.Success)
+                continue;
+
+            string href = HttpUtility.HtmlDecode(hm.Groups[1].Value);
+            int i = href.IndexOf("/" + kind + "/", StringComparison.OrdinalIgnoreCase);
+            if (i < 0)
+                continue;
+
+            string slug = href.Substring(i + kind.Length + 2).Trim('/');
+            if (string.IsNullOrEmpty(slug) || slug.IndexOf('/') >= 0 || slug.IndexOf('?') >= 0)
+                continue;
+
+            var tm = Regex.Match(tag.Value, @"title\s*=\s*""([^""]*)""", RegexOptions.IgnoreCase);
+            string name = tm.Success ? HttpUtility.HtmlDecode(tm.Groups[1].Value.Trim()) : "";
+
+            if (string.IsNullOrEmpty(name))
+                name = slug.Replace('-', ' ');
+
+            if (!seen.Add(kind + "/" + slug))
+                continue;
+
+            into.Add((name, kind + "/" + slug));
+        }
+    }
+
+    // 1 lan fetch detail -> chips: Quoc gia (BreadcrumbList JSON-LD, trang detail
+    // khong in khoi "Quoc gia" nao khac) + The loai / Tu khoa / Dien vien (div#extras).
+    public static (List<(string name, string path)> countries,
+                   List<(string name, string path)> genres,
+                   List<(string name, string path)> tags)
+        Chips(string html)
+    {
+        var countries = new List<(string, string)>();
+        var genres = new List<(string, string)>();
+        var tags = new List<(string, string)>();
+
+        if (string.IsNullOrEmpty(html))
+            return (countries, genres, tags);
+
+        var seen = new HashSet<string>();
+
+        foreach (Match m in Regex.Matches(html, @"<div id=""extras"">(.*?)</div>", RegexOptions.Singleline))
+        {
+            string block = m.Groups[1].Value;
+            string label = Regex.Replace(block, @"<[^>]+>", " ").Trim();
+
+            if (label.IndexOf("Thể loại", StringComparison.OrdinalIgnoreCase) >= 0)
+                AddLinks(block, "the-loai", genres, seen);
+            else if (label.IndexOf("Từ khóa", StringComparison.OrdinalIgnoreCase) >= 0
+                  || label.IndexOf("Từ khoá", StringComparison.OrdinalIgnoreCase) >= 0)
+                AddLinks(block, "tu-khoa", tags, seen);
+            else if (label.IndexOf("Diễn viên", StringComparison.OrdinalIgnoreCase) >= 0)
+                AddLinks(block, "dien-vien", tags, seen);
+        }
+
+        var bc = Regex.Match(html, @"<script type=""application/ld\+json"">[^<]*BreadcrumbList.*?</script>", RegexOptions.Singleline);
+        if (bc.Success)
+        {
+            string json = bc.Value.Replace("\\/", "/");
+            foreach (Match m in Regex.Matches(json, @"""name""\s*:\s*""([^""]*)""\s*,\s*""item""\s*:\s*""([^""]*)"""))
+            {
+                string name = HttpUtility.HtmlDecode(m.Groups[1].Value.Trim());
+                string item = m.Groups[2].Value;
+                int i = item.IndexOf("/quoc-gia/", StringComparison.OrdinalIgnoreCase);
+                if (i < 0)
+                    continue;
+                string slug = item.Substring(i + 10).Trim('/');
+                if (string.IsNullOrEmpty(slug) || slug.IndexOf('/') >= 0 || string.IsNullOrEmpty(name))
+                    continue;
+                if (!seen.Add("quoc-gia/" + slug))
+                    continue;
+                countries.Add((name, "quoc-gia/" + slug));
+            }
+        }
+
+        return (countries, genres, tags);
+    }
+
+    // Khoi "Co the ban thich?" = ul#more-movie cuoi trang detail (site KHONG co block
+    // class related/goi y nao khac). Bo chinh phim dang xem.
+    public static List<PlaylistItem> Related(string html, string selfUri)
+    {
+        if (string.IsNullOrEmpty(html))
+            return new List<PlaylistItem>();
+
+        int box = -1;
+
+        int mark = html.IndexOf("Có thể bạn thích", StringComparison.Ordinal);
+        if (mark >= 0)
+            box = html.IndexOf("<ul", mark, StringComparison.OrdinalIgnoreCase);
+
+        if (box < 0)
+        {
+            int id = html.IndexOf("more-movie", StringComparison.OrdinalIgnoreCase);
+            if (id < 0)
+                return new List<PlaylistItem>();
+            box = html.LastIndexOf("<ul", id, StringComparison.OrdinalIgnoreCase);
+        }
+
+        if (box < 0)
+            return new List<PlaylistItem>();
+
+        int end = html.IndexOf("</ul>", box, StringComparison.OrdinalIgnoreCase);
+        string block = end > box ? html.Substring(box, end - box) : html.Substring(box);
+
+        var items = Playlist("sexdep/vidosik", block) ?? new List<PlaylistItem>();
+
+        string self = DetailPath(selfUri);
+        if (!string.IsNullOrEmpty(self))
+            items.RemoveAll(x => string.Equals(DetailPath(x.bookmark?.href), self, StringComparison.OrdinalIgnoreCase));
+
+        return items;
     }
 
     public static List<MenuItem> Menu(string host)
