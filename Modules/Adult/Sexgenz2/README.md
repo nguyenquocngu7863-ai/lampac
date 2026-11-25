@@ -71,3 +71,12 @@ Module SISI gọn nhất trong repo: **2 route**, không có `video.m3u8` (xem s
 curl -s http://127.0.0.1:9118/sgz2                             # 24 item
 curl -s 'http://127.0.0.1:9118/sgz2/vidosik?uri=…'             # {"qualitys":{"720p":"http://127.0.0.1:9118/proxy/…m3u8"}}
 ```
+
+## Popup nhấn giữ (2026-11-25)
+
+- `GET /sgz2/genres?uri=<detail>` → `{items:[],groups:[…]}`, không bao giờ 500.
+- **Thể loại**: breadcrumb/info của detail → `/the-loai/<slug>`; **Quốc gia**: `/quoc-gia/<slug>`.
+  Mở bằng `?c=cat/<slug>` và `?c=country/<slug>` (Uri() map `country|quoc-gia` → `/quoc-gia/`).
+- **Liên quan**: heading "Phim tương tự" → `?rel=<uri>`, `total_pages: 1` (10 item).
+- Link trên detail là URL tuyệt đối sang host khác trong network (`clipchat.blog`) nên chỉ lấy path.
+- Cache chip+rel trong RAM 6h; popup lỗi → `{items:[],groups:[]}`.

@@ -100,3 +100,11 @@ Lưu ý: search không có kết quả → list rỗng → framework trả 503
 | 2026-10-26 | `/sieusex` → 503 `playlists` | site đổi domain `sieusex.net` → `biphim.net`; regex whitelist host + `NormalizePageUrl` loại mọi link → 0 card | đổi `SiteHost`, bỏ whitelist host, regex host-agnostic |
 | 2026-10-26 | search có dấu → 503 sau 23s | slug unicode → site 404, controller retry tới deadline | `SearchSlug()` bỏ dấu |
 | 2026-10-26 | search khoá 1 trang | bản cũ tưởng site không có trang 2 | bỏ khoá, thêm `/search/<slug>/page/N/` |
+
+## Popup nhấn giữ (2026-11-25)
+
+- `GET /sieusex/genres?uri=<detail>` → `{items:[],groups:[…]}`, không bao giờ 500.
+- **Thẻ**: `<div class="actress-tag">` → `/tag/<slug>/` (2–3 chip). **Thể loại**: `<div class="category-tag">` → `/<slug>/` (5 chip).
+- **Liên quan**: `<h2 class="breadcrumb">Phim liên quan</h2>` → `?rel=<uri>`, `total_pages: 1` (10 item).
+- Chip trả URL tuyệt đối (site xoay domain `sieusex.net` → `xemphim3x.pro`/`biphim.net`), `Uri()` giữ nguyên khi `c` bắt đầu `http`.
+- Cache chip+rel trong RAM 6h.
