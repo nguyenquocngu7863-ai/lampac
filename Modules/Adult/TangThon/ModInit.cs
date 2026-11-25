@@ -36,7 +36,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
 
     void updateConf()
     {
-        conf = ModuleInvoke.Init("TangThon", new SisiSettings("TangThon", "https://tangthon.com")
+        conf = ModuleInvoke.Init("TangThon", new SisiSettings("TangThon", "https://finquesrossello.com")
         {
             displayindex = 15,
             streamproxy = true,
@@ -47,7 +47,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
                 ("referer", "https://embed.tangthon.com/")
             ).ToDictionary(),
             headers_image = HeadersModel.Init(
-                ("referer", "https://tangthon.com/")
+                ("referer", "https://finquesrossello.com/")
             ).ToDictionary()
         });
     }

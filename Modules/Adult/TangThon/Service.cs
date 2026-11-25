@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.RegularExpressions;
 using System.Web;
 
@@ -7,7 +8,7 @@ namespace TangThon;
 
 public static class TangThonTo
 {
-    public static string SiteHost = "https://tangthon.com";
+    public static string SiteHost = "https://finquesrossello.com";
 
     public static string Uri(string host, string search, string c, int pg)
     {
@@ -24,7 +25,10 @@ public static class TangThonTo
 
         if (!string.IsNullOrEmpty(c))
         {
-            string url = host + "/" + c.Trim('/');
+            // popup chip trả URL tuyệt đối (site nhiều mirror) -> dùng nguyên
+            string url = c.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+                ? c.Trim()
+                : host + "/" + c.Trim('/');
             if (pg > 1)
                 url += (url.Contains("?") ? "&" : "?") + "page=" + pg;
             return url;
@@ -161,6 +165,73 @@ public static class TangThonTo
             return u.Scheme + "://" + u.Host + "/";
 
         return SiteHost + "/";
+    }
+
+    // ===== POPUP: chip thể loại/tag + phim liên quan =====
+    // Detail (theme mới của network "Sex Hay Pro"):
+    //   <p class="term-block"><span class="term-label">Thể loại:</span>
+    //     <a class="pill" href="https://<mirror>/phim-sex-danh-muc/<slug>" rel="tag">Tên</a></p>
+    //   <p class="term-block"><span class="term-label">Tags:</span>
+    //     <a class="pill" href="https://<mirror>/phim-sex-tag/<slug>" rel="tag">tên</a></p>
+    // Link absolute (nhiều mirror) -> trả URL tuyệt đối, không ghép host.
+    public static List<(string kind, string url, string name)> Chips(string html)
+    {
+        var list = new List<(string, string, string)>();
+        if (string.IsNullOrEmpty(html))
+            return list;
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (Match m in Regex.Matches(html,
+            "<p class=\"term-block\">([\\s\\S]{0,1200}?)</p>", RegexOptions.IgnoreCase))
+        {
+            string block = m.Groups[1].Value;
+
+            string kind = null;
+            if (block.Contains("/phim-sex-tag/", StringComparison.OrdinalIgnoreCase) || block.Contains("Tags:", StringComparison.OrdinalIgnoreCase))
+                kind = "tag";
+            else if (block.Contains("/phim-sex-danh-muc/", StringComparison.OrdinalIgnoreCase) || block.Contains("Thể loại:", StringComparison.OrdinalIgnoreCase))
+                kind = "cat";
+
+            if (kind == null)
+                continue;
+
+            foreach (Match a in Regex.Matches(block,
+                "<a[^>]*class=\"pill\"[^>]*href=\"([^\"]+)\"[^>]*>([^<]{1,80})</a>", RegexOptions.IgnoreCase))
+            {
+                string url = HttpUtility.HtmlDecode(a.Groups[1].Value).Trim();
+                if (url.Length == 0 || !seen.Add(kind + "|" + url))
+                    continue;
+
+                string name = HttpUtility.HtmlDecode(a.Groups[2].Value).Trim();
+                if (name.Length == 0)
+                    continue;
+
+                list.Add((kind, url, name));
+            }
+        }
+
+        return list;
+    }
+
+    public static List<Shared.Models.SISI.Base.PlaylistItem> PlaylistRelated(string route, string html, string self)
+    {
+        if (string.IsNullOrEmpty(html))
+            return new List<Shared.Models.SISI.Base.PlaylistItem>();
+
+        int i = html.IndexOf("Phim liên quan", StringComparison.OrdinalIgnoreCase);
+        if (i < 0)
+            return new List<Shared.Models.SISI.Base.PlaylistItem>();
+
+        var rel = Playlist(route, html.Substring(i, Math.Min(120000, html.Length - i)));
+        if (rel == null)
+            return new List<Shared.Models.SISI.Base.PlaylistItem>();
+
+        if (!string.IsNullOrEmpty(self))
+            rel = rel.Where(x => x.bookmark?.href == null ||
+                !string.Equals(x.bookmark.href.TrimEnd('/'), self.TrimEnd('/'), StringComparison.OrdinalIgnoreCase)).ToList();
+
+        return rel;
     }
 
     public static List<Shared.Models.SISI.Base.MenuItem> Menu(string host)

@@ -21,10 +21,13 @@ public class TangThonController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("tangthon")]
-    async public Task<ActionResult> Index(string search, string c, int pg = 1)
+    async public Task<ActionResult> Index(string search, string c, int pg = 1, string rel = null)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
+
+        if (!string.IsNullOrWhiteSpace(rel))
+            return await RelatedList(rel, pg);
 
         var cache = await InvokeCacheResult(ipkey($"tangthon:{search}:{c}:{pg}"), 10, jsonContext.ListPlaylistItem, async e =>
         {
@@ -35,7 +38,7 @@ public class TangThonController : BaseSisiController
                 playlists = TangThonTo.Playlist("tangthon/vidosik", span.ToString());
             }, addheaders: HeadersModel.Init(
                 ("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"),
-                ("Referer", "https://tangthon.com/")
+                ("Referer", TangThonTo.SiteHost + "/")
             ));
 
             if (playlists == null || playlists.Count == 0)
@@ -49,6 +52,150 @@ public class TangThonController : BaseSisiController
 
         return PlaylistResult(cache, TangThonTo.Menu(host));
     }
+
+    #region popup (giữ thẻ -> /tangthon/genres?uri= + "Phim liên quan")
+    static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTime at, List<(string kind, string url, string name)> chips, List<PlaylistItem> rel)> _infoCache = new();
+    static readonly TimeSpan InfoTtl = TimeSpan.FromHours(6);
+
+    [HttpGet]
+    [Route("tangthon/genres")]
+    async public Task<ActionResult> Genres(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return EmptyPopup();
+
+        string pageUrl = NormalizeDetail(uri);
+        if (pageUrl == null)
+            return EmptyPopup();
+
+        if (_infoCache.TryGetValue(pageUrl, out var hit)
+            && DateTime.UtcNow - hit.at < InfoTtl && hit.chips != null)
+        {
+            return InfoResult(hit.chips, hit.rel, uri);
+        }
+
+        string html = null;
+        await httpHydra.GetSpan(pageUrl, span =>
+        {
+            html = span.ToString();
+        }, addheaders: HeadersModel.Init(
+            ("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"),
+            ("Referer", TangThonTo.SiteHost + "/")
+        ));
+
+        if (string.IsNullOrEmpty(html))
+            return EmptyPopup();
+
+        var chips = TangThonTo.Chips(html);
+        var rel = TangThonTo.PlaylistRelated("tangthon/vidosik", html, pageUrl);
+
+        if (chips.Count > 0 || rel.Count > 0)
+            _infoCache[pageUrl] = (DateTime.UtcNow, chips, rel);
+
+        return InfoResult(chips, rel, uri);
+    }
+
+    ActionResult InfoResult(List<(string kind, string url, string name)> chips,
+        List<PlaylistItem> rel, string uri)
+    {
+        var groups = new List<object>();
+
+        foreach (string kind in new[] { "cat", "tag" })
+        {
+            var items = chips?.Where(x => x.kind == kind).Select(x => new
+            {
+                title = x.name,
+                url = $"{host}/tangthon?c={HttpUtility.UrlEncode(x.url)}"
+            }).ToList();
+
+            if (items == null || items.Count == 0)
+                continue;
+
+            groups.Add(new { title = kind == "cat" ? "Thể loại" : "Thẻ", items });
+        }
+
+        if (rel != null && rel.Count > 0)
+        {
+            groups.Add(new
+            {
+                title = "Liên quan",
+                items = new[]
+                {
+                    new
+                    {
+                        title = "Phim liên quan",
+                        plain = true,
+                        url = $"{host}/tangthon?rel={HttpUtility.UrlEncode(uri)}"
+                    }
+                }
+            });
+        }
+
+        return Json(new { items = new object[0], groups });
+    }
+
+    async Task<ActionResult> RelatedList(string rel, int pg)
+    {
+        if (pg > 1)
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        string pageUrl = NormalizeDetail(rel);
+        if (pageUrl == null)
+            return EmptyJson();
+
+        string html = null;
+        await httpHydra.GetSpan(pageUrl, span =>
+        {
+            html = span.ToString();
+        }, addheaders: HeadersModel.Init(
+            ("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"),
+            ("Referer", TangThonTo.SiteHost + "/")
+        ));
+
+        if (string.IsNullOrEmpty(html))
+            return EmptyJson();
+
+        var playlists = TangThonTo.PlaylistRelated("tangthon/vidosik", html, pageUrl);
+        if (playlists == null || playlists.Count == 0)
+            return EmptyJson();
+
+        return PlaylistResult(playlists, false, null, total_pages: 1);
+    }
+
+    static string NormalizeDetail(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return null;
+
+        string pageUrl = uri;
+        if (uri.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!Uri.TryCreate(uri, UriKind.Absolute, out var u))
+                return null;
+            // chống SSRF: chỉ host của network Sex Hay Pro
+            string h = u.Host.ToLowerInvariant();
+            if (h != "finquesrossello.com" && h != "tangthon.com" && h != "starguney.com"
+                && h != "kitajyo.com" && h != "cloud-nara.com")
+                return null;
+            pageUrl = uri;
+        }
+        else if (uri.StartsWith("/"))
+            pageUrl = TangThonTo.SiteHost + uri;
+        else
+            pageUrl = TangThonTo.SiteHost + "/phim-sex/" + uri.Trim('/');
+
+        return pageUrl;
+    }
+
+    ActionResult EmptyJson()
+    {
+        Response.Headers.CacheControl = "no-cache";
+        return Content("{\"count\":0,\"total_pages\":1,\"menu\":[],\"list\":[]}",
+            "application/json; charset=utf-8");
+    }
+
+    ActionResult EmptyPopup() => Json(new { items = new object[0], groups = new object[0] });
+    #endregion
 
     async Task<(Dictionary<string, string> links, bool userch)> ResolveLinksAsync(string uri)
     {
@@ -72,9 +219,9 @@ public class TangThonController : BaseSisiController
 
                 string pageUrl = uri;
                 if (uri.StartsWith("/"))
-                    pageUrl = "https://tangthon.com" + uri;
+                    pageUrl = TangThonTo.SiteHost + uri;
                 else if (!uri.StartsWith("http"))
-                    pageUrl = "https://tangthon.com/phim-sex/" + uri.Trim('/');
+                    pageUrl = TangThonTo.SiteHost + "/phim-sex/" + uri.Trim('/');
 
                 string pageHtml = null;
                 await httpHydra.GetSpan(pageUrl, span =>
@@ -82,7 +229,7 @@ public class TangThonController : BaseSisiController
                     pageHtml = span.ToString();
                 }, addheaders: HeadersModel.Init(
                     ("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"),
-                    ("Referer", "https://tangthon.com/")
+                    ("Referer", TangThonTo.SiteHost + "/")
                 ));
 
                 if (string.IsNullOrEmpty(pageHtml))

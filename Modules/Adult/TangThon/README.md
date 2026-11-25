@@ -1,6 +1,10 @@
 # TangThon
 
-Module SISI cho `tangthon.com`.
+Module SISI cho network "Sex Hay Pro" — **domain đang dùng: `finquesrossello.com`** (2026-11-25).
+
+`tangthon.com` đã chết (TLS/timeout cả curl_cffi lẫn Chrome thật). Cùng DB, các mirror còn sống:
+`finquesrossello.com`, `starguney.com`, `kitajyo.com`. Đổi domain = sửa `SiteHost` (Service.cs),
+host trong `ModInit.cs`, `site` trong `manifest.json`; regex parse không hardcode host.
 
 ## Bẫy domain xoay (2026-10-17)
 
@@ -46,6 +50,14 @@ là đủ và tự đúng khi domain xoay.
   **không cần strip ở server**.
 - Segment **không** cần Referer; playlist thì có.
 
+## Popup nhấn giữ (`/tangthon/genres?uri=`)
+
+- Chip **Thể loại**: `<p class="term-block"><span class="term-label">Thể loại:</span><a class="pill" href=".../phim-sex-danh-muc/<slug>">`
+- Chip **Thẻ**: khối `Tags:` với `href=".../phim-sex-tag/<slug>"`
+- **Liên quan**: `<h2>Phim liên quan</h2>` → `?rel=<uri>` (`total_pages: 1`, 24 item)
+- `Uri()` nhận `c` là **URL tuyệt đối** (chip trả absolute vì site nhiều mirror) lẫn slug tương đối.
+- Cache chip+rel trong RAM 6h theo pageUrl; popup không bao giờ 500 (lỗi → `{items:[],groups:[]}`).
+
 ## Kiểm chứng (2026-10-17, localhost 9118)
 
 ```
@@ -57,3 +69,20 @@ GET /tangthon/vidosik?uri=<detail>             -> 200 {"HLS":".../tangthon/video
 GET /tangthon/video.m3u8?uri=<detail>&q=HLS    -> 302 /proxy/...  -> 200 #EXTM3U (815 #EXTINF)
 GET <segment qua proxy>                        -> 200 video/mp2t, magic 47 40 00 10
 ```
+
+## Kiểm chứng (2026-11-25, host mới)
+
+```
+GET /tangthon                                            -> 20 item, tp=0
+GET /tangthon?search=jav (+pg=2)                         -> 24 item, trang 2 khác trang 1
+GET /tangthon?c=https://finquesrossello.com/phim-sex-danh-muc/phim-sex-trung-quoc -> 24
+GET /tangthon/genres?uri=<detail>                        -> Thể loại 1 · Thẻ 4 · Liên quan 1
+GET /tangthon?c=<chip thể loại>                          -> 24
+GET /tangthon?c=<chip thẻ>                               -> 24
+GET /tangthon?rel=<detail>                               -> 24, tp=1
+GET /tangthon/vidosik?uri=<detail>                       -> {"HLS":"..."}
+play.sh m3u8                                             -> PASS h264 1280x720 1026.9s
+```
+
+Bẫy: chip trả **URL tuyệt đối** → trước 2026-11-25 `Uri()` ghép `host + "/" + c` nên thành
+`.../https://...` → 503. Đã sửa: `c` bắt đầu bằng `http` thì dùng nguyên.
