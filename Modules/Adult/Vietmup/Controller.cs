@@ -26,7 +26,14 @@ public class VietmupController : BaseSisiController
         if (!string.IsNullOrWhiteSpace(rel))
             return await RelatedList(rel, pg);
 
-        var cache = await InvokeCacheResult(ipkey($"vietmup:{search}:{c}:{sort}:{pg}"), 10, jsonContext.ListPlaylistItem, async e =>
+        // /drama/<slug> không phải list — trang series, phải cắt danh sách tập
+        if (!string.IsNullOrEmpty(c) && c.StartsWith("drama/", StringComparison.Ordinal))
+            return await Episodes(c.Substring(6).Trim('/'), pg, c);
+
+        // sort lạ / sai ngữ cảnh -> mặc định của ngữ cảnh (site không có sort đó)
+        sort = VietmupTo.ClampSort(c, search, sort);
+
+        var cache = await InvokeCacheResult(ipkey($"vietmup:v2:{search}:{c}:{sort}:{pg}"), 10, jsonContext.ListPlaylistItem, async e =>
         {
             string html = await FetchHtmlAsync(
                 VietmupTo.Uri(init.host, search, c, pg, sort));
@@ -60,7 +67,60 @@ public class VietmupController : BaseSisiController
         if (list == null || list.Count == 0)
             return EmptyPlaylistResult(mMenu);
 
-        return PlaylistResult(cache, mMenu);
+        // /search và /drama của site KHÔNG phân trang (bỏ qua &page) -> chặn pg=2 lặp lại trang 1
+        int totalPages = string.IsNullOrWhiteSpace(search) || c == "drama" ? 1 : 0;
+        return PlaylistResult(cache, mMenu, total_pages: totalPages);
+    }
+
+    // Danh sách tập của 1 series phim ngắn (/drama/<slug> -> /drama/<slug>/ep-N).
+    // Mỗi tập là 1 item phát được (trang tập có data-manifest-url).
+    async Task<ActionResult> Episodes(string slug, int pg, string c)
+    {
+        if (string.IsNullOrEmpty(slug) || pg > 1)
+            return EmptyPlaylistResult(await MenuAsync(null, null, c), total_pages: 1);
+
+        string pageUrl = VietmupTo.SiteHost + "/drama/" + slug;
+
+        var cache = await InvokeCacheResult(
+            ipkey($"vietmup:eps:{slug}"), 180, jsonContext.ListPlaylistItem, async e =>
+            {
+                string html = await FetchHtmlAsync(pageUrl);
+                if (html == null)
+                    return e.Fail("episodes", refresh_proxy: true);
+
+                var (eps, poster) = VietmupTo.DramaEpisodes(html);
+                if (eps.Count == 0)
+                    return e.Success(new List<PlaylistItem>());
+
+                string name = VietmupTo.SeriesName(html, slug);
+                string href = "/drama/" + slug;
+
+                var items = eps.Select(n => new PlaylistItem()
+                {
+                    video = "vietmup/vidosik?uri=" + HttpUtility.UrlEncode(href + "/ep-" + n),
+                    name = $"{name} - Tập {n}",
+                    picture = poster ?? "",
+                    json = true,
+                    bookmark = new Bookmark()
+                    {
+                        site = "vietmup",
+                        href = href + "/ep-" + n,
+                        image = poster ?? ""
+                    }
+                }).ToList();
+
+                return e.Success(items);
+            });
+
+        var mMenu = await MenuAsync(null, null, c);
+
+        if (!cache.IsSuccess)
+            return PlaylistResult(cache, mMenu);
+
+        if (cache.Value == null || cache.Value.Count == 0)
+            return EmptyPlaylistResult(mMenu, total_pages: 1);
+
+        return PlaylistResult(cache.Value, cache.ISingleCache, mMenu, total_pages: 1);
     }
 
     // MVC dung JsonSerializerOptions.DefaultIgnoreCondition = WhenWritingDefault nen
@@ -127,14 +187,21 @@ public class VietmupController : BaseSisiController
 
     async Task<List<(string name, string slug)>> CategoriesAsync()
     {
-        string key = ipkey("vietmup:categories");
+        string key = ipkey("vietmup:categories:v2");
 
         if (hybridCache.TryGetValue(key, out List<(string name, string slug)> cats)
             && cats != null && cats.Count > 0)
             return cats;
 
-        string html = await FetchHtmlAsync(VietmupTo.SiteHost + "/");
+        // /category là trang mục lục đầy đủ (59 thể loại); trang chủ chỉ 12
+        string html = await FetchHtmlAsync(VietmupTo.SiteHost + "/category");
         cats = VietmupTo.Categories(html ?? "");
+
+        if (cats.Count == 0)
+        {
+            html = await FetchHtmlAsync(VietmupTo.SiteHost + "/");
+            cats = VietmupTo.Categories(html ?? "");
+        }
 
         if (cats.Count > 0)
             hybridCache.Set(key, cats, cacheTime(360));
@@ -145,7 +212,7 @@ public class VietmupController : BaseSisiController
 
     async Task<List<(string name, string slug)>> TagsAsync()
     {
-        string key = ipkey("vietmup:tags");
+        string key = ipkey("vietmup:tags:v2");
 
         if (hybridCache.TryGetValue(key, out List<(string name, string slug)> tags)
             && tags != null && tags.Count > 0)
@@ -161,10 +228,12 @@ public class VietmupController : BaseSisiController
         return tags;
     }
 
+    // value trong dict có tiền tố loại nguồn: "hls|<url>", "mp4|<url>", "abyss|<url>"
     async Task<Dictionary<string, string>> ResolveLinksAsync(string uri)
     {
-        string memKey = ipkey($"vietmup:view:{uri}");
-        if (hybridCache.TryGetValue(memKey, out Dictionary<string, string> cache))
+        string memKey = ipkey($"vietmup:view:v2:{uri}");
+        if (hybridCache.TryGetValue(memKey, out Dictionary<string, string> cache)
+            && cache != null && cache.Count > 0)
             return cache;
 
         string pageUrl = uri;
@@ -184,16 +253,34 @@ public class VietmupController : BaseSisiController
 
         if (!string.IsNullOrEmpty(pageHtml))
         {
-            string tokenPath = VietmupTo.StreamToken(pageHtml);
-            if (!string.IsNullOrEmpty(tokenPath))
+            // Trang watch / films: nhiều server (m3u8 · hls · direct · abyss)
+            foreach (var (label, kind, url) in VietmupTo.Servers(pageHtml))
             {
-                string streamUrl = VietmupTo.SiteHost + tokenPath;
-                links.TryAdd("HLS", streamUrl);
+                string key = label;
+                int n = 2;
+                while (links.ContainsKey(key))
+                    key = label + " " + n++;
+
+                if (kind == "abyss")
+                    links.TryAdd(key, "abyss|" + url);
+                else if (kind == "direct")
+                    links.TryAdd(key, "mp4|" + url);
+                else if (kind == "embed")
+                    continue;   // iframe bên thứ ba: không resolve được
+                else
+                    links.TryAdd(key, "hls|" + url);
             }
 
-            string abyssUrl = VietmupTo.AbyssUrl(pageHtml);
-            if (!string.IsNullOrEmpty(abyssUrl))
-                links.TryAdd("Abyss", "abyss|" + abyssUrl);
+            // Trang tập phim ngắn: data-manifest-url (HLS) / data-direct-url (mp4)
+            if (links.Count == 0)
+            {
+                var (manifest, direct) = VietmupTo.DramaManifest(pageHtml);
+
+                if (!string.IsNullOrEmpty(manifest))
+                    links.TryAdd("HLS", "hls|" + manifest);
+                if (!string.IsNullOrEmpty(direct))
+                    links.TryAdd("MP4", "mp4|" + direct);
+            }
         }
 
         if (links.Count == 0)
@@ -218,9 +305,13 @@ public class VietmupController : BaseSisiController
         // URL co `.m3u8` (SISI/plugins/sisi.js applyHlsType). Thieu duoi ->
         // player dua thang URL vao <video> -> "The element has no supported
         // sources" (va tua la khong the). Abyss la mp4 -> di route `.mp4`.
+        // Route phải khớp dạng thật: hls.js chỉ bật khi URL có .m3u8 (sisi.js applyHlsType);
+        // mp4/abyss đi route .mp4 để <video> nhận file trực tiếp.
         return Json(links.ToDictionary(k => k.Key, v =>
-            $"{host}/vietmup/video{(v.Key == "Abyss" ? ".mp4" : ".m3u8")}"
-            + $"?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(v.Key)}"));
+        {
+            string route = v.Value.StartsWith("hls|", StringComparison.Ordinal) ? "video.m3u8" : "video.mp4";
+            return $"{host}/vietmup/{route}?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(v.Key)}";
+        }));
     }
 
     [HttpGet]
@@ -239,8 +330,16 @@ public class VietmupController : BaseSisiController
         if (links == null || !links.TryGetValue(q, out string link) || string.IsNullOrEmpty(link))
             return OnError("stream_links", refresh_proxy: true);
 
-        if (link.StartsWith("abyss|", StringComparison.Ordinal))
-            return Redirect($"{host}/vietmup/abyss.mp4?p={HttpUtility.UrlEncode(link.Substring(6))}");
+        string kind = "hls";
+        int bar = link.IndexOf('|');
+        if (bar > 0)
+        {
+            kind = link.Substring(0, bar);
+            link = link.Substring(bar + 1);
+        }
+
+        if (kind == "abyss")
+            return Redirect($"{host}/vietmup/abyss.mp4?p={HttpUtility.UrlEncode(link)}");
 
         var headers = httpHeaders(init, HeadersModel.Init(
             ("User-Agent", VietmupTo.ChromeUA),
@@ -332,12 +431,12 @@ public class VietmupController : BaseSisiController
     {
         var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-        string ck = ipkey("vietmup:categories");
+        string ck = ipkey("vietmup:categories:v2");
         if (hybridCache.TryGetValue(ck, out List<(string name, string slug)> cats) && cats != null)
             foreach (var c in cats)
                 map["cat/" + c.slug] = c.name;
 
-        string tk = ipkey("vietmup:tags");
+        string tk = ipkey("vietmup:tags:v2");
         if (hybridCache.TryGetValue(tk, out List<(string name, string slug)> tags) && tags != null)
             foreach (var t in tags)
                 map["tag/" + t.slug] = t.name;
