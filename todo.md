@@ -258,7 +258,7 @@ Thứ tự ưu tiên từ nay:
 
 ## Phase 2 — Tube phương Tây (chip = thể loại / pornstar / channel / tag)
 
-- [ ] `Ebalovo` — https://www.ebalovo.pro
+- [x] `Ebalovo` — https://www.ebalovo.pro *(2026-11-25: popup `genres` + `?rel=` ✅ — chip: **Thể loại** 12 từ `<strong>В этом порно:</strong>` → `/porno/<slug>/` (`?c=cat/<slug>`), **Diễn viên** `span.link-models` (`?c=model/…`), **Hãng phim** `<strong>Порно студия:</strong>` → `/site/`, `/sites/` (`?c=site/…`); **Liên quan** cắt `#list_videos_related_videos_items` → 12 item `tp=1`. Gom 124 cặp slug→tên Việt vào `CatSlugs` dùng chung menu+popup (thêm `CatAlias` cho `a1-russian`/`b1-masturbation`/`b1-solo`, fallback `PrettySlug`) — 0 chip Cyrillic. Bẫy: link model/studio có `</a >` (cách trước `>`) → regex `</a>` bỏ mất 2 nhóm. Đo: home 30 · pg2 24 · search 36 · cat 24 · model 1 · site 24 · rel 12 `tp=1` · SSRF/rỗng → `groups []` · `play.sh` PASS h264 1280x720)*
 - [x] `Eporner` — https://www.eporner.com *(popup: thể loại `?c=` + thẻ `?t=` (trang `/tag/`) + video liên quan `?rel=`; detail page không có pornstar/channel. Sort: home 4, cat `SORT-*` 4, tag 5 — `shortest`(cat)/`top-monthly`(cat+tag)/search = no-op nên bỏ; bằng chứng ở skill lampac-sort cases.md)*
 - [ ] `HQporner` — https://m.hqporner.com
 - [ ] `PornHub` — https://rt.pornhub.com

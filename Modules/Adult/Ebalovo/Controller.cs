@@ -8,6 +8,8 @@ using Shared.Models.SISI.Base;
 using Shared.Services;
 using Shared.Services.Hybrid;
 using System.Collections.Generic;
+using System.Linq;
+using System.Web;
 using System.Net;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -20,10 +22,13 @@ public class EbalovoController : BaseSisiController
 
     [HttpGet, Staticache]
     [Route("elo")]
-    async public Task<ActionResult> Index(string search, string sort, string c, int pg = 1)
+    async public Task<ActionResult> Index(string search, string sort, string c, int pg = 1, string rel = null)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
+
+        if (!string.IsNullOrWhiteSpace(rel))
+            return await RelatedList(rel, pg);
 
     rhubFallback:
         var cache = await InvokeCacheResult($"elo:{search}:{sort}:{c}:{pg}", 10, jsonContext.ListPlaylistItem, async e =>
@@ -58,6 +63,138 @@ public class EbalovoController : BaseSisiController
         );
     }
 
+
+    #region popup (giữ thẻ -> /elo/genres?uri= + "Ещё порно видео")
+    static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTime at, List<(string kind, string slug, string name)> chips, List<PlaylistItem> rel)> _infoCache = new();
+    static readonly TimeSpan InfoTtl = TimeSpan.FromHours(6);
+
+    [HttpGet]
+    [Route("elo/genres")]
+    async public Task<ActionResult> Genres(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return EmptyPopup();
+
+        string pageUrl = EbalovoTo.DetailUrl(init.host, uri);
+        if (pageUrl == null)
+            return EmptyPopup();
+
+        if (_infoCache.TryGetValue(pageUrl, out var hit)
+            && DateTime.UtcNow - hit.at < InfoTtl && hit.chips != null)
+        {
+            return InfoResult(hit.chips, hit.rel, uri);
+        }
+
+        string html = null;
+        await httpHydra.GetSpan(pageUrl, span =>
+        {
+            html = span.ToString();
+        },
+        addheaders: HeadersModel.Init(
+            ("sec-fetch-dest", "document"),
+            ("sec-fetch-mode", "navigate"),
+            ("sec-fetch-site", "same-origin"),
+            ("sec-fetch-user", "?1"),
+            ("upgrade-insecure-requests", "1")
+        ));
+
+        if (string.IsNullOrEmpty(html))
+            return EmptyPopup();
+
+        var chips = EbalovoTo.Chips(html);
+        var rel = EbalovoTo.PlaylistRelated("elo/vidosik", html, uri);
+
+        if (chips.Count > 0 || rel.Count > 0)
+            _infoCache[pageUrl] = (DateTime.UtcNow, chips, rel);
+
+        return InfoResult(chips, rel, uri);
+    }
+
+    ActionResult InfoResult(List<(string kind, string slug, string name)> chips,
+        List<PlaylistItem> rel, string uri)
+    {
+        var groups = new List<object>();
+
+        foreach (var def in new[] {
+            ("cat", "Thể loại"),
+            ("model", "Diễn viên"),
+            ("site", "Hãng phim") })
+        {
+            var items = chips?.Where(x => x.kind == def.Item1).Select(x => new
+            {
+                title = x.name,
+                url = $"{host}/elo?c={def.Item1}/{HttpUtility.UrlEncode(x.slug)}"
+            }).ToList();
+
+            if (items == null || items.Count == 0)
+                continue;
+
+            groups.Add(new { title = def.Item2, items });
+        }
+
+        if (rel != null && rel.Count > 0)
+        {
+            groups.Add(new
+            {
+                title = "Liên quan",
+                items = new[]
+                {
+                    new
+                    {
+                        title = "Video liên quan",
+                        plain = true,
+                        url = $"{host}/elo?rel={HttpUtility.UrlEncode(uri)}"
+                    }
+                }
+            });
+        }
+
+        return Json(new { items = new object[0], groups });
+    }
+
+    async Task<ActionResult> RelatedList(string rel, int pg)
+    {
+        if (pg > 1)
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        string pageUrl = EbalovoTo.DetailUrl(init.host, rel);
+        if (pageUrl == null)
+            return EmptyJson();
+
+        List<PlaylistItem> playlists = null;
+
+        if (_infoCache.TryGetValue(pageUrl, out var hit) && DateTime.UtcNow - hit.at < InfoTtl)
+            playlists = hit.rel;
+
+        if (playlists == null)
+        {
+            string html = null;
+            await httpHydra.GetSpan(pageUrl, span =>
+            {
+                html = span.ToString();
+            });
+
+            if (string.IsNullOrEmpty(html))
+                return EmptyJson();
+
+            playlists = EbalovoTo.PlaylistRelated("elo/vidosik", html, rel);
+        }
+
+        if (playlists == null || playlists.Count == 0)
+            return EmptyJson();
+
+        return PlaylistResult(playlists, false, null, total_pages: 1);
+    }
+
+    ActionResult EmptyJson()
+    {
+        Response.Headers.CacheControl = "no-cache";
+        return Content("{\"count\":0,\"total_pages\":1,\"menu\":[],\"list\":[]}",
+            "application/json; charset=utf-8");
+    }
+
+    ActionResult EmptyPopup() => Json(new { items = new object[0], groups = new object[0] });
+    #endregion
 
     [HttpGet, Staticache(manually: true)]
     [Route("elo/vidosik")]

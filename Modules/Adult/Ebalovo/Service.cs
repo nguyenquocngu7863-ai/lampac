@@ -11,12 +11,154 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Text.RegularExpressions;
 using System.Web;
 
 namespace Ebalovo;
 
 public static class EbalovoTo
 {
+    // slug danh mục -> tên tiếng Việt (dùng chung cho menu + popup)
+    public static readonly (string slug, string title)[] CatSlugs = new (string, string)[]
+    {
+        ("cfnm", "CFNM"),
+        ("pov", "pov"),
+        ("anal-videos", "Hậu môn"),
+        ("gape", "Nới rộng hậu môn"),
+        ("butt-plug-porn", "Nút hậu môn"),
+        ("bdsm-porn", "BDSM"),
+        ("blonde", "Tóc vàng"),
+        ("big-ass", "Mông lớn"),
+        ("big-tits", "Ngực lớn"),
+        ("big-cock", "Dương vật lớn"),
+        ("bbc", "Dương vật đen lớn"),
+        ("bondage", "Trói buộc"),
+        ("boss", "Sếp"),
+        ("shaved-pussy", "Đã cạo"),
+        ("a1-brunette", "Tóc nâu"),
+        ("bukkake", "Bukkake"),
+        ("knee-socks", "Vớ cao"),
+        ("club", "Trong club"),
+        ("lingerie", "Đồ lót đẹp"),
+        ("shirt", "Áo thun"),
+        ("oiled", "Bôi dầu"),
+        ("car-porn", "Trong xe"),
+        ("glasses", "Đeo kính"),
+        ("condom", "Bao cao su"),
+        ("bedroom", "Phòng ngủ"),
+        ("gym-porn", "Phòng tập"),
+        ("stockings", "Vớ dài"),
+        ("webcam", "Webcam"),
+        ("hairy", "Không cạo"),
+        ("flexible", "Dẻo dai"),
+        ("cum-swallow", "Nuốt tinh"),
+        ("maid", "Người hầu"),
+        ("mistress", "Nữ thống trị"),
+        ("group-porno", "Quan hệ nhóm"),
+        ("dildo", "Dildo"),
+        ("long-hair", "Tóc dài"),
+        ("doctor", "Bác sĩ"),
+        ("amateur", "Tự quay"),
+        ("handjob", "Kích thích bằng tay"),
+        ("a1-europe", "Châu Âu"),
+        ("fun", "Mạnh bạo"),
+        ("a1-threesome", "Hai nữ một nam"),
+        ("cheating", "Ngoại tình"),
+        ("intimate-haircut", "Tạo hình vùng kín"),
+        ("gag", "Bịt miệng"),
+        ("short-hair", "Tóc ngắn"),
+        ("braids", "Tóc tết"),
+        ("nice-tits-porn", "Ngực đẹp"),
+        ("a1-babe", "Người đẹp"),
+        ("ass", "Mông đẹp"),
+        ("beautiful", "Quan hệ đẹp"),
+        ("closeup", "Cận cảnh"),
+        ("cuckold", "Cuckold"),
+        ("cunni", "Khẩu giao nữ"),
+        ("lesbi-porno", "Đồng tính nữ"),
+        ("ass-licking-porn", "Liếm hậu môn"),
+        ("massage", "Mát-xa"),
+        ("a1-masturbation", "Thủ dâm"),
+        ("a1-stepmom", "Mẹ kế"),
+        ("nurse", "Y tá"),
+        ("tits-fuck", "Giữa ngực"),
+        ("interracial", "Khác chủng tộc"),
+        ("2man-woman", "Hai nam một nữ"),
+        ("blowjob", "Khẩu giao"),
+        ("teen", "Người trẻ 18+"),
+        ("heels", "Giày cao gót"),
+        ("beach", "Bãi biển"),
+        ("outdoor-sex", "Ngoài trời"),
+        ("a1-public", "Nơi công cộng"),
+        ("table", "Trên bàn"),
+        ("cowgirl", "Tư thế cưỡi"),
+        ("handcuffs", "Còng tay"),
+        ("a1-natural-tits", "Ngực tự nhiên"),
+        ("black-girl", "Phụ nữ da đen"),
+        ("black", "Da đen"),
+        ("blacks-on-blondes", "Da đen với tóc vàng"),
+        ("ugly-tits", "Ngực nhỏ"),
+        ("babysitter", "Bảo mẫu"),
+        ("pissing", "Pissing"),
+        ("whip", "Roi da"),
+        ("underwater", "Dưới nước"),
+        ("submission", "Phục tùng"),
+        ("69", "Tư thế 69"),
+        ("milfs", "Phụ nữ trưởng thành"),
+        ("wrestling", "Vật lộn"),
+        ("russian-amateur", "Nga tự quay"),
+        ("ruporn", "Nga"),
+        ("redhead", "Tóc đỏ"),
+        ("latina-sex", "Mỹ Latin"),
+        ("bride", "Cô dâu"),
+        ("couch-porn", "Huấn luyện viên"),
+        ("swingers", "Swinger"),
+        ("secretary-porn", "Thư ký"),
+        ("dorm-porn", "Ký túc xá"),
+        ("office-sex", "Văn phòng"),
+        ("kitchen", "Nhà bếp"),
+        ("exgfs", "Người yêu cũ"),
+        ("sex-toys", "Đồ chơi"),
+        ("sex-machines", "Máy hỗ trợ"),
+        ("slave", "Nô lệ"),
+        ("silicone-tits", "Ngực thẩm mỹ"),
+        ("squirting", "Squirt"),
+        ("a1-solo", "Đơn"),
+        ("creampie", "Xuất tinh bên trong"),
+        ("cum-on-tits", "Xuất tinh lên ngực"),
+        ("facial", "Xuất tinh lên mặt"),
+        ("sperma-na-nogah", "Xuất tinh lên chân"),
+        ("cum-on-pussy", "Xuất tinh lên vùng kín"),
+        ("cum-on-ass", "Xuất tinh lên mông"),
+        ("old-and-young", "Già và trẻ"),
+        ("strapon", "Strap-on"),
+        ("strip", "Thoát y"),
+        ("schoolgirls", "Nữ sinh viên"),
+        ("students", "Sinh viên"),
+        ("styuardessa", "Tiếp viên"),
+        ("trah", "Quan hệ"),
+        ("teaching", "Hướng dẫn"),
+        ("teacher", "Giáo viên"),
+        ("teacher-milf", "Cô giáo"),
+        ("foot-fetish", "Tôn sùng bàn chân"),
+        ("skinny-porn", "Mảnh mai"),
+        ("czech-porn", "Séc"),
+        ("gloryhole-porn", "Gloryhole"),
+        ("erotic", "Gợi cảm"),
+    };
+
+    static readonly Dictionary<string, string> CatVi = CatSlugs.ToDictionary(x => x.slug, x => x.title, StringComparer.OrdinalIgnoreCase);
+
+    // slug site in khác slug menu (a1-/b1-) -> vẫn phải ra tiếng Việt, không để tiếng Nga
+    static readonly Dictionary<string, string> CatAlias = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["a1-russian"] = "Nga",
+        ["b1-masturbation"] = "Thủ dâm",
+        ["b1-solo"] = "Đơn",
+        ["b1-blowjob"] = "Khẩu giao",
+        ["b1-teen"] = "Người trẻ 18+"
+    };
+
     #region Uri
     public static string Uri(string host, string search, string sort, string c, int pg)
     {
@@ -35,10 +177,33 @@ public static class EbalovoTo
         {
             if (!string.IsNullOrEmpty(c))
             {
-                url.Append("porno/");
-                url.Append(c);
+                // chip popup: "cat/<slug>" | "model/<slug>" | "site|sites/<slug>"
+                string kind = "porno";
+                string slug = c.Trim('/');
 
-                if (sort is "porno-online" or "xxx-top")
+                if (slug.StartsWith("cat/", StringComparison.OrdinalIgnoreCase))
+                    slug = slug.Substring(4);
+                else if (slug.StartsWith("model/", StringComparison.OrdinalIgnoreCase))
+                {
+                    kind = "models";
+                    slug = slug.Substring(6);
+                }
+                else if (slug.StartsWith("sites/", StringComparison.OrdinalIgnoreCase))
+                {
+                    kind = "sites";
+                    slug = slug.Substring(6);
+                }
+                else if (slug.StartsWith("site/", StringComparison.OrdinalIgnoreCase))
+                {
+                    kind = "site";
+                    slug = slug.Substring(5);
+                }
+
+                url.Append(kind);
+                url.Append("/");
+                url.Append(slug.Trim('/'));
+
+                if (kind == "porno" && sort is "porno-online" or "xxx-top")
                     url.Append("-rating");
 
                 url.Append("/");
@@ -116,6 +281,119 @@ public static class EbalovoTo
     }
     #endregion
 
+    #region Popup (chips -> /elo/genres?uri= + "Ещё порно видео")
+    // Detail (theme ebalovo):
+    //   <strong>В этом порно:</strong> ... <a href="/porno/<slug>/">Tên</a>
+    //   <span class="video-link link-models"> <strong>Модели:</strong> ... <a href="/models/<slug>/">
+    //   <strong>Порно студия:</strong> ... <a href="/site/<slug>/">, <a href="/sites/<slug>/">
+    //   "Ещё порно видео:" -> <div class="video-related"> <div id="list_videos_related_videos_items">
+    static string PrettySlug(string slug)
+    {
+        string s = Regex.Replace(slug, "^(a|b)[0-9]+-", "", RegexOptions.IgnoreCase).Replace('-', ' ');
+        return string.Join(' ', s.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Select(w => char.ToUpperInvariant(w[0]) + w.Substring(1)));
+    }
+
+    public static List<(string kind, string slug, string name)> Chips(string html)
+    {
+        var list = new List<(string, string, string)>();
+        if (string.IsNullOrEmpty(html))
+            return list;
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        void grab(string startMarker, string endMarker, string kind, string pattern)
+        {
+            int i = html.IndexOf(startMarker, StringComparison.OrdinalIgnoreCase);
+            if (i < 0)
+                return;
+
+            int j = endMarker == null ? -1 : html.IndexOf(endMarker, i + startMarker.Length, StringComparison.OrdinalIgnoreCase);
+            string region = j > i ? html.Substring(i, j - i) : html.Substring(i, Math.Min(4000, html.Length - i));
+
+            foreach (Match m in Regex.Matches(region, pattern, RegexOptions.IgnoreCase))
+            {
+                string slug = m.Groups[1].Value.Trim().Trim('/');
+                if (slug.Length == 0 || slug.Contains("search-categories") || !seen.Add(kind + "/" + slug))
+                    continue;
+
+                string name = HttpUtility.HtmlDecode(m.Groups[2].Value).Trim();
+                if (name.Length == 0)
+                    name = slug.Replace('-', ' ');
+
+                if (kind == "cat")
+                {
+                    if (CatVi.TryGetValue(slug, out string vi) || CatAlias.TryGetValue(slug, out vi))
+                        name = vi;
+                    else
+                        name = PrettySlug(slug);
+                }
+
+                list.Add((kind, slug, name));
+            }
+        }
+
+        grab("В этом порно:", "</p>", "cat",
+            "<a[^>]*href=\"(?:https?://[^\"]+)?/porno/([^\"/]+)/?\"[^>]*>([^<]{1,120})</a>");
+
+        grab("link-models", "Порно студия", "model",
+            "<a[^>]*href=\"(?:https?://[^\"]+)?/models/([^\"/]+)/?\"[^>]*>([^<]{1,120})</a\\s*>");
+
+        grab("Порно студия:", "</p>", "site",
+            "<a[^>]*href=\"(?:https?://[^\"]+)?/(sites?/[^\"/]+)/?\"[^>]*>([^<]{1,120})</a\\s*>");
+
+        return list;
+    }
+
+    public static List<PlaylistItem> PlaylistRelated(string route, string html, string self)
+    {
+        if (string.IsNullOrEmpty(html))
+            return new List<PlaylistItem>();
+
+        int i = html.IndexOf("list_videos_related_videos_items", StringComparison.OrdinalIgnoreCase);
+        if (i < 0)
+            i = html.IndexOf("video-related", StringComparison.OrdinalIgnoreCase);
+        if (i < 0)
+            return new List<PlaylistItem>();
+
+        var rel = Playlist(route, html.AsSpan(i)) ?? new List<PlaylistItem>();
+
+        if (!string.IsNullOrEmpty(self))
+        {
+            string selfPath = self.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+                ? (System.Uri.TryCreate(self, UriKind.Absolute, out var u) ? u.AbsolutePath.Trim('/') : self.Trim('/'))
+                : self.Trim('/');
+
+            rel = rel.Where(x => x.bookmark?.href == null ||
+                !x.bookmark.href.Trim('/').Equals(selfPath, StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+
+        return rel;
+    }
+
+    // Chặn SSRF: chỉ host *.ebalovo.porn|click|pro; uri tương đối "video/<slug>/" ghép host.
+    public static string DetailUrl(string host, string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return null;
+
+        if (!uri.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            return (host ?? "https://www.ebalovo.porn").TrimEnd('/') + "/" + uri.Trim('/') + "/";
+
+        if (!System.Uri.TryCreate(uri, UriKind.Absolute, out var u))
+            return null;
+
+        string h = u.Host.ToLowerInvariant();
+        foreach (string d in new[] { "ebalovo.porn", "ebalovo.click", "ebalovo.pro" })
+        {
+            if (h == d || h.EndsWith("." + d))
+                return uri;
+        }
+
+        return null;
+    }
+    #endregion
+
     #region Menu
     public static List<MenuItem> Menu(string host, string sort, string c)
     {
@@ -148,134 +426,13 @@ public static class EbalovoTo
             }
         };
 
-        var catmenu = new List<MenuItem>(140)
+        var catmenu = new List<MenuItem>(CatSlugs.Length + 1)
         {
-            new("Tất cả", $"{url}?sort={sort}"),
-            new("CFNM", $"{url}?sort={sort}&c=cfnm"),
-            new("pov", $"{url}?sort={sort}&c=pov"),
-            new("Hậu môn", $"{url}?sort={sort}&c=anal-videos"),
-            new("Nới rộng hậu môn", $"{url}?sort={sort}&c=gape"),
-            new("Nút hậu môn", $"{url}?sort={sort}&c=butt-plug-porn"),
-            new("BDSM", $"{url}?sort={sort}&c=bdsm-porn"),
-            new("Tóc vàng", $"{url}?sort={sort}&c=blonde"),
-            new("Mông lớn", $"{url}?sort={sort}&c=big-ass"),
-            new("Ngực lớn", $"{url}?sort={sort}&c=big-tits"),
-            new("Dương vật lớn", $"{url}?sort={sort}&c=big-cock"),
-            new("Dương vật đen lớn", $"{url}?sort={sort}&c=bbc"),
-            new("Trói buộc", $"{url}?sort={sort}&c=bondage"),
-            new("Sếp", $"{url}?sort={sort}&c=boss"),
-            new("Đã cạo", $"{url}?sort={sort}&c=shaved-pussy"),
-            new("Tóc nâu", $"{url}?sort={sort}&c=a1-brunette"),
-            new("Bukkake", $"{url}?sort={sort}&c=bukkake"),
-            new("Vớ cao", $"{url}?sort={sort}&c=knee-socks"),
-            new("Trong club", $"{url}?sort={sort}&c=club"),
-            new("Đồ lót đẹp", $"{url}?sort={sort}&c=lingerie"),
-            new("Áo thun", $"{url}?sort={sort}&c=shirt"),
-            new("Bôi dầu", $"{url}?sort={sort}&c=oiled"),
-            new("Trong xe", $"{url}?sort={sort}&c=car-porn"),
-            new("Đeo kính", $"{url}?sort={sort}&c=glasses"),
-            new("Bao cao su", $"{url}?sort={sort}&c=condom"),
-            new("Phòng ngủ", $"{url}?sort={sort}&c=bedroom"),
-            new("Phòng tập", $"{url}?sort={sort}&c=gym-porn"),
-            new("Vớ dài", $"{url}?sort={sort}&c=stockings"),
-            new("Webcam", $"{url}?sort={sort}&c=webcam"),
-            new("Không cạo", $"{url}?sort={sort}&c=hairy"),
-            new("Dẻo dai", $"{url}?sort={sort}&c=flexible"),
-            new("Nuốt tinh", $"{url}?sort={sort}&c=cum-swallow"),
-            new("Người hầu", $"{url}?sort={sort}&c=maid"),
-            new("Nữ thống trị", $"{url}?sort={sort}&c=mistress"),
-            new("Quan hệ nhóm", $"{url}?sort={sort}&c=group-porno"),
-            new("Dildo", $"{url}?sort={sort}&c=dildo"),
-            new("Tóc dài", $"{url}?sort={sort}&c=long-hair"),
-            new("Bác sĩ", $"{url}?sort={sort}&c=doctor"),
-            new("Tự quay", $"{url}?sort={sort}&c=amateur"),
-            new("Kích thích bằng tay", $"{url}?sort={sort}&c=handjob"),
-            new("Châu Âu", $"{url}?sort={sort}&c=a1-europe"),
-            new("Mạnh bạo", $"{url}?sort={sort}&c=fun"),
-            new("Hai nữ một nam", $"{url}?sort={sort}&c=a1-threesome"),
-            new("Ngoại tình", $"{url}?sort={sort}&c=cheating"),
-            new("Tạo hình vùng kín", $"{url}?sort={sort}&c=intimate-haircut"),
-            new("Bịt miệng", $"{url}?sort={sort}&c=gag"),
-            new("Tóc ngắn", $"{url}?sort={sort}&c=short-hair"),
-            new("Tóc tết", $"{url}?sort={sort}&c=braids"),
-            new("Ngực đẹp", $"{url}?sort={sort}&c=nice-tits-porn"),
-            new("Người đẹp", $"{url}?sort={sort}&c=a1-babe"),
-            new("Mông đẹp", $"{url}?sort={sort}&c=ass"),
-            new("Quan hệ đẹp", $"{url}?sort={sort}&c=beautiful"),
-            new("Cận cảnh", $"{url}?sort={sort}&c=closeup"),
-            new("Cuckold", $"{url}?sort={sort}&c=cuckold"),
-            new("Khẩu giao nữ", $"{url}?sort={sort}&c=cunni"),
-            new("Đồng tính nữ", $"{url}?sort={sort}&c=lesbi-porno"),
-            new("Liếm hậu môn", $"{url}?sort={sort}&c=ass-licking-porn"),
-            new("Mát-xa", $"{url}?sort={sort}&c=massage"),
-            new("Thủ dâm", $"{url}?sort={sort}&c=a1-masturbation"),
-            new("Mẹ kế", $"{url}?sort={sort}&c=a1-stepmom"),
-            new("Y tá", $"{url}?sort={sort}&c=nurse"),
-            new("Giữa ngực", $"{url}?sort={sort}&c=tits-fuck"),
-            new("Khác chủng tộc", $"{url}?sort={sort}&c=interracial"),
-            new("Hai nam một nữ", $"{url}?sort={sort}&c=2man-woman"),
-            new("Khẩu giao", $"{url}?sort={sort}&c=blowjob"),
-            new("Người trẻ 18+", $"{url}?sort={sort}&c=teen"),
-            new("Giày cao gót", $"{url}?sort={sort}&c=heels"),
-            new("Bãi biển", $"{url}?sort={sort}&c=beach"),
-            new("Ngoài trời", $"{url}?sort={sort}&c=outdoor-sex"),
-            new("Nơi công cộng", $"{url}?sort={sort}&c=a1-public"),
-            new("Trên bàn", $"{url}?sort={sort}&c=table"),
-            new("Tư thế cưỡi", $"{url}?sort={sort}&c=cowgirl"),
-            new("Còng tay", $"{url}?sort={sort}&c=handcuffs"),
-            new("Ngực tự nhiên", $"{url}?sort={sort}&c=a1-natural-tits"),
-            new("Phụ nữ da đen", $"{url}?sort={sort}&c=black-girl"),
-            new("Da đen", $"{url}?sort={sort}&c=black"),
-            new("Da đen với tóc vàng", $"{url}?sort={sort}&c=blacks-on-blondes"),
-            new("Ngực nhỏ", $"{url}?sort={sort}&c=ugly-tits"),
-            new("Bảo mẫu", $"{url}?sort={sort}&c=babysitter"),
-            new("Pissing", $"{url}?sort={sort}&c=pissing"),
-            new("Roi da", $"{url}?sort={sort}&c=whip"),
-            new("Dưới nước", $"{url}?sort={sort}&c=underwater"),
-            new("Phục tùng", $"{url}?sort={sort}&c=submission"),
-            new("Tư thế 69", $"{url}?sort={sort}&c=69"),
-            new("Phụ nữ trưởng thành", $"{url}?sort={sort}&c=milfs"),
-            new("Vật lộn", $"{url}?sort={sort}&c=wrestling"),
-            new("Nga tự quay", $"{url}?sort={sort}&c=russian-amateur"),
-            new("Nga", $"{url}?sort={sort}&c=ruporn"),
-            new("Tóc đỏ", $"{url}?sort={sort}&c=redhead"),
-            new("Mỹ Latin", $"{url}?sort={sort}&c=latina-sex"),
-            new("Cô dâu", $"{url}?sort={sort}&c=bride"),
-            new("Huấn luyện viên", $"{url}?sort={sort}&c=couch-porn"),
-            new("Swinger", $"{url}?sort={sort}&c=swingers"),
-            new("Thư ký", $"{url}?sort={sort}&c=secretary-porn"),
-            new("Ký túc xá", $"{url}?sort={sort}&c=dorm-porn"),
-            new("Văn phòng", $"{url}?sort={sort}&c=office-sex"),
-            new("Nhà bếp", $"{url}?sort={sort}&c=kitchen"),
-            new("Người yêu cũ", $"{url}?sort={sort}&c=exgfs"),
-            new("Đồ chơi", $"{url}?sort={sort}&c=sex-toys"),
-            new("Máy hỗ trợ", $"{url}?sort={sort}&c=sex-machines"),
-            new("Nô lệ", $"{url}?sort={sort}&c=slave"),
-            new("Ngực thẩm mỹ", $"{url}?sort={sort}&c=silicone-tits"),
-            new("Squirt", $"{url}?sort={sort}&c=squirting"),
-            new("Đơn", $"{url}?sort={sort}&c=a1-solo"),
-            new("Xuất tinh bên trong", $"{url}?sort={sort}&c=creampie"),
-            new("Xuất tinh lên ngực", $"{url}?sort={sort}&c=cum-on-tits"),
-            new("Xuất tinh lên mặt", $"{url}?sort={sort}&c=facial"),
-            new("Xuất tinh lên chân", $"{url}?sort={sort}&c=sperma-na-nogah"),
-            new("Xuất tinh lên vùng kín", $"{url}?sort={sort}&c=cum-on-pussy"),
-            new("Xuất tinh lên mông", $"{url}?sort={sort}&c=cum-on-ass"),
-            new("Già và trẻ", $"{url}?sort={sort}&c=old-and-young"),
-            new("Strap-on", $"{url}?sort={sort}&c=strapon"),
-            new("Thoát y", $"{url}?sort={sort}&c=strip"),
-            new("Nữ sinh viên", $"{url}?sort={sort}&c=schoolgirls"),
-            new("Sinh viên", $"{url}?sort={sort}&c=students"),
-            new("Tiếp viên", $"{url}?sort={sort}&c=styuardessa"),
-            new("Quan hệ", $"{url}?sort={sort}&c=trah"),
-            new("Hướng dẫn", $"{url}?sort={sort}&c=teaching"),
-            new("Giáo viên", $"{url}?sort={sort}&c=teacher"),
-            new("Cô giáo", $"{url}?sort={sort}&c=teacher-milf"),
-            new("Tôn sùng bàn chân", $"{url}?sort={sort}&c=foot-fetish"),
-            new("Mảnh mai", $"{url}?sort={sort}&c=skinny-porn"),
-            new("Séc", $"{url}?sort={sort}&c=czech-porn"),
-            new("Gloryhole", $"{url}?sort={sort}&c=gloryhole-porn"),
-            new("Gợi cảm", $"{url}?sort={sort}&c=erotic")
+            new("Tất cả", $"{url}?sort={sort}")
         };
+
+        foreach (var (slug, title) in CatSlugs)
+            catmenu.Add(new(title, $"{url}?sort={sort}&c={slug}"));
 
         menu.Add(new MenuItem()
         {
