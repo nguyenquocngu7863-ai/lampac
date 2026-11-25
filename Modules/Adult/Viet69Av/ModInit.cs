@@ -34,7 +34,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
 
     void updateConf()
     {
-        conf = ModuleInvoke.Init("Viet69Av", new SisiSettings("Viet69Av", "https://viet69av.com")
+        conf = ModuleInvoke.Init("Viet69Av", new SisiSettings("Viet69Av", "https://clipviet69s.net")
         {
             displayindex = 30,
             streamproxy = true,

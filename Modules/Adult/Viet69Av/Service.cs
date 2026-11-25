@@ -7,6 +7,7 @@ using Shared.Services.Pools;
 using Shared.Services.RxEnumerate;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Text.Json;
@@ -18,7 +19,7 @@ namespace Viet69Av;
 
 public static class Viet69AvTo
 {
-    public const string SiteHost = "https://viet69av.com";
+    public const string SiteHost = "https://clipviet69s.net";
 
     public const string ChromeUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
@@ -106,7 +107,10 @@ public static class Viet69AvTo
 
         foreach (var row in rx.Rows())
         {
-            string link = row.Match("href=\"(https?://[^\"]+?\\.html)\"");
+            // Card phim luon co <a title="Tên" href="https://…/slug.html">.
+            // Banner quang cao cung la <a href="…/register.html"> nhung KHONG co title
+            // -> doi hoi title de loai quang cao (truoc day lot 1 item "Chat Telegram").
+            string link = row.Match("<a[^>]*title=\"[^\"]+\"[^>]*href=\"(https?://[^\"]+?\\.html)\"");
             if (string.IsNullOrWhiteSpace(link))
                 continue;
 
@@ -294,6 +298,67 @@ public static class Viet69AvTo
         _catsTime = DateTime.UtcNow;
 
         return (cats, recent);
+    }
+    #endregion
+
+    #region Popup (giữ thẻ -> /viet69av/genres?uri= + "Phim liên quan")
+    // Detail cua theme nay:
+    //   <div id="extras"><p><a href="https://<host>/tag/<slug>/" title="tên tag">tên tag</a> …</p></div>
+    //   <h1>Phim Sex Liên Quan</h1> + danh sách <article class="item-movie"> …
+    // The loai (phim-sex-*) chỉ nằm ở footer "Chuyên Mục Sex" — dùng chung mọi phim nên KHÔNG đưa vào chip.
+    public static List<(string name, string url)> Chips(string html)
+    {
+        var list = new List<(string, string)>();
+        if (string.IsNullOrEmpty(html))
+            return list;
+
+        int i = html.IndexOf("id=\"extras\"", StringComparison.OrdinalIgnoreCase);
+        if (i < 0)
+            return list;
+
+        int end = html.IndexOf("</div>", i, StringComparison.OrdinalIgnoreCase);
+        string block = end > i ? html.Substring(i, end - i) : html.Substring(i, Math.Min(4000, html.Length - i));
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (Match m in Regex.Matches(block, "<a[^>]*href=\"([^\"]*/tag/[^\"]+)\"[^>]*>([^<]{1,60})</a>", RegexOptions.IgnoreCase))
+        {
+            string url = WebUtility.HtmlDecode(m.Groups[1].Value).Trim();
+            if (url.Length == 0 || !seen.Add(url))
+                continue;
+
+            string name = WebUtility.HtmlDecode(m.Groups[2].Value).Trim();
+            if (name.Length == 0)
+                continue;
+
+            list.Add((name, url));
+        }
+
+        return list;
+    }
+
+    public static List<PlaylistItem> PlaylistRelated(string route, ReadOnlySpan<char> html, string self)
+    {
+        string s = html.ToString();
+        int i = s.IndexOf("Phim Sex Liên Quan", StringComparison.OrdinalIgnoreCase);
+        if (i < 0)
+            return new List<PlaylistItem>();
+
+        var rel = Playlist(route, s.AsSpan(i));
+        if (rel == null)
+            return new List<PlaylistItem>();
+
+        if (!string.IsNullOrEmpty(self))
+        {
+            string selfPath = self;
+            if (System.Uri.TryCreate(self, System.UriKind.Absolute, out var u))
+                selfPath = u.PathAndQuery;
+
+            rel = rel.Where(x => x.bookmark?.href == null ||
+                !string.Equals(x.bookmark.href.TrimEnd('/'), selfPath.TrimEnd('/'), StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+
+        return rel;
     }
     #endregion
 

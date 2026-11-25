@@ -6,6 +6,7 @@ using Shared.Models.SISI.Base;
 using Shared.Services;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
 using System.Web;
@@ -18,12 +19,16 @@ public class Viet69AvController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("viet69av")]
-    async public Task<ActionResult> Index(string search, string c, int pg = 1)
+    async public Task<ActionResult> Index(string search, string c, int pg = 1, string rel = null)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
 
         if (pg < 1) pg = 1;
+
+        if (!string.IsNullOrWhiteSpace(rel))
+            return await RelatedList(rel, pg);
+
         if (!string.IsNullOrWhiteSpace(c)) c = c.Trim().Trim('/');
 
         var menuTask = Task.FromResult<System.Collections.Generic.IReadOnlyList<MenuItem>>(
@@ -111,6 +116,144 @@ public class Viet69AvController : BaseSisiController
 
         return OnResult(cache);
     }
+
+    #region popup (giữ thẻ -> /viet69av/genres?uri= + "Phim liên quan")
+    static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTime at, List<(string name, string url)> chips, List<PlaylistItem> rel)> _infoCache = new();
+    static readonly TimeSpan InfoTtl = TimeSpan.FromHours(6);
+
+    [HttpGet]
+    [Route("viet69av/genres")]
+    async public Task<ActionResult> Genres(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return EmptyPopup();
+
+        string pageUrl = DetailUrl(uri);
+        if (pageUrl == null)
+            return EmptyPopup();
+
+        if (_infoCache.TryGetValue(pageUrl, out var hit)
+            && DateTime.UtcNow - hit.at < InfoTtl && hit.chips != null)
+        {
+            return InfoResult(hit.chips, hit.rel, uri);
+        }
+
+        string html = await FetchHtmlAsync(pageUrl);
+        if (string.IsNullOrEmpty(html))
+            return EmptyPopup();
+
+        var chips = Viet69AvTo.Chips(html);
+        var rel = Viet69AvTo.PlaylistRelated("viet69av/vidosik", html, pageUrl);
+
+        if (chips.Count > 0 || rel.Count > 0)
+            _infoCache[pageUrl] = (DateTime.UtcNow, chips, rel);
+
+        return InfoResult(chips, rel, uri);
+    }
+
+    ActionResult InfoResult(List<(string name, string url)> chips, List<PlaylistItem> rel, string uri)
+    {
+        var groups = new List<object>();
+
+        if (chips != null && chips.Count > 0)
+        {
+            groups.Add(new
+            {
+                title = "Thẻ",
+                items = chips.Select(x => new
+                {
+                    title = x.name,
+                    // URL tuyệt đối: Uri() ghép host + "/" + c nên phải bỏ origin
+                    url = $"{host}/viet69av?c={HttpUtility.UrlEncode(PathOf(x.url))}"
+                }).ToList()
+            });
+        }
+
+        if (rel != null && rel.Count > 0)
+        {
+            groups.Add(new
+            {
+                title = "Liên quan",
+                items = new[]
+                {
+                    new
+                    {
+                        title = "Phim liên quan",
+                        plain = true,
+                        url = $"{host}/viet69av?rel={HttpUtility.UrlEncode(uri)}"
+                    }
+                }
+            });
+        }
+
+        return Json(new { items = new object[0], groups });
+    }
+
+    async Task<ActionResult> RelatedList(string rel, int pg)
+    {
+        if (pg > 1)
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        string pageUrl = DetailUrl(rel);
+        if (pageUrl == null)
+            return EmptyJson();
+
+        List<PlaylistItem> playlists = null;
+
+        if (_infoCache.TryGetValue(pageUrl, out var hit) && DateTime.UtcNow - hit.at < InfoTtl)
+            playlists = hit.rel;
+
+        if (playlists == null)
+        {
+            string html = await FetchHtmlAsync(pageUrl);
+            if (string.IsNullOrEmpty(html))
+                return EmptyJson();
+
+            playlists = Viet69AvTo.PlaylistRelated("viet69av/vidosik", html, pageUrl);
+        }
+
+        if (playlists == null || playlists.Count == 0)
+            return EmptyJson();
+
+        return PlaylistResult(playlists, false, null, total_pages: 1);
+    }
+
+    static string DetailUrl(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return null;
+
+        if (!uri.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            return Viet69AvTo.SiteHost + "/" + uri.Trim('/');
+
+        if (!System.Uri.TryCreate(uri, UriKind.Absolute, out var u))
+            return null;
+
+        string h = u.Host.ToLowerInvariant();
+        if (h != "clipviet69s.net" && !h.EndsWith(".clipviet69s.net")
+            && h != "viet69av.com" && !h.EndsWith(".viet69av.com"))
+            return null;
+
+        // giữ host gốc của link (site xoay domain) — nhưng luôn fetch được bằng host hiện tại
+        return uri;
+    }
+
+    static string PathOf(string url)
+    {
+        if (System.Uri.TryCreate(url, UriKind.Absolute, out var u))
+            return u.AbsolutePath.Trim('/');
+        return url.Trim('/');
+    }
+
+    ActionResult EmptyJson()
+    {
+        Response.Headers.CacheControl = "no-cache";
+        return Content("{\"count\":0,\"total_pages\":1,\"menu\":[],\"list\":[]}",
+            "application/json; charset=utf-8");
+    }
+
+    ActionResult EmptyPopup() => Json(new { items = new object[0], groups = new object[0] });
+    #endregion
 
     async Task<string> FetchHtmlAsync(string url)
     {
