@@ -392,12 +392,18 @@ public class SexDepController : BaseSisiController
             return OnResult(links);
 
         return Json(links.ToDictionary(k => k.Key, v =>
-            $"{host}/sexdep/video.m3u8?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(v.Key)}"));
+        {
+            // Blogger la MP4 goc (googlevideo) -> route .mp4, con lai la HLS
+            string route = v.Value.IndexOf(".m3u8", StringComparison.OrdinalIgnoreCase) >= 0
+                ? "video.m3u8" : "video.mp4";
+            return $"{host}/sexdep/{route}?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(v.Key)}";
+        }));
     }
 
     [HttpGet]
     [Route("sexdep/video")]
     [Route("sexdep/video.m3u8")]
+    [Route("sexdep/video.mp4")]
     async public Task<ActionResult> Video(string uri, string q)
     {
         if (await IsRequestBlocked(rch: true))
@@ -429,35 +435,43 @@ public class SexDepController : BaseSisiController
         return Redirect(HostStreamProxy(link, direct));
     }
 
-    // Embed Blogger: trang video.g chua san URL googlevideo videoplayback (mp4).
+    // Embed Blogger -> batchexecute (rpc WcwnYd) -> URL googlevideo tai duoc bang
+    // HTTP thuong. KHONG dung URL nhung trong HTML trang video.g: ban do chi qua
+    // duoc TLS gia lap trinh duyet (curl_cffi 206) con .NET bi 403 (do 2026-11-25).
     async Task<string> ResolveBloggerAsync(string embedUrl)
     {
-        string memKey = $"sexdep:blogger:{embedUrl}";
+        string token = SexDepTo.BloggerToken(embedUrl);
+        if (string.IsNullOrEmpty(token))
+            return null;
+
+        string memKey = $"sexdep:blogger:v2:{token}";
         if (hybridCache.TryGetValue(memKey, out string cached) && !string.IsNullOrEmpty(cached))
             return cached;
 
-        string html = null;
+        // KHONG tu dat User-Agent: URL googlevideo bi rang buoc DUNG UA da goi
+        // batchexecute (do 2026-11-25: batch UA 120 -> proxy UA 146 bi 403).
+        // Bo trong de ca 2 phia dung Http.UserAgent cua Lampac.
+        var blogHeaders = HeadersModel.Init(
+            ("Referer", "https://www.blogger.com/"),
+            ("X-Same-Domain", "1"));
+
+        string resp = null;
         try
         {
-            await httpHydra.GetSpan(embedUrl, span =>
-            {
-                string h = span.ToString();
-                if (!string.IsNullOrEmpty(h) && h.Length > 1000)
-                    html = h;
-            }, addheaders: HeadersModel.Init(
-                ("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36")
-            ));
+            resp = await Http.Post(SexDepTo.BatchUrl, SexDepTo.BatchBody(token),
+                headers: blogHeaders,
+                timeoutSeconds: 15,
+                httpversion: init.httpversion,
+                proxy: proxy);
         }
         catch { }
 
-        if (string.IsNullOrEmpty(html))
-            html = await GetPageWithPlaywrightAsync(embedUrl);
-
-        string mp4 = SexDepTo.BloggerMp4(html);
+        string mp4 = SexDepTo.BloggerBestUrl(resp);
         if (string.IsNullOrEmpty(mp4))
             return null;
 
-        hybridCache.Set(memKey, mp4, cacheTime(20));
+        // URL gan IP client + het han ~8h -> cache ngan, van phai qua proxy Lampac
+        hybridCache.Set(memKey, mp4, cacheTime(5));
         return mp4;
     }
 

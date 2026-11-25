@@ -26,10 +26,16 @@ Module Adult route `sexdep`, displayindex 16.
 
 ## Player
 - Trang detail có `<a class="server" data-link data-type>`:
-  - `/storage/m3u8/<slug>/index.m3u8` → `HLS` (proxy Lampac);
-  - `https://www.blogger.com/video.g?token=…` → `Blogger`: module fetch `video.g`, bóc URL `googlevideo.com/videoplayback` (mp4).
-    **Đã đo**: `curl_cffi` tải được 206 `video/mp4`, nhưng **proxy của Lampac (.NET) bị Google trả 403** ⇒ phim Blogger hiện chưa phát được (ghi nhận, chưa fix).
-- Nhiều phim dùng Blogger (đo 2/5 phim đầu trang chủ), phần còn lại HLS `/storage`.
+  - `/storage/m3u8/<slug>/index.m3u8` → `HLS` (route `sexdep/video.m3u8`);
+  - `https://www.blogger.com/video.g?token=…` → `Blogger` (route `sexdep/video.mp4`).
+- **Blogger**: lấy `token` từ `data-link`, POST `blogger.com/_/BloggerVideoPlayerUi/data/batchexecute`
+  (`rpcids=WcwnYd`, body `f.req=[[["WcwnYd","[\"<token>\",null,0]",null,"generic"]]]`) → trả danh sách
+  `googlevideo.com/videoplayback` (itag **22** = 720p, **18** = 360p). Chọn 22 trước. Cache `sexdep:blogger:v2:<token>` 5p.
+- **Bẫy đã đo (2026-11-25)**: URL `googlevideo` bị ràng buộc **đúng User-Agent của lần gọi batchexecute**.
+  Proxy Lampac luôn ghi đè `user-agent` bằng `Http.UserAgent` (Chrome 146) ⇒ khi gọi batch **không được** tự đặt UA
+  (đặt Chrome 120 → URL chỉ đúng với 120 → proxy 146 nhận **403**). Bỏ trống UA ở cả 2 phía là khớp.
+- URL nhúng trong HTML trang `video.g` thay vào đó chỉ qua được TLS giả lập trình duyệt (`curl_cffi` 206), .NET 403 — **không dùng**.
+- Đo 2/5 phim đầu trang chủ dùng Blogger, phần còn lại HLS `/storage`.
 
 ## Pagination
 - Mọi tuyến dùng `?page=N` (`&page=N` khi đã có query). Site trả `total_pages: 0` (SISI hiểu = còn trang).
@@ -43,4 +49,7 @@ Module Adult route `sexdep`, displayindex 16.
 - `/sexdep/genres` 4 nhóm (Quốc gia 1 · Thể loại 13 · Thẻ 15 · Liên quan 1), lạnh 0.43 s → cache 0.008 s.
 - `?rel=` 10 item `tp=1`, `pg=2` rỗng; SSRF (host lạ, `the-loai/` thay vì `/phim/`) → rỗng 200.
 - `?c=quoc-gia/viet-nam|the-loai/clip-sex|tu-khoa/clip-sex-telegram` → 24 item.
-- Stream HLS: route → 302 `/proxy/…m3u8` (9 929 B) → segment `200 video/mp2t` 6 441 648 B, `ffprobe` h264 720×1280 + aac.
+- Stream HLS: route → 302 `/proxy/…m3u8` (9 929 B) → segment `200 video/mp2t` 6 441 648 B, `ffprobe` h264 720×1280 + aac
+  · `play.sh` **PASS** (41/41 segment, h264 720×1280 + aac, 810 s).
+- Stream Blogger: `sexdep/video.mp4?q=Blogger` → 302 `/proxy/…` → `206 video/mp4` 11 644 349 B,
+  `play.sh` **PASS** (`decode 5s đầu ✔ · 5s cuối ✔`, h264 406×720 + aac, 87 s); phim Blogger thứ 2: `206` h264 540×720.

@@ -3,6 +3,8 @@ using Shared.Models.SISI.Base;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Web;
 
@@ -268,24 +270,91 @@ public static class SexDepTo
         return stream_links.Count > 0 ? stream_links : null;
     }
 
-    // Trang `blogger.com/video.g?token=` nhung san URL googlevideo videoplayback (mp4).
-    // JSON cua no escape `\\u003d`/`\\u0026` nen phai giai truoc khi bat URL.
-    public static string BloggerMp4(string html)
+    // https://www.blogger.com/video.g?token=<TOKEN>&origin=  ->  <TOKEN>
+    public static string BloggerToken(string url)
     {
-        if (string.IsNullOrEmpty(html))
+        if (string.IsNullOrEmpty(url))
             return null;
 
-        // &quot;/&amp; phai giai TRUOC khi bat URL, neu khong URL bi cat sai cho
-        string h = HttpUtility.HtmlDecode(html
-            .Replace("\\u003d", "=")
-            .Replace("\\u0026", "&")
-            .Replace("\\/", "/"));
+        var m = Regex.Match(url, @"[?&]token=([^&]+)", RegexOptions.IgnoreCase);
+        return m.Success ? HttpUtility.UrlDecode(m.Groups[1].Value) : null;
+    }
 
-        var m = Regex.Match(h, @"(https://[a-z0-9.\-]*googlevideo\.com/videoplayback\?[^""'\s]+)");
-        if (!m.Success)
+    public const string BatchUrl =
+        "https://www.blogger.com/_/BloggerVideoPlayerUi/data/batchexecute"
+        + "?rpcids=WcwnYd&source-path=%2Fvideo.g&hl=en-US&rt=c";
+
+    // f.req=[[[["WcwnYd","[\"<TOKEN>\",null,0]",null,"generic"]]]]&
+    public static string BatchBody(string token)
+    {
+        string inner = "[\"" + token + "\",null,0]";
+        string fReq = "[[[\"WcwnYd\"," + JsonSerializer.Serialize(inner) + ",null,\"generic\"]]]";
+        return "f.req=" + HttpUtility.UrlEncode(fReq) + "&";
+    }
+
+    // batchexecute -> URL googlevideo **tai duoc bang HTTP thuong** (do 2026-11-25:
+    // 206 video/mp4). Khac han URL nhung trong HTML trang video.g: ban do chi qua
+    // duoc TLS gia lap trinh duyet (curl_cffi), con .NET bi 403.
+    //
+    // resp la XSSI:  )]}'\n\n<len>\n[["wrb.fr","WcwnYd","<json dang string>"],…]
+    // inner = [1,null,[[url,[itag]],…],thumb,"BLOGGER-video-…",id]
+    //   itag 22 = 720p, 18 = 360p (ca hai la MP4 goc).
+    public static string BloggerBestUrl(string resp)
+    {
+        if (string.IsNullOrEmpty(resp))
             return null;
 
-        return m.Groups[1].Value;
+        try
+        {
+            int p = resp.IndexOf(")]}'", StringComparison.Ordinal);
+            string body = p >= 0 ? resp.Substring(p + 4) : resp;
+
+            int s = body.IndexOf('[');
+            if (s < 0)
+                return null;
+            body = body.Substring(s);
+
+            // ParseValue dung reader (khong phai Parse) vi phia sau con du lieu thua
+            var rd = new Utf8JsonReader(Encoding.UTF8.GetBytes(body));
+            using var root = JsonDocument.ParseValue(ref rd);
+
+            if (root.RootElement.ValueKind != JsonValueKind.Array
+                || root.RootElement.GetArrayLength() == 0)
+                return null;
+
+            string inner = root.RootElement[0][2].GetString();
+            if (string.IsNullOrEmpty(inner))
+                return null;
+
+            var rd2 = new Utf8JsonReader(Encoding.UTF8.GetBytes(inner));
+            using var doc = JsonDocument.ParseValue(ref rd2);
+
+            string best = null;
+            int bestItag = 0;
+
+            foreach (var it in doc.RootElement[2].EnumerateArray())
+            {
+                if (it.ValueKind != JsonValueKind.Array || it.GetArrayLength() < 2)
+                    continue;
+
+                string url = it[0].GetString();
+                int itag = it[1][0].GetInt32();
+
+                if (string.IsNullOrEmpty(url))
+                    continue;
+
+                // 720p > 360p > bat ky
+                int rank = itag == 22 ? 2 : itag == 18 ? 1 : 0;
+                if (best == null || rank > bestItag)
+                {
+                    best = url;
+                    bestItag = rank;
+                }
+            }
+
+            return best;
+        }
+        catch { return null; }
     }
 
     // ===== POPUP (genres + ?rel=) =====
