@@ -41,6 +41,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
             displayindex = 29,
             rch_access = "apk,cors",
             stream_access = "apk,cors",
+            streamproxy = true,
             rchstreamproxy = "web"
         });
     }
