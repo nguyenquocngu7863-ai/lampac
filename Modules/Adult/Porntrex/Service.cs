@@ -7,6 +7,7 @@ using Shared.Services.RxEnumerate;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Web;
 
 namespace Porntrex;
@@ -40,8 +41,35 @@ public static class PorntrexTo
         {
             if (!string.IsNullOrEmpty(c))
             {
-                url.Append("categories/");
-                url.Append(c);
+                // chip popup: "cat/<slug>" | "tag/<slug>" | "model/<slug>" | "channel/<slug>"
+                string kind = "categories";
+                string slug = c.Trim('/');
+
+                int slash = slug.IndexOf('/');
+                if (slash > 0)
+                {
+                    string pre = slug.Substring(0, slash);
+                    if (pre == "tag")
+                        kind = "tags";
+                    else if (pre == "model")
+                        kind = "models";
+                    else if (pre == "channel")
+                        kind = "channels";
+                    else if (pre == "cat" || pre == "categories")
+                        kind = "categories";
+                    else
+                    {
+                        // slug thể loại không có tiền tố
+                        slug = c.Trim('/');
+                    }
+
+                    if (pre == "tag" || pre == "model" || pre == "channel" || pre == "cat" || pre == "categories")
+                        slug = slug.Substring(slash + 1);
+                }
+
+                url.Append(kind);
+                url.Append("/");
+                url.Append(slug.Trim('/'));
                 url.Append("/");
 
                 if (sort == "most-popular")
@@ -118,6 +146,119 @@ public static class PorntrexTo
         }
 
         return playlists;
+    }
+    #endregion
+
+    // uri detail: bookmark trả path "video/<id>/<slug>" (tương đối) hoặc URL tuyệt đối.
+    // Chặn SSRF: chỉ host porntrex.com.
+    public static string DetailUrl(string host, string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return null;
+
+        if (!uri.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+        {
+            string path = uri.Trim('/');
+            if (path.Length == 0)
+                return null;
+            return (host ?? "https://www.porntrex.com").TrimEnd('/') + "/" + path;
+        }
+
+        if (!System.Uri.TryCreate(uri, UriKind.Absolute, out var u))
+            return null;
+
+        string h = u.Host.ToLowerInvariant();
+        if (h != "porntrex.com" && !h.EndsWith(".porntrex.com"))
+            return null;
+
+        return uri;
+    }
+
+    #region Popup (giữ thẻ -> /ptx/genres?uri= + "Related Videos")
+    // Detail (KVS theme porntrex) in cac khoi `<span class="title-item">Nhãn:</span>`:
+    //   Categories: -> a.js-cat href="/categories/<slug>/"
+    //   Channel:    -> a href="/channels/<slug>/"
+    //   Models:     -> a href="/models/<slug>/"
+    //   Tags:       -> a href="/tags/<slug>/"
+    // "Related Videos" = <div class="related-videos" id="list_videos_related_videos"> (card video-preview-screen).
+    public static List<(string kind, string slug, string name)> Chips(string html)
+    {
+        var list = new List<(string, string, string)>();
+        if (string.IsNullOrEmpty(html))
+            return list;
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (string label in new[] { "Categories", "Channel", "Models", "Tags" })
+        {
+            string marker = "<span class=\"title-item\">" + label + ":</span>";
+            int i = html.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+            if (i < 0)
+                continue;
+
+            int scope = html.IndexOf("</div>", i, StringComparison.OrdinalIgnoreCase);
+            if (scope < 0)
+                scope = html.Length;
+
+            // div bao ngoài có thể lồng form suggest -> lấy thêm tới 6000 ký tự nhưng cắt ở title-item kế
+            string region = html.Substring(i, Math.Min(6000, html.Length - i));
+            int nextTitle = region.IndexOf("<span class=\"title-item\">", 20, StringComparison.OrdinalIgnoreCase);
+            if (nextTitle > 0)
+                region = region.Substring(0, nextTitle);
+
+            string kind = label switch
+            {
+                "Channel" => "channel",
+                "Models" => "model",
+                "Tags" => "tag",
+                _ => "cat"
+            };
+
+            // trong <a> có thể có <i class="fa ..."> icon -> cho phép inner HTML
+            string pattern = kind switch
+            {
+                "channel" => "<a[^>]*href=\"(?:https?://[^\"]+)?/channels/([^\"/]+)/?\"[^>]*>[\\s\\S]{0,200}?</a>",
+                "model" => "<a[^>]*href=\"(?:https?://[^\"]+)?/models/([^\"/]+)/?\"[^>]*>[\\s\\S]{0,200}?</a>",
+                "tag" => "<a[^>]*href=\"(?:https?://[^\"]+)?/tags/([^\"/]+)/?\"[^>]*>[\\s\\S]{0,200}?</a>",
+                _ => "<a[^>]*href=\"(?:https?://[^\"]+)?/categories/([^\"/]+)/?\"[^>]*>[\\s\\S]{0,200}?</a>"
+            };
+
+            foreach (Match m in Regex.Matches(region, pattern, RegexOptions.IgnoreCase))
+            {
+                string slug = m.Groups[1].Value.Trim();
+                if (slug.Length == 0 || !seen.Add(kind + "/" + slug))
+                    continue;
+
+                // tên: bỏ tag <i> icon rồi lấy text cuối cùng trong <a>
+                string name = Regex.Replace(m.Value, "<i[^>]*>[\\s\\S]*?</i>", "");
+                name = HttpUtility.HtmlDecode(Regex.Replace(name, "<[^>]+>", "")).Trim();
+
+                if (name.Length == 0)
+                    name = slug.Replace('-', ' ');
+
+                list.Add((kind, slug, name));
+            }
+        }
+
+        return list;
+    }
+
+    public static List<PlaylistItem> PlaylistRelated(string route, ReadOnlySpan<char> html, string self)
+    {
+        string s = html.ToString();
+        int i = s.IndexOf("list_videos_related_videos", StringComparison.OrdinalIgnoreCase);
+        if (i < 0)
+            return new List<PlaylistItem>();
+
+        var rel = Playlist(route, s.AsSpan(i));
+        if (rel == null)
+            return new List<PlaylistItem>();
+
+        if (!string.IsNullOrEmpty(self))
+            rel = rel.Where(x => x.bookmark?.href == null ||
+                !string.Equals(x.bookmark.href.TrimEnd('/'), self.TrimEnd('/'), StringComparison.OrdinalIgnoreCase)).ToList();
+
+        return rel;
     }
     #endregion
 
