@@ -170,6 +170,76 @@ public static class SieusexTo
         return list;
     }
 
+    // ========== POPUP: chip tag/the-loai + phim lien quan ==========
+    // The detail (theme video3x):
+    //   <div class="video-tags">
+    //     <div class="actress-tag"><a href="https://<host>/tag/<slug>/" title="...">Ten</a>   -> The
+    //     <div class="category-tag"><a href="https://<host>/<slug>/" title="...">Ten</a>      -> The loai
+    //   <h2 class="breadcrumb">Phim liên quan</h2><div id="video-list">... card .video-item
+    // Card/URL deu absolute (site xoay domain) nen tra URL tuyet doi, khong tu ghep host.
+    public static List<(string kind, string url, string name)> Chips(string html)
+    {
+        var list = new List<(string, string, string)>();
+        if (string.IsNullOrEmpty(html))
+            return list;
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        void Block(string cls, string kind)
+        {
+            int i = html.IndexOf("class=\"" + cls + "\"", StringComparison.OrdinalIgnoreCase);
+            if (i < 0)
+                return;
+
+            int end = html.IndexOf("</div>", i, StringComparison.OrdinalIgnoreCase);
+            string seg = end > i ? html.Substring(i, end - i) : html.Substring(i, Math.Min(4000, html.Length - i));
+
+            foreach (Match m in Regex.Matches(seg,
+                "<a[^>]*href=\"([^\"]+)\"[^>]*>(?:[^<]*)</a>", RegexOptions.IgnoreCase))
+            {
+                string url = NormalizePageUrl(m.Groups[1].Value);
+                if (string.IsNullOrEmpty(url) || !seen.Add(kind + "|" + url))
+                    continue;
+
+                var tm = Regex.Match(m.Value, "title=\"([^\"]+)\"", RegexOptions.IgnoreCase);
+                string name = tm.Success ? HttpUtility.HtmlDecode(tm.Groups[1].Value).Trim() : "";
+
+                if (string.IsNullOrEmpty(name))
+                    name = HttpUtility.HtmlDecode(Regex.Replace(m.Value, "<[^>]+>", "")).Trim();
+
+                if (string.IsNullOrEmpty(name))
+                    continue;
+
+                list.Add((kind, url, name));
+            }
+        }
+
+        Block("actress-tag", "tag");
+        Block("category-tag", "cat");
+
+        return list;
+    }
+
+    public static List<PlaylistItem> PlaylistRelated(string route, string html, string self)
+    {
+        if (string.IsNullOrEmpty(html))
+            return new List<PlaylistItem>();
+
+        int i = html.IndexOf("Phim liên quan", StringComparison.OrdinalIgnoreCase);
+        if (i < 0)
+            return new List<PlaylistItem>();
+
+        var rel = Playlist(route, html.Substring(i, Math.Min(120000, html.Length - i)));
+        if (rel == null)
+            return new List<PlaylistItem>();
+
+        if (!string.IsNullOrEmpty(self))
+            rel = rel.Where(x => x.bookmark?.href == null ||
+                !string.Equals(x.bookmark.href.TrimEnd('/'), self.TrimEnd('/'), StringComparison.OrdinalIgnoreCase)).ToList();
+
+        return rel;
+    }
+
     // ========== Taxonomy tu nav (primary-nav) ==========
     public static List<(string slug, string name)> NavCategories(string html)
     {

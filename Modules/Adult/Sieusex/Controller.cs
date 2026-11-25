@@ -25,12 +25,15 @@ public class SieusexController : BaseSisiController
     // khong lap vi /new/N/ khac nhau tung trang, da do 2026-10-26).
     [HttpGet, Staticache(manually: true)]
     [Route("sieusex")]
-    async public Task<ActionResult> Index(string search, string c, int pg = 1)
+    async public Task<ActionResult> Index(string search, string c, int pg = 1, string rel = null)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
 
         if (pg < 1) pg = 1;
+
+        if (!string.IsNullOrWhiteSpace(rel))
+            return await RelatedList(rel, pg);
 
         var menuTask = MenuAsync();
 
@@ -169,6 +172,110 @@ public class SieusexController : BaseSisiController
         if (!string.IsNullOrEmpty(a) && a.Length > 5000) return a;
         return !string.IsNullOrEmpty(b) && b.Length > 5000 ? b : null;
     }
+
+    #region popup (giu the -> /sieusex/genres?uri= + "Phim liên quan")
+    static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTime at, List<(string kind, string url, string name)> chips, List<PlaylistItem> rel)> _infoCache = new();
+    static readonly TimeSpan InfoTtl = TimeSpan.FromHours(6);
+
+    [HttpGet]
+    [Route("sieusex/genres")]
+    async public Task<ActionResult> Genres(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return EmptyPopup();
+
+        string pageUrl = SieusexTo.DetailUrl(uri);
+        if (string.IsNullOrEmpty(pageUrl) || !pageUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            return EmptyPopup();
+
+        if (_infoCache.TryGetValue(pageUrl, out var hit)
+            && DateTime.UtcNow - hit.at < InfoTtl && hit.chips != null)
+        {
+            return InfoResult(hit.chips, hit.rel, uri);
+        }
+
+        string html = await GetPageAsync(pageUrl);
+        if (string.IsNullOrEmpty(html))
+            return EmptyPopup();
+
+        var chips = SieusexTo.Chips(html);
+        var rel = SieusexTo.PlaylistRelated("sieusex/vidosik", html, pageUrl);
+
+        if (chips.Count > 0 || rel.Count > 0)
+            _infoCache[pageUrl] = (DateTime.UtcNow, chips, rel);
+
+        return InfoResult(chips, rel, uri);
+    }
+
+    ActionResult InfoResult(List<(string kind, string url, string name)> chips,
+        List<PlaylistItem> rel, string uri)
+    {
+        var groups = new List<object>();
+
+        foreach (string kind in new[] { "cat", "tag" })
+        {
+            var items = chips?.Where(x => x.kind == kind).Select(x => new
+            {
+                title = x.name,
+                // URL tuyet doi: Uri() giu nguyen khi c bat dau bang http
+                url = $"{host}/sieusex?c={HttpUtility.UrlEncode(x.url)}"
+            }).ToList();
+
+            if (items == null || items.Count == 0)
+                continue;
+
+            groups.Add(new { title = kind == "cat" ? "Thể loại" : "Thẻ", items });
+        }
+
+        if (rel != null && rel.Count > 0)
+        {
+            groups.Add(new
+            {
+                title = "Liên quan",
+                items = new[]
+                {
+                    new
+                    {
+                        title = "Phim liên quan",
+                        plain = true,
+                        url = $"{host}/sieusex?rel={HttpUtility.UrlEncode(uri)}"
+                    }
+                }
+            });
+        }
+
+        return Json(new { items = new object[0], groups });
+    }
+
+    async Task<ActionResult> RelatedList(string rel, int pg)
+    {
+        if (pg > 1)
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        string pageUrl = SieusexTo.DetailUrl(rel);
+        if (string.IsNullOrEmpty(pageUrl))
+            return EmptyJson();
+
+        string html = await GetPageAsync(pageUrl);
+        if (string.IsNullOrEmpty(html))
+            return EmptyJson();
+
+        var playlists = SieusexTo.PlaylistRelated("sieusex/vidosik", html, pageUrl);
+        if (playlists == null || playlists.Count == 0)
+            return EmptyJson();
+
+        return PlaylistResult(playlists, false, null, total_pages: 1);
+    }
+
+    ActionResult EmptyJson()
+    {
+        Response.Headers.CacheControl = "no-cache";
+        return Content("{\"count\":0,\"total_pages\":1,\"menu\":[],\"list\":[]}",
+            "application/json; charset=utf-8");
+    }
+
+    ActionResult EmptyPopup() => Json(new { items = new object[0], groups = new object[0] });
+    #endregion
 
     // ========== PLAYER: LAZY-RESOLVE (11c2) ==========
     // /vidosik KHONG resolve: chi fetch detail -> postId + so server, tra dict

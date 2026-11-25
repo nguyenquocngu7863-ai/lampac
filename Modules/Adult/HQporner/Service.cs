@@ -9,6 +9,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Text.RegularExpressions;
 using System.Web;
 
 namespace HQporner;
@@ -34,8 +35,26 @@ public static class HQpornerTo
         {
             if (!string.IsNullOrEmpty(c))
             {
-                url.Append("category/");
-                url.Append(c);
+                // chip popup: "cat/<slug>" | "actress/<slug>" | "studio/<slug>"
+                string kind = "category";
+                string slug = c.Trim('/');
+
+                if (slug.StartsWith("cat/", StringComparison.OrdinalIgnoreCase))
+                    slug = slug.Substring(4);
+                else if (slug.StartsWith("actress/", StringComparison.OrdinalIgnoreCase))
+                {
+                    kind = "actress";
+                    slug = slug.Substring(8);
+                }
+                else if (slug.StartsWith("studio/", StringComparison.OrdinalIgnoreCase))
+                {
+                    kind = "studio";
+                    slug = slug.Substring(7);
+                }
+
+                url.Append(kind);
+                url.Append("/");
+                url.Append(slug.Trim('/'));
             }
             else
             {
@@ -96,6 +115,123 @@ public static class HQpornerTo
         }
 
         return playlists;
+    }
+    #endregion
+
+    #region Popup (chips -> /hqr/genres?uri= + "Similar HD porn")
+    // Trang detail DESKTOP (hqporner.com) có đủ dữ liệu phim:
+    //   <li class="icon fa-star-o">featuring <a href="/actress/<slug>">Tên</a></li>
+    //   <h3>This video belongs to the following categories</h3> <a href="/category/<slug>" class="tag-link">
+    //   <h2 class="major"><span>Similar HD porn</span></h2> -> card <a href="/hdporn/..." class="... atfib"> + <h3 class="meta-data-title">
+    public const string DesktopHost = "https://hqporner.com";
+
+    public static string DetailUrl(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return null;
+
+        if (!uri.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            return DesktopHost + "/" + uri.Trim('/');
+
+        if (!System.Uri.TryCreate(uri, UriKind.Absolute, out var u))
+            return null;
+
+        string h = u.Host.ToLowerInvariant();
+        if (h == "hqporner.com" || h == "m.hqporner.com" || h.EndsWith(".hqporner.com"))
+            return DesktopHost + "/" + u.AbsolutePath.Trim('/');
+
+        return null;
+    }
+
+    public static List<(string kind, string slug, string name)> Chips(string html)
+    {
+        var list = new List<(string, string, string)>();
+        if (string.IsNullOrEmpty(html))
+            return list;
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // Diễn viên: featured actress trong <ul class="meta">
+        int i = html.IndexOf("featuring", StringComparison.OrdinalIgnoreCase);
+        if (i > 0)
+        {
+            string region = html.Substring(i, Math.Min(600, html.Length - i));
+            foreach (Match m in Regex.Matches(region, "<a[^>]*href=\"(?:https?://[^\"]+)?/actress/([^\"/]+)\"" + "[^>]*>([^<]{1,120})</a>", RegexOptions.IgnoreCase))
+            {
+                string slug = m.Groups[1].Value.Trim();
+                if (slug.Length == 0 || !seen.Add("actress/" + slug))
+                    continue;
+                list.Add(("actress", slug, HttpUtility.HtmlDecode(m.Groups[2].Value).Trim()));
+            }
+        }
+
+        // Thể loại: section h3 + p tag-link
+        i = html.IndexOf("This video belongs to the following categories", StringComparison.OrdinalIgnoreCase);
+        if (i > 0)
+        {
+            int end = html.IndexOf("</section>", i, StringComparison.OrdinalIgnoreCase);
+            string region = end > i ? html.Substring(i, end - i) : html.Substring(i, Math.Min(3000, html.Length - i));
+
+            foreach (Match m in Regex.Matches(region, "<a[^>]*href=\"(?:https?://[^\"]+)?/category/([^\"/]+)\"" + "[^>]*>([^<]{1,120})</a>", RegexOptions.IgnoreCase))
+            {
+                string slug = m.Groups[1].Value.Trim();
+                if (slug.Length == 0 || !seen.Add("cat/" + slug))
+                    continue;
+                list.Add(("cat", slug, HttpUtility.HtmlDecode(m.Groups[2].Value).Trim()));
+            }
+        }
+
+        return list;
+    }
+
+    public static List<PlaylistItem> PlaylistRelated(string route, string html, string self)
+    {
+        if (string.IsNullOrEmpty(html))
+            return new List<PlaylistItem>();
+
+        int i = html.IndexOf("Similar HD porn", StringComparison.OrdinalIgnoreCase);
+        if (i < 0)
+            return new List<PlaylistItem>();
+
+        string selfPath = self?.Trim('/') ?? "";
+        var list = new List<PlaylistItem>();
+
+        foreach (var row in Rx.Split("<section class=\"box feature\">", html.Substring(i)).Rows())
+        {
+            var g = row.Groups("<a href=\"(?:https?://[^\"]+)?/(hdporn/[^\"]+)\"" + "[^>]*class=\"[^\"]*atfib[^\"]*\"" + "[^>]*>");
+            if (string.IsNullOrWhiteSpace(g[1].Value))
+                g = row.Groups("<a href=\"(?:https?://[^\"]+)?/(hdporn/[^\"]+)\"");
+
+            string link = g[1].Value.Trim();
+            if (link.Length == 0 || link.Equals(selfPath, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            string name = row.Match("<h3 class=\"meta-data-title\"><a[^>]*>([^<]+)</a></h3>", trim: true);
+            if (string.IsNullOrWhiteSpace(name))
+                name = row.Match("<img [^>]*alt=\"([^\"]+)\"", trim: true);
+
+            if (string.IsNullOrWhiteSpace(name))
+                continue;
+
+            string pic = row.Match("<img [^>]*(?:data-src|src)=\"//?([^\"]+)\"", trim: true);
+
+            list.Add(new PlaylistItem()
+            {
+                name = HttpUtility.HtmlDecode(name),
+                video = $"{route}?uri={link}",
+                picture = string.IsNullOrWhiteSpace(pic) ? null : "https://" + pic.TrimStart('/'),
+                time = row.Match("<span class=\"icon fa-clock-o meta-data\">([^<]+)</span>", trim: true),
+                json = true,
+                bookmark = new Bookmark()
+                {
+                    site = "hqr",
+                    href = link,
+                    image = string.IsNullOrWhiteSpace(pic) ? null : "https://" + pic.TrimStart('/')
+                }
+            });
+        }
+
+        return list;
     }
     #endregion
 

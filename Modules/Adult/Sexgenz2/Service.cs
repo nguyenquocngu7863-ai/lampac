@@ -36,9 +36,24 @@ public static class Sexgenz2To
         }
         else if (!string.IsNullOrEmpty(c))
         {
+            string kind = "the-loai";
+            string slug = c.Trim('/');
+
+            int slash = slug.IndexOf('/');
+            if (slash > 0)
+            {
+                string pre = slug.Substring(0, slash);
+                if (pre == "country" || pre == "quoc-gia")
+                    kind = "quoc-gia";
+                else if (pre == "cat" || pre == "the-loai")
+                    kind = "the-loai";
+
+                slug = slug.Substring(slash + 1);
+            }
+
             url.Append(host.TrimEnd('/'));
-            url.Append("/the-loai/");
-            url.Append(c.TrimStart('/').TrimEnd('/'));
+            url.Append('/').Append(kind).Append('/');
+            url.Append(slug.Trim('/'));
             url.Append("/");
         }
         else
@@ -211,6 +226,66 @@ public static class Sexgenz2To
         });
 
         return menu;
+    }
+
+    // ===== POPUP: chip thể loại/quốc gia + phim tương tự =====
+    // Detail có: breadcrumb -> /quoc-gia/<slug>, khối info -> /the-loai/<slug>
+    // (link tuyệt đối sang host khác trong cùng network nên chỉ lấy path).
+    public static List<(string kind, string slug, string name)> Chips(string html)
+    {
+        var list = new List<(string, string, string)>();
+        if (string.IsNullOrEmpty(html))
+            return list;
+
+        // bỏ nav/sidebar: chỉ lấy từ vùng breadcrumb + watch-block
+        int start = html.IndexOf("prebreadcrumb", StringComparison.OrdinalIgnoreCase);
+        string body = start > 0 ? html.Substring(start) : html;
+
+        int cut = body.IndexOf("Phim tương tự", StringComparison.OrdinalIgnoreCase);
+        if (cut > 0)
+            body = body.Substring(0, cut);
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (Match m in Regex.Matches(body,
+            "<a[^>]*href=\"(?:https?://[^\"]+)?/(the-loai|quoc-gia)/([^\"/]+)/?\"[^>]*>([^<]{1,60})</a>",
+            RegexOptions.IgnoreCase))
+        {
+            string kind = m.Groups[1].Value == "quoc-gia" ? "country" : "cat";
+            string slug = m.Groups[2].Value.Trim();
+            if (slug.Length == 0 || !seen.Add(kind + "/" + slug))
+                continue;
+
+            string name = WebUtility.HtmlDecode(m.Groups[3].Value).Trim();
+            list.Add((kind, slug, string.IsNullOrEmpty(name) ? slug : name));
+        }
+
+        return list;
+    }
+
+    public static List<PlaylistItem> PlaylistRelated(string route, ReadOnlySpan<char> html, string self)
+    {
+        int i = html.ToString().IndexOf("Phim tương tự", StringComparison.OrdinalIgnoreCase);
+        if (i < 0)
+            return new List<PlaylistItem>();
+
+        string region = html.Slice(i, Math.Min(120000, html.Length - i)).ToString();
+        var rel = Playlist(route, region);
+
+        if (rel == null)
+            return new List<PlaylistItem>();
+
+        if (!string.IsNullOrEmpty(self))
+        {
+            string selfPath = self.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+                ? new Uri(self).AbsolutePath : self;
+
+            rel = rel.Where(x => x.bookmark?.href != null &&
+                x.bookmark.href.TrimEnd('/') != selfPath.TrimEnd('/') &&
+                !x.bookmark.href.EndsWith(selfPath.TrimEnd('/'), StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+
+        return rel;
     }
 
     public static StreamItem StreamLinks(string html, string ehost)
