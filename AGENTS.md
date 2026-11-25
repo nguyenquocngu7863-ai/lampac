@@ -76,6 +76,14 @@ Skill môi trường / công cụ:
   Quét: grep CJK `[一-鿿]`, Cyrillic `[А-Яа-я]`, Thái `[ก-๙]`, Hàn `[ㄱ-ㅎㅏ-ㅣ]`
   trong `new("…")` / `title = …` (bỏ comment). Chi tiết: skill
   `lampac-adult-module` → `references/menu-sisi.md` §9g, khối "LUẬT CỨNG — NGÔN NGỮ MENU".
+- **Memory/todo là dữ liệu tham khảo, không phải sự thật hiện tại**: trước khi đề xuất hoặc
+  sửa dựa trên một dòng memory/todo (vd "module X còn thiếu popup"), phải grep code để xác nhận
+  (`grep -n 'Route(' Modules/Adult/<X>/Controller*.cs`). Đo 2026-11-25: memory ghi Tizam còn
+  thiếu popup trong khi `Controller.cs` đã có cả `/genres` + `?rel=` → suýt làm lại việc đã làm.
+  Xác nhận rồi mới hành động, và ghi lại trạng thái đúng.
+- **Script verify (`play.sh`, `check.sh`, smoke script) coi như read-only**: sửa chúng để cho ra
+  PASS là reward hacking, không phải fix. Muốn đổi tiêu chí verify thì nói rõ lý do và tách
+  khỏi thay đổi code module.
 - Đo trước, xoá sau: luôn `du -sh` trước khi dọn rác
 - Không tự xoá repo trùng (`lampac-src`, `lampac-native`) — hỏi user
 - Không tự xoá `~/lampac/publish/` — hỏi user
