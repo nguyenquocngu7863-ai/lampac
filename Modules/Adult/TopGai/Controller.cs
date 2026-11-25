@@ -23,10 +23,13 @@ public class TopGaiController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("topgai")]
-    async public Task<ActionResult> Index(string search, string c, int pg = 1)
+    async public Task<ActionResult> Index(string search, string c, int pg = 1, string rel = null)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
+
+        if (!string.IsNullOrWhiteSpace(rel))
+            return await RelatedList(rel, pg);
 
         var cache = await InvokeCacheResult(ipkey($"topgai:{search}:{c}:{pg}"), 10, jsonContext.ListPlaylistItem, async e =>
         {
@@ -51,6 +54,170 @@ public class TopGaiController : BaseSisiController
 
         return PlaylistResult(cache, TopGaiTo.Menu(host));
     }
+
+    #region popup (giữ thẻ -> /topgai/genres?uri= + "Phim liên quan")
+    static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTime at, List<(string kind, string url, string name)> chips, List<PlaylistItem> rel)> _infoCache = new();
+    static readonly TimeSpan InfoTtl = TimeSpan.FromHours(6);
+
+    [HttpGet]
+    [Route("topgai/genres")]
+    async public Task<ActionResult> Genres(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return EmptyPopup();
+
+        string pageUrl = DetailUrl(uri);
+        if (pageUrl == null)
+            return EmptyPopup();
+
+        if (_infoCache.TryGetValue(pageUrl, out var hit)
+            && DateTime.UtcNow - hit.at < InfoTtl && hit.chips != null)
+        {
+            return InfoResult(hit.chips, hit.rel, uri);
+        }
+
+        string html = await PageOrNull(pageUrl, "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
+        var chips = TopGaiTo.Chips(html ?? "");
+        var rel = await FetchRelated(pageUrl);
+
+        if (chips.Count > 0 || rel.Count > 0)
+            _infoCache[pageUrl] = (DateTime.UtcNow, chips, rel);
+
+        return InfoResult(chips, rel, uri);
+    }
+
+    ActionResult InfoResult(List<(string kind, string url, string name)> chips,
+        List<PlaylistItem> rel, string uri)
+    {
+        var groups = new List<object>();
+
+        var items = chips?.Where(x => x.kind == "cat").Select(x => new
+        {
+            title = x.name,
+            url = $"{host}/topgai?c={HttpUtility.UrlEncode(x.url)}"
+        }).ToList();
+
+        if (items != null && items.Count > 0)
+            groups.Add(new { title = "Thể loại", items });
+
+        if (rel != null && rel.Count > 0)
+        {
+            groups.Add(new
+            {
+                title = "Liên quan",
+                items = new[]
+                {
+                    new
+                    {
+                        title = "Phim liên quan",
+                        plain = true,
+                        url = $"{host}/topgai?rel={HttpUtility.UrlEncode(uri)}"
+                    }
+                }
+            });
+        }
+
+        return Json(new { items = new object[0], groups });
+    }
+
+    async Task<ActionResult> RelatedList(string rel, int pg)
+    {
+        if (pg > 1)
+            return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
+
+        string pageUrl = DetailUrl(rel);
+        if (pageUrl == null)
+            return EmptyJson();
+
+        List<PlaylistItem> playlists = null;
+
+        if (_infoCache.TryGetValue(pageUrl, out var hit) && DateTime.UtcNow - hit.at < InfoTtl)
+            playlists = hit.rel;
+
+        if (playlists == null)
+            playlists = await FetchRelated(pageUrl);
+
+        if (playlists == null || playlists.Count == 0)
+            return EmptyJson();
+
+        return PlaylistResult(playlists, false, null, total_pages: 1);
+    }
+
+    async Task<List<PlaylistItem>> FetchRelated(string pageUrl)
+    {
+        string url = TopGaiTo.SuggestionsUrl(pageUrl);
+        if (url == null)
+            return new List<PlaylistItem>();
+
+        string json = await PageOrNull(url, "application/json, text/javascript, */*; q=0.01", ajax: true);
+        return TopGaiTo.PlaylistFromJson("topgai/vidosik", json ?? "");
+    }
+
+    async Task<string> PageOrNull(string url, string accept, bool ajax = false)
+    {
+        string body = null;
+
+        var headers = new List<(string, string)>
+        {
+            ("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"),
+            ("Referer", "https://topgai.net/"),
+            ("Accept", accept)
+        };
+
+        if (ajax)
+        {
+            headers.Add(("X-Requested-With", "XMLHttpRequest"));
+            headers.Add(("sec-fetch-dest", "empty"));
+            headers.Add(("sec-fetch-mode", "cors"));
+        }
+        else
+        {
+            headers.Add(("sec-fetch-dest", "document"));
+            headers.Add(("sec-fetch-mode", "navigate"));
+        }
+
+        try
+        {
+            await httpHydra.GetSpan(url, span => { body = span.ToString(); },
+                addheaders: HeadersModel.Init(headers.ToArray()));
+        }
+        catch { }
+
+        return body;
+    }
+
+    static string DetailUrl(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return null;
+
+        if (!uri.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+        {
+            string path = uri.Trim('/');
+            if (path.StartsWith("phim-sex/"))
+                return TopGaiTo.SiteHost + "/" + path;
+            return TopGaiTo.SiteHost + "/phim-sex/" + path;
+        }
+
+        if (!Uri.TryCreate(uri, UriKind.Absolute, out var u))
+            return null;
+
+        string h = u.Host.ToLowerInvariant();
+        if (h != "topgai.net" && !h.EndsWith(".topgai.net"))
+            return null;
+
+        return uri;
+    }
+
+    ActionResult EmptyJson()
+    {
+        Response.Headers.CacheControl = "no-cache";
+        return Content("{\"count\":0,\"total_pages\":1,\"menu\":[],\"list\":[]}",
+            "application/json; charset=utf-8");
+    }
+
+    ActionResult EmptyPopup() => Json(new { items = new object[0], groups = new object[0] });
+    #endregion
 
     async Task<(Dictionary<string, string> links, bool userch)> ResolveLinksAsync(string uri)
     {

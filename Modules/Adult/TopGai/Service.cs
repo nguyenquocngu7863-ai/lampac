@@ -54,7 +54,10 @@ public static class TopGaiTo
 
         if (!string.IsNullOrEmpty(c))
         {
-            string url = host + "/" + c.Trim('/');
+            // chip popup trả URL tuyệt đối (badge của site) -> dùng nguyên
+            string url = c.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+                ? c.Trim()
+                : host + "/" + c.Trim('/');
             if (pg > 1)
                 url += "?page=" + pg;
             return url;
@@ -115,6 +118,112 @@ public static class TopGaiTo
 
         return playlists;
     }
+
+    // ===== POPUP: chip thể loại (badge) + phim liên quan (ajax JSON) =====
+    // Detail KHONG co block the-loai/tag rieng; chi co "badge" the loai chung:
+    //   <a href="https://topgai.net/sex/jav-hd" class="badge"> <svg …/> <span>JAV</span> </a>
+    // Danh sach "Phim liên quan" render bang Alpine tu /ajax/suggestions/<slug>
+    // (x-data="list('/ajax/suggestions/<slug>')") -> phai lay JSON, khong parse HTML.
+    public static List<(string kind, string url, string name)> Chips(string html)
+    {
+        var list = new List<(string, string, string)>();
+        if (string.IsNullOrEmpty(html))
+            return list;
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (Match m in Regex.Matches(html, "<a\\s+href=\"([^\"]+)\"\\s+class=\"badge\">([\\s\\S]{0,9000}?)</a>", RegexOptions.IgnoreCase))
+        {
+            string url = HttpUtility.HtmlDecode(m.Groups[1].Value.Trim());
+            // chỉ giữ /sex/<slug> (mục /trang/<slug> trên site đã chết -> 503)
+            if (!url.Contains("/sex/"))
+                continue;
+
+            var n = Regex.Match(m.Groups[2].Value, "<span>([^<]{1,60})</span>");
+            if (!n.Success)
+                continue;
+
+            string name = HttpUtility.HtmlDecode(n.Groups[1].Value).Trim();
+            if (name.Length == 0 || !seen.Add(url))
+                continue;
+
+            list.Add(("cat", url, name));
+        }
+
+        return list;
+    }
+
+    public static string SuggestionsUrl(string pageUrl)
+    {
+        if (string.IsNullOrEmpty(pageUrl))
+            return null;
+
+        string path = pageUrl;
+        if (pageUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!System.Uri.TryCreate(pageUrl, UriKind.Absolute, out var u))
+                return null;
+            path = u.AbsolutePath;
+        }
+
+        int i = path.IndexOf("/phim-sex/", StringComparison.OrdinalIgnoreCase);
+        if (i < 0)
+            return null;
+
+        string slug = path.Substring(i + 10).Trim('/');
+        if (slug.Length == 0)
+            return null;
+
+        return SiteHost + "/ajax/suggestions/" + slug;
+    }
+
+    public static List<Shared.Models.SISI.Base.PlaylistItem> PlaylistFromJson(string route, string json)
+    {
+        var playlists = new List<Shared.Models.SISI.Base.PlaylistItem>();
+        if (string.IsNullOrEmpty(json))
+            return playlists;
+
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty("data", out var data) || data.ValueKind != System.Text.Json.JsonValueKind.Array)
+                return playlists;
+
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var it in data.EnumerateArray())
+            {
+                string url = Str(it, "url");
+                string name = Str(it, "title");
+                if (string.IsNullOrEmpty(url) || string.IsNullOrEmpty(name) || !seen.Add(url))
+                    continue;
+
+                string poster = Str(it, "thumbnail_file_url");
+
+                playlists.Add(new Shared.Models.SISI.Base.PlaylistItem()
+                {
+                    video = route + "?uri=" + HttpUtility.UrlEncode(url),
+                    name = name,
+                    picture = poster,
+                    json = true,
+                    bookmark = new Shared.Models.SISI.Base.Bookmark()
+                    {
+                        site = "topgai",
+                        href = url,
+                        image = poster
+                    }
+                });
+            }
+        }
+        catch { }
+
+        return playlists;
+    }
+
+    static string Str(System.Text.Json.JsonElement it, string key)
+        => it.TryGetProperty(key, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String
+            ? (v.GetString() ?? "").Trim()
+            : "";
 
     public static List<(string label, string embed)> GetEmbeds(string html)
     {

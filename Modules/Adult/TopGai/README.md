@@ -47,3 +47,15 @@ Clone HeoVl (cùng embed streamforester/vcast).
   trong khi curl/python/dien thoai 200).
 - Strem giữ bước redirect cũ (GetLocation + RCH)
   như Po85: proxy thẳng route là app gãy.
+
+## Popup nhấn giữ (2026-11-25)
+
+- `GET /topgai/genres?uri=<detail>` → `{items:[],groups:[…]}`, không bao giờ 500.
+- **Thể loại** (10): badge của detail — `<a href="https://topgai.net/sex/<slug>" class="badge">…<span>Tên</span></a>`.
+  Mở bằng `?c=<URL tuyệt đối>`; `Uri()` nhận `c` bắt đầu `http` thì dùng nguyên (trước đó ghép `host + "/" + c` → 503).
+  Bỏ badge `/trang/<slug>` vì mục đó trên site đã chết (503).
+- **Liên quan**: khối "Phim liên quan" render bằng Alpine `x-data="list('/ajax/suggestions/<slug>')"`,
+  KHÔNG có trong HTML → module gọi JSON đó (`X-Requested-With: XMLHttpRequest`), parse `data[]`
+  (`title`, `url`, `thumbnail_file_url`) → `?rel=<uri>` trả 20 item, `total_pages: 1`.
+- Detail không có tag/diễn viên riêng (chỉ `meta.code`), nên popup chỉ có Thể loại + Liên quan.
+- Cache chip+rel trong RAM 6h theo pageUrl.
