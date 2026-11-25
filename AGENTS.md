@@ -61,6 +61,11 @@ Skill môi trường / công cụ:
 
 ## LUẬT CỨNG
 
+- **Xong việc là ghi luôn, không đợi user nhắc**: mỗi task (sửa module, popup, đổi host, fix
+  player…) kết thúc bằng (1) thêm dòng vào `todo.md` — làm gì, số đo/verify, commit; (2) tick
+  `- [ ]` → `- [x]` mục tương ứng trong checklist; (3) cập nhật `README.md` của module nếu
+  hành vi/host đổi; (4) `memory_remember` khi có quyết định/đổi domain. Câu "ghi todo chưa"
+  nghĩa là bước này đã bị bỏ — coi việc ghi là một phần của "xong".
 - KHÔNG dùng `curl` thường cho request ra site thật — dùng `curl_cffi` impersonate="chrome124"
 - `curl` chỉ hợp lệ: `127.0.0.1`/`localhost`, đo hạ tầng, hoặc đã hết cách
 - **MENU PHẢI LÀ TIẾNG VIỆT HOẶC TIẾNG ANH** (user chốt 2026-11-07): mọi `title` trong
