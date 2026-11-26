@@ -88,10 +88,11 @@ public static class HealthMonitor
                 if (string.IsNullOrEmpty(url) || !Uri.TryCreate(url, UriKind.Absolute, out var uri))
                     continue;
 
-                string path = uri.AbsolutePath;
-                if (!IsTarget(path, conf, routes))
+                if (!IsTarget(uri.AbsolutePath, conf, routes))
                     continue;
 
+                // giữ cả query: NextHUB dùng chung /nexthub?plugin=… cho nhiều site
+                string path = uri.PathAndQuery;
                 targets.Add((channel.Value<string>("title") ?? path, path));
             }
 
@@ -134,17 +135,25 @@ public static class HealthMonitor
         lock (_lock)
             list = items.Values.ToList();
 
-        int rank(HealthItem i) => i.status switch { "error" => 0, "empty" => 1, _ => 2 };
+        int rank(HealthItem i) => i.status switch { "error" => 0, "timeout" => 1, "empty" => 2, "na" => 3, _ => 4 };
 
         var ordered = list
             .OrderBy(rank)
             .ThenByDescending(i => i.ms)
             .ToList();
 
+        int interval = conf?.interval ?? 0;
+        int ageMinutes = lastRun == default ? -1 : (int)Math.Max(0, (DateTime.UtcNow - lastRun).TotalMinutes);
+
+        // timer chết / app bị doze lâu → bảng cũ mà trông như mới
+        bool stale = lastRun == default || (interval > 0 && DateTime.UtcNow > lastRun.AddHours(interval * 1.5));
+
         return new JObject
         {
             ["lastRun"] = lastRun == default ? null : lastRun,
-            ["interval"] = conf?.interval ?? 0,
+            ["ageMinutes"] = ageMinutes,
+            ["stale"] = stale,
+            ["interval"] = interval,
             ["running"] = running,
             ["lastError"] = lastError,
             ["summary"] = new JObject
@@ -152,6 +161,8 @@ public static class HealthMonitor
                 ["total"] = ordered.Count,
                 ["ok"] = ordered.Count(i => i.status == "ok"),
                 ["empty"] = ordered.Count(i => i.status == "empty"),
+                ["timeout"] = ordered.Count(i => i.status == "timeout"),
+                ["na"] = ordered.Count(i => i.status == "na"),
                 ["error"] = ordered.Count(i => i.status == "error")
             },
             ["items"] = JArray.FromObject(ordered)
@@ -179,6 +190,18 @@ public static class HealthMonitor
         return routes;
     }
 
+    /// <summary>
+    /// Route của module Adult không trùng tên thư mục (alias) — vd PornHub → /phub.
+    /// NextHUB xử lý riêng vì mọi site dùng chung /nexthub?plugin=…
+    /// </summary>
+    static readonly HashSet<string> aliasRoutes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "/phub", "/phubgay", "/phubsml", "/xds", "/xdsgay", "/xdssml",
+        "/xmr", "/xmrgay", "/xmrsml", "/xnx", "/sbg", "/epr", "/ptx", "/hqr",
+        "/bgs", "/chu", "/runetki", "/elo", "/tizam",
+        "/fpv", "/sgz2", "/sexviettuyenchon"
+    };
+
     static bool IsTarget(string path, HealthConf conf, HashSet<string> routes)
     {
         string p = path.TrimEnd('/');
@@ -191,49 +214,90 @@ public static class HealthMonitor
         if (conf.modules != null && conf.modules.Length > 0)
             return conf.modules.Any(x => SameRoute(x, p));
 
-        return routes.Contains(p);
+        return routes.Contains(p)
+            || aliasRoutes.Contains(p)
+            || p.StartsWith("/nexthub", StringComparison.OrdinalIgnoreCase);
     }
 
     static bool SameRoute(string item, string path)
-        => ("/" + item.Trim('/')).Equals(path, StringComparison.OrdinalIgnoreCase);
+    {
+        int q = path.IndexOf('?');
+        string p = q < 0 ? path : path[..q];
+        return ("/" + item.Trim('/')).Equals(p, StringComparison.OrdinalIgnoreCase);
+    }
 
     static async Task<HealthItem> Probe(string host, string name, string path, HealthConf conf)
     {
         var item = new HealthItem { name = name, path = path, updated = DateTime.UtcNow };
         var sw = Stopwatch.StartNew();
+        int timeout = Math.Max(5, conf.timeout);
+
+        // chốt sổ ở một chỗ: mọi nhánh return đều đi qua đây nên timeout không bị bỏ sót
+        HealthItem done()
+        {
+            item.ms = sw.ElapsedMilliseconds;
+
+            // bị cắt đúng ngưỡng timeout (module trả 500 sau N giây) — khác lỗi thật
+            if (item.status == "error" && item.ms >= (timeout * 1000L) - 300)
+            {
+                item.status = "timeout";
+                item.error = $"không phản hồi trong {timeout}s";
+            }
+
+            return item;
+        }
 
         try
         {
-            var (json, resp) = await Http.BaseGet(host + path, timeoutSeconds: Math.Max(5, conf.timeout), statusCodeOK: false);
+            var (json, resp) = await Http.BaseGet(host + path, timeoutSeconds: timeout, statusCodeOK: false);
             item.code = resp == null ? 0 : (int)resp.StatusCode;
 
             if (item.code != 200)
             {
+                string msg = null;
+                try { msg = JObject.Parse(json ?? "")?.Value<string>("msg"); } catch { }
+
+                // 503 + msg "playlists" là quy ước "danh sách rỗng" của chính Lampac
+                // (BaseSisiController.PlaylistResult), không phải site hỏng.
+                if (item.code == 503 && string.Equals(msg, "playlists", StringComparison.OrdinalIgnoreCase))
+                {
+                    item.status = "empty";
+                    item.error = "503 playlists (danh sách rỗng)";
+                    return done();
+                }
+
                 item.status = "error";
 
                 // module trả lỗi dạng {"error":true,"msg":"..."} — lấy msg để biết lý do thật
                 // (vd "host not allowed: vjav.com" khi worker relay thiếu ALLOW)
-                string msg = null;
-                try { msg = JObject.Parse(json ?? "")?.Value<string>("msg"); } catch { }
-
                 item.error = string.IsNullOrEmpty(msg) ? $"http {item.code}" : $"http {item.code}: {msg}";
-                return item;
+                return done();
             }
 
             var jo = JObject.Parse(json ?? "");
+
+            // plugin trả {"rch":true,"nws":"ws://…"}: phải nói chuyện qua websocket,
+            // HTTP không bao giờ có playlist → không phải lỗi, chỉ là không kiểm được.
+            if (jo.Value<bool?>("rch") == true)
+            {
+                item.status = "na";
+                item.error = "cần websocket (rch) — không kiểm được qua HTTP";
+                return done();
+            }
+
             if (jo.Value<bool?>("error") == true)
             {
                 item.status = "error";
                 item.error = jo.Value<string>("msg") ?? "error";
-                return item;
+                return done();
             }
 
             var list = jo["list"] as JArray;
             if (list == null)
             {
                 item.status = "error";
-                item.error = "response không có list";
-                return item;
+                item.error = $"response không có list ({json?.Length ?? 0}B)";
+                return done();
             }
 
             item.items = list.Count;
@@ -242,15 +306,12 @@ public static class HealthMonitor
         }
         catch (Exception ex)
         {
-            item.status = "error";
+            bool timeoutEx = ex is TaskCanceledException or TimeoutException;
+            item.status = timeoutEx ? "timeout" : "error";
             item.error = ex.Message.Length > 160 ? ex.Message[..160] : ex.Message;
         }
-        finally
-        {
-            item.ms = sw.ElapsedMilliseconds;
-        }
 
-        return item;
+        return done();
     }
 
     static void Save()

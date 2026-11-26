@@ -25,7 +25,7 @@ public class HealthItem
     public string name { get; set; }
     public string path { get; set; }
 
-    /// <summary>ok | empty | error</summary>
+    /// <summary>ok | empty | timeout | na | error</summary>
     public string status { get; set; }
 
     public int items { get; set; }
