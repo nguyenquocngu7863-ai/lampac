@@ -1,0 +1,9 @@
+{
+  "name": "Upornia",
+  "description": "uPornia - Video người lớn tổng hợp (API JSON, MP4 trực tiếp)",
+  "version": "1.0.0",
+  "author": "Lampac",
+  "site": "https://upornia.com",
+  "enable": true,
+  "dynamic": true
+}
