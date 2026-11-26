@@ -13,7 +13,6 @@ Chỉ gọi 127.0.0.1 (app Lampac đang chạy). Không gọi site thật trực
 Code: PASS = 0 lỗi; WARN = đủ popup nhưng thiếu chuẩn; FAIL = thiếu/hỏng popup.
 """
 import argparse
-import concurrent.futures as cf
 import json
 import os
 import re
@@ -212,53 +211,21 @@ def check(mod, alias, uri_arg=None):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Verify popup module Lampac (/genres?uri= + ?rel=)")
-    ap.add_argument("modules", nargs="*", help="tên module hoặc alias route (vd tizam, xnx)")
-    ap.add_argument("--all", action="store_true", help="quét mọi module đang enable trong runtime")
+    ap = argparse.ArgumentParser(description="Verify popup của MỘT module Lampac (/genres?uri= + ?rel=)")
+    ap.add_argument("module", help="tên module hoặc alias route (vd tangthon, tizam, xnx) — đúng một site")
     ap.add_argument("--uri", help="dùng uri detail cố định thay vì lấy từ home")
-    ap.add_argument("--jobs", type=int, default=3, help="số module chạy song song khi --all (default 3)")
-    ap.add_argument("--quiet", action="store_true", help="chỉ in dòng kết luận")
     args = ap.parse_args()
 
-    if not args.modules and not args.all:
-        ap.error("cần tên module, hoặc --all")
+    index = {a: m for m, a in all_modules()}
+    alias, mod = resolve(args.module, index)
+    _, verdict, warns, lines, _ = check(mod, alias, args.uri)
 
-    if args.all:
-        pairs = all_modules()
-        if args.jobs > 1:
-            print(f"# --all: {len(pairs)} module, jobs={args.jobs} (mỗi module gọi site thật qua Lampac)", file=sys.stderr)
-    else:
-        index = {a: m for m, a in all_modules()}
-        pairs = []
-        for n in args.modules:
-            alias, mod = resolve(n, index)
-            pairs.append((mod, alias))
-
-    results = []
-    if args.all and args.jobs > 1 and len(pairs) > 1:
-        with cf.ThreadPoolExecutor(max_workers=args.jobs) as ex:
-            futs = [ex.submit(check, m, a, args.uri) for m, a in pairs]
-            for f in cf.as_completed(futs):
-                results.append(f.result())
-    else:
-        for m, a in pairs:
-            results.append(check(m, a, args.uri))
-    order = {m: i for i, (m, _) in enumerate(pairs)}
-    results.sort(key=lambda r: order.get(r[0], 999))
-
-    n_fail = 0
-    for mod, verdict, warns, lines, dt in results:
-        if verdict == "FAIL":
-            n_fail += 1
-        if not args.quiet:
-            print(f"[{verdict}] {mod:<16} {dt}s")
-            for w in warns:
-                print(f"         ~ {w}")
-            for ln in lines:
-                print(f"         · {ln}")
-    print(f"\n{len(results)} module: PASS={sum(1 for r in results if r[1] == 'PASS')} "
-          f"WARN={sum(1 for r in results if r[1] == 'WARN')} FAIL={n_fail}")
-    return 1 if n_fail else 0
+    print(f"[{verdict}] {mod} ({alias})")
+    for w in warns:
+        print(f"  ~ {w}")
+    for ln in lines:
+        print(f"  · {ln}")
+    return 1 if verdict == "FAIL" else 0
 
 
 if __name__ == "__main__":

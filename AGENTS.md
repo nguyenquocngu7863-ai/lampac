@@ -120,13 +120,13 @@ vsee <đường-dẫn-ảnh> [prompt] [--model M]
   thư viện ngoài không báo oan CS0234/CS0012. Exit 0 = sạch, 1 = có `error CS` (in ra
   dòng lỗi), 2 = thiếu môi trường. Thêm ref riêng: `REFS_EXTRA=dir1:dir2`.
   Source of truth: repo `termux-check.sh` → deploy `cp ~/lampac-clean/termux-check.sh ~/lampac-native/csc/check.sh`
-- `~/lampac-native/popup.sh <module|alias> [...] [--all] [--uri U]` — verify popup long-press
-  qua app 127.0.0.1: `/<alias>/genres?uri=` (groups/chip hợp lệ), ngôn ngữ menu, `?rel=` (list +
-  `plain:true` ở chip related), `?rel=&pg=2` rỗng, SSRF uri rác. Kết luận PASS/WARN/FAIL + exit 1
-  nếu có FAIL. Không đo stream (việc của `play.sh`). Chẩn đoán kèm: chips rỗng với uri tuyệt đối
-  nhưng OK với path-only → lỗi host mirror. Source of truth: repo `termux-popup.py` +
-  `termux-popup.sh` → deploy `cp ~/lampac-clean/termux-popup.{py,sh} ~/lampac-native/` (đổi tên
-  thành `popup.py`/`popup.sh`).
+- `~/lampac-native/popup.sh <module|alias>` — verify popup của **đúng một site** qua app
+  127.0.0.1 (user chốt 2026-11-26: **không quét hàng loạt**, không có `--all`): `/<alias>/genres?uri=`
+  (groups/chip hợp lệ), ngôn ngữ menu, `?rel=` (list + `plain:true` ở chip related), `?rel=&pg=2`
+  rỗng, SSRF uri rác. Kết luận PASS/WARN/FAIL + exit 1 nếu FAIL. Không đo stream (việc của
+  `play.sh`). Chẩn đoán kèm: chips rỗng với uri tuyệt đối nhưng OK với path-only → lỗi host mirror.
+  Source of truth: repo `termux-popup.py` + `termux-popup.sh` → deploy
+  `cp ~/lampac-clean/termux-popup.{py,sh} ~/lampac-native/` (đổi tên thành `popup.py`/`popup.sh`).
 - `proot-distro login ubuntu -- bash -lc 'cd ~/lampac && dotnet build Modules/Adult/<Name>/<Name>.csproj -c Release --nologo'` — build thật (~23 s)
 - `dotnet build ...` trực tiếp trong Termux — **KHÔNG dùng**: máy không có SDK (`dotnet --list-sdks` rỗng)
 - `nstop` / `nstart` / `nrestart` / `nstatus` — điều khiển app (script `/data/data/com.termux/files/usr/bin/lampac`)
