@@ -1,4 +1,4 @@
-enable: true
+enable: false
 displayindex: 31
 displayname: 3Movs
 rch_access: apk,cors
