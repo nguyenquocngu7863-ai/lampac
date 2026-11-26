@@ -127,6 +127,15 @@ vsee <đường-dẫn-ảnh> [prompt] [--model M]
   `play.sh`). Chẩn đoán kèm: chips rỗng với uri tuyệt đối nhưng OK với path-only → lỗi host mirror.
   Source of truth: repo `termux-popup.py` + `termux-popup.sh` → deploy
   `cp ~/lampac-clean/termux-popup.{py,sh} ~/lampac-native/` (đổi tên thành `popup.py`/`popup.sh`).
+- **OpenChamber (harness) — update** (đo 2026-11-26): `npm i -g @openchamber/web@<ver>` rồi
+  **bắt buộc** chạy `~/bin/oc-env-fix` — vá shebang `#!/usr/bin/env node` → `$PREFIX/bin/env node`
+  vì Termux không có `/usr` (không vá thì bin `openchamber` chết "bad interpreter"); script kiểm
+  luôn `--version`, `node-pty` (terminal panel) và `rg` trên PATH. Sau update phải
+  `openchamber restart` mới chạy bản mới (tiến trình cũ vẫn giữ code cũ trong RAM).
+  Boot test không đụng bản đang chạy: `OPENCHAMBER_DATA_DIR=$TMPDIR/oc-test openchamber serve
+  --port 3111 --foreground` → đo được HTTP 200 sau 6 s (2.8.0). Gói optional
+  `@vscode/ripgrep-android-arm64` không có trên npm nhưng vô hại — server fallback sang `rg` PATH.
+  Source of truth: repo `termux-openchamber-env.sh` → deploy `cp ~/lampac-clean/termux-openchamber-env.sh ~/bin/oc-env-fix`.
 - `proot-distro login ubuntu -- bash -lc 'cd ~/lampac && dotnet build Modules/Adult/<Name>/<Name>.csproj -c Release --nologo'` — build thật (~23 s)
 - `dotnet build ...` trực tiếp trong Termux — **KHÔNG dùng**: máy không có SDK (`dotnet --list-sdks` rỗng)
 - `nstop` / `nstart` / `nrestart` / `nstatus` — điều khiển app (script `/data/data/com.termux/files/usr/bin/lampac`)
