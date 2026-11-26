@@ -24,6 +24,7 @@ Dùng khi: gặp triệu chứng quen, grep bảng này trước khi mò lại t
 | "Liên quan" rỗng dù mục đó có trên trang | khối render bằng Alpine/JS, không nằm trong HTML | gọi endpoint JSON (`/ajax/suggestions/<slug>`) và parse JSON | JavSub, TopGai (2026-11-23/25) |
 | Trang trả **"Just a moment"** / challenge | Cloudflare chặn curl_cffi | mở `~/lampac-native/x.sh <url> <giây>` (Chrome headful trên X) rồi mới kết luận; nếu chặn toàn site → pause module | SupJav (PAUSED) |
 | Player chỉ có embed **Blogger** | iframe `video.g` cần token | `batchexecute` `WcwnYd` → `googlevideo` itag 22 (`video.mp4`, 206) | SexDep (2026-11-25) |
+| Popup long-press **rỗng** dù todo ghi "đã verify popup" | item home trả uri tuyệt đối trỏ host mirror khác `SiteHost`; `SafeDetailUrl`/guard host từ chối → `/genres` trả 200 nhưng 0 chip | normalize host (lấy path) trước khi fetch detail; phát hiện bằng `popup.sh` (nó thử lại path-only và báo đúng câu này) | JavSub (`javsubnet.net`), TangThon (`pumpcotradindo.com`) — đo 2026-11-26 |
 | Menu/popup lẫn chữ Trung/Nga/Thái | lấy nguyên taxonomy site | bảng `Trans` + `Translate()` cho cả menu lẫn popup, kể cả fallback tĩnh | LUẬT CỨNG trong AGENTS.md |
 
 ## Ghi chú
