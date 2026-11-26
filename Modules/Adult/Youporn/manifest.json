@@ -1,0 +1,9 @@
+{
+  "name": "Youporn",
+  "description": "YouPorn - video người lớn tổng hợp (HTML + mediaDefinitions, MP4/HLS)",
+  "version": "1.0.0",
+  "author": "Lampac",
+  "site": "https://www.youporn.com",
+  "enable": true,
+  "dynamic": true
+}
