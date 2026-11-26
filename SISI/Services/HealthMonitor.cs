@@ -210,7 +210,13 @@ public static class HealthMonitor
             if (item.code != 200)
             {
                 item.status = "error";
-                item.error = $"http {item.code}";
+
+                // module trả lỗi dạng {"error":true,"msg":"..."} — lấy msg để biết lý do thật
+                // (vd "host not allowed: vjav.com" khi worker relay thiếu ALLOW)
+                string msg = null;
+                try { msg = JObject.Parse(json ?? "")?.Value<string>("msg"); } catch { }
+
+                item.error = string.IsNullOrEmpty(msg) ? $"http {item.code}" : $"http {item.code}: {msg}";
                 return item;
             }
 
