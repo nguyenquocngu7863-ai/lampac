@@ -139,7 +139,7 @@ public class FreePornVideosController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("fpv/vidosik")]
-    async public Task<ActionResult> Vidosik(string uri)
+    async public Task<ActionResult> Vidosik(string uri, bool related)
     {
         if (await IsRequestBlocked(rch: true))
             return badInitMsg;
@@ -159,8 +159,11 @@ public class FreePornVideosController : BaseSisiController
             if (qualitys == null || qualitys.Count == 0)
                 return e.Fail("stream_links", refresh_proxy: true);
 
-            return e.Success(new StreamItem() { qualitys = qualitys });
+            return e.Success(new StreamItem() { qualitys = qualitys, recomends = FreePornVideosTo.PlaylistRelated("fpv/vidosik", html ?? "") });
         });
+
+        if (related)
+            return PlaylistResult(cache.Value?.recomends, cache.ISingleCache, null, total_pages: 1);
 
         return OnResult(cache);
     }

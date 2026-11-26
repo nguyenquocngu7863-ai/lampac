@@ -159,7 +159,7 @@ public class FapClubController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("fapclub/vidosik")]
-    async public Task<ActionResult> Vidosik(string uri)
+    async public Task<ActionResult> Vidosik(string uri, bool related)
     {
         string page = FapClubTo.DetailUrl(uri);
         if (page == null)
@@ -173,11 +173,16 @@ public class FapClubController : BaseSisiController
             await httpHydra.GetSpan(FapClubTo.SiteHost + page, span =>
             {
                 stream = FapClubTo.Stream(span);
+                if (stream != null)
+                    stream.recomends = FapClubTo.Related(FapClubTo.SiteHost, span);
             });
             if (stream == null)
                 return e.Fail("stream_links", refresh_proxy: true);
             return e.Success(stream);
         });
+        if (related)
+            return PlaylistResult(cache.Value?.recomends, cache.ISingleCache, null, total_pages: 1);
+
         if (IsRhubFallback(cache))
             goto rhubFallback;
         return OnResult(cache);

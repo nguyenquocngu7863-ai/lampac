@@ -184,10 +184,13 @@ public class HQpornerController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("hqr/vidosik")]
-    async public Task<ActionResult> Vidosik(string uri)
+    async public Task<ActionResult> Vidosik(string uri, bool related)
     {
         if (await IsRequestBlocked(rch: true))
             return badInitMsg;
+
+        if (related)
+            return PlaylistResult(await RecomendsAsync(uri), false, null, total_pages: 1);
 
     rhubFallback:
         var cache = await InvokeCacheResult(ipkey($"HQporner:view:{uri}"), 5, jsonContext.DictionaryStringString, async e =>
@@ -203,6 +206,34 @@ public class HQpornerController : BaseSisiController
         if (IsRhubFallback(cache))
             goto rhubFallback;
 
-        return OnResult(cache);
+        return Json(new { qualitys = cache.Value, recomends = await RecomendsAsync(uri) });
+    }
+
+    // "lien quan" trang detail -> playlist "tiep theo" trong player (cache 20 phut)
+    async Task<List<PlaylistItem>> RecomendsAsync(string uri)
+    {
+        string pageUrl = HQpornerTo.DetailUrl(uri);
+        if (string.IsNullOrEmpty(pageUrl))
+            return new List<PlaylistItem>();
+
+        string memKey = ipkey($"hqr:rec:{pageUrl}");
+        if (hybridCache.TryGetValue(memKey, out List<PlaylistItem> c) && c != null)
+            return c;
+
+        string html = null;
+        await httpHydra.GetSpan(pageUrl, span => { html = span.ToString(); },
+            addheaders: HeadersModel.Init(("referer", HQpornerTo.DesktopHost + "/")));
+
+        var rec = HQpornerTo.PlaylistRelated("hqr/vidosik", html, uri) ?? new List<PlaylistItem>();
+        foreach (var pl in rec)
+        {
+            if (pl?.video != null && !pl.video.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                pl.video = $"{host}/{pl.video.TrimStart('/')}";
+        }
+
+        if (rec.Count > 0)
+            hybridCache.Set(memKey, rec, cacheTime(20));
+
+        return rec;
     }
 }

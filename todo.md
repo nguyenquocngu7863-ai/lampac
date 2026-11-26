@@ -53,6 +53,24 @@ Thứ tự ưu tiên từ nay:
 2. Popup còn thiếu — **10 module nhóm B** trước, nhóm A để sau.
 3. Việc nhóm A chỉ làm khi user yêu cầu rõ ràng hoặc site đó user đang dùng.
 
+> **2026-11-27 (26)**: **Player "tập tiếp theo" — đợt 2, thêm 10 module** (tiếp mục 25). Đã thêm `recomends` +
+> `bool related` cho: `AnySex`, `FreePornVideos` (`fpv`), `Hclips`, `FapClub`, `HQporner` (`hqr`), `Av123`,
+> `Lon69`, `Vlxx`, `PhimSexVi`, `ThreeMovs`. Hai kiểu code:
+> - **kiểu A** (`InvokeCacheResult` + `StreamItem` + `OnResult`): `AnySex`, `FreePornVideos`, `Hclips`,
+>   `FapClub`, `HQporner`, `ThreeMovs` — nhét `recomends` vào `StreamItem` (HQporner phải fetch thêm trang
+>   detail vì `StreamLinks` không trả HTML ra ngoài); `Hclips` dùng `RelatedUrl`+`Playlist` (block related
+>   là JSON riêng), `FapClub` dùng `Related(host, span)` với `ReadOnlySpan`.
+> - **kiểu B** (`Json(dict)`): `Av123`, `Lon69`, `Vlxx`, `PhimSexVi` — trả `{ qualitys, recomends }`.
+> Đo: `curl /<mod>/vidosik?uri=<detail>` → `keys=[qualitys,recomends]`, recomends **11–50 item** cho 9 module
+> (AnySex 40 · fpv 11 · hclips 50 · fapclub 18 · hqr 36 · av123 12 · lon69 30 · phimsexvi 12 · threemovs 16);
+> `check.sh` 0 error cả 10; stream AnySex qua proxy: `ffprobe` = h264 1920x1080 + aac (phát được).
+> ⚠️ `Vlxx`: `GET /vlxx` hiện trả `{"accsdb":true,"msg":"playlists"}` (site-side, không phải do patch) nên
+> **chưa smoke được vidosik** — code đã theo đúng công thức, cần đo lại khi site sống.
+> Còn lại chưa có `recomends` (cùng công thức, đều có parser `?rel=`): DuJav, Jav18, Mbbg, Phe69, Porntrex,
+> PubJav, QmhSex, SakuraSins, SevenMM, SexDep, SexNetVc, SexTb, SexVietop, Sieusex, Suong3x, TangThon, TellyHD,
+> ThichSex, Tizam, Txxx, Upornia, VNJav, VNsexTop1, Viet69Av, Viet69z, VietSexBlog, Vietmup, Vjav, VnChich,
+> XHeoVL, XViet, XszAv.
+
 > **2026-11-27 (25)**: **Player "tập tiếp theo" (`recomends`) cho 10 module** (user: "player của module gốc
 > như `Eporner` có tập tiếp theo mà mình chưa có"). Gốc: `SISI/plugins/sisi.js` đọc `data.recomends` và gọi
 > `Lampa.Player.playlist(recomends)` — thiếu `recomends` thì player chỉ có 1 item ⇒ không có "Tiếp theo".

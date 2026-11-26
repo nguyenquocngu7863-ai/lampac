@@ -110,7 +110,7 @@ public class HclipsController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("hclips/vidosik")]
-    async public Task<ActionResult> Vidosik(string uri)
+    async public Task<ActionResult> Vidosik(string uri, bool related)
     {
         if (await IsRequestBlocked(rch: true))
             return badInitMsg;
@@ -127,8 +127,16 @@ public class HclipsController : BaseSisiController
             if (qualitys == null || qualitys.Count == 0)
                 return e.Fail("stream_links", refresh_proxy: true);
 
-            return e.Success(new StreamItem() { qualitys = qualitys });
+            // "lien quan" -> playlist "tiep theo" trong player
+            List<PlaylistItem> recomends = null;
+            string relJson = await FetchAsync(HclipsTo.RelatedUrl(HclipsTo.SiteHost, videoId, 1), $"{HclipsTo.SiteHost}/videos/{videoId}/");
+            (recomends, _) = HclipsTo.Playlist("hclips/vidosik", relJson ?? "");
+
+            return e.Success(new StreamItem() { qualitys = qualitys, recomends = recomends });
         });
+
+        if (related)
+            return PlaylistResult(cache.Value?.recomends, cache.ISingleCache, null, total_pages: 1);
 
         return OnResult(cache);
     }

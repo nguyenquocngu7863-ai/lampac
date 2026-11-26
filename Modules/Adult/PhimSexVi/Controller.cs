@@ -221,21 +221,55 @@ public class PhimSexViController : BaseSisiController
     }
     [HttpGet, Staticache(manually: true)]
     [Route("phimsexvi/vidosik")]
-    async public Task<ActionResult> Vidosik(string uri)
+    async public Task<ActionResult> Vidosik(string uri, bool related)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
         var url = await ResolveAsync(uri);
         if (string.IsNullOrEmpty(url))
             return OnError("stream_links", refresh_proxy: true);
-        var headers = httpHeaders(init, HeadersModel.Init(
-            ("User-Agent", PhimSexViTo.ChromeUA),
-            ("Referer", PhimSexViTo.Origin(url) + "/")));
-        return Json(new Dictionary<string, string>()
+
+        var recomends = await RecomendsAsync(uri);
+        if (related)
+            return PlaylistResult(recomends, false, null, total_pages: 1);
+
+        return Json(new
         {
-            ["HLS"] = $"{host}/phimsexvi/video.m3u8"
-                + $"?uri={HttpUtility.UrlEncode(uri)}"
+            qualitys = new Dictionary<string, string>()
+            {
+                ["HLS"] = $"{host}/phimsexvi/video.m3u8"
+                    + $"?uri={HttpUtility.UrlEncode(uri)}"
+            },
+            recomends
         });
+    }
+
+    // Khoi "Phim liên quan" -> playlist "tiep theo" trong player (cache 20 phut)
+    async Task<List<PlaylistItem>> RecomendsAsync(string uri)
+    {
+        string path = PhimSexViTo.DetailPath(uri);
+        if (path == null)
+            return new List<PlaylistItem>();
+
+        string memKey = ipkey($"phimsexvi:rec:{path}");
+        if (hybridCache.TryGetValue(memKey, out List<PlaylistItem> c) && c != null)
+            return c;
+
+        string html = await FetchHtmlAsync(PhimSexViTo.SiteHost + path);
+        var rec = PhimSexViTo.Playlist("phimsexvi/vidosik", PhimSexViTo.RelatedBlock(html) ?? "");
+        if (rec == null)
+            rec = new List<PlaylistItem>();
+
+        foreach (var pl in rec)
+        {
+            if (pl?.video != null && !pl.video.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                pl.video = $"{host}/{pl.video.TrimStart('/')}";
+        }
+
+        if (rec.Count > 0)
+            hybridCache.Set(memKey, rec, cacheTime(20));
+
+        return rec;
     }
     [HttpGet]
     [Route("phimsexvi/video.m3u8")]

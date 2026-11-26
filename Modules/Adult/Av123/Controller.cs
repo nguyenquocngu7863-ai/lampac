@@ -390,7 +390,7 @@ public class Av123Controller : BaseSisiController
     #region detail -> stream
     [HttpGet, Staticache(manually: true)]
     [Route("av123/vidosik")]
-    async public Task<ActionResult> Vidosik(string uri)
+    async public Task<ActionResult> Vidosik(string uri, bool related)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
@@ -426,7 +426,35 @@ public class Av123Controller : BaseSisiController
         {
             ["Auto"] = $"{host}/av123/hls.m3u8?u={HttpUtility.UrlEncode(m3u8)}&r={HttpUtility.UrlEncode(embedHost + "/")}"
         };
-        return Json(dict);
+
+        var recomends = await RecomendsAsync(pageUrl, html);
+        if (related)
+            return PlaylistResult(recomends, false, null, total_pages: 1);
+
+        return Json(new { qualitys = dict, recomends });
+    }
+
+    // Khoi "lien quan" trang detail -> playlist "tiep theo" trong player (cache 20 phut)
+    async Task<List<PlaylistItem>> RecomendsAsync(string pageUrl, string html)
+    {
+        string memKey = ipkey($"av123:rec:{pageUrl}");
+        if (hybridCache.TryGetValue(memKey, out List<PlaylistItem> c) && c != null)
+            return c;
+
+        var rec = Av123To.PlaylistRelated("av123/vidosik", html ?? "");
+        if (rec == null)
+            rec = new List<PlaylistItem>();
+
+        foreach (var pl in rec)
+        {
+            if (pl?.video != null && !pl.video.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                pl.video = $"{host}/{pl.video.TrimStart('/')}";
+        }
+
+        if (rec.Count > 0)
+            hybridCache.Set(memKey, rec, cacheTime(20));
+
+        return rec;
     }
     #endregion
 

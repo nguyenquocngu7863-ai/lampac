@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using System;
 using Shared;
 using Shared.Attributes;
 using Shared.Models.Base;
@@ -324,7 +325,7 @@ public class VlxxController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("vlxx/vidosik")]
-    async public Task<ActionResult> Vidosik(string uri)
+    async public Task<ActionResult> Vidosik(string uri, bool related)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
@@ -334,11 +335,48 @@ public class VlxxController : BaseSisiController
         if (links == null || links.Count == 0)
             return OnError("stream_links", refresh_proxy: true);
 
-        if (userch)
-            return OnResult(links);
+        var recomends = await RecomendsAsync(uri);
+        if (related)
+            return PlaylistResult(recomends, false, null, total_pages: 1);
 
-        return Json(links.ToDictionary(k => k.Key, v =>
-            $"{host}/vlxx/video.m3u8?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(v.Key)}"));
+        var qualitys = links.ToDictionary(k => k.Key, v =>
+            $"{host}/vlxx/video.m3u8?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(v.Key)}");
+
+        if (userch)
+            return Json(new { qualitys, recomends });
+
+        return Json(new { qualitys, recomends });
+    }
+
+    // Khoi "lien quan" trang detail -> playlist "tiep theo" trong player (cache 20 phut)
+    async Task<List<PlaylistItem>> RecomendsAsync(string uri)
+    {
+        if (string.IsNullOrEmpty(uri))
+            return new List<PlaylistItem>();
+
+        string memKey = ipkey($"vlxx:rec:{uri}");
+        if (hybridCache.TryGetValue(memKey, out List<PlaylistItem> c) && c != null)
+            return c;
+
+        string pageUrl = uri.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+            ? uri
+            : VlxxTo.SiteHost + "/" + uri.TrimStart('/');
+
+        string html = await FetchHtmlAsync(pageUrl);
+        var rec = VlxxTo.Related("vlxx/vidosik", html ?? "");
+        if (rec == null)
+            rec = new List<PlaylistItem>();
+
+        foreach (var pl in rec)
+        {
+            if (pl?.video != null && !pl.video.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                pl.video = $"{host}/{pl.video.TrimStart('/')}";
+        }
+
+        if (rec.Count > 0)
+            hybridCache.Set(memKey, rec, cacheTime(20));
+
+        return rec;
     }
 
     [HttpGet]
