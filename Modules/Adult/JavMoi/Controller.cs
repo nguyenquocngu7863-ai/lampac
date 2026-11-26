@@ -276,7 +276,7 @@ public class JavMoiController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("javmoi/vidosik")]
-    async public Task<ActionResult> Vidosik(string uri)
+    async public Task<ActionResult> Vidosik(string uri, bool related)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
@@ -285,15 +285,46 @@ public class JavMoiController : BaseSisiController
         if (string.IsNullOrEmpty(url))
             return OnError("stream_links", refresh_proxy: true);
 
-        var headers = httpHeaders(init, HeadersModel.Init(
-            ("User-Agent", JavMoiTo.ChromeUA),
-            ("Referer", JavMoiTo.Origin(url) + "/")));
+        var recomends = await RecomendsAsync(uri);
+        if (related)
+            return PlaylistResult(recomends, false, null, total_pages: 1);
 
-        return Json(new Dictionary<string, string>()
+        return Json(new
         {
-            ["HLS"] = $"{host}/javmoi/video.m3u8"
-                + $"?uri={HttpUtility.UrlEncode(uri)}"
+            qualitys = new Dictionary<string, string>()
+            {
+                ["HLS"] = $"{host}/javmoi/video.m3u8"
+                    + $"?uri={HttpUtility.UrlEncode(uri)}"
+            },
+            recomends
         });
+    }
+
+    // Khoi #more-movie cua trang detail -> playlist "tiep theo" trong player
+    async Task<List<PlaylistItem>> RecomendsAsync(string uri)
+    {
+        if (string.IsNullOrEmpty(uri))
+            return new List<PlaylistItem>();
+
+        string memKey = ipkey($"javmoi:rel:{uri}");
+        if (hybridCache.TryGetValue(memKey, out List<PlaylistItem> cache) && cache != null)
+            return cache;
+
+        string html = await FetchHtmlAsync(uri);
+        var rec = JavMoiTo.PlaylistRelated("javmoi/vidosik", html);
+        if (rec == null)
+            rec = new List<PlaylistItem>();
+
+        foreach (var pl in rec)
+        {
+            if (pl?.video != null && !pl.video.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                pl.video = $"{host}/{pl.video.TrimStart('/')}";
+        }
+
+        if (rec.Count > 0)
+            hybridCache.Set(memKey, rec, cacheTime(20));
+
+        return rec;
     }
 
     [HttpGet]

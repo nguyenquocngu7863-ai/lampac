@@ -245,7 +245,7 @@ public class JavCtController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("javct/vidosik")]
-    async public Task<ActionResult> Vidosik(string uri)
+    async public Task<ActionResult> Vidosik(string uri, bool related)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
@@ -270,7 +270,40 @@ public class JavCtController : BaseSisiController
             // Decide the route – all = /javct/video?uri=…&q=…
             dict[label] = $"{host}/javct/video?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(label)}";
         }
-        return Json(dict);
+
+        var recomends = await RecomendsAsync(pageUrl, page);
+        if (related)
+            return PlaylistResult(recomends, false, null, total_pages: 1);
+
+        return Json(new { qualitys = dict, recomends });
+    }
+
+    // /ajax/relatedAjax theo filmId cua trang detail -> playlist "tiep theo" (cache 20 phut)
+    async Task<List<PlaylistItem>> RecomendsAsync(string pageUrl, string page)
+    {
+        string memKey = ipkey($"javct:rel:{pageUrl}");
+        if (hybridCache.TryGetValue(memKey, out List<PlaylistItem> cache) && cache != null)
+            return cache;
+
+        var (filmId, _, _) = JavCtTo.GetDetailTokens(page);
+        if (string.IsNullOrEmpty(filmId))
+            return new List<PlaylistItem>();
+
+        string json = await JavCtTo.RelatedAsync(pageUrl, filmId);
+        var rec = JavCtTo.RelatedPlaylist("javct/vidosik", json);
+        if (rec == null)
+            rec = new List<PlaylistItem>();
+
+        foreach (var pl in rec)
+        {
+            if (pl?.video != null && !pl.video.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                pl.video = $"{host}/{pl.video.TrimStart('/')}";
+        }
+
+        if (rec.Count > 0)
+            hybridCache.Set(memKey, rec, cacheTime(20));
+
+        return rec;
     }
 
     // POST /ajax/player {episode=0, filmId=data-source, pt=__pt} ->

@@ -53,6 +53,19 @@ Thứ tự ưu tiên từ nay:
 2. Popup còn thiếu — **10 module nhóm B** trước, nhóm A để sau.
 3. Việc nhóm A chỉ làm khi user yêu cầu rõ ràng hoặc site đó user đang dùng.
 
+> **2026-11-27 (25)**: **Player "tập tiếp theo" (`recomends`) cho 10 module** (user: "player của module gốc
+> như `Eporner` có tập tiếp theo mà mình chưa có"). Gốc: `SISI/plugins/sisi.js` đọc `data.recomends` và gọi
+> `Lampa.Player.playlist(recomends)` — thiếu `recomends` thì player chỉ có 1 item ⇒ không có "Tiếp theo".
+> Đã thêm cho **10 module nhóm B**: `Javtiful`, `Jable`, `JavMoi`, `JavMit`, `JavCc`, `JavCt`, `KissJav`,
+> `KawaiJAV`, `JavGuru`, `JavBangers`. Mỗi module: `Vidosik` thêm `bool related` (trả `PlaylistResult` cho
+> SISI "Tương tự"), trả `{ qualitys, recomends }` thay vì dict phẳng, `recomends` dựng từ **parser related
+> sẵn có của popup** (`Related`/`RelatedPlaylist`/`RelatedVideos` + `RelatedAjax` cho JavCt), cache 20 phút,
+> và **ghép `host` vào `pl.video`** (SISI gọi thẳng pl.video, không qua `OnResult` nên URL phải tuyệt đối).
+> Đo: 10/10 `curl /<mod>/vidosik?uri=<detail>` trả `keys=[qualitys,recomends]` + `recomends` 6–19 item
+> (review `http://127.0.0.1:9118/...`); `check.sh` 0 error cả 10; `play.sh` JavBangers 720p = PHÁT ĐƯỢC
+> (ffmpeg decode qua route Lampac). Còn thiếu `recomends` (nhóm B): AnySex, Av123, FapClub, FreePornVideos,
+> Hclips, HQporner, Lon69, Manko… (module nào cũng có parser `?rel=`, chỉ cần lặp lại công thức).
+
 > **2026-11-25 (24)**: **`Lon69` — dựng lại module + popup** (module đang **tắt**, site đổi `lon69.site` →
 > **`lon69.ink`** và đổi theme sang **vlxx** nên parser cũ `article.movie-card` trả 0 item). Viết lại
 > `Service.cs` + `Controller.cs`: list theo `div.video-item` (`nv-dur` → `time`, `nv-q` → `quality`), phân

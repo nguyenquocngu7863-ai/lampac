@@ -237,7 +237,7 @@ public class JavtifulController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("javtiful/vidosik")]
-    async public Task<ActionResult> Vidosik(string uri)
+    async public Task<ActionResult> Vidosik(string uri, bool related)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
@@ -246,8 +246,45 @@ public class JavtifulController : BaseSisiController
         if (links == null || links.Count == 0)
             return OnError("stream_links", refresh_proxy: true);
 
-        return Json(links.ToDictionary(k => k.Key, v =>
-            $"{host}/javtiful/video?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(v.Key)}"));
+        var recomends = await RecomendsAsync(uri);
+
+        if (related)
+            return PlaylistResult(recomends, false, null, total_pages: 1);
+
+        // qualitys + recomends: SISI dựng playlist "Tiếp theo" trong player từ recomends
+        return Json(new
+        {
+            qualitys = links.ToDictionary(k => k.Key, v =>
+                $"{host}/javtiful/video?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(v.Key)}"),
+            recomends
+        });
+    }
+
+    // danh sách video liên quan (playlist "tập tiếp theo" của player), cache 20 phút
+    async Task<List<PlaylistItem>> RecomendsAsync(string uri)
+    {
+        string memKey = ipkey($"javtiful:rec:{uri}");
+        if (hybridCache.TryGetValue(memKey, out List<PlaylistItem> cache))
+            return cache;
+
+        string pageUrl = uri.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? uri : "https://javtiful.com" + uri;
+        string html = await FetchHtmlAsync(pageUrl);
+
+        var rec = JavtifulTo.PlaylistRelated("javtiful/vidosik", html);
+        if (rec == null)
+            rec = new List<PlaylistItem>();
+
+        // SISI gọi thẳng pl.video -> phải là URL tuyệt đối (base OnResult mới tự ghép host)
+        foreach (var pl in rec)
+        {
+            if (pl?.video != null && !pl.video.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                pl.video = $"{host}/{pl.video.TrimStart('/')}";
+        }
+
+        if (rec.Count > 0)
+            hybridCache.Set(memKey, rec, cacheTime(20));
+
+        return rec;
     }
 
     [HttpGet]

@@ -97,7 +97,7 @@ public class KissJavController : BaseSisiController
     // ================= Vidosik =================
     [HttpGet, Staticache(manually: true)]
     [Route("kissjav/vidosik")]
-    async public Task<ActionResult> Vidosik(string uri)
+    async public Task<ActionResult> Vidosik(string uri, bool related)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
@@ -106,10 +106,49 @@ public class KissJavController : BaseSisiController
         if (string.IsNullOrEmpty(stream))
             return OnError("stream_links", refresh_proxy: true);
 
-        return Json(new Dictionary<string, string>()
+        var recomends = await RecomendsAsync(uri);
+        if (related)
+            return PlaylistResult(recomends, false, null, total_pages: 1);
+
+        return Json(new
         {
-            ["MP4"] = $"{host}/kissjav/video.mp4?uri={HttpUtility.UrlEncode(uri)}"
+            qualitys = new Dictionary<string, string>()
+            {
+                ["MP4"] = $"{host}/kissjav/video.mp4?uri={HttpUtility.UrlEncode(uri)}"
+            },
+            recomends
         });
+    }
+
+    // Khoi "lien quan" trang detail -> playlist "tiep theo" trong player
+    async Task<List<PlaylistItem>> RecomendsAsync(string uri)
+    {
+        if (string.IsNullOrEmpty(uri))
+            return new List<PlaylistItem>();
+
+        string pageUrl = uri.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+            ? uri
+            : KissJavTo.SiteHost + "/" + uri.TrimStart('/');
+
+        string memKey = ipkey($"kissjav:rec:{pageUrl}");
+        if (hybridCache.TryGetValue(memKey, out List<PlaylistItem> cache) && cache != null)
+            return cache;
+
+        string html = await GetPageAsync(pageUrl);
+        var rec = KissJavTo.RelatedPlaylist("kissjav/vidosik", KissJavTo.RelatedBlock(html));
+        if (rec == null)
+            rec = new List<PlaylistItem>();
+
+        foreach (var pl in rec)
+        {
+            if (pl?.video != null && !pl.video.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                pl.video = $"{host}/{pl.video.TrimStart('/')}";
+        }
+
+        if (rec.Count > 0)
+            hybridCache.Set(memKey, rec, cacheTime(20));
+
+        return rec;
     }
 
     // ================= Video =================

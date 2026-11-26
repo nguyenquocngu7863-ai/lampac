@@ -332,7 +332,7 @@ public class JableController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("jable/vidosik")]
-    async public Task<ActionResult> Vidosik(string uri)
+    async public Task<ActionResult> Vidosik(string uri, bool related)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
@@ -341,8 +341,48 @@ public class JableController : BaseSisiController
         if (links == null || links.Count == 0)
             return OnError("stream_links", refresh_proxy: true);
 
-        return Json(links.ToDictionary(k => k.Key, k =>
-            $"{host}/jable/video.m3u8?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(k.Key)}"));
+        var recomends = await RecomendsAsync(uri);
+
+        if (related)
+            return PlaylistResult(recomends, false, null, total_pages: 1);
+
+        return Json(new
+        {
+            qualitys = links.ToDictionary(k => k.Key, k =>
+                $"{host}/jable/video.m3u8?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(k.Key)}"),
+            recomends
+        });
+    }
+
+    // "You May Like" cua trang detail -> playlist "tiep theo" trong player (cache 20 phut)
+    async Task<List<PlaylistItem>> RecomendsAsync(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return new List<PlaylistItem>();
+
+        string pageUrl = uri.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+            ? uri
+            : JableTo.SiteHost + "/videos/" + uri.Trim('/') + "/";
+
+        string memKey = ipkey($"jable:rel:{pageUrl}");
+        if (hybridCache.TryGetValue(memKey, out List<PlaylistItem> cache) && cache != null)
+            return cache;
+
+        string page = await GetPageAsync(pageUrl);
+        var rec = JableTo.Related(page);
+        if (rec == null)
+            rec = new List<PlaylistItem>();
+
+        foreach (var pl in rec)
+        {
+            if (pl?.video != null && !pl.video.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                pl.video = $"{host}/{pl.video.TrimStart('/')}";
+        }
+
+        if (rec.Count > 0)
+            hybridCache.Set(memKey, rec, cacheTime(20));
+
+        return rec;
     }
 
     // Trang phim chi co MOT nguon: <script> var hlsUrl = 'https://

@@ -139,7 +139,7 @@ public class JavBangersController : BaseSisiController
     // ================= Vidosik =================
     [HttpGet, Staticache(manually: true)]
     [Route("javbangers/vidosik")]
-    async public Task<ActionResult> Vidosik(string uri)
+    async public Task<ActionResult> Vidosik(string uri, bool related)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
@@ -152,7 +152,39 @@ public class JavBangersController : BaseSisiController
         foreach (var (label, _) in streams)
             res[label] = $"{host}/javbangers/video.mp4?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(label)}";
 
-        return Json(res);
+        var recomends = await RecomendsAsync(uri);
+        if (related)
+            return PlaylistResult(recomends, false, null, total_pages: 1);
+
+        return Json(new { qualitys = res, recomends });
+    }
+
+    // Khoi "lien quan" cua trang detail -> playlist "tiep theo" trong player
+    async Task<List<PlaylistItem>> RecomendsAsync(string uri)
+    {
+        string memKey = ipkey($"javbangers:rec:{uri}");
+        if (hybridCache.TryGetValue(memKey, out List<PlaylistItem> cache) && cache != null)
+            return cache;
+
+        string path = JbTo.DetailPath(uri);
+        if (path == null)
+            return new List<PlaylistItem>();
+
+        string detail = await GetPageAsync(JbTo.SiteHost + path);
+        var rec = JbTo.RelatedPlaylist("javbangers/vidosik", JbTo.RelatedBlock(detail));
+        if (rec == null)
+            rec = new List<PlaylistItem>();
+
+        foreach (var pl in rec)
+        {
+            if (pl?.video != null && !pl.video.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                pl.video = $"{host}/{pl.video.TrimStart('/')}";
+        }
+
+        if (rec.Count > 0)
+            hybridCache.Set(memKey, rec, cacheTime(20));
+
+        return rec;
     }
 
     // ================= Video =================

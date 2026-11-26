@@ -147,7 +147,7 @@ public class JavCcController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("javcc/vidosik")]
-    async public Task<ActionResult> Vidosik(string uri)
+    async public Task<ActionResult> Vidosik(string uri, bool related)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
@@ -156,8 +156,47 @@ public class JavCcController : BaseSisiController
         if (links == null || links.Count == 0)
             return OnError("stream_links", refresh_proxy: true);
 
-        return Json(links.ToDictionary(k => k.Key, v =>
-            $"{host}/javcc/video.m3u8?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(v.Key)}"));
+        var recomends = await RecomendsAsync(uri);
+        if (related)
+            return PlaylistResult(recomends, false, null, total_pages: 1);
+
+        return Json(new
+        {
+            qualitys = links.ToDictionary(k => k.Key, v =>
+                $"{host}/javcc/video.m3u8?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(v.Key)}"),
+            recomends
+        });
+    }
+
+    // Khoi "lien quan" trang detail -> playlist "tiep theo" trong player
+    async Task<List<PlaylistItem>> RecomendsAsync(string uri)
+    {
+        if (string.IsNullOrEmpty(uri))
+            return new List<PlaylistItem>();
+
+        string memKey = ipkey($"javcc:rel:{uri}");
+        if (hybridCache.TryGetValue(memKey, out List<PlaylistItem> cache) && cache != null)
+            return cache;
+
+        string pageUrl = uri.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+            ? uri
+            : (uri.StartsWith("/") ? JavCcTo.SiteHost + uri : JavCcTo.SiteHost + "/" + uri.Trim('/') + "/");
+
+        string html = await FetchHtmlAsync(pageUrl);
+        var rec = JavCcTo.PlaylistRelated("javcc/vidosik", html);
+        if (rec == null)
+            rec = new List<PlaylistItem>();
+
+        foreach (var pl in rec)
+        {
+            if (pl?.video != null && !pl.video.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                pl.video = $"{host}/{pl.video.TrimStart('/')}";
+        }
+
+        if (rec.Count > 0)
+            hybridCache.Set(memKey, rec, cacheTime(20));
+
+        return rec;
     }
 
     // Route phai co duoi .m3u8: app chon engine player theo DUOI URL

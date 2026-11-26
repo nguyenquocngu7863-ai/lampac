@@ -264,10 +264,14 @@ public class JavGuruController : BaseSisiController
     // mot server nen 2-13s, luon duoi tran 30s cua client.
     [HttpGet, Staticache(manually: true)]
     [Route("javguru/vidosik")]
-    async public Task<ActionResult> Vidosik(string uri)
+    async public Task<ActionResult> Vidosik(string uri, bool related)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
+
+        var recomends = await RecomendsAsync(uri);
+        if (related)
+            return PlaylistResult(recomends, false, null, total_pages: 1);
 
         var servers = await DetailServersAsync(uri);
         if (servers == null || servers.Count == 0)
@@ -348,7 +352,34 @@ public class JavGuruController : BaseSisiController
             }
         });
 
-        return Json(dict);
+        return Json(new { qualitys = dict, recomends });
+    }
+
+    // Khoi "lien quan" cua trang detail -> playlist "tiep theo" trong player
+    async Task<List<PlaylistItem>> RecomendsAsync(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return new List<PlaylistItem>();
+
+        string memKey = ipkey($"javguru:rec:{uri}");
+        if (hybridCache.TryGetValue(memKey, out List<PlaylistItem> cache) && cache != null)
+            return cache;
+
+        string html = await FetchHtmlAsync(JavGuruTo.NormalizePageUrl(uri), "wp-btn-iframe", 4, 4, Ms() + 20000);
+        var rec = JavGuruTo.RelatedVideos("javguru/vidosik", html ?? "");
+        if (rec == null)
+            rec = new List<PlaylistItem>();
+
+        foreach (var pl in rec)
+        {
+            if (pl?.video != null && !pl.video.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                pl.video = $"{host}/{pl.video.TrimStart('/')}";
+        }
+
+        if (rec.Count > 0)
+            hybridCache.Set(memKey, rec, cacheTime(20));
+
+        return rec;
     }
 
     // Resolve server theo `srv` roi chuyen tiep sang link phat; server do chet

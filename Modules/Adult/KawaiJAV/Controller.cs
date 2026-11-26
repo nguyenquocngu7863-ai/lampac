@@ -193,7 +193,7 @@ public class KawaiJAVController : BaseSisiController
     // ========== VIDOSIK: parse videoData từ trang chi tiết ==========
     [HttpGet, Staticache(manually: true)]
     [Route("kawaijav/vidosik")]
-    async public Task<ActionResult> Vidosik(string uri)
+    async public Task<ActionResult> Vidosik(string uri, bool related)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
@@ -201,9 +201,14 @@ public class KawaiJAVController : BaseSisiController
             return OnError("stream_links", refresh_proxy: true);
 
         string pageUrl = uri.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? uri : KawaiJAVTo.SiteHost + "/" + uri.Trim('/');
+
+        var recomends = await RecomendsAsync(pageUrl);
+        if (related)
+            return PlaylistResult(recomends, false, null, total_pages: 1);
+
         string memKey = ipkey($"kawaijav:vidosik:{pageUrl}");
         if (hybridCache.TryGetValue(memKey, out string cached) && !string.IsNullOrEmpty(cached))
-            return Json(JsonSerializer.Deserialize<Dictionary<string, string>>(cached));
+            return Json(new { qualitys = JsonSerializer.Deserialize<Dictionary<string, string>>(cached), recomends });
 
         string page = await GetPageAsync(pageUrl);
         if (string.IsNullOrEmpty(page))
@@ -221,7 +226,31 @@ public class KawaiJAVController : BaseSisiController
 
         string json = JsonSerializer.Serialize(dict);
         hybridCache.Set(memKey, json, cacheTime(10));
-        return Json(dict);
+        return Json(new { qualitys = dict, recomends });
+    }
+
+    // Khoi "lien quan" trang detail -> playlist "tiep theo" trong player
+    async Task<List<PlaylistItem>> RecomendsAsync(string pageUrl)
+    {
+        string memKey = ipkey($"kawaijav:rec:{pageUrl}");
+        if (hybridCache.TryGetValue(memKey, out List<PlaylistItem> cache) && cache != null)
+            return cache;
+
+        string page = await GetPageAsync(pageUrl);
+        var rec = KawaiJAVTo.Related("kawaijav/vidosik", page ?? "");
+        if (rec == null)
+            rec = new List<PlaylistItem>();
+
+        foreach (var pl in rec)
+        {
+            if (pl?.video != null && !pl.video.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                pl.video = $"{host}/{pl.video.TrimStart('/')}";
+        }
+
+        if (rec.Count > 0)
+            hybridCache.Set(memKey, rec, cacheTime(20));
+
+        return rec;
     }
 
     // ========== VIDEO: trả link trực tiếp (.mp4) ==========

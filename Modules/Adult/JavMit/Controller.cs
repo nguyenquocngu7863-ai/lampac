@@ -203,7 +203,7 @@ public class JavMitController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("javmit/vidosik")]
-    async public Task<ActionResult> Vidosik(string uri)
+    async public Task<ActionResult> Vidosik(string uri, bool related)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
@@ -212,8 +212,54 @@ public class JavMitController : BaseSisiController
         if (links == null || links.Count == 0)
             return OnError("stream_links", refresh_proxy: true);
 
-        return Json(links.ToDictionary(k => k.Key, v =>
-            $"{host}/javmit/video?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(v.Key)}"));
+        var recomends = await RecomendsAsync(uri);
+        if (related)
+            return PlaylistResult(recomends, false, null, total_pages: 1);
+
+        return Json(new
+        {
+            qualitys = links.ToDictionary(k => k.Key, v =>
+                $"{host}/javmit/video?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(v.Key)}"),
+            recomends
+        });
+    }
+
+    // Khoi "lien quan" cua trang detail -> playlist "tiep theo" trong player
+    async Task<List<PlaylistItem>> RecomendsAsync(string uri)
+    {
+        if (string.IsNullOrEmpty(uri))
+            return new List<PlaylistItem>();
+
+        string memKey = ipkey($"javmit:rel:{uri}");
+        if (hybridCache.TryGetValue(memKey, out List<PlaylistItem> cache) && cache != null)
+            return cache;
+
+        string pageUrl = uri.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? uri : init.host + uri;
+        string html = await FetchHtmlAsync(pageUrl);
+
+        var rec = new List<PlaylistItem>();
+        foreach (var (href, title, poster, dur) in JavMitTo.Related(html))
+        {
+            rec.Add(new PlaylistItem
+            {
+                name = title,
+                video = $"{host}/javmit/vidosik?uri={HttpUtility.UrlEncode(href)}",
+                picture = poster,
+                time = dur,
+                json = true,
+                bookmark = new Bookmark
+                {
+                    site = "javmit",
+                    href = href,
+                    image = poster
+                }
+            });
+        }
+
+        if (rec.Count > 0)
+            hybridCache.Set(memKey, rec, cacheTime(20));
+
+        return rec;
     }
 
     [HttpGet]
