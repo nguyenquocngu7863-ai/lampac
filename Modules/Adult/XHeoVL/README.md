@@ -1,10 +1,16 @@
-# XHeoVL (xheovl.site)
+# XHeoVL (xheovl.sbs)
 
-Module Adult cho xheovl.site (HeoVL). Site **SSR** — list lấy bằng HTTP, player 2 host.
+Module Adult cho xheovl.sbs (HeoVL). Site **SSR** — list lấy bằng HTTP, player 3 host.
+
+> **Domain (2026-11-26)**: `xheovl.site` **chết** — curl_cffi nhận `SSL_connect: Connection closed abruptly`
+> dù DNS vẫn trỏ Cloudflare; Chrome mở được nhưng canonical + beacon trỏ **`xheovl.sbs`**.
+> Đo lại: `.sbs` trả 200 bằng HTTP thường (`site.sh get`), 18 card/trang, 514 trang.
+> Đã đổi `SiteHost` + `SisiSettings` + manifest; `NormalizePageUrl` vẫn nhận `.site`/`.lat` để
+> không vỡ uri cũ đã lưu trong lịch sử/bookmark.
 
 ## Cấu hình
 - `manifest.json`: module Adult, `dynamic: true` (compile runtime, không cần csproj)
-- `ModInit.cs`: `SisiSettings("XHeoVL", https://xheovl.site)`
+- `ModInit.cs`: `SisiSettings("XHeoVL", https://xheovl.sbs)`
   — `displayindex 25`, `httpversion 1`, `httptimeout 30`, `streamproxy true`, `rch/stream_access apk`
 - `Service.SiteHost` là nguồn host duy nhất; đổi domain chỉ sửa 1 chỗ
 
@@ -34,12 +40,17 @@ Menu 2 tầng: 10 category đã verify từng cái bằng HTTP (200 + có card).
 **Không** đưa `/the-loai/jav` vào menu — slug này **404** trên chính site
 (đã thay bằng `Cưỡi Ngựa` = `/the-loai/cuoi-ngua`).
 
-## Player: 2 host song song
+## Player: 3 host song song
 1. **`player.vstream.uk/e/<uuid>`** → HLS
    `<link rel="preload" as="fetch" href="…/hls/<token>">` — media playlist, segment S3 signed.
 2. **`play.avcl.uk/zpic/?id=<id>&sv=<n>`** → MP4 (ArtPlayer)
    Embed chứa `const url = "https://sN.zpicdn.xyz/<id>.mp4"`; `artconfig.js` phát thẳng `url`
    (xử lý cả mp4 lẫn m3u8 nên không được biến đổi gì thêm).
+3. **`vscloud.club/player/<uuid>`** → HLS (host đang dùng, đo 2026-11-26)
+   Embed 1.4 KB chỉ có `window.PLAYER_CONFIG = {"id":"…","source":"https://cdn.vscloud.club/videos/<uuid>/index.m3u8"}`
+   → regex `.m3u8` tổng quát đã bắt được, **không cần nhánh riêng**.
+   Playlist là media playlist VOD: 44 segment, `EXT-X-BYTERANGE`, tên file `.png` nhưng payload
+   **MPEG-TS** ở offset 74, có `ENDLIST` → trả `hls = true`, để client tự tải segment.
 
 Fallback: detail không có JSON-LD → `<iframe src="/play/?token=…">` → fetch `/play/` →
 `const url = "…"` (vstream hoặc avcl).

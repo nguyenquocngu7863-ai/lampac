@@ -36,9 +36,9 @@ public class ModInit : IModuleLoaded, IModuleSisi
 
     void updateConf()
     {
-        // xheovl.site: CSR site (AlpineJS), cần Playwright render
+        // xheovl.sbs: SSR site (AlpineJS), cần Playwright render
         // Player: VB_PLAY token -> /play.php?token= -> iframe embed
-        conf = ModuleInvoke.Init("XHeoVL", new SisiSettings("XHeoVL", "https://xheovl.site")
+        conf = ModuleInvoke.Init("XHeoVL", new SisiSettings("XHeoVL", "https://xheovl.sbs")
         {
             displayindex = 25,
             streamproxy = true,

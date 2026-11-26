@@ -16,7 +16,7 @@ namespace XHeoVL;
 
 public static class XHeoVLTo
 {
-    public static string SiteHost = "https://xheovl.site";
+    public static string SiteHost = "https://xheovl.sbs";
     public const string PlayerHost = "https://player.vstream.uk";
     public const string ChromeUA = "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
 
@@ -249,8 +249,14 @@ public static class XHeoVLTo
         else if (!value.StartsWith("http", StringComparison.OrdinalIgnoreCase))
             value = SiteHost + "/" + value.TrimStart('/');
         if (!Uri.TryCreate(value, UriKind.Absolute, out var parsed)) return null;
-        if (!parsed.Host.EndsWith("xheovl.site", StringComparison.OrdinalIgnoreCase) &&
+        if (!parsed.Host.EndsWith("xheovl.sbs", StringComparison.OrdinalIgnoreCase) &&
+            !parsed.Host.EndsWith("xheovl.site", StringComparison.OrdinalIgnoreCase) &&
             !parsed.Host.EndsWith("xheovl.lat", StringComparison.OrdinalIgnoreCase)) return null;
+
+        // .site/.lat đã chết (TLS đóng) → uri cũ trong lịch sử/bookmark vẫn phát được
+        if (!parsed.Host.EndsWith("xheovl.sbs", StringComparison.OrdinalIgnoreCase))
+            return SiteHost + parsed.PathAndQuery;
+
         return value;
     }
 
