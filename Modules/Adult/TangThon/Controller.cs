@@ -170,14 +170,12 @@ public class TangThonController : BaseSisiController
         string pageUrl = uri;
         if (uri.StartsWith("http", StringComparison.OrdinalIgnoreCase))
         {
-            if (!Uri.TryCreate(uri, UriKind.Absolute, out var u))
+            if (!Uri.TryCreate(uri, UriKind.Absolute, out var u) || string.IsNullOrEmpty(u.PathAndQuery))
                 return null;
-            // chống SSRF: chỉ host của network Sex Hay Pro
-            string h = u.Host.ToLowerInvariant();
-            if (h != "finquesrossello.com" && h != "tangthon.com" && h != "starguney.com"
-                && h != "kitajyo.com" && h != "cloud-nara.com")
-                return null;
-            pageUrl = uri;
+            // mirror của network đổi liên tục (finquesrossello / tangthon / pumpcotradindo …).
+            // Bỏ host nguồn, chỉ giữ path+query rồi fetch trên SiteHost: vẫn chống SSRF
+            // (không bao giờ request host lạ) mà popup không rỗng khi mirror xoay.
+            pageUrl = TangThonTo.SiteHost + u.PathAndQuery;
         }
         else if (uri.StartsWith("/"))
             pageUrl = TangThonTo.SiteHost + uri;

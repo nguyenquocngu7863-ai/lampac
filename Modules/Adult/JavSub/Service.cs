@@ -72,21 +72,8 @@ public static class JavSubTo
     // Do 2026-11-23: site co 2 ten mien CUNG mot site — trang phuc vu tu
     // `javsub.blog` nhung MOI href tuyen doi tro `javsubnet.com`
     // (md5 trang chi tiet trung nhau). Neo host o day lam list ra 0 item -> 503.
-    // => Parser khong duoc neo host, chi khop duong dan. Rang buoc host chi dat o
-    // cho URI do NGUOI DUNG gui vao (SafeDetailUrl) de chong SSRF.
-    public static readonly string[] MirrorHosts = { "javsub.blog", "javsubnet.com" };
-
-    public static bool IsSiteHost(string host)
-    {
-        if (string.IsNullOrEmpty(host)) return false;
-        foreach (string h in MirrorHosts)
-        {
-            if (host.Equals(h, StringComparison.OrdinalIgnoreCase)
-                || host.EndsWith("." + h, StringComparison.OrdinalIgnoreCase))
-                return true;
-        }
-        return false;
-    }
+    // => Parser khong duoc neo host, chi khop duong dan. URI do NGUOI DUNG gui vao
+    // duoc quy ve path tren SiteHost (SafeDetailUrl) — vua chong SSRF vua khong vo khi mirror xoay.
 
     // Parse href -> URL tuyet doi. KHONG gioi han host (xem ghi chu tren).
     public static string NormalizePageUrl(string value)
@@ -114,9 +101,10 @@ public static class JavSubTo
         else if (!url.StartsWith("http", StringComparison.OrdinalIgnoreCase)) url = SiteHost + "/" + url.Trim('/');
         if (!System.Uri.TryCreate(url, UriKind.Absolute, out var u)) return null;
         if (u.Scheme != System.Uri.UriSchemeHttp && u.Scheme != System.Uri.UriSchemeHttps) return null;
-        if (!IsSiteHost(u.Host)) return null;
         if (!u.AbsolutePath.StartsWith("/phim-sex/", StringComparison.OrdinalIgnoreCase)) return null;
-        return u.GetLeftPart(global::System.UriPartial.Path);
+        // Item home tra URL tuyet doi tren mirror khac (javsubnet.net ...) -> bo host nguon,
+        // fetch path tren SiteHost: chong SSRF (khong goi host la) va khong vo khi mirror xoay.
+        return SiteHost + u.AbsolutePath;
     }
 
     public static string NormalizeMediaUrl(string value)

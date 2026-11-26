@@ -16,8 +16,14 @@ Trang chi tiết phục vụ từ 2 host cho **md5 trùng nhau**.
 host nguyên từ `href`. Bản cũ chặn `Host.EndsWith("javsub.blog")` trong `NormalizePageUrl` →
 **0 item → `/javsub` 503** (đo 2026-11-23 trên capture: 24 match thô, 0 match qua filter).
 
-Ràng buộc host chỉ đặt ở **URI do client gửi vào** (`SafeDetailUrl`: phải là `*.javsub.blog` /
-`*.javsubnet.com` **và** path `/phim-sex/`) — chống SSRF cho popup/`vidosik`.
+Ràng buộc host chỉ đặt ở **URI do client gửi vào** (`SafeDetailUrl`). Từ **2026-11-26** ràng buộc
+đó là: giữ path `/phim-sex/`, **bỏ host nguồn**, fetch trên `SiteHost` — vì mirror còn xoay tiếp
+(đo được `javsubnet.net`, ngoài danh sách `.blog`/`.com`). Whitelist `MirrorHosts`/`IsSiteHost` đã
+bị bỏ: chặn theo danh sách host vừa dễ vỡ vừa không cần, vì request cuối luôn đi tới `SiteHost`.
+Bản whitelist cũ làm `/javsub/genres?uri=<uri tuyệt đối>` trả rỗng → **popup trống với người dùng**. 
+
+Verify bằng `~/lampac-native/popup.sh javsub` → PASS (3 nhóm: Thể loại 19 · Thẻ 1 · Liên quan 1,
+rel 8 `tp=1`; chip Thể loại → 24 item `tp=81`).
 
 ## Route
 

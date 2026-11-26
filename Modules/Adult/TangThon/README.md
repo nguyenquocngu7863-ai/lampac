@@ -86,3 +86,14 @@ play.sh m3u8                                             -> PASS h264 1280x720 1
 
 Bẫy: chip trả **URL tuyệt đối** → trước 2026-11-25 `Uri()` ghép `host + "/" + c` nên thành
 `.../https://...` → 503. Đã sửa: `c` bắt đầu bằng `http` thì dùng nguyên.
+
+## Fix 2026-11-26 — uri detail mang host mirror khác
+
+Item home trả `uri` là **URL tuyệt đối trên mirror đang phục vụ** (đo được `pumpcotradindo.com`),
+không nhất thiết `finquesrossello.com`. `NormalizeDetail` cũ whitelist 5 host nên trả `null` →
+`/genres` và `?rel=` ra rỗng (popup trống với người dùng, dù test tay bằng uri cùng host thì PASS).
+Nay: URL tuyệt đối → **bỏ host nguồn, chỉ giữ `PathAndQuery`, fetch trên `SiteHost`**. Vừa không
+bao giờ request host lạ (chống SSRF) vừa không vỡ khi mirror xoay.
+
+Verify bằng `~/lampac-native/popup.sh tangthon` → PASS (3 nhóm: Thể loại 1 · Thẻ 2 · Liên quan 1,
+rel 24 `tp=1`; chip Thể loại → 24 item, chip Thẻ → 22 item).
