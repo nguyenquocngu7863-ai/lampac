@@ -1,0 +1,9 @@
+{
+  "name": "ThreeMovs",
+  "description": "3Movs - Video người lớn tổng hợp (MP4 trực tiếp)",
+  "version": "1.0.0",
+  "author": "Lampac",
+  "site": "https://www.3movs.com",
+  "enable": true,
+  "dynamic": true
+}
