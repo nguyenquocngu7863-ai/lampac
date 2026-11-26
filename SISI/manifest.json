@@ -4,6 +4,7 @@
     "Controllers",
     "Models",
     "SQL",
+    "Services",
     "GlobalUsings.cs",
     "ModInit.cs",
     "SisiApi.cs"

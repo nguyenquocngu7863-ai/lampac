@@ -35,10 +35,13 @@ public class ModInit : IModuleLoaded, IModuleConfigure
         cleanupTimer = new Timer(_ => CleanupHistory(), null, TimeSpan.FromMinutes(5), TimeSpan.FromDays(1));
 
         SisiContext.Initialization(baseconf.app.ApplicationServices);
+
+        HealthMonitor.Start();
     }
 
     public void Dispose()
     {
+        HealthMonitor.Stop();
         EventListener.UpdateInitFile -= updateConf;
     }
 
@@ -53,6 +56,7 @@ public class ModInit : IModuleLoaded, IModuleConfigure
             push_all = true,
             bookmarks = new BookmarksConf() { saveimage = true, savepreview = true },
             history = new HistoryConf() { enable = true, days = 30 },
+            health = new HealthConf() { enable = true, interval = 6, timeout = 20, parallel = 3 },
             limit_map = new List<WafLimitRootMap>
             {
                 new("^/(sisi|bgs|chu|runetki|elo|epr|hqr|phub|ptx|sbg|tizam|xmr|xnx|xds)", new WafLimitMap { limit = 5, second = 1, pathId = true })

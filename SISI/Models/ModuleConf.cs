@@ -22,6 +22,8 @@ public class ModuleConf : SisiConf
 
     public bool forced_checkRchtype { get; set; }
 
+    public HealthConf health { get; set; }
+
 
     public Dictionary<string, string> appReplace { get; set; }
 }
