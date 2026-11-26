@@ -322,6 +322,76 @@ public static class XvideosTo
     }
     #endregion
 
+    #region Chips (popup long-press)
+    public static string TagUri(string host, string tag, int pg)
+        => $"{host}/tags/{tag}/{pg}";
+
+    public static bool HasRelated(ReadOnlySpan<char> html)
+        => !html.IsEmpty && html.IndexOf("video_related") >= 0;
+
+    // chip lay tu 1 lan fetch detail: li.model (dien vien), li.main-uploader (kenh), a.is-keyword (the)
+    public static List<(string kind, string slug, string name)> Chips(ReadOnlySpan<char> html)
+    {
+        var chips = new List<(string kind, string slug, string name)>();
+        if (html.IsEmpty)
+            return chips;
+
+        string page = html.ToString();
+
+        int start = page.IndexOf("video-metadata", StringComparison.Ordinal);
+        if (start < 0)
+            return chips;
+
+        int end = page.IndexOf("</ul></div>", start, StringComparison.Ordinal);
+        string block = end > start ? page.Substring(start, end - start) : page.Substring(start);
+
+        var seen = new HashSet<string>();
+
+        void add(string kind, string slug, string name)
+        {
+            if (string.IsNullOrWhiteSpace(slug) || string.IsNullOrWhiteSpace(name))
+                return;
+
+            slug = slug.Trim().Trim('/');
+            if (slug.Length == 0 || slug.Contains('/') || slug.Contains('?'))
+                return;
+
+            name = Regex.Replace(name, "<[^>]+>", " ");
+            name = HttpUtility.HtmlDecode(name).Trim();
+            if (name.Length == 0 || !seen.Add(kind + "/" + slug))
+                return;
+
+            chips.Add((kind, slug, name));
+        }
+
+        foreach (Match m in Regex.Matches(block,
+            "<li class=\"model\"><a href=\"/pornstars/([^\"]+)\"[^>]*>[\\s\\S]*?<span class=\"name\">([^<]+)</span>",
+            RegexOptions.IgnoreCase))
+            add("star", m.Groups[1].Value, m.Groups[2].Value);
+
+        foreach (Match m in Regex.Matches(block,
+            "<li class=\"main-uploader\"><a href=\"/([^\"]+)\"[^>]*>([\\s\\S]*?)</a></li>",
+            RegexOptions.IgnoreCase))
+        {
+            string name = m.Groups[2].Value;
+            int sub = name.IndexOf("user-subscribe", StringComparison.OrdinalIgnoreCase);
+            if (sub >= 0)
+            {
+                int cut = name.LastIndexOf("<span", sub, StringComparison.OrdinalIgnoreCase);
+                name = name.Substring(0, cut >= 0 ? cut : sub);
+            }
+            add("channel", m.Groups[1].Value, name);
+        }
+
+        foreach (Match m in Regex.Matches(block,
+            "href=\"/tags/([^\"]+)\"[^>]*class=\"[^\"]*is-keyword[^\"]*\"[^>]*>([^<]+)</a>",
+            RegexOptions.IgnoreCase))
+            add("tag", m.Groups[1].Value, m.Groups[2].Value);
+
+        return chips;
+    }
+    #endregion
+
     #region StreamLinks
     public static string StreamLinksUri(string uri_star, string host, string url)
     {
@@ -329,6 +399,68 @@ public static class XvideosTo
             return null;
 
         return $"{host}/{url}";
+    }
+
+    public static List<PlaylistItem> RelatedList(ReadOnlySpan<char> html, string route, string uri_star)
+    {
+        string json = Rx.Match(html, @"video_related\s*=\s*(\[[\s\S]*?\])\s*;", options: RegexOptions.Singleline | RegexOptions.CultureInvariant);
+        if (string.IsNullOrWhiteSpace(json) || !json.StartsWith("[") || !json.EndsWith("]"))
+            return new List<PlaylistItem>();
+
+        var related = new List<PlaylistItem>(40);
+
+        try
+        {
+            foreach (var r in JsonSerializer.Deserialize<List<Related>>(json, new JsonSerializerOptions
+            {
+                AllowTrailingCommas = true
+            }))
+            {
+                if (string.IsNullOrEmpty(r.tf) || string.IsNullOrEmpty(r.u))
+                    continue;
+
+                string p = r.p?.ToString();
+                string pn = r.pn?.ToString();
+                ModelItem model = null;
+
+                if (!string.IsNullOrEmpty(p) && !string.IsNullOrEmpty(pn))
+                {
+                    if (!p.StartsWith("false", StringComparison.OrdinalIgnoreCase) &&
+                        !pn.StartsWith("false", StringComparison.OrdinalIgnoreCase))
+                    {
+                        model = new ModelItem()
+                        {
+                            name = pn,
+                            uri = $"{uri_star}?uri=" + (r?.ch == true ? "channels/" : "pornstars/") + r.p,
+                        };
+                    }
+                }
+
+                related.Add(new PlaylistItem()
+                {
+                    name = r.tf,
+                    video = $"{route}?uri={r.u.Remove(0, 1)}",
+                    picture = r.i,
+                    preview = r.ipu,
+                    time = r.d,
+                    json = true,
+                    related = true,
+                    model = model,
+                    bookmark = new Bookmark()
+                    {
+                        site = "xds",
+                        href = r.u.Remove(0, 1),
+                        image = r.i
+                    }
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "{Class} {CatchId}", "XvideosTo", "id_wqrdlrn9");
+        }
+
+        return related;
     }
 
     public static StreamItem StreamLinks(ReadOnlySpan<char> html, string route, string uri_star, Func<string, Task<string>> onm3u = null)
@@ -340,78 +472,13 @@ public static class XvideosTo
         if (string.IsNullOrWhiteSpace(stream_link))
             return null;
 
-        #region getRelated
-        List<PlaylistItem> getRelated(ReadOnlySpan<char> html)
-        {
-            string json = Rx.Match(html, @"video_related\s*=\s*(\[[\s\S]*?\])\s*;", options: RegexOptions.Singleline | RegexOptions.CultureInvariant);
-            if (string.IsNullOrWhiteSpace(json) || !json.StartsWith("[") || !json.EndsWith("]"))
-                return new List<PlaylistItem>();
-
-            var related = new List<PlaylistItem>(40);
-
-            try
-            {
-                foreach (var r in JsonSerializer.Deserialize<List<Related>>(json, new JsonSerializerOptions
-                {
-                    AllowTrailingCommas = true
-                }))
-                {
-                    if (string.IsNullOrEmpty(r.tf) || string.IsNullOrEmpty(r.u))
-                        continue;
-
-                    string p = r.p?.ToString();
-                    string pn = r.pn?.ToString();
-                    ModelItem model = null;
-
-                    if (!string.IsNullOrEmpty(p) && !string.IsNullOrEmpty(pn))
-                    {
-                        if (!p.StartsWith("false", StringComparison.OrdinalIgnoreCase) &&
-                            !pn.StartsWith("false", StringComparison.OrdinalIgnoreCase))
-                        {
-                            model = new ModelItem()
-                            {
-                                name = pn,
-                                uri = $"{uri_star}?uri=" + (r?.ch == true ? "channels/" : "pornstars/") + r.p,
-                            };
-                        }
-                    }
-
-                    related.Add(new PlaylistItem()
-                    {
-                        name = r.tf,
-                        video = $"{route}?uri={r.u.Remove(0, 1)}",
-                        picture = r.i,
-                        preview = r.ipu,
-                        time = r.d,
-                        json = true,
-                        related = true,
-                        model = model,
-                        bookmark = new Bookmark()
-                        {
-                            site = "xds",
-                            href = r.u.Remove(0, 1),
-                            image = r.i
-                        }
-                    });
-                }
-            }
-            catch (Exception ex)
-            {
-                Serilog.Log.Error(ex, "{Class} {CatchId}", "XvideosTo", "id_wqrdlrn9");
-            }
-
-            return related;
-        }
-
-        #endregion
-
         return new StreamItem()
         {
             qualitys = new Dictionary<string, string>()
             {
                 ["auto"] = stream_link
             },
-            recomends = getRelated(html)
+            recomends = RelatedList(html, route, uri_star)
         };
 
         //string m3u8 = onm3u == null ? null : await onm3u.Invoke(stream_link);

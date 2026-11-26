@@ -21,9 +21,12 @@
 
 | Маршрут | Назначение |
 |---------|------------|
-| **`xds`**, **`xdsgay`**, **`xdssml`** | Списки/разделы. |
-| **`xds/stars`**, **`xdsgay/stars`**, **`xdssml/stars`** | Избранное/«stars». |
+| **`xds`**, **`xdsgay`**, **`xdssml`** | Списки/разделы (`?t=<tag>` — тег, `?rel=<uri>` — похожие, `total_pages: 1`). |
+| **`xds/stars`**, **`xdsgay/stars`**, **`xdssml/stars`** | Избранное/«stars» (pornstar/channel JSON). |
 | **`xds/vidosik`** | Карточка видео. |
+| **`xds/genres`** | Popup (long-press): актёры / канал / теги / «похожие» (`uri` = detail `video.*`). |
+
+Попап: один запрос detail-страницы, кэш RAM 6 ч; чужие хосты в `uri` отбрасываются (SSRF).
 
 ## Файлы
 

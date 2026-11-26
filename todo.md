@@ -15,21 +15,22 @@ Skill tham chiếu: `lampac-popup` (hợp đồng route, luật UX, anti-pattern
 - [ ] (Nếu site đổi domain trong lúc làm) cập nhật `SiteHost` + manifest + README
 - [ ] Dọn rác build (`lampac-cleanup` §2) trước khi bàn giao
 
-## Trạng thái tổng (đo lại 2026-11-24, tách theo nguồn gốc)
+## Trạng thái tổng (đo lại 2026-11-26, tách theo nguồn gốc)
 
 | nhóm | số module | đang bật | có popup (`genres`) | có cả `?rel=` |
 |---|---|---|---|---|
-| **A. Gốc upstream** (`lampac-nextgen/lampac`) | 14 | 13 | 2 (`Eporner`, `Spankbang`) | 2 |
-| **B. Tự làm** (upstream không có) | 67 | 65 | 54 | 54 |
-| **tổng** | **81** | **78** | **56** | **56** |
+| **A. Gốc upstream** (`lampac-nextgen/lampac`) | 14 | 13 | 3 (`Eporner`, `Spankbang`, `Xvideos`) | 3 |
+| **B. Tự làm** (upstream không có) | 72 | 65 | 69 | 69 |
+| **tổng** | **86** | **78** | **72** | **72** |
 
-- Cả **53 module có `genres` đều đã có `?rel=`** → không còn module nào "nửa vời".
-- **Chưa có popup: 21** = **11 nhóm A** (`BongaCams`, `Chaturbate`, `Ebalovo`, `HQporner`, `PornHub`,
-  `Porntrex`, `Runetki`, `Tizam`, `Xhamster`, `Xnxx`, `Xvideos`) + **10 nhóm B** (`PhimSexVN88`,
-  `PhimSexViet113`, `SexHihi`, `Sexgenz2`, `Sieusex`, `SupJav` PAUSED, `TangThon`, `TopGai`, `Viet69Av`).
+- Cả **72 module có `genres` đều đã có `?rel=`** → không còn module nào "nửa vời" (riêng `JAVSnap` có
+  `genres` nhưng thiếu `rel` — module đang **tắt**, không đếm).
+- **Chưa có popup: 5 đang bật** — `BongaCams`, `Chaturbate`, `Runetki`, `Xhamster` (4 module cam/tube
+  cần thiết kế popup riêng) + `SupJav` (**PAUSED**, Cloudflare). Nhóm B **đã phủ 100%**.
+- 8 module đang tắt: `DuJav`, `JAVSnap`, `JavTsunami`, `PhimSexVN88`, `PhimSexViet113`, `SexHihi`,
+  `Viet69kz`, `XvideosRED` — không tính vào thống kê.
 - **Đếm bằng route thật** (`Route("<x>/genres")` + `string rel`), KHÔNG grep chữ `genres`: cách cũ đếm oan
   `SexHihi`/`JavTsunami` (chỉ có chữ "Thể loại" trong menu, không có route).
-- `XvideosRED` (nhóm A) và `Viet69kz` (nhóm B) đang tắt.
 
 ## Phân nhóm theo nguồn gốc — LUẬT ƯU TIÊN
 
@@ -268,7 +269,7 @@ Thứ tự ưu tiên từ nay:
 - [x] `Spankbang` — https://ru.spankbang.com *(popup: `Diễn viên`/`Kênh`/`Thẻ` + `Liên quan`; **`?rel=<uri detail>` (2026-11-24)** trả `total_pages: 1`, `pg>1` → list rỗng, dùng chung cache `spankbang:view:{uri}` với `vidosik` (1 lần fetch detail), mục "Video liên quan" trong popup là `plain: true`; chip mở thẳng trang site bằng `?path=` (vd `/a1e/pornstar/big+tre/`), lọc tên CJK/Nga; list: card mới của site không còn `title` → đọc `img alt`, badge `HD`/`11m` theo `data-testid`; sort thật `new_videos` / `trending_videos` / `most_popular` = `/most_popular/?p=w` — `/upcoming/` bị site trả 503 nên bỏ; trang pornstar 0 video → trả list rỗng thay vì lỗi)*
 - [ ] `Xhamster` — https://xhamster.com
 - [x] `Xnxx` — https://www.xnxx-ru.com *(2026-11-25: popup `genres` + `?rel=` ✅ — detail là config JS: **Diễn viên** `video_models` → `?c=model/<tên>`, **Thẻ** `video_tags` 11 → `?c=tag/<slug>`, cả hai mở qua `/search/<kw>/<pg>` vì `/tags/…` chỉ là landing SEO và `/pornstar/…` render card rỗng bằng JS; **Liên quan** `var video_related` (40 item, `tp=1`, pg2 rỗng) phải `JsonUnescape` vì tên escape `\uXXXX` + ảnh `https:\/\/`. Đo: home 36 · pg2 khác · search 36 · tag 36 · model 36 · SSRF/rỗng → `groups []` · `play.sh` PASS h264 854x480 730.2s)*
-- [ ] `Xvideos` — https://www.xvideos.com
+- [x] `Xvideos` — https://www.xvideos.com (popup 2026-11-26: `Diễn viên`/`Kênh`/`Thẻ`/`Liên quan`; chip từ 1 lần fetch detail, `?rel=` `tp=1`; `t=<slug>` mở `/tags/<slug>/<pg>`; `play.sh` PASS)
 
 ## Phase 3 — Cam live (không có detail kiểu phim — cần thiết kế popup riêng)
 
@@ -476,3 +477,5 @@ Nguồn: `~/.config/opencode/skills/lampac-adult-module/references/card-thumbnai
 | 2026-11-26 | **SISI health check — hoàn thiện sau bản user tự làm** | Phân loại sai (báo lỗi oan) + chỉ kiểm 64/138 channel | User tự viết `HealthMonitor` (commit `3af2fbdc`, `e49b4c4c`) trong lúc mạng lỗi; mình review bằng số đo thật rồi sửa 5 điểm. **(1)** `503 + msg "playlists"` = quy ước "danh sách rỗng" của `BaseSisiController.PlaylistResult`, không phải site hỏng → trả `empty` thay vì `error`. **(2)** Timeout: bản đầu `return item` sớm trong nhánh `code != 200` nên đoạn phân loại timeout không bao giờ chạy → gom mọi nhánh qua `done()` local; giờ PubJav/XHeoVL (20 001/19 999 ms) ra `timeout` chứ không phải "http 500". **(3)** Phạm vi: map theo tên thư mục `module/Adult` trượt 74 channel (alias `phub/xds/xmr/xnx/sbg/epr/ptx/hqr/fpv/sgz2…` + toàn bộ `/nexthub?plugin=…`) → thêm `aliasRoutes` + key theo `PathAndQuery` (NextHUB dùng chung 1 path) + nhận `/nexthub*`; **64 → 135 channel**. **(4)** Thêm `ageMinutes` + `stale` (`now > lastRun + interval×1.5`) vì Android doze giết timer mà bảng vẫn trông như mới. **(5)** `?run=1` chỉ nhận loopback (`IPAddress.IsLoopback`) — mỗi lần chạy là 135 request ra site thật. Phát hiện thêm: 36 channel trả `{"rch":true,"nws":"ws://…"}` (cần websocket, HTTP không có playlist) → status mới `na`, tránh báo đỏ oan cho cam site + NextHUB plugin. **Đo sau sửa** (cả lượt ~2 phút, song song 3): `total 135 · ok 83 · empty 14 · timeout 2 · na 36 · error 0`; `ageMinutes 0`, `stale false`. `nrestart` → log `loaded module: SISI` (compile at startup OK). Ghi README `SISI/README.md` mục Health check (bảng `sisi.health` + nghĩa 5 status) |
 
 | 2026-11-26 | **XHeoVL: đổi domain `.site` → `.sbs`** | Health check báo `timeout` 20s, module chết vì domain cũ | `curl_cffi` vào `xheovl.site` → `SSLError (35) BoringSSL SSL_connect: Connection closed abruptly` dù DNS vẫn trả IP Cloudflare `172.67.191.87`; Chrome headful mở được nhưng `canonical` + beacon RUM trỏ **`xheovl.sbs`** → domain đã migrate. Đo `.sbs` bằng `site.sh`: **200, 133 725B**, parser cũ vẫn ăn (78 href `/video/`, 18 card có `vb-card__title`, `trang 1/514`). Player cũng đổi host: JSON-LD `embedUrl` giờ là **`vscloud.club/player/<uuid>`**, embed 1.4 KB chỉ có `window.PLAYER_CONFIG = {"source":"https://cdn.vscloud.club/videos/<uuid>/index.m3u8"}` → regex `.m3u8` tổng quát bắt luôn, **không phải sửa code player**. Playlist là media playlist VOD 44 segment/131.5 s, `EXT-X-BYTERANGE`, tên `.png` nhưng payload MPEG-TS offset 74, có `ENDLIST`. Sửa: `Service.SiteHost`, `SisiSettings` (ModInit), manifest, README; `NormalizePageUrl` **map uri cũ `.site`/`.lat` → `.sbs`** (lịch sử/bookmark cũ vẫn phát). Verify qua app: home 18 `tp=514` 1.6 s · pg2 18 (0 trùng) · cat Sinh Viên 18 `tp=165` · search "jav" 18 `tp=1` (site không có trang 2) · `popup.sh xheovl` **PASS** (3 nhóm/22 chip, rel 12 `tp=1`) · `vidosik` → `video.m3u8` 200 12 012B · `play.sh` **PASS (~90%)**, ffmpeg decode OK, "segment `.png` là MPEG-TS, đừng kết luận decoy" · uri `.site` cũ vẫn trả playlist 200 |
+
+| 2026-11-26 | **Xvideos (popup long-press)** | Module nhóm A trước đây không có `/genres`; user yêu cầu làm | Thêm route `xds/genres` (+ `xdsgay`, `xdssml`) và `?rel=` vào module có sẵn. Chip lấy từ **1 lần fetch detail** (`div.video-metadata`): **Diễn viên** `li.model a[href^=/pornstars/]` → `xds/stars?uri=pornstars/<slug>` (đã đo JSON 200), **Kênh** `li.main-uploader` → `xds/stars?uri=channels/<slug>` (JSON 200, 1502 video), **Thẻ** `a.is-keyword[href^=/tags/]` → `xds?t=<slug>` (**thêm nhánh tag**: `XvideosTo.TagUri` → `/tags/<slug>/<pg>`, trang 148 trang, pg2 24 item khác trang 1). **Liên quan** `plain:true` → `?rel=<uri>` parse lại `var video_related` (tách `RelatedList()` khỏi `StreamLinks`), `total_pages: 1`, pg>1 rỗng. Cache RAM 6h (`_infoCache`) theo uri detail; `NormalizeDetail` chỉ nhận `video.*` + bỏ host lạ (SSRF rỗng). Đo qua app: home 27 (`tp=0`) · tag hardcore 25 · tag pg2 24 · stars pornstar 36 · stars channel 28 · genres 4 nhóm / 21 chip (2+1+17+1) · rel 40 `tp=1` · `popup.sh xvideos` **PASS** · `play.sh` **PASS (~90%)** h264 854x480 1014.9s · `check.sh` 0 error · đã copy 4 file sang runtime + restart. Ghi nhận (không sửa, ngoài phạm vi): `xdsgay`/`xdssml` list trả link `search-video/...`/`video.*` nhưng detail 404 trên mirror → popup rỗng; lỗi sẵn có của 2 channel LGBT, tách việc riêng |
