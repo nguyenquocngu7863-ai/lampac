@@ -60,7 +60,7 @@ def multipart(parts):
 def main():
     # Host duoc phep relay. JavGuru wrap jav.guru (JAVGURU_RELAY cung worker nay),
     # neu thieu se bi 403 "host not allowed" o worker.
-    allow = "xnhau.pub,xnhau.pink,xnhau.moda,jav.guru,sextb.net,thichsex.org,lh3-ggcontent.top,uptobox-ggcdn.top,javenglish.cc,javeng.b-cdn.net,javquick.com,vjav.com,tn.vjav.com"
+    allow = "xnhau.plus,xnhau.pub,xnhau.pink,xnhau.moda,jav.guru,sextb.net,thichsex.org,lh3-ggcontent.top,uptobox-ggcdn.top,javenglish.cc,javeng.b-cdn.net,javquick.com,vjav.com,tn.vjav.com,qooglevideo.shop,xvideo.lat,bytecdn.cfd"
     # --test-host CHI doi host smoke, KHONG duoc thay the ALLOW.
     # (2026-11-22: dung --test-host javquick.com da vo tinh ghi de ALLOW con
     #  dung 1 host -> jav.guru/xnhau/sextb bi 403 "host not allowed".)
