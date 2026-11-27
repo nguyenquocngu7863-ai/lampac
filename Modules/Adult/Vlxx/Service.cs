@@ -8,7 +8,7 @@ namespace Vlxx;
 
 public static class VlxxTo
 {
-    public static string SiteHost = "https://vlxx.phd";
+    public static string SiteHost = "https://vlxx.net";
 
     static string Slugify(string s)
     {
@@ -118,7 +118,7 @@ public static class VlxxTo
             value = SiteHost + "/" + value.Trim('/') + "/";
         if (!System.Uri.TryCreate(value, UriKind.Absolute, out var parsed)) return null;
         string host = parsed.Host.ToLowerInvariant();
-        if (!host.EndsWith("vlxx.phd") && !host.EndsWith("vlxx.net")) return null;
+        if (!host.EndsWith("vlxx.net") && !host.EndsWith("vlxx.phd")) return null;
         return value;
     }
 

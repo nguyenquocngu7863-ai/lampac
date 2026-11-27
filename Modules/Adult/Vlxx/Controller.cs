@@ -41,7 +41,7 @@ public class VlxxController : BaseSisiController
                 playlists = VlxxTo.Playlist("vlxx/vidosik", span.ToString());
             }, addheaders: HeadersModel.Init(
                 ("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"),
-                ("Referer", "https://vlxx.phd/")
+                ("Referer", "https://vlxx.net/")
             ));
 
             if (playlists == null || playlists.Count == 0)
@@ -63,7 +63,7 @@ public class VlxxController : BaseSisiController
 
     async Task<string> FetchHtmlAsync(string url)
     {
-        // vlxx.phd tra 301 sang vlxx.net va TLS .phd hay bi cat -> fetch thang .net
+        // .phd chuyen sang .net; giu fallback cho link cu con .phd
         var candidates = new List<string>(2);
         if (url.Contains("//vlxx.phd"))
             candidates.Add(url.Replace("//vlxx.phd", "//vlxx.net"));
@@ -207,11 +207,11 @@ public class VlxxController : BaseSisiController
             {
                 string pageUrl = uri;
                 if (uri.StartsWith("/"))
-                    pageUrl = "https://vlxx.phd" + uri;
+                    pageUrl = "https://vlxx.net" + uri;
                 else if (!uri.StartsWith("http"))
-                    pageUrl = "https://vlxx.phd/" + uri.Trim('/');
+                    pageUrl = "https://vlxx.net/" + uri.Trim('/');
 
-                // vlxx.phd 301 -> vlxx.net va TLS .phd hay bi cat -> doc/ghi tren .net
+                // .phd 301 -> .net; doc/ghi tren .net cho on dinh
                 string siteUrl = pageUrl.Contains("//vlxx.phd")
                     ? pageUrl.Replace("//vlxx.phd", "//vlxx.net")
                     : pageUrl;
@@ -392,7 +392,7 @@ public class VlxxController : BaseSisiController
             return OnError("stream_links", refresh_proxy: true);
 
         var direct = httpHeaders(init, HeadersModel.Init(
-            ("referer", "https://vlxx.phd/")
+            ("referer", "https://vlxx.net/")
         ));
         return Redirect(HostStreamProxy(link, direct));
     }
@@ -415,7 +415,7 @@ public class VlxxController : BaseSisiController
             return OnError("link");
 
         var direct = httpHeaders(init, HeadersModel.Init(
-            ("referer", "https://vlxx.phd/")
+            ("referer", "https://vlxx.net/")
         ));
         return Redirect(HostStreamProxy(link, direct));
     }

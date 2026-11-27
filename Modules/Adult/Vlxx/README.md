@@ -1,14 +1,14 @@
-# Vlxx (vlxx.phd, motchill huid)
+# Vlxx (vlxx.net — 2026-11-27: vlxx.phd chet, connect refused)
 
 Module Adult route `vlxx`, displayindex 16.
 
 ## URLs
-- List home: `https://vlxx.phd/` (card `a[title][href=/video/]`, title truoc href)
-- Category: `https://vlxx.phd/{slug}/?page=N` dang path: `/{slug}/{N}/`
-- Search: `https://vlxx.phd/search/{slug}/` (+ `{N}/` khi pg>1)
-- Home pg>1: `https://vlxx.phd/new/{N}/` (trang chu bo qua ?page, `/page/2/` 404)
-- Video: `https://vlxx.phd/video/{slug}/{id}/` (slug truoc, id sau)
-- Poster: `https://vlxx.phd/img/{id}.jpg` (absolute, dung truc tiep tu id)
+- List home: `https://vlxx.net/` (card `a[title][href=/video/]`, title truoc href)
+- Category: `https://vlxx.net/{slug}/?page=N` dang path: `/{slug}/{N}/`
+- Search: `https://vlxx.net/search/{slug}/` (+ `{N}/` khi pg>1)
+- Home pg>1: `https://vlxx.net/new/{N}/` (trang chu bo qua ?page, `/page/2/` 404)
+- Video: `https://vlxx.net/video/{slug}/{id}/` (slug truoc, id sau)
+- Poster: `https://vlxx.net/img/{id}.jpg` (absolute, dung truc tiep tu id)
 
 ## Player (3 chặng)
 1. Trang video: `div#video[data-id][data-sv]` + server `onclick="server(N,id)"`.
@@ -26,10 +26,17 @@ Module Adult route `vlxx`, displayindex 16.
 | `/vlxx?rel=<detail>` | `div#video-list` ("Phim liên quan") → 10 item, `total_pages: 1`, `pg>1` → `{tp:1,list:[]}`, uri lạ → 200 rỗng |
 
 - Cache: `vlxx:info:{uri}` 360 phút, `vlxx:rel:{uri}` 20 phút.
-- **`vlxx.phd` trả 301 sang `vlxx.net`** và TLS `.phd` hay bị cắt → `FetchHtmlAsync` và
-  `ResolveLinksAsync` đều **đổi host sang `.net` trước** (fallback về `.phd`), `POST /ajax.php`
-  gọi thẳng `https://vlxx.net/ajax.php` + `Origin/Referer: https://vlxx.net`.
-  (Trước 2026-11-24 `vidosik` trả `stream_links` liên tục vì post vào `.phd`.)
+- **2026-11-27: `vlxx.phd` CHẾT HẲN** (`curl: (7) Could not connect ... :443`, không còn 301) →
+  đổi toàn bộ host sang **`vlxx.net`** (`SiteHost`, `SisiSettings`, `manifest.site`, referer).
+  `vlxx.com` cũng trả 200 cùng nội dung nhưng canonical là `vlxx.net`.
+  Code vẫn rewrite `//vlxx.phd` → `//vlxx.net` để link/bookmark cũ còn dùng được, và
+  `NormalizeUrl` nhận cả 2 host.
+
+## Đã đo (2026-11-27)
+
+- Sau khi đổi `.net`: home 30 item · `vidosik` `{qualitys:{Auto}, recomends:10}` ·
+  `play.sh` **PASS** h264 1920x1080 · 9722.7s · segment 985/985 qua Lampac · decode 5s đầu + cuối OK
+- Ảnh list qua `proxyimg` 200.
 
 ## Đã đo (2026-11-24)
 

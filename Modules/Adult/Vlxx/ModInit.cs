@@ -36,7 +36,7 @@ public class ModInit : IModuleLoaded, IModuleSisi
 
     void updateConf()
     {
-        conf = ModuleInvoke.Init("Vlxx", new SisiSettings("Vlxx", "https://vlxx.phd")
+        conf = ModuleInvoke.Init("Vlxx", new SisiSettings("Vlxx", "https://vlxx.net")
         {
             displayindex = 17,
             streamproxy = true,
@@ -44,10 +44,10 @@ public class ModInit : IModuleLoaded, IModuleSisi
             rch_access = "apk",
             stream_access = "apk",
             headers_stream = HeadersModel.Init(
-                ("referer", "https://vlxx.phd/")
+                ("referer", "https://vlxx.net/")
             ).ToDictionary(),
             headers_image = HeadersModel.Init(
-                ("referer", "https://vlxx.phd/")
+                ("referer", "https://vlxx.net/")
             ).ToDictionary()
         });
     }
