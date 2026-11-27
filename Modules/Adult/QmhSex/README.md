@@ -24,7 +24,7 @@ Module Adult route `qmhsex`. Host đổi: `qmhsex.shop` → **`qmhsex.guru`** (2
 ## Segment PNG → TS
 - m3u8 của site trỏ segment `.png`; nội dung thật = **header PNG (≈62 byte) + MPEG-TS**.
   ffmpeg/hls.js từ chối đuôi `.png` và cả header.
-- Route `qmhsex/hls?uri=&q=` rewrite segment sang `qmhsex/seg/<ProxyLink>` (suffix `#.ts`),
+- Route `qmhsex/video.m3u8?uri=&q=` (alias `qmhsex/hls`) rewrite segment sang `qmhsex/seg/<ProxyLink>` (suffix `#.ts`),
   `qmhsex/seg/…` tải upstream, bỏ header PNG (tìm sync `0x47` mỗi 188 byte), trả `video/mp2t`.
 
 ## Đã đo (2026-11-27)

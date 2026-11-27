@@ -541,6 +541,32 @@ public static class MbbgTo
                     ? kv.Key.Substring(5) : kv.Key.TrimStart('/'),
                 kv.Key);
 
+        // Theme 2026-11: khong con `div.tags` va article khong mang class
+        // `category-*` -> lay danh muc tu menu chinh + vai the dau trang.
+        if (res.Count == 0)
+        {
+            foreach (Match m in Regex.Matches(html,
+                "<li[^>]*menu-item-object-category[^>]*>\\s*<a href=\"(?<href>[^\"]+)\"[^>]*>(?<name>[^<]{2,40})</a>",
+                RegexOptions.IgnoreCase))
+            {
+                string p2 = PathOf(m.Groups["href"].Value);
+                names[p2] = HttpUtility.HtmlDecode(m.Groups["name"].Value).Trim();
+                Add("cat", p2.TrimStart('/'), p2);
+            }
+
+            int tags = 0;
+            foreach (Match m in Regex.Matches(html,
+                "href=\"(?<href>https?://[^\"]+/tag/[^\"]+)\"[^>]*>(?<name>[^<]{2,40})</a>",
+                RegexOptions.IgnoreCase))
+            {
+                if (tags++ >= 12)
+                    break;
+                string p2 = PathOf(m.Groups["href"].Value);
+                names[p2] = HttpUtility.HtmlDecode(m.Groups["name"].Value).Trim();
+                Add("tag", p2.Substring(5), p2);
+            }
+        }
+
         return res;
     }
 

@@ -62,6 +62,11 @@ public class MbbgController : BaseSisiController
         if (rch?.enable == true)
             StatiCacheDisabled = true;
 
+        // The/thu muc rong (site tra trang khong co card) -> app cuon vao la
+        // 503 "playlists". Tra list rong + menu de app hien "khong co video".
+        if (cache.IsSuccess && (cache.Value == null || cache.Value.Count == 0))
+            return Json(new { list = new object[0], menu = await MenuAsync(), total_pages = 0 });
+
         return PlaylistResult(cache, await MenuAsync());
     }
 

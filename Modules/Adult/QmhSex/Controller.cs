@@ -245,7 +245,7 @@ public class QmhSexController : BaseSisiController
         return Json(new
         {
             qualitys = links.ToDictionary(k => k.Key, v =>
-                $"{host}/qmhsex/hls?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(v.Key)}"),
+                $"{host}/qmhsex/video.m3u8?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(v.Key)}"),
             recomends
         });
     }
@@ -284,6 +284,7 @@ public class QmhSexController : BaseSisiController
     // bo loc CDN -> player thuong chet. Route nay boc header truoc khi tra ve.
     [HttpGet]
     [Route("qmhsex/hls")]
+    [Route("qmhsex/video.m3u8")]
     async public Task<ActionResult> Hls(string uri, string q)
     {
         if (await IsRequestBlocked(rch: true))
@@ -401,7 +402,6 @@ public class QmhSexController : BaseSisiController
 
         string pageHost = new Uri(pageUrl).Host.ToLowerInvariant();
         if (!pageHost.EndsWith("qmhsex.guru") && !pageHost.EndsWith("qmhsex.shop"))
-            return Json(new { items = new object[0], groups = new object[0] });
             return Json(new { items = new object[0], groups = new object[0] });
 
         lock (_infoCache)

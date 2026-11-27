@@ -20,6 +20,11 @@ Module Adult route `mbbg`. Site đổi host liên tục: `.gay` → `.hair` → 
 - `nonce` không bắt buộc: thiếu nonce mà vẫn `return null` thì mất toàn bộ phim (lỗi 2026-11-27).
 - Trang list ghi `total_pages: 0` (site không trả số trang) — app cuộn vô hạn.
 
+## Popup
+- Theme mới bỏ `div.tags`/class `category-*` → `Chips()` fallback: danh mục lấy từ
+  `li.menu-item-object-category` trong menu chính, thẻ lấy 12 link `/tag/…` đầu trang.
+- Tag/thư mục rỗng (site trả trang không card) → trả `list: []` + menu (không 503).
+
 ## Đã đo (2026-11-27)
 - `/mbbg` 20 item · `vidosik` `{qualitys: 360p/720p, recomends}` · `ffprobe` route 720p:
   h264 404x720 + aac 64.9s.
