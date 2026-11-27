@@ -211,7 +211,7 @@ public class SakuraSinsController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("sakurasins/vidosik")]
-    async public Task<ActionResult> Vidosik(string uri)
+    async public Task<ActionResult> Vidosik(string uri, bool related)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
@@ -220,8 +220,44 @@ public class SakuraSinsController : BaseSisiController
         if (links == null || links.Count == 0)
             return OnError("stream_links", refresh_proxy: true);
 
-        return Json(links.ToDictionary(k => k.Key, v =>
-            $"{host}/sakurasins/video.m3u8?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(v.Key)}"));
+        var recomends = await RecomendsAsync(uri);
+        if (related)
+            return PlaylistResult(recomends, false, null, total_pages: 1);
+
+        return Json(new
+        {
+            qualitys = links.ToDictionary(k => k.Key, v =>
+                $"{host}/sakurasins/video.m3u8?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(v.Key)}"),
+            recomends
+        });
+    }
+
+    // Khoi "lien quan" cua trang detail -> playlist "tiep theo" trong player
+    async Task<List<PlaylistItem>> RecomendsAsync(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return new List<PlaylistItem>();
+
+        string url = uri.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+            ? uri : SakuraSinsTo.SiteHost + uri;
+
+        string memKey = ipkey($"sakurasins:rec:{url}");
+        if (hybridCache.TryGetValue(memKey, out List<PlaylistItem> hit) && hit != null)
+            return hit;
+
+        string html = await FetchHtmlAsync(url);
+        var rec = SakuraSinsTo.PlaylistRelated("sakurasins/vidosik", html ?? "");
+
+        foreach (var p in rec)
+        {
+            if (!string.IsNullOrEmpty(p.video) && !p.video.StartsWith("http"))
+                p.video = host + "/" + p.video.TrimStart('/');
+        }
+
+        if (rec.Count > 0)
+            hybridCache.Set(memKey, rec, cacheTime(20));
+
+        return rec;
     }
 
     [HttpGet]

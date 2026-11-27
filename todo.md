@@ -10,7 +10,8 @@ Thứ tự làm, cái nào xong đánh `[x]`:
 ### A. Player "tập tiếp theo" (`recomends`) — 20/52 module
 - [x] Đợt 1 (10): Javtiful, Jable, JavMoi, JavMit, JavCc, JavCt, KissJav, KawaiJAV, JavGuru, JavBangers
 - [x] Đợt 2 (10): AnySex, FreePornVideos, Hclips, FapClub, HQporner, Av123, Lon69, Vlxx\*, PhimSexVi, ThreeMovs
-- [ ] Đợt 3 (10): DuJav, Jav18, Mbbg, Phe69, Porntrex, PubJav, QmhSex, SakuraSins, SevenMM, SexDep
+- [x] Đợt 3 (10): DuJav, Jav18, Mbbg, Phe69, Porntrex, PubJav, QmhSex, SakuraSins, SevenMM, SexDep
+  *(code xong 2026-11-27: verify `keys=[qualitys,recomends]` OK cho Phe69 8 · Porntrex 11 · PubJav 16 · SakuraSins 12 · SevenMM 8 · SexDep 10; `?related=true` → `list + tp=1`. Chưa đo được: Mbbg/QmhSex (503, site không vào), Jav18 (Cloudflare 403, không có trong conf), DuJav (đang `enable:false`)*
 - [ ] Đợt 4 (10): SexNetVc, SexTb, SexVietop, Sieusex, Suong3x, TangThon, TellyHD, ThichSex, Tizam, Txxx
 - [ ] Đợt 5 (10): Upornia, VNJav, VNsexTop1, Viet69Av, Viet69z, VietSexBlog, Vietmup, Vjav, VnChich, XHeoVL
 - [ ] Đợt 6 (2 còn lại): XViet, XszAv

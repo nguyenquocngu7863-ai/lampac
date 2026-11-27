@@ -267,7 +267,7 @@ public class DuJavController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("dujav/vidosik")]
-    async public Task<ActionResult> Vidosik(string uri)
+    async public Task<ActionResult> Vidosik(string uri, bool related)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
@@ -276,8 +276,32 @@ public class DuJavController : BaseSisiController
         if (links == null || links.Count == 0)
             return OnError("stream_links", refresh_proxy: true);
 
-        return Json(links.ToDictionary(k => k.Key, k =>
-            $"{host}/dujav/video.m3u8?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(k.Key)}"));
+        var recomends = await RecomendsAsync(uri);
+        if (related)
+            return PlaylistResult(recomends, false, null, total_pages: 1);
+
+        return Json(new
+        {
+            qualitys = links.ToDictionary(k => k.Key, k =>
+                $"{host}/dujav/video.m3u8?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(k.Key)}"),
+            recomends
+        });
+    }
+
+    // Khoi "lien quan" cua trang detail -> playlist "tiep theo" trong player
+    async Task<List<PlaylistItem>> RecomendsAsync(string uri)
+    {
+        string pageUrl = DuJavTo.NormalizePageUrl(uri);
+        if (pageUrl == null)
+            return new List<PlaylistItem>();
+
+        var rec = await GetRelatedAsync(pageUrl);
+
+        foreach (var p in rec)
+            if (!string.IsNullOrEmpty(p.video) && !p.video.StartsWith("http"))
+                p.video = host + "/" + p.video.TrimStart('/');
+
+        return rec;
     }
 
     async Task<Dictionary<string, string>> ResolveAsync(string uri)

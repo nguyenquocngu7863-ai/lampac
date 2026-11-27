@@ -613,7 +613,7 @@ public class SevenMMController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("sevenmm/vidosik")]
-    async public Task<ActionResult> Vidosik(string uri)
+    async public Task<ActionResult> Vidosik(string uri, bool related)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
@@ -667,7 +667,39 @@ public class SevenMMController : BaseSisiController
         if (dict.Count == 0)
             return OnError("stream_links", refresh_proxy: true);
 
-        return Json(dict);
+        var recomends = await RecomendsAsync(uri, html);
+        if (related)
+            return PlaylistResult(recomends, false, null, total_pages: 1);
+
+        return Json(new { qualitys = dict, recomends });
+    }
+
+    // Khoi "Related videos" cua trang detail -> playlist "tiep theo" trong player.
+    // Dung lai html vua fetch cho vidosik (khong goi site lan 2).
+    async Task<List<PlaylistItem>> RecomendsAsync(string uri, string html)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return new List<PlaylistItem>();
+
+        string memKey = ipkey($"sevenmm:rec:{uri}");
+        if (hybridCache.TryGetValue(memKey, out List<PlaylistItem> hit) && hit != null)
+            return hit;
+
+        if (string.IsNullOrEmpty(html))
+            return new List<PlaylistItem>();
+
+        var rec = SevenMMTo.RelatedPlaylist("sevenmm/vidosik", SevenMMTo.RelatedBlock(html));
+
+        foreach (var p in rec)
+        {
+            if (!string.IsNullOrEmpty(p.video) && !p.video.StartsWith("http"))
+                p.video = host + "/" + p.video.TrimStart('/');
+        }
+
+        if (rec.Count > 0)
+            hybridCache.Set(memKey, rec, cacheTime(20));
+
+        return rec;
     }
 
     [HttpGet]

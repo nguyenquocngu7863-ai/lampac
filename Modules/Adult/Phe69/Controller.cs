@@ -183,7 +183,7 @@ public class Phe69Controller : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("phe69/vidosik")]
-    async public Task<ActionResult> Vidosik(string uri)
+    async public Task<ActionResult> Vidosik(string uri, bool related)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
@@ -215,14 +215,57 @@ public class Phe69Controller : BaseSisiController
         if (userch)
             return OnResult(links);
 
+        var recomends = await RecomendsAsync(uri);
+        if (related)
+            return PlaylistResult(recomends, false, null, total_pages: 1);
+
         // Link gốc là mp4 trực tiếp, KHÔNG phải HLS: trả qua route /video
         // Co chế moi cua site tra HLS (hlshd.../index.m3u8) -> bat buoc duoi .m3u8.
         // (Ghi chu cu: "khong duoi .mp4 de app phat native" chi dung khi fallback mp4,
         //  hien khong con dung.)
-        return Json(links.ToDictionary(k => k.Key, v =>
-            // Bat buoc co duoi .m3u8: app chon player theo duoi URL.
-            // Route /phe69/video (body HLS) bi coi la file thuong -> "no supported source".
-            $"{host}/phe69/video.m3u8?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(v.Key)}"));
+        return Json(new
+        {
+            qualitys = links.ToDictionary(k => k.Key, v =>
+                // Bat buoc co duoi .m3u8: app chon player theo duoi URL.
+                // Route /phe69/video (body HLS) bi coi la file thuong -> "no supported source".
+                $"{host}/phe69/video.m3u8?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(v.Key)}"),
+            recomends
+        });
+    }
+
+    // Khoi "lien quan" cua trang detail -> playlist "tiep theo" trong player
+    async Task<List<PlaylistItem>> RecomendsAsync(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return new List<PlaylistItem>();
+
+        string pageUrl = Phe69To.SafeDetailUrl(uri);
+        if (string.IsNullOrEmpty(pageUrl))
+            return new List<PlaylistItem>();
+
+        string memKey = ipkey($"phe69:rec:{pageUrl}");
+        if (hybridCache.TryGetValue(memKey, out List<PlaylistItem> hit) && hit != null)
+            return hit;
+
+        string html = null;
+        try
+        {
+            await httpHydra.GetSpan(pageUrl, span => { html = span.ToString(); });
+        }
+        catch { }
+
+        var rec = Phe69To.Related("phe69/vidosik", html ?? "");
+
+        foreach (var p in rec)
+        {
+            if (!string.IsNullOrEmpty(p.video) && !p.video.StartsWith("http"))
+                p.video = host + "/" + p.video.TrimStart('/');
+        }
+
+        if (rec.Count > 0)
+            hybridCache.Set(memKey, rec, cacheTime(20));
+
+        return rec;
     }
 
     [HttpGet]

@@ -206,7 +206,7 @@ public class MbbgController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("mbbg/vidosik")]
-    async public Task<ActionResult> Vidosik(string uri)
+    async public Task<ActionResult> Vidosik(string uri, bool related)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
@@ -215,19 +215,58 @@ public class MbbgController : BaseSisiController
         if (links == null || links.Count == 0)
             return OnError("stream_links", refresh_proxy: true);
 
+        var recomends = await RecomendsAsync(uri);
+        if (related)
+            return PlaylistResult(recomends, false, null, total_pages: 1);
+
         // HLS di route .m3u8, MP4 di route .mp4 (app bao "no EXTM3U delimiter"
         // neu lan lon).
-        return Json(links.ToDictionary(k => k.Key, k =>
+        return Json(new
         {
-            string v = k.Value;
-            int nl = v.IndexOf('\n');
-            if (nl > 0) v = v.Substring(0, nl);
-            string route = v.IndexOf(".m3u8", StringComparison.OrdinalIgnoreCase) >= 0
-                || v.IndexOf("/hls/", StringComparison.OrdinalIgnoreCase) >= 0
-                ? "video.m3u8" : "video.mp4";
-            return $"{host}/mbbg/{route}?uri={HttpUtility.UrlEncode(uri)}"
-                + $"&q={HttpUtility.UrlEncode(k.Key)}";
-        }));
+            qualitys = links.ToDictionary(k => k.Key, k =>
+            {
+                string v = k.Value;
+                int nl = v.IndexOf('\n');
+                if (nl > 0) v = v.Substring(0, nl);
+                string route = v.IndexOf(".m3u8", StringComparison.OrdinalIgnoreCase) >= 0
+                    || v.IndexOf("/hls/", StringComparison.OrdinalIgnoreCase) >= 0
+                    ? "video.m3u8" : "video.mp4";
+                return $"{host}/mbbg/{route}?uri={HttpUtility.UrlEncode(uri)}"
+                    + $"&q={HttpUtility.UrlEncode(k.Key)}";
+            }),
+            recomends
+        });
+    }
+
+    // Khoi "lien quan" cua trang detail -> playlist "tiep theo" trong player
+    async Task<List<PlaylistItem>> RecomendsAsync(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return new List<PlaylistItem>();
+
+        string pageUrl = uri.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+            ? uri : MbbgTo.SiteHost + "/" + uri.Trim('/');
+
+        if (pageUrl.IndexOf("mbbg.", StringComparison.OrdinalIgnoreCase) < 0)
+            return new List<PlaylistItem>();
+
+        string memKey = ipkey($"mbbg:rec:{pageUrl}");
+        if (hybridCache.TryGetValue(memKey, out List<PlaylistItem> hit) && hit != null)
+            return hit;
+
+        string html = await GetPageAsync(pageUrl);
+        var rec = MbbgTo.Related("mbbg/vidosik", html ?? "");
+
+        foreach (var p in rec)
+        {
+            if (!string.IsNullOrEmpty(p.video) && !p.video.StartsWith("http"))
+                p.video = host + "/" + p.video.TrimStart('/');
+        }
+
+        if (rec.Count > 0)
+            hybridCache.Set(memKey, rec, cacheTime(20));
+
+        return rec;
     }
 
     // Cong thuc F14 (skill lampac-deobfuscate):

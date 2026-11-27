@@ -230,7 +230,7 @@ public class PubJavController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("pubjav/vidosik")]
-    async public Task<ActionResult> Vidosik(string uri)
+    async public Task<ActionResult> Vidosik(string uri, bool related)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
@@ -290,7 +290,40 @@ public class PubJavController : BaseSisiController
         if (rch?.enable == true)
             return OnResult(result);
 
-        return Json(result);
+        var recomends = await RecomendsAsync(uri);
+        if (related)
+            return PlaylistResult(recomends, false, null, total_pages: 1);
+
+        return Json(new { qualitys = result, recomends });
+    }
+
+    // Khoi "You May Also Like" cua trang detail -> playlist "tiep theo" trong player
+    async Task<List<PlaylistItem>> RecomendsAsync(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return new List<PlaylistItem>();
+
+        string pageUrl = PubJavTo.NormalizePageUrl(uri);
+        if (string.IsNullOrEmpty(pageUrl))
+            return new List<PlaylistItem>();
+
+        string memKey = ipkey($"pubjav:rec:{pageUrl}");
+        if (hybridCache.TryGetValue(memKey, out List<PlaylistItem> hit) && hit != null)
+            return hit;
+
+        string html = await GetPageAsync(pageUrl);
+        var rec = PubJavTo.PlaylistRelated("pubjav/vidosik", html);
+
+        foreach (var p in rec)
+        {
+            if (!string.IsNullOrEmpty(p.video) && !p.video.StartsWith("http"))
+                p.video = host + "/" + p.video.TrimStart('/');
+        }
+
+        if (rec.Count > 0)
+            hybridCache.Set(memKey, rec, cacheTime(20));
+
+        return rec;
     }
 
     static Dictionary<string, string> FilterSupported(Dictionary<string, string> labels)

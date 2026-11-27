@@ -433,7 +433,7 @@ public class Jav18Controller : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("jav18/vidosik")]
-    async public Task<ActionResult> Vidosik(string uri)
+    async public Task<ActionResult> Vidosik(string uri, bool related)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
@@ -442,8 +442,44 @@ public class Jav18Controller : BaseSisiController
         if (links == null || links.Count == 0)
             return OnError("stream_links", refresh_proxy: true);
 
-        return Json(links.ToDictionary(k => k.Key, k =>
-            $"{host}/jav18/video.m3u8?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(k.Key)}"));
+        var recomends = await RecomendsAsync(uri);
+        if (related)
+            return PlaylistResult(recomends, false, null, total_pages: 1);
+
+        return Json(new
+        {
+            qualitys = links.ToDictionary(k => k.Key, k =>
+                $"{host}/jav18/video.m3u8?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(k.Key)}"),
+            recomends
+        });
+    }
+
+    // Khoi "lien quan" cua trang detail -> playlist "tiep theo" trong player
+    async Task<List<PlaylistItem>> RecomendsAsync(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return new List<PlaylistItem>();
+
+        string pageUrl = uri.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+            ? uri : Jav18To.SiteHost + "/videos/" + uri.Trim('/') + "/";
+
+        string memKey = ipkey($"jav18:rec:{pageUrl}");
+        if (hybridCache.TryGetValue(memKey, out List<PlaylistItem> hit) && hit != null)
+            return hit;
+
+        string html = await GetPageAsync(pageUrl);
+        var rec = Jav18To.Related(html);
+
+        foreach (var p in rec)
+        {
+            if (!string.IsNullOrEmpty(p.video) && !p.video.StartsWith("http"))
+                p.video = host + "/" + p.video.TrimStart('/');
+        }
+
+        if (rec.Count > 0)
+            hybridCache.Set(memKey, rec, cacheTime(20));
+
+        return rec;
     }
 
     // Trang phim chi co MOT nguon: <script> var hlsUrl = 'https://
