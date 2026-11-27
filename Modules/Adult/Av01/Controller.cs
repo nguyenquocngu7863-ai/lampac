@@ -43,7 +43,7 @@ public class Av01Controller : BaseSisiController
             ipkey($"av01:list:{c}:{sort}:{pg}"), 10, async e =>
         {
             string json = await GetJsonAsync(url);
-            var playlists = Av01To.Playlist(json, "av01/vidosik");
+            var playlists = Av01To.Playlist(json, "av01/vidosik", host);
 
             if (playlists.Count == 0)
                 return pg > 1 ? e.Success((new List<PlaylistItem>(), 0))
@@ -258,7 +258,7 @@ public class Av01Controller : BaseSisiController
             ipkey($"av01:rel:{id}:{pg}"), 20, async e =>
         {
             string json = await GetJsonAsync(Av01To.SimilarsUrl(id, pg));
-            var pl = Av01To.Playlist(json, "av01/vidosik");
+            var pl = Av01To.Playlist(json, "av01/vidosik", host);
             return e.Success((pl, Av01To.Pages(json)));
         });
 
@@ -310,7 +310,7 @@ public class Av01Controller : BaseSisiController
             ? uri : Av01To.DetailUrl(id, null);
 
         string json = await GetJsonAsync(Av01To.SimilarsUrl(id, 1));
-        var rec = Av01To.Playlist(json, "av01/vidosik");
+        var rec = Av01To.Playlist(json, "av01/vidosik", host);
 
         if (rec.Count > 0)
         {
@@ -322,6 +322,29 @@ public class Av01Controller : BaseSisiController
         }
 
         return rec;
+    }
+
+    // ---- poster ----
+
+    // Host anh tinh (img1.iw01.xyz) tra 403; anh that nam tren R2 va phai co
+    // token_v2/expires/ip tu geo.js. Route nay lay geo roi 302 sang URL con han.
+    [HttpGet]
+    [Route("av01/poster")]
+    async public Task<ActionResult> PosterRoute(string uri)
+    {
+        string id = Av01To.VideoId(uri);
+        if (string.IsNullOrEmpty(id))
+            return NotFound();
+
+        var geo = await GeoAsync();
+        if (geo == null)
+            return NotFound();
+
+        Response.Headers["Cache-Control"] = "no-cache";
+        return Redirect($"https://files.iw01.xyz/covers/{id}/800.webp"
+            + $"?token_v2={HttpUtility.UrlEncode(geo.Value.token)}"
+            + $"&expires={HttpUtility.UrlEncode(geo.Value.expires)}"
+            + $"&ip={HttpUtility.UrlEncode(geo.Value.ip)}");
     }
 
     // ---- stream ----
@@ -396,39 +419,50 @@ public class Av01Controller : BaseSisiController
     }
 
     // Geo token (30 phut) -> playlist API (master da ky san access_token theo tung variant)
+
+    // token_v2/expires/ip tu geo.js (song ~30 phut, cache 20 phut).
+    async Task<(string token, string expires, string ip)?> GeoAsync()
+    {
+        string geoKey = ipkey("av01:geo");
+
+        if (!hybridCache.TryGetValue(geoKey, out string geoJson) || string.IsNullOrEmpty(geoJson))
+        {
+            geoJson = await GetTextAsync(Av01To.GeoUrl);
+            if (string.IsNullOrEmpty(geoJson))
+                return null;
+            hybridCache.Set(geoKey, geoJson, cacheTime(20));
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(geoJson);
+            var r = doc.RootElement;
+            string token = r.TryGetProperty("token_v2", out var t) ? t.GetString() : null;
+            string expires = r.TryGetProperty("expires", out var e) ? e.ToString() : null;
+            string ip = r.TryGetProperty("ip", out var i) ? i.GetString() : null;
+
+            if (string.IsNullOrEmpty(token) || string.IsNullOrEmpty(expires) || string.IsNullOrEmpty(ip))
+                return null;
+
+            return (token, expires, ip);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     async Task<Dictionary<string, Variant>> VariantsAsync(string id)
     {
         string memKey = ipkey($"av01:pl:{id}");
         if (hybridCache.TryGetValue(memKey, out Dictionary<string, Variant> hit) && hit != null && hit.Count > 0)
             return hit;
 
-        string geoJson = null;
-        string geoKey = ipkey("av01:geo");
-
-        if (!hybridCache.TryGetValue(geoKey, out string geoCache) || string.IsNullOrEmpty(geoCache))
-        {
-            geoCache = await GetTextAsync(Av01To.GeoUrl);
-            if (string.IsNullOrEmpty(geoCache))
-                return null;
-            hybridCache.Set(geoKey, geoCache, cacheTime(20));
-        }
-        geoJson = geoCache;
-
-        string token = null, expires = null, ip = null;
-        try
-        {
-            using var doc = JsonDocument.Parse(geoJson);
-            var r = doc.RootElement;
-            token = r.TryGetProperty("token_v2", out var t) ? t.GetString() : null;
-            expires = r.TryGetProperty("expires", out var e) ? e.ToString() : null;
-            ip = r.TryGetProperty("ip", out var i) ? i.GetString() : null;
-        }
-        catch { }
-
-        if (string.IsNullOrEmpty(token) || string.IsNullOrEmpty(expires) || string.IsNullOrEmpty(ip))
+        var geo = await GeoAsync();
+        if (geo == null)
             return null;
 
-        string plJson = await GetTextAsync(Av01To.PlaylistUrl(id, expires, ip, token));
+        string plJson = await GetTextAsync(Av01To.PlaylistUrl(id, geo.Value.expires, geo.Value.ip, geo.Value.token));
         if (string.IsNullOrEmpty(plJson))
             return null;
 

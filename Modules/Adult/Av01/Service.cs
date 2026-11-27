@@ -86,7 +86,10 @@ public static class Av01To
         return $"{SiteHost}/{Lang}/video/{id}{slug}";
     }
 
-    public static string Poster(string id) => $"{ImgHost}/media/videos/tmb/{id}/1.jpg";
+    // Anh bia gio can access_token/token_v2 (host tinh img1.iw01.xyz -> 403), nen di qua route
+    // /av01/poster de lay URL con han tu geo.js tai thoi diem app hoi anh.
+    public static string Poster(string host, string href)
+        => host.TrimEnd('/') + "/av01/poster?uri=" + HttpUtility.UrlEncode(href);
 
     public static string Tr(JsonElement e)
     {
@@ -143,7 +146,7 @@ public static class Av01To
             : $"{t.Minutes}:{t.Seconds:00}";
     }
 
-    public static List<PlaylistItem> Playlist(string json, string route)
+    public static List<PlaylistItem> Playlist(string json, string route, string host)
     {
         var playlists = new List<PlaylistItem>();
         if (string.IsNullOrEmpty(json))
@@ -173,7 +176,7 @@ public static class Av01To
                 {
                     video = route + "?uri=" + HttpUtility.UrlEncode(href),
                     name = HttpUtility.HtmlDecode(name),
-                    picture = Poster(id),
+                    picture = Poster(host, href),
                     time = Duration(v),
                     quality = Uncen(v),
                     json = true,
@@ -181,7 +184,7 @@ public static class Av01To
                     {
                         site = "av01",
                         href = href,
-                        image = Poster(id)
+                        image = Poster(host, href)
                     }
                 });
             }

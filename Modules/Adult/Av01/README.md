@@ -33,11 +33,20 @@ Module Adult route `av01`, displayindex 82. Site: **av01.tv** (SPA Vite + REST A
    - `q` rỗng → trả master, variant trỏ về chính route này.
    - `q=360p|720p|1080p` → trả playlist variant (segment tuyệt đối, player tải trực tiếp).
 
+## Ảnh bìa
+- Host tĩnh `img1.iw01.xyz/media/videos/tmb/{id}/1.jpg` đã trả **403** (không còn dùng được).
+- Ảnh thật nằm trên R2: `https://files.iw01.xyz/covers/{id}/800.webp?token_v2=&expires=&ip=`
+  (200 kể cả khi không gửi Referer) — cần token từ `geo.js`.
+- Route `av01/poster?uri=<detail>`: lấy geo (cache 20 phút) rồi **302** sang URL R2 còn hạn.
+  `picture` trong list trỏ về route này nên app luôn lấy được ảnh mới.
+
 ## Đã đo (2026-11-27)
 - `/av01` 48 item, tổng 209 trang; `?sort=hottest`, `?c=tag:..`, `?c=actress:..`, `?pg=2` OK.
 - `/av01/genres?uri=` → 3 nhóm (Diễn viên / Thể loại / Nhà sản xuất) + mục "Liên quan".
 - `/av01/vidosik` → `{qualitys: 360p/720p/1080p, recomends: 20}`.
 - `play.sh` 1080p: h264 1920x1080, 906 segment, decode 5s đầu + 5s cuối → **PASS (~90%)**.
+- Fix ảnh (2026-11-27): 20/20 `picture` trong list trả 200 JPEG qua `av01/poster` (trước đó 403).
+- Fix stream refactor geo (2026-11-27): `play.sh` 720p vẫn **PHÁT ĐƯỢC**, ffmpeg decode 5s đầu + cuối OK.
 
 ## Bẫy
 - **Search API không dùng được cho khách**: `POST /api/v1/videos/search` và `/complex_search` trả `400 {"error":"Invalid video ID format"}` (gateway route nhầm sang `/videos/{id}`) → module **không có ô tìm kiếm**.
