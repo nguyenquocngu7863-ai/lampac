@@ -290,10 +290,12 @@ public class MbbgController : BaseSisiController
         if (string.IsNullOrEmpty(html))
             return null;
 
+        // 2026-11-27: theme moi KHONG con wpst_ajax_var/nonce -> nonce thanh
+        // tuy chon, getplayer chi can `source` + `server=1`.
         string nonce = MbbgTo.Nonce(html);
         string sources = MbbgTo.Sources(html);
 
-        if (string.IsNullOrEmpty(nonce) || string.IsNullOrEmpty(sources))
+        if (string.IsNullOrEmpty(sources))
             return null;
 
         // [1] getplayer — POST dung host cua detail (nonce gan voi host,
@@ -305,7 +307,7 @@ public class MbbgController : BaseSisiController
 
         string form = "action=getplayer"
             + "&source=" + HttpUtility.UrlEncode(sources)
-            + "&nonce=" + HttpUtility.UrlEncode(nonce)
+            + (string.IsNullOrEmpty(nonce) ? "" : "&nonce=" + HttpUtility.UrlEncode(nonce))
             + "&server=1";
 
         string aj = await Http.Post(

@@ -14,7 +14,7 @@ public static class MbbgTo
 {
     // Site doi .gay -> .hair (do 2026-10-09: list URL da la .hair, nonce
     // ajax chi hop le dung host -> POST ve .gay an 400 "0").
-    public static string SiteHost = "https://mbbg.hair";
+    public static string SiteHost = "https://mbbg.website";
 
     // BẮT BUỘC = `Http.UserAgent` (Chrome/146), KHÔNG tự đặt UA riêng.
     // Đo 2026-10-03 (4/4): URL `googlevideo` bị Google ràng buộc với ĐÚNG UA đã
@@ -294,10 +294,17 @@ public static class MbbgTo
 
         var m = Regex.Match(html, "var\\s+sources=\\[(?<inner>[\\s\\S]*?)\\];",
             RegexOptions.IgnoreCase);
-        if (!m.Success || m.Groups["inner"].Value.Trim().Length == 0)
-            return null;
+        if (m.Success && m.Groups["inner"].Value.Trim().Length > 0)
+            return "[" + m.Groups["inner"].Value + "]";
 
-        return "[" + m.Groups["inner"].Value + "]";
+        // Theme 2026-11: khong con `var sources` — player nam o
+        // <meta itemprop="contentURL" content="https://.../embed/<b64>.html">
+        var cu = Regex.Match(html, "\"contentURL\"\\s+content=\"([^\"]+)\"",
+            RegexOptions.IgnoreCase);
+        if (cu.Success && cu.Groups[1].Value.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            return "[" + JsonSerializer.Serialize(cu.Groups[1].Value) + "]";
+
+        return null;
     }
 
     //   {"success":true,"data":{"sources":{"file":"https://www.blogger.com/video.g?token=…"}}}
