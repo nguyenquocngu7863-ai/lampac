@@ -12,6 +12,10 @@
 # Usage: run-lampac.sh  (foreground, Ctrl+C to stop)
 set -euo pipefail
 
+# HOME có thể bị harness đổi (vd free-pi -> ~/.fp-old) -> nếu không thấy native thì dùng home thật
+[ -f "$HOME/lampac-run/init.conf" ] || HOME="/data/data/com.termux/files/home"
+export HOME
+
 R=/data/data/com.termux/files/usr/var/lib/proot-distro/containers/ubuntu/rootfs
 LAMPAC_DIR="$HOME/lampac-run"
 NATIVE="$HOME/lampac-native"
