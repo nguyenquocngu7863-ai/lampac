@@ -31,7 +31,8 @@ Module Adult route `av01`, displayindex 82. Site: **av01.tv** (SPA Vite + REST A
 3. Variant: `GET /api/v1/videos/{id}/manifest/{file}?access_token=` → m3u8 với segment **tuyệt đối** trên `customers.iw01.xyz` (kèm token).
 4. Route `av01/video.m3u8?uri=&q=`:
    - `q` rỗng → trả master, variant trỏ về chính route này.
-   - `q=360p|720p|1080p` → trả playlist variant (segment tuyệt đối, player tải trực tiếp).
+   - `q=360p|720p|1080p` → **302** sang `/proxy/...` của Lampac (`force_streamproxy`); `ProxyM3u8`
+     rewrite cả segment lẫn `EXT-X-MAP` về cùng origin nên web/TV không bị CORS chặn.
 
 ## Ảnh bìa
 - Host tĩnh `img1.iw01.xyz/media/videos/tmb/{id}/1.jpg` đã trả **403** (không còn dùng được).
@@ -50,6 +51,6 @@ Module Adult route `av01`, displayindex 82. Site: **av01.tv** (SPA Vite + REST A
 
 ## Bẫy
 - **Search API không dùng được cho khách**: `POST /api/v1/videos/search` và `/complex_search` trả `400 {"error":"Invalid video ID format"}` (gateway route nhầm sang `/videos/{id}`) → module **không có ô tìm kiếm**.
-- Segment là URL tuyệt đối trên `customers.iw01.xyz` → app Android phát trực tiếp OK; web/TV có thể vướng CORS (cần proxy segment nếu gặp).
+- Segment gốc ở `customers.iw01.xyz` → trả thẳng thì web/TV chết vì CORS; đã chuyển qua `/proxy/` (đo 146/146 segment qua Lampac, 900/993 với 1080p).
 - `access_token` gắn với IP + hết hạn 60 phút; giữ cache playlist ngắn (20 phút).
 - `IP` là IPv6 (Viettel), phải truyền nguyên (không URL-encode dấu `:`) như trình duyệt.

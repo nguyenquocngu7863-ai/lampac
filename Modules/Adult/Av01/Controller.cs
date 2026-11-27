@@ -386,11 +386,15 @@ public class Av01Controller : BaseSisiController
         if (!variants.TryGetValue(q, out var chosen))
             chosen = variants.First().Value;
 
-        string text = await GetTextAsync(Av01To.ManifestUrl(id, chosen.file, chosen.token));
-        if (string.IsNullOrWhiteSpace(text))
-            return OnError("stream_links", refresh_proxy: true);
+        // Tra manifest qua /proxy cua Lampac: ProxyM3u8 se rewrite ca segment lan
+        // EXT-X-MAP ve cung origin, nen player web/TV khong bi CORS chan.
+        string manifest = Av01To.ManifestUrl(id, chosen.file, chosen.token);
+        string link = HostStreamProxy(manifest + "#.m3u8",
+            HeadersModel.Init(("User-Agent", Av01To.ChromeUA), ("Referer", Av01To.SiteHost + "/")),
+            force_streamproxy: true);
 
-        return Content(text, "application/vnd.apple.mpegurl");
+        Response.Headers["Cache-Control"] = "no-cache";
+        return Redirect(link);
     }
 
     async Task<string> GetTextAsync(string url)
