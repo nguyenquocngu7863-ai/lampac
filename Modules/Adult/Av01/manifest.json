@@ -1,0 +1,9 @@
+{
+  "name": "Av01",
+  "description": "AV01 - JAV / AV catalog (sort, genre, actress, maker, related)",
+  "version": "1.0.0",
+  "author": "Lampac",
+  "site": "https://av01.tv",
+  "enable": true,
+  "dynamic": true
+}
