@@ -1,0 +1,9 @@
+{
+  "name": "Sxyprn",
+  "description": "Sxyprn (YourPorn) - sexyporn catalog (sort, tags, search, related)",
+  "version": "1.0.0",
+  "author": "Lampac",
+  "site": "https://www.sxyprn.com",
+  "enable": true,
+  "dynamic": true
+}
