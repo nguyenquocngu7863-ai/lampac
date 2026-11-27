@@ -7,6 +7,7 @@ using Shared.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Web;
@@ -18,6 +19,29 @@ public class QmhSexController : BaseSisiController
     static readonly SemaphoreSlim menuLock = new(1, 1);
 
     public QmhSexController() : base(ModInit.conf) { }
+
+
+    // Host embed (xvideo.lat / qooglevideo.shop) bi DNS chan o VN -> di qua Worker relay.
+    static readonly string relayBase = System.Environment.GetEnvironmentVariable("XNHAU_RELAY")?.TrimEnd('/');
+
+    static string Relay(string url)
+    {
+        if (string.IsNullOrEmpty(relayBase) || string.IsNullOrEmpty(url) || !url.StartsWith("http"))
+            return url;
+
+        if (url.StartsWith(relayBase, StringComparison.OrdinalIgnoreCase))
+            return url;
+
+        try
+        {
+            var u = new Uri(url);
+            string h = u.Host.ToLowerInvariant();
+            if (!h.EndsWith("xvideo.lat") && !h.EndsWith("qooglevideo.shop"))
+                return url;
+            return $"{relayBase}/{u.Host}{u.PathAndQuery}";
+        }
+        catch { return url; }
+    }
 
     [HttpGet, Staticache(manually: true)]
     [Route("qmhsex")]
@@ -166,7 +190,7 @@ public class QmhSexController : BaseSisiController
             string json = await PostPlayerAsync(sourcesJson, srv, pageUrl);
             foreach (string embed in QmhSexTo.EmbedFiles(json))
             {
-                string embedHtml = await GetHtmlAsync(embed, pageUrl);
+                string embedHtml = await GetHtmlAsync(Relay(embed), pageUrl);
                 foreach (var (label, url) in QmhSexTo.Streams(embedHtml))
                     if (!links.ContainsKey(label))
                         links[label] = url;
@@ -221,7 +245,7 @@ public class QmhSexController : BaseSisiController
         return Json(new
         {
             qualitys = links.ToDictionary(k => k.Key, v =>
-                $"{host}/qmhsex/video?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(v.Key)}"),
+                $"{host}/qmhsex/hls?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(v.Key)}"),
             recomends
         });
     }
@@ -252,6 +276,91 @@ public class QmhSexController : BaseSisiController
             hybridCache.Set(memKey, rec, cacheTime(20));
 
         return rec;
+    }
+
+
+    // ===== HLS =====
+    // Segment cua site la PNG (header PNG 62 byte + du lieu MPEG-TS) de lach
+    // bo loc CDN -> player thuong chet. Route nay boc header truoc khi tra ve.
+    [HttpGet]
+    [Route("qmhsex/hls")]
+    async public Task<ActionResult> Hls(string uri, string q)
+    {
+        if (await IsRequestBlocked(rch: true))
+            return badInitMsg;
+
+        var links = await ResolveLinksAsync(uri);
+        if (links == null || !links.TryGetValue(q ?? "", out string m3u8))
+            return OnError("stream_links", refresh_proxy: true);
+
+        string text = await GetHtmlAsync(m3u8, uri);
+        if (string.IsNullOrEmpty(text))
+            return OnError("stream_links", refresh_proxy: true);
+
+        var sb = new StringBuilder();
+        foreach (string raw in text.Replace("\r", "").Split('\n'))
+        {
+            string line = raw.Trim();
+            if (line.Length == 0 || line[0] == '#')
+            {
+                sb.Append(raw).Append('\n');
+                continue;
+            }
+
+            if (!line.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                line = new Uri(new Uri(m3u8), line).ToString();
+
+            // "#.ts": ProxyLink lay duoi file tu fragment -> URL sach .ts,
+            // khong giu ".png" (ffmpeg/hls.js tu choi duoi la).
+            string enc = ProxyLink.Encrypt(line + "#.ts", requestInfo.IP,
+                HeadersModel.Init(("User-Agent", QmhSexTo.ChromeUA), ("Referer", QmhSexTo.SiteHost + "/")));
+            sb.Append(host).Append("/qmhsex/seg/").Append(enc).Append('\n');
+        }
+
+        Response.Headers["Cache-Control"] = "no-cache";
+        return Content(sb.ToString(), "application/vnd.apple.mpegurl");
+    }
+
+    [HttpGet]
+    [Route("qmhsex/seg/{hash}")]
+    async public Task<ActionResult> Seg(string hash)
+    {
+        var pl = ProxyLink.Decrypt(hash, requestInfo.IP);
+        if (pl == null || string.IsNullOrEmpty(pl.uri) || !pl.uri.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            return NotFound();
+
+        byte[] data;
+        try
+        {
+            data = await Http.Download(pl.uri, referer: QmhSexTo.SiteHost + "/",
+                headers: HeadersModel.Init(("User-Agent", QmhSexTo.ChromeUA)), timeoutSeconds: 25);
+        }
+        catch { return NotFound(); }
+
+        if (data == null || data.Length == 0)
+            return NotFound();
+
+        int off = TsOffset(data);
+        if (off > 0)
+            data = data[off..];
+
+        Response.Headers["Cache-Control"] = "public, max-age=3600";
+        return File(data, "video/mp2t");
+    }
+
+    // PNG wrapper: 0x89 'P' 'N' 'G' ... IEND + du lieu TS (sync 0x47 moi 188 byte)
+    static int TsOffset(byte[] b)
+    {
+        if (b.Length < 200 || b[0] != 0x89 || b[1] != 0x50)
+            return 0;
+
+        int max = Math.Min(8192, b.Length - 200);
+        for (int i = 0; i < max; i++)
+        {
+            if (b[i] == 0x47 && b[i + 188] == 0x47 && b[i + 376] == 0x47)
+                return i;
+        }
+        return 0;
     }
 
     [HttpGet]
@@ -290,7 +399,9 @@ public class QmhSexController : BaseSisiController
         string pageUrl = uri.StartsWith("http", StringComparison.OrdinalIgnoreCase)
             ? uri : QmhSexTo.SiteHost + "/" + uri.Trim('/');
 
-        if (!pageUrl.Contains("qmhsex.shop", StringComparison.OrdinalIgnoreCase))
+        string pageHost = new Uri(pageUrl).Host.ToLowerInvariant();
+        if (!pageHost.EndsWith("qmhsex.guru") && !pageHost.EndsWith("qmhsex.shop"))
+            return Json(new { items = new object[0], groups = new object[0] });
             return Json(new { items = new object[0], groups = new object[0] });
 
         lock (_infoCache)

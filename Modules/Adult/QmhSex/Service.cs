@@ -9,7 +9,7 @@ namespace QmhSex;
 
 public static class QmhSexTo
 {
-    public const string SiteHost = "https://qmhsex.shop";
+    public const string SiteHost = "https://qmhsex.guru";
 
     public const string ChromeUA = "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36";
 
