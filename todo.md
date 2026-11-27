@@ -3,6 +3,35 @@
 Mục tiêu: mỗi site có **route `/<mod>/genres?uri=`** (chip thông tin) + **mục "Liên quan" trỏ `?rel=<uri>`**.
 Skill tham chiếu: `lampac-popup` (hợp đồng route, luật UX, anti-pattern) + `lampac-adult-module`.
 
+## KẾ HOẠCH CHUNG (cập nhật 2026-11-27)
+
+Thứ tự làm, cái nào xong đánh `[x]`:
+
+### A. Player "tập tiếp theo" (`recomends`) — 20/52 module
+- [x] Đợt 1 (10): Javtiful, Jable, JavMoi, JavMit, JavCc, JavCt, KissJav, KawaiJAV, JavGuru, JavBangers
+- [x] Đợt 2 (10): AnySex, FreePornVideos, Hclips, FapClub, HQporner, Av123, Lon69, Vlxx\*, PhimSexVi, ThreeMovs
+- [ ] Đợt 3 (10): DuJav, Jav18, Mbbg, Phe69, Porntrex, PubJav, QmhSex, SakuraSins, SevenMM, SexDep
+- [ ] Đợt 4 (10): SexNetVc, SexTb, SexVietop, Sieusex, Suong3x, TangThon, TellyHD, ThichSex, Tizam, Txxx
+- [ ] Đợt 5 (10): Upornia, VNJav, VNsexTop1, Viet69Av, Viet69z, VietSexBlog, Vietmup, Vjav, VnChich, XHeoVL
+- [ ] Đợt 6 (2 còn lại): XViet, XszAv
+
+\* `Vlxx`: code đã thêm nhưng **chưa smoke** — site trả `{"accsdb":true,"msg":"playlists"}` ở trang chủ
+(lỗi site, không phải do patch). Đo lại khi site sống.
+
+Công thức chung 1 module (đã chạy 20 lần, giữ nguyên):
+1. `Vidosik` thêm `bool related` → `if (related) return PlaylistResult(recomends, false, null, total_pages: 1);`
+2. Trả `{ qualitys, recomends }` (kiểu A: nhét `recomends` vào `StreamItem` + `OnResult`; kiểu B: `Json(new { qualitys, recomends })`)
+3. `recomends` = **tái dùng parser `?rel=` sẵn có**, cache `cacheTime(20)`
+4. **Ghép `host` vào `pl.video`** (SISI gọi thẳng `pl.video`, không qua `OnResult`)
+5. `check.sh` → copy Controller.cs sang `~/lampac-run/module/Adult/<Mod>/` → `lampac nstop/nstart`
+6. Verify: `curl /<mod>/vidosik?uri=<detail>` phải có `keys=[qualitys,recomends]`, `recomends` > 0
+
+### B. Việc khác còn treo
+- [ ] Smoke lại **Vlxx** (xem trên)
+- [ ] 4 module nhóm A **chưa có popup**: `BongaCams`, `Chaturbate`, `Runetki`, `Xhamster` (cam/tube, cần thiết kế riêng)
+- [ ] `SupJav` — **PAUSED** (Cloudflare chặn toàn site): không probe
+- [ ] 8 module đang tắt: DuJav, JAVSnap, JavTsunami, PhimSexVN88, PhimSexViet113, SexHihi, Viet69kz, XvideosRED
+
 ## Định nghĩa "xong" cho 1 module
 
 - [ ] `/genres?uri=` trả `{items:[],groups:[...]}`, nhóm rỗng bị bỏ, **không 500** (uri lạ → rỗng)
