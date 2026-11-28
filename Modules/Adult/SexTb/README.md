@@ -43,3 +43,19 @@ phát trực tiếp bình thường.
 home 72 item · category/search · `genres` 6 nhóm (Diễn viên/Hãng/Nhãn/Đạo diễn/
 Thể loại/Liên quan) · `?rel=` 12 item · stream **F4 (HLS)** và **DD (mp4)**
 `play.sh` → PHÁT ĐƯỢC.
+## DISABLED (2026-11-28)
+
+User chốt tắt module: site chặn gắt, chỉ là **embed** (F4/FL/SW/DD) chứ không có server riêng
+như MissAV/JavTiful ⇒ bảo trì không đáng. Tắt bằng `~/lampac-run/init.conf`:
+
+```json
+"SexTb": { "enable": false }
+```
+
+`manifest.json` giữ `enable: true` (đúng quy ước như `DuJav`, `SexHihi` — override nằm ở init.conf).
+Đo sau restart: `GET /sextb` → **403 `{"accsdb":true,"error":true,"msg":"disable"}`**,
+`GET /sisi` **132 channel, không còn SexTb**. Bật lại: xoá/đổi key trong init.conf rồi restart.
+
+Đo trước khi tắt (để tham chiếu): 12/12 item `recomends` trả `qualitys`; 16/16 item home OK;
+F4/FL/SW/DD đều ra stream (`206`/`200`). Điểm giòn đã thấy: resolve fail (site siết IP) thì
+`EmbedsAsync` cache `"{}"` **1 phút** ⇒ bấm server nào cũng `stream_links` trong 1 phút đó.
