@@ -1,9 +1,12 @@
 using Shared.Models.SISI.Base;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using System.Threading.Tasks;
 using System.Web;
 
 namespace Txxx;
@@ -405,5 +408,110 @@ public static class TxxxTo
             JsonValueKind.Number => v.ToString(),
             _ => null
         };
+    }
+
+    // txxx.com chan TLS fingerprint cua .NET va hay dong ket noi ngau nhien
+    // voi curl_cffi (do 2026-11-28: 1/3 request SSL_connect closed) -> phai
+    // gia lap chrome124 va retry. Fallback duy nhat chay duoc tren may Termux.
+    public static async Task<string> CffiGet(string url, string referer, int maxTime = 15)
+    {
+        if (string.IsNullOrEmpty(url))
+            return null;
+
+        string code =
+            "import sys\n"
+            + "from curl_cffi import requests as rq\n"
+            + "u=sys.argv[1];ref=sys.argv[2];to=int(sys.argv[3])\n"
+            + "r=rq.get(u,impersonate='chrome124',timeout=to,headers={'Referer':ref,'Accept':'application/json, text/plain, */*','Accept-Language':'en-US,en;q=0.9'})\n"
+            + "sys.stdout.write(r.text)\n";
+
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            try
+            {
+                var psi = new ProcessStartInfo
+                {
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                };
+                psi.Environment.Remove("LD_PRELOAD");
+                psi.Environment.Remove("LD_LIBRARY_PATH");
+                string py = "/data/data/com.termux/files/usr/bin/python3";
+                psi.FileName = File.Exists(py) ? py : "python3";
+                psi.ArgumentList.Add("-c");
+                psi.ArgumentList.Add(code);
+                psi.ArgumentList.Add(url);
+                psi.ArgumentList.Add(referer ?? "");
+                psi.ArgumentList.Add(Math.Max(5, maxTime).ToString());
+
+                using var p = Process.Start(psi);
+                if (p == null)
+                    return null;
+
+                string stdout = await p.StandardOutput.ReadToEndAsync();
+                await p.WaitForExitAsync();
+
+                if (p.ExitCode == 0 && !string.IsNullOrWhiteSpace(stdout))
+                    return stdout;
+            }
+            catch { }
+
+            await Task.Delay(600);
+        }
+
+        return null;
+    }
+
+    // Theo redirect cua link mp4 (/get_file/... tren txxx.com) -> URL CDN that
+    // (txxx.ahcdn.com, .NET tai duoc). curl_cffi vi host goc chan TLS .NET.
+    public static async Task<string> CffiFinalUrl(string url, string referer, int maxTime = 15)
+    {
+        if (string.IsNullOrEmpty(url))
+            return null;
+
+        string code =
+            "import sys\n"
+            + "from curl_cffi import requests as rq\n"
+            + "u=sys.argv[1];ref=sys.argv[2];to=int(sys.argv[3])\n"
+            + "r=rq.get(u,impersonate='chrome124',timeout=to,allow_redirects=True,headers={'Referer':ref})\n"
+            + "sys.stdout.write(r.url)\n";
+
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            try
+            {
+                var psi = new ProcessStartInfo
+                {
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                };
+                psi.Environment.Remove("LD_PRELOAD");
+                psi.Environment.Remove("LD_LIBRARY_PATH");
+                string py = "/data/data/com.termux/files/usr/bin/python3";
+                psi.FileName = File.Exists(py) ? py : "python3";
+                psi.ArgumentList.Add("-c");
+                psi.ArgumentList.Add(code);
+                psi.ArgumentList.Add(url);
+                psi.ArgumentList.Add(referer ?? "");
+                psi.ArgumentList.Add(Math.Max(5, maxTime).ToString());
+
+                using var p = Process.Start(psi);
+                if (p == null)
+                    return null;
+                string stdout = (await p.StandardOutput.ReadToEndAsync())?.Trim();
+                await p.WaitForExitAsync();
+                if (p.ExitCode == 0 && !string.IsNullOrWhiteSpace(stdout) && stdout.StartsWith("http"))
+                    return stdout;
+            }
+            catch { }
+
+            await Task.Delay(600);
+        }
+
+        return null;
     }
 }

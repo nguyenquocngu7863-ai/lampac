@@ -15,7 +15,9 @@ namespace SexTb;
 
 public static class SexTbTo
 {
-    public static string SiteHost = "https://sextb.net";
+    // Site doi domain .net -> .xyz (2026-11-28: .net chan TLS/khong con phuc vu,
+    // .xyz tra dung markup tray-item + API /ajax/player nhu cu).
+    public static string SiteHost = "https://sextb.xyz";
     public const string ChromeUA = "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
     public static string PlayerApi => SiteHost + "/ajax/player";
 
@@ -29,6 +31,11 @@ public static class SexTbTo
     {
         if (string.IsNullOrEmpty(RelayBase) || string.IsNullOrEmpty(url)
             || !url.StartsWith("http", System.StringComparison.OrdinalIgnoreCase))
+            return url;
+
+        // Worker relay chi dung cho sextb.net (domain cu, da chet). Domain moi
+        // .xyz mo truc tiep bang curl_cffi (2026-11-28) -> khong doi qua relay.
+        if (url.IndexOf("sextb.xyz", System.StringComparison.OrdinalIgnoreCase) >= 0)
             return url;
 
         if (url.StartsWith(RelayBase, System.StringComparison.OrdinalIgnoreCase))
@@ -107,7 +114,9 @@ public static class SexTbTo
         else if (value.StartsWith("/")) value = SiteHost + value;
         else if (!value.StartsWith("http", StringComparison.OrdinalIgnoreCase)) value = SiteHost + "/" + value;
         if (!System.Uri.TryCreate(value, UriKind.Absolute, out var parsed)) return null;
-        if (!parsed.Host.Equals("sextb.net", StringComparison.OrdinalIgnoreCase) &&
+        if (!parsed.Host.Equals("sextb.xyz", StringComparison.OrdinalIgnoreCase) &&
+            !parsed.Host.EndsWith(".sextb.xyz", StringComparison.OrdinalIgnoreCase) &&
+            !parsed.Host.Equals("sextb.net", StringComparison.OrdinalIgnoreCase) &&
             !parsed.Host.EndsWith(".sextb.net", StringComparison.OrdinalIgnoreCase))
             return null;
         return value;
@@ -676,7 +685,6 @@ public static class SexTbTo
             stdout = stdout?.Trim();
             if (p.ExitCode != 0 || string.IsNullOrEmpty(stdout))
             {
-                Console.WriteLine($"[SexTb/DBG] cffi embed fail: exit={p.ExitCode} err={stderr?.Trim()}");
                 return null;
             }
             return stdout;
@@ -719,7 +727,6 @@ public static class SexTbTo
             stdout = stdout?.Trim();
             if (p.ExitCode != 0 || string.IsNullOrEmpty(stdout))
             {
-                Console.WriteLine($"[SexTb/DBG] py {name} fail: exit={p.ExitCode} err={stderr?.Trim()}");
                 return null;
             }
             return stdout;
@@ -846,7 +853,6 @@ except Exception as e:
             stdout = stdout?.Trim();
             if (p.ExitCode != 0 || string.IsNullOrEmpty(stdout))
             {
-                Console.WriteLine($"[SexTb/DBG] cffi embeds fail: exit={p.ExitCode} err={stderr?.Trim()}");
                 return null;
             }
             return stdout;
@@ -975,43 +981,50 @@ sys.exit(5)
     {
         if (string.IsNullOrEmpty(url))
             return null;
-        try
+
+        string code =
+            "import sys\n"
+            + "from curl_cffi import requests as rq\n"
+            + "u=sys.argv[1];ref=sys.argv[2];to=int(sys.argv[3])\n"
+            + "r=rq.get(u,impersonate='chrome124',timeout=to,headers={'Referer':ref})\n"
+            + "sys.stdout.write(r.text)\n";
+
+        // curl_cffi thinh thoang SSL_connect closed (site gioi han) -> retry.
+        for (int attempt = 0; attempt < 3; attempt++)
         {
-            string code =
-                "import sys\n"
-                + "from curl_cffi import requests as rq\n"
-                + "u=sys.argv[1];ref=sys.argv[2];to=int(sys.argv[3])\n"
-                + "r=rq.get(u,impersonate='chrome124',timeout=to,headers={'Referer':ref})\n"
-                + "sys.stdout.write(r.text)\n";
-            var psi = new ProcessStartInfo
+            try
             {
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
-            psi.Environment.Remove("LD_PRELOAD");
-            psi.Environment.Remove("LD_LIBRARY_PATH");
-            string py = "/data/data/com.termux/files/usr/bin/python3";
-            psi.FileName = File.Exists(py) ? py : "python3";
-            psi.ArgumentList.Add("-c");
-            psi.ArgumentList.Add(code);
-            psi.ArgumentList.Add(url);
-            psi.ArgumentList.Add(referer ?? "");
-            psi.ArgumentList.Add(Math.Max(5, maxTime).ToString());
-            using var p = Process.Start(psi);
-            if (p == null)
-                return null;
-            string stdout = await p.StandardOutput.ReadToEndAsync();
-            await p.WaitForExitAsync();
-            if (p.ExitCode != 0 || string.IsNullOrWhiteSpace(stdout))
-                return null;
-            return stdout;
+                var psi = new ProcessStartInfo
+                {
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                };
+                psi.Environment.Remove("LD_PRELOAD");
+                psi.Environment.Remove("LD_LIBRARY_PATH");
+                string py = "/data/data/com.termux/files/usr/bin/python3";
+                psi.FileName = File.Exists(py) ? py : "python3";
+                psi.ArgumentList.Add("-c");
+                psi.ArgumentList.Add(code);
+                psi.ArgumentList.Add(url);
+                psi.ArgumentList.Add(referer ?? "");
+                psi.ArgumentList.Add(Math.Max(5, maxTime).ToString());
+                using var p = Process.Start(psi);
+                if (p == null)
+                    return null;
+                string stdout = await p.StandardOutput.ReadToEndAsync();
+                string stderr = await p.StandardError.ReadToEndAsync();
+                await p.WaitForExitAsync();
+                if (p.ExitCode == 0 && !string.IsNullOrWhiteSpace(stdout))
+                    return stdout;
+            }
+            catch { }
+
+            await Task.Delay(500);
         }
-        catch
-        {
-            return null;
-        }
+
+        return null;
     }
 
     // POST qua curl_cffi (fallback khi .NET HttpClient bi TLS reset).

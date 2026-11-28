@@ -826,7 +826,10 @@ public static class HdTo
         if (!System.Uri.TryCreate(u, System.UriKind.Absolute, out var abs))
             return null;
 
-        if (!string.Equals(abs.Host, new System.Uri(SiteHost).Host, StringComparison.OrdinalIgnoreCase))
+        // Site doi TLD: list tra link .ch, conf la .at (hoac nguoc lai)
+        // -> nhan ca hai, khong thi vidosik/rel tra 503 "stream_links".
+        string absHost = abs.Host.ToLowerInvariant();
+        if (absHost != "tellyhd.at" && absHost != "tellyhd.ch" && !absHost.EndsWith(".tellyhd.ch"))
             return null;
 
         if (!abs.AbsolutePath.StartsWith("/movies/", StringComparison.OrdinalIgnoreCase))

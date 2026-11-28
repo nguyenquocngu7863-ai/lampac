@@ -63,25 +63,34 @@ public class TxxxController : BaseSisiController
 
     async Task<string> FetchAsync(string url, string referer)
     {
-        try
+        var headers = HeadersModel.Init(
+            ("User-Agent", TxxxTo.ChromeUA),
+            ("Accept", "application/json, text/plain, */*"),
+            ("Accept-Language", "en-US,en;q=0.9"),
+            ("Referer", referer));
+
+        for (int attempt = 0; attempt < 2; attempt++)
         {
             string json = null;
-            await httpHydra.GetSpan(url, span =>
+            try
             {
-                json = span.ToString();
-            }, addheaders: HeadersModel.Init(
-                ("User-Agent", TxxxTo.ChromeUA),
-                ("Accept", "application/json, text/plain, */*"),
-                ("Accept-Language", "en-US,en;q=0.9"),
-                ("Referer", referer)
-            ));
+                await httpHydra.GetSpan(url, span =>
+                {
+                    json = span.ToString();
+                }, addheaders: headers);
+            }
+            catch { }
 
-            return json;
+            if (!string.IsNullOrWhiteSpace(json))
+                return json;
+
+            // .NET TLS bi chan (SSL_connect closed) -> gia lap chrome124
+            json = await TxxxTo.CffiGet(url, referer);
+            if (!string.IsNullOrWhiteSpace(json))
+                return json;
         }
-        catch
-        {
-            return null;
-        }
+
+        return null;
     }
 
     async Task<List<MenuItem>> MenuAsync(string search, string c, string sort)
@@ -137,10 +146,54 @@ public class TxxxController : BaseSisiController
         var recomends = await RecomendsAsync(videoId);
 
         if (related)
-            return PlaylistResult(recomends, cache.ISingleCache, null, total_pages: 1);
+        {
+            // Site bi throttle: tra 200 list rong (popup chi an "Lien quan" rong),
+            // dung de 503 lam player/popup bao loi.
+            if (recomends.Count > 0)
+                return PlaylistResult(recomends, cache.ISingleCache, null, total_pages: 1);
+
+            return Json(new { count = 0, total_pages = 1, list = new List<PlaylistItem>(), menu = new List<MenuItem>() });
+        }
 
         cache.Value.recomends = recomends;
-        return OnResult(cache);
+
+        // txxx.com chan TLS .NET o host goc -> /vidosik chi tra route noi bo,
+        // /video.mp4 resolve redirect sang CDN (txxx.ahcdn.com) bang curl_cffi.
+        var qualitys = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var k in cache.Value.qualitys.Keys)
+            qualitys[k] = $"{host}/txxx/video.mp4?uri={HttpUtility.UrlEncode(uri)}";
+
+        return OnResult(new StreamItem() { qualitys = qualitys, recomends = recomends });
+    }
+
+    [HttpGet, Staticache(manually: true)]
+    [Route("txxx/video.mp4")]
+    async public Task<ActionResult> Video(string uri)
+    {
+        if (await IsRequestBlocked(rch: true))
+            return badInitMsg;
+
+        string videoId = VideoId(uri);
+        if (string.IsNullOrEmpty(videoId))
+            return OnError("stream_links", refresh_proxy: true);
+
+        string memKey = ipkey($"txxx:final:{videoId}");
+        if (!hybridCache.TryGetValue(memKey, out string final) || string.IsNullOrEmpty(final))
+        {
+            string json = await FetchAsync(TxxxTo.StreamUrl(TxxxTo.SiteHost, videoId), $"{TxxxTo.SiteHost}/videos/{videoId}/");
+            var links = TxxxTo.StreamLinks(TxxxTo.SiteHost, json ?? "");
+            if (links.Count == 0)
+                return OnError("stream_links", refresh_proxy: true);
+
+            string referer = $"{TxxxTo.SiteHost}/videos/{videoId}/";
+            final = await TxxxTo.CffiFinalUrl(links.Values.First(), referer);
+            if (string.IsNullOrEmpty(final))
+                final = links.Values.First();
+
+            hybridCache.Set(memKey, final, cacheTime(30));
+        }
+
+        return Redirect(HostStreamProxy(final, httpHeaders(init, HeadersModel.Init(("Referer", $"{TxxxTo.SiteHost}/")))));
     }
 
     async Task<List<PlaylistItem>> RecomendsAsync(string videoId)

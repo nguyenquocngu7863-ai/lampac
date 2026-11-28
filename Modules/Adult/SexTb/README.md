@@ -1,6 +1,10 @@
-# SexTb (sextb.net)
+# SexTb (sextb.xyz)
 
-Module Adult cho sextb.net (JAV streaming, HTML server-side).
+Module Adult cho sextb.xyz (JAV streaming, HTML server-side). Domain cũ
+`sextb.net` đã chết (TLS đóng với mọi client) — 2026-11-28 chuyển sang `.xyz`
+(markup `tray-item` + API `/ajax/player` giữ nguyên). Request server-side đi
+thẳng bằng `curl_cffi` chrome124 (retry 3 lần); worker relay chỉ dùng cho
+domain `.net` cũ nên bị bỏ qua với `.xyz`.
 
 ## CF relay (bắt buộc từ 2026-11-13)
 

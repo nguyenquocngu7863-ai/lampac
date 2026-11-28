@@ -175,15 +175,22 @@ public class SexTbController : BaseSisiController
             double left = (deadline - DateTime.UtcNow).TotalSeconds;
             if (left < 1) break;
             string page = await RaceGetAsync(url, (int)Math.Ceiling(Math.Min(4, left)));
-            if (!string.IsNullOrEmpty(page) && page.Length >= 1000)
+            if (!string.IsNullOrEmpty(page) && page.Length >= 1000 && LooksLikePage(page))
                 return page;
         }
         return null;
     }
 
+    // .NET/httpHydra co the tra ve trang chan/CF (van >1000 ky tu) -> chi nhan
+    // trang that cua site (co card tray-item hoac ten mien).
+    static bool LooksLikePage(string html)
+        => html.Contains("tray-item", StringComparison.OrdinalIgnoreCase)
+        || html.Contains("sextb.", StringComparison.OrdinalIgnoreCase)
+        || html.Contains("dooplay", StringComparison.OrdinalIgnoreCase);
+
     async Task<string> RaceGetAsync(string url, int seconds)
     {
-        string a = null, b = null;
+        string a = null, b = null, c = null;
         var headers = HeadersModel.Init(
             ("User-Agent", SexTbTo.ChromeUA),
             ("Referer", SexTbTo.SiteHost + "/"),
@@ -201,15 +208,23 @@ public class SexTbController : BaseSisiController
             }
             catch { }
         });
+        // .NET + httpHydra bi site dong TLS (SSL_connect closed) -> chrome124
+        // gia lap moi qua. Race luon de khong cong don tre.
+        var t3 = Task.Run(async () =>
+        {
+            try { c = await SexTbTo.CffiGet(url, SexTbTo.SiteHost + "/", Math.Max(8, seconds)); }
+            catch { }
+        });
         var deadline = DateTime.UtcNow.AddSeconds(seconds);
         while (DateTime.UtcNow < deadline)
         {
             if (!string.IsNullOrEmpty(a)) return a;
             if (!string.IsNullOrEmpty(b)) return b;
-            if (t1.IsCompleted && t2.IsCompleted) break;
+            if (!string.IsNullOrEmpty(c)) return c;
+            if (t1.IsCompleted && t2.IsCompleted && t3.IsCompleted) break;
             await Task.Delay(200);
         }
-        return !string.IsNullOrEmpty(a) ? a : b;
+        return !string.IsNullOrEmpty(a) ? a : (!string.IsNullOrEmpty(b) ? b : c);
     }
 
     #region info (popup long-press)
@@ -495,18 +510,15 @@ public class SexTbController : BaseSisiController
         embeds.TryGetValue(label, out embed);
         if (string.IsNullOrEmpty(embed))
             embed = await SexTbTo.CffiEmbedAsync(pageUrl, episode, 10);
-        Console.WriteLine($"[SexTb/DBG] embed[{label}]={embed}");
         if (string.IsNullOrEmpty(embed)) return (null, nextPt, nextPk);
         // try resolve by kind
         try
         {
             if (embed.IndexOf("f4scdn.com", StringComparison.OrdinalIgnoreCase) >= 0 || embed.IndexOf("f4stream.com", StringComparison.OrdinalIgnoreCase) >= 0)
             {
-                Console.WriteLine($"[SexTb/DBG] F4 embed: {embed}");
                 string f4 = await SexTbTo.CffiF4Async(embed, Math.Min(10, init.httptimeout));
                 if (string.IsNullOrEmpty(f4))
                     f4 = await SexTbTo.F4SourceAsync(embed, Math.Min(10, init.httptimeout), proxy, init.httpversion);
-                Console.WriteLine($"[SexTb/DBG] F4SourceAsync result: {(f4 != null ? f4.Substring(0, Math.Min(200, f4.Length)) : "NULL")}");
                 if (!string.IsNullOrEmpty(f4))
                     return (f4 + "\n" + embed, nextPt, nextPk);
             }
@@ -547,7 +559,6 @@ public class SexTbController : BaseSisiController
                     }
                     if (string.IsNullOrEmpty(probe) || probe.IndexOf("#EXTM3U", StringComparison.OrdinalIgnoreCase) < 0)
                     {
-                        Console.WriteLine($"[SexTb/DBG] StreamHg master dead: {m}");
                         continue;
                     }
                     return (m + "\n" + player, nextPt, nextPk);
@@ -668,7 +679,12 @@ public class SexTbController : BaseSisiController
         int nl = packed.IndexOf('\n');
         if (nl > 0) { link = packed.Substring(0, nl); referer = packed.Substring(nl + 1); }
         // f4scdn tra 403 nginx neu thieu Origin (do 2026-10-31: Origin https://f4scdn.com -> 200).
-        var direct = link.IndexOf("f4scdn.com", StringComparison.OrdinalIgnoreCase) >= 0
+        // f4scdn/f4splay tra 403 nginx neu thieu Origin (do 2026-10-31, xac nhan
+        // lai 2026-11-28 voi edge .f4splay.vip cua domain moi).
+        bool isF4 = link.IndexOf("f4scdn.com", StringComparison.OrdinalIgnoreCase) >= 0
+            || link.IndexOf("f4splay", StringComparison.OrdinalIgnoreCase) >= 0
+            || link.IndexOf("f4stream", StringComparison.OrdinalIgnoreCase) >= 0;
+        var direct = isF4
             ? httpHeaders(init, HeadersModel.Init(("referer", referer), ("origin", "https://f4scdn.com")))
             : httpHeaders(init, HeadersModel.Init(("referer", referer)));
         return Redirect(HostStreamProxy(link, direct));

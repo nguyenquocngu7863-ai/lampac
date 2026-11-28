@@ -46,7 +46,9 @@ public class ModInit : IModuleLoaded, IModuleSisi
             stream_access = "apk",
             headers_stream = HeadersModel.Init(
                 ("User-Agent", SexTbTo.ChromeUA),
-                ("Referer", SexTbTo.SiteHost + "/")
+                ("Referer", SexTbTo.SiteHost + "/"),
+                // CDN f4scdn.com tra 403 neu thieu Origin (do 2026-11-28)
+                ("Origin", "https://f4scdn.com")
             ).ToDictionary(),
             headers_image = HeadersModel.Init(
                 ("User-Agent", SexTbTo.ChromeUA),

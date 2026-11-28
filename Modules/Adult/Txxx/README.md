@@ -1,5 +1,11 @@
 # Txxx (txxx.com)
 
+> 2026-11-28: txxx.com chặn TLS fingerprint của .NET và hay đóng kết nối với
+> curl_cffi → mọi request API phải có fallback `curl_cffi` chrome124 (retry 3).
+> `/vidosik` trả route nội bộ `/txxx/video.mp4` để resolve redirect sang
+> `txxx.ahcdn.com` bằng curl_cffi (host gốc .NET không vào được). Khi site
+> throttle, `/vidosik?related=true` trả list rỗng (`tp=1`), không 503.
+
 Module SISI cho TXXX — cùng backend JSON API với HClips / Upornia (mạng tubecup),
 nhưng mỗi site một module để `SiteHost` và bộ thể loại tách riêng.
 
