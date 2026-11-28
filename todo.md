@@ -13,7 +13,7 @@ Thứ tự làm, cái nào xong đánh `[x]`:
 - [x] Đợt 3 (10): DuJav, Jav18, Mbbg, Phe69, Porntrex, PubJav, QmhSex, SakuraSins, SevenMM, SexDep
   *(code xong 2026-11-27: verify `keys=[qualitys,recomends]` OK cho Phe69 8 · Porntrex 11 · PubJav 16 · SakuraSins 12 · SevenMM 8 · SexDep 10; `?related=true` → `list + tp=1`. Chưa đo được: Mbbg/QmhSex (503, site không vào), Jav18 (Cloudflare 403, không có trong conf), DuJav (đang `enable:false`)*
 - [x] Đợt 4 (10): SexNetVc, SexTb, SexVietop, Sieusex, Suong3x, TangThon, TellyHD, ThichSex, Tizam, Txxx
-  *(code xong 2026-11-28: `vidosik` trả `{qualitys, recomends}` + `?related=true` -> `list + tp=1`. Đo được: SexNetVc 24 · SexVietop 24 · Suong3x 10 · TangThon 24 · ThichSex 8 (dùng lại html, 1 request) · Tizam 16 · Txxx code xong (site 503). Không đo được vì site chặn: SexTb (TLS), Sieusex (javmup.net TLS), TellyHD (`stream_links` fail từ trước), Txxx (503). `check.sh` 0 error 10/10, đã deploy + restart, `play.sh` SexNetVc PHÁT ĐƯỢC)*
+  *(code xong 2026-11-28, đã fix nốt 4 module hỏng cùng ngày: `vidosik` trả `{qualitys, recomends}` + `?related=true` -> `list + tp=1`. Đo được: SexNetVc 24 · SexVietop 24 · Suong3x 10 · TangThon 24 · ThichSex 8 (dùng lại html, 1 request) · Tizam 16 · **SexTb 12** (đổi domain `.net`→`.xyz` + Origin f4splay, `play.sh` PHÁT ĐƯỢC) · **TellyHD 12** (nhận TLD `.ch`) · **Sieusex 10** (site hết chặn) · Txxx rec 50 khi site cho (stream còn phụ thuộc site có TLS-block hay không). `check.sh` 0 error 10/10, đã deploy + restart)*
 - [ ] Đợt 5 (10): Upornia, VNJav, VNsexTop1, Viet69Av, Viet69z, VietSexBlog, Vietmup, Vjav, VnChich, XHeoVL
 - [ ] Đợt 6 (2 còn lại): XViet, XszAv
 
