@@ -650,8 +650,8 @@ public static class VietmupTo
             });
         }
 
-        menu.Add(new Shared.Models.SISI.Base.MenuItem("Phim", host + "/vietmup?c=films"));
-        menu.Add(new Shared.Models.SISI.Base.MenuItem("Phim ngắn", host + "/vietmup?c=drama"));
+        // Không đưa "Phim"(/films) và "Phim ngắn"(/drama) lên menu — route vẫn giữ
+        // để bookmark / chip liên quan còn trỏ tới được.
 
         if (categories != null && categories.Count > 0)
         {

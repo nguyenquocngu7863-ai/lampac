@@ -67,8 +67,10 @@ public class VietmupController : BaseSisiController
         if (list == null || list.Count == 0)
             return EmptyPlaylistResult(mMenu);
 
-        // /search và /drama của site KHÔNG phân trang (bỏ qua &page) -> chặn pg=2 lặp lại trang 1
-        int totalPages = string.IsNullOrWhiteSpace(search) || c == "drama" ? 1 : 0;
+        // /search và /drama của site KHÔNG phân trang (bỏ qua &page) -> chặn pg=2 lặp lại trang 1.
+        // home/category/tag/films CÓ phân trang -> total_pages=0 (sisi.js tự thay 30, app tự load pg tiếp).
+        // Lưu ý: phải là !IsNullOrWhiteSpace(search) — search CÓ từ khoá mới khóa 1 trang.
+        int totalPages = !string.IsNullOrWhiteSpace(search) || c == "drama" ? 1 : 0;
         return PlaylistResult(cache, mMenu, total_pages: totalPages);
     }
 
