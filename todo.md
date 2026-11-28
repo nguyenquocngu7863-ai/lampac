@@ -84,6 +84,8 @@ Thứ tự ưu tiên từ nay:
 2. Popup còn thiếu — **10 module nhóm B** trước, nhóm A để sau.
 3. Việc nhóm A chỉ làm khi user yêu cầu rõ ràng hoặc site đó user đang dùng.
 
+> **2026-11-28 (27)**: **`Suong3x` — "Liên quan ảo" trong player** (user: "một số module recommended là ảo, bấm không nhảy tập tiếp theo, ví dụ suong3x"). Nguyên nhân: bài **cũ** của site trỏ `itemprop="embedURL"` sang `xcdnx.cdn-xvideos-xnxx.xyz/embed.php?url=https://www.xvideos.com/embedframe/<id>`; trang embed đó trả `"file":""` vì video gốc trên xvideos đã bị xoá (embedframe **404** — đo 30684501, 15179869, 1470158) ⇒ bấm "Tiếp theo" chỉ ra `stream_links` (503), player đứng im. Đo trên detail 53350: **5/10 item chết**. Chữa: `RecomendsAsync` → `PlayableAsync` kiểm từng item bằng `M3u8Async` (4 item/lượt), cache RAM `_aliveCache` 6h, key `recomends:v2`; item chết bị bỏ khỏi cả `recommends` lẫn `?rel=`. Verify: 10 → **5 item**, 5/5 trả `qualitys`, `?rel=` 5 `tp=1`, `genres` 3 nhóm, cold 2.6s / warm 0.002s, home/pg2/search/cat/sort 200, `play.sh` MP4 **PASS** (h264 444x250 · 979.4s). `check.sh` 0 error, deploy + restart OK.
+
 > **2026-11-27 (26)**: **Player "tập tiếp theo" — đợt 2, thêm 10 module** (tiếp mục 25). Đã thêm `recomends` +
 > `bool related` cho: `AnySex`, `FreePornVideos` (`fpv`), `Hclips`, `FapClub`, `HQporner` (`hqr`), `Av123`,
 > `Lon69`, `Vlxx`, `PhimSexVi`, `ThreeMovs`. Hai kiểu code:

@@ -73,3 +73,17 @@ Segment của CDN có **prefix PNG** (kiểu `IMG_xxx_0000.png`) → hls.js tự
 
 Block "Phim Liên Quan" trên trang detail: `<div class="related-videos">` → 10 card.
 Chip + liên quan lấy cùng **1 request detail** (cache RAM 6h); cache player 30 phút.
+
+## Lọc "Liên quan" chết (2026-11-28)
+
+Bẫy: bài **cũ** trên site trỏ `itemprop="embedURL"` sang
+`https://xcdnx.cdn-xvideos-xnxx.xyz/embed.php?url=https://www.xvideos.com/embedframe/<id>`.
+Trang embed đó trả `sources:[{"file":""}]` (rỗng) vì video gốc trên xvideos đã bị xoá (embedframe 404)
+→ bấm "Tiếp theo" chỉ ra `stream_links` (503), player đứng im = "item ảo".
+Bài **mới** dùng `play2.cdn-xvideos-xnxx.xyz/embed4.php?id1=...` (chạy tốt); dạng
+`embed.php?url=<id số>` vẫn trả `"file":"https://mp4-gcore...mp4?secure=.."`.
+
+Cách chữa: `RecomendsAsync` → `PlayableAsync` kiểm từng item qua `M3u8Async` (cache 30 phút),
+4 item/lượt, kết quả (kể cả false) cache RAM `_aliveCache` 6 giờ; item chết bị bỏ khỏi
+`recomends` và `?rel=`. Đo: 10 → **5 item**, 5/5 trả `qualitys`, `?rel=` 5 `tp=1`,
+cold 2.6s → warm 0.002s, `play.sh` MP4 **PASS** (h264 444x250 · 979.4s).

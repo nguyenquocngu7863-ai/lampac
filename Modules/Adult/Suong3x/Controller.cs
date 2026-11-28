@@ -21,9 +21,12 @@ public class Suong3xController : BaseSisiController
     // cache RAM (object custom / ValueTuple không serialize lại được qua hybridCache)
     static readonly ConcurrentDictionary<string, (DateTime at, string m3u8)> _playerCache = new();
     static readonly ConcurrentDictionary<string, (DateTime at, List<(string kind, string slug, string name)> chips, List<PlaylistItem> rel)> _detailCache = new();
+    // uri -> co phat duoc khong (loc "Phim lien quan" chet, vd bai cu nhung embed xvideos da bi xoa)
+    static readonly ConcurrentDictionary<string, (DateTime at, bool ok)> _aliveCache = new();
 
     static readonly TimeSpan PlayerTtl = TimeSpan.FromMinutes(30);
     static readonly TimeSpan DetailTtl = TimeSpan.FromHours(6);
+    static readonly TimeSpan AliveTtl = TimeSpan.FromHours(6);
 
     public Suong3xController() : base(ModInit.conf) { }
 
@@ -300,15 +303,61 @@ public class Suong3xController : BaseSisiController
     // Khoi "lien quan" cua trang detail -> playlist "tiep theo" trong player
     async Task<List<PlaylistItem>> RecomendsAsync(string uri)
     {
-        string memKey = ipkey($"suong3x:recomends:{uri}");
+        string memKey = ipkey($"suong3x:recomends:v2:{uri}");
         if (hybridCache.TryGetValue(memKey, out List<PlaylistItem> hit) && hit != null)
             return hit;
 
         var (_, playlists) = await DetailInfoAsync(uri);
-        var list = playlists ?? new List<PlaylistItem>();
+        var list = await PlayableAsync(playlists ?? new List<PlaylistItem>());
         if (list.Count > 0)
             hybridCache.Set(memKey, list, cacheTime(20));
         return list;
+    }
+
+    // Bo item khong phat duoc khoi "Tiep theo": bai cu tro embed xvideos da bi xoa -> bam vao
+    // chi ra stream_links, player dung im (khong nhay tap). Kiem tra 4 item/luot, cache 6 gio.
+    async Task<List<PlaylistItem>> PlayableAsync(List<PlaylistItem> list)
+    {
+        if (list.Count == 0)
+            return list;
+
+        var ok = new bool[list.Count];
+
+        for (int i = 0; i < list.Count; i += 4)
+        {
+            int end = Math.Min(i + 4, list.Count);
+            var tasks = new List<Task<bool>>();
+            for (int n = i; n < end; n++)
+                tasks.Add(IsPlayableAsync(ItemUri(list[n])));
+
+            var res = await Task.WhenAll(tasks);
+            for (int n = 0; n < res.Length; n++)
+                ok[i + n] = res[n];
+        }
+
+        return list.Where((_, i) => ok[i]).ToList();
+    }
+
+    static string ItemUri(PlaylistItem item)
+    {
+        string v = item?.video ?? "";
+        int i = v.IndexOf("?uri=", StringComparison.Ordinal);
+        return i < 0 ? null : HttpUtility.UrlDecode(v.Substring(i + 5));
+    }
+
+    async Task<bool> IsPlayableAsync(string uri)
+    {
+        if (!IsDetailUrl(uri))
+            return false;
+
+        if (_aliveCache.TryGetValue(uri, out var hit) && DateTime.UtcNow - hit.at < AliveTtl)
+            return hit.ok;
+
+        bool ok = false;
+        try { ok = !string.IsNullOrEmpty(await M3u8Async(uri)); } catch { }
+
+        _aliveCache[uri] = (DateTime.UtcNow, ok);
+        return ok;
     }
 
     [HttpGet]
@@ -395,7 +444,7 @@ public class Suong3xController : BaseSisiController
 
     async Task<ActionResult> RelatedList(string rel)
     {
-        var (_, playlists) = await DetailInfoAsync(rel);
+        var playlists = await RecomendsAsync(rel);
 
         if (playlists == null || playlists.Count == 0)
             return Json(new { total_pages = 1, list = new List<PlaylistItem>() });
