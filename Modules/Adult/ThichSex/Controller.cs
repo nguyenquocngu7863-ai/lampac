@@ -227,7 +227,7 @@ public class ThichSexController : BaseSisiController
     // /vidosik chi LIET KE 1 nguon (site co 1 player). Resolve that su o /video.
     [HttpGet, Staticache(manually: true)]
     [Route("thichsex/vidosik")]
-    async public Task<ActionResult> Vidosik(string uri)
+    async public Task<ActionResult> Vidosik(string uri, bool related)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
@@ -236,12 +236,22 @@ public class ThichSexController : BaseSisiController
         if (page == null)
             return OnError("stream_links", refresh_proxy: true);
 
-        string player = ThsTo.PlayerUrl(await FetchHtmlAsync(page));
+        string html = await FetchHtmlAsync(page);
+        string player = ThsTo.PlayerUrl(html);
         if (string.IsNullOrEmpty(player))
             return OnError("stream_links", refresh_proxy: true);
-        return Json(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+
+        var recomends = ThsTo.PlaylistRelated("thichsex/vidosik", html);
+        if (related)
+            return PlaylistResult(recomends, false, null, total_pages: 1);
+
+        return Json(new
         {
-            ["Auto"] = $"{host}/thichsex/video.m3u8?uri={HttpUtility.UrlEncode(uri)}"
+            qualitys = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["Auto"] = $"{host}/thichsex/video.m3u8?uri={HttpUtility.UrlEncode(uri)}"
+            },
+            recomends
         });
     }
 

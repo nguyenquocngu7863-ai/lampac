@@ -271,7 +271,7 @@ public class TangThonController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("tangthon/vidosik")]
-    async public Task<ActionResult> Vidosik(string uri)
+    async public Task<ActionResult> Vidosik(string uri, bool related)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
@@ -284,8 +284,42 @@ public class TangThonController : BaseSisiController
         if (userch)
             return OnResult(links);
 
-        return Json(links.ToDictionary(k => k.Key, v =>
-            $"{host}/tangthon/video.m3u8?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(v.Key)}"));
+        var recomends = await RecomendsAsync(uri);
+        if (related)
+            return PlaylistResult(recomends, false, null, total_pages: 1);
+
+        return Json(new
+        {
+            qualitys = links.ToDictionary(k => k.Key, v =>
+                $"{host}/tangthon/video.m3u8?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(v.Key)}"),
+            recomends
+        });
+    }
+
+    // Khoi "lien quan" cua trang detail -> playlist "tiep theo" trong player
+    async Task<List<PlaylistItem>> RecomendsAsync(string uri)
+    {
+        string pageUrl = NormalizeDetail(uri);
+        if (pageUrl == null)
+            return new List<PlaylistItem>();
+
+        string memKey = ipkey($"tangthon:recomends:{pageUrl}");
+        if (hybridCache.TryGetValue(memKey, out List<PlaylistItem> hit) && hit != null)
+            return hit;
+
+        string html = null;
+        await httpHydra.GetSpan(pageUrl, span =>
+        {
+            html = span.ToString();
+        }, addheaders: HeadersModel.Init(
+            ("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"),
+            ("Referer", TangThonTo.SiteHost + "/")
+        ));
+
+        var playlists = TangThonTo.PlaylistRelated("tangthon/vidosik", html ?? "", pageUrl) ?? new List<PlaylistItem>();
+        if (playlists.Count > 0)
+            hybridCache.Set(memKey, playlists, cacheTime(20));
+        return playlists;
     }
 
     [HttpGet]

@@ -308,10 +308,12 @@ public static class TizamTo
     async public static Task<StreamItem> Stream(HttpHydra httpHydra, string host, string uri)
     {
         string location = null;
+        List<PlaylistItem> related = null;
 
         await httpHydra.GetSpan($"{host}/{uri}", span =>
         {
             location = Rx.Match(span, "src=\"(https?://[^\"]+\\.mp4)\" type=\"video/mp4\"");
+            related = PlaylistRelated(host, span.ToString(), uri);
         });
 
         if (string.IsNullOrEmpty(location))
@@ -322,7 +324,8 @@ public static class TizamTo
             qualitys = new Dictionary<string, string>()
             {
                 ["auto"] = location
-            }
+            },
+            recomends = related ?? new List<PlaylistItem>()
         };
     }
 }

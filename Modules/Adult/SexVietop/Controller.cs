@@ -347,7 +347,7 @@ public class SexVietopController : BaseSisiController
     #region stream
     [HttpGet, Staticache(manually: true)]
     [Route("sexvietop/vidosik")]
-    async public Task<ActionResult> Vidosik(string uri)
+    async public Task<ActionResult> Vidosik(string uri, bool related)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
@@ -356,8 +356,43 @@ public class SexVietopController : BaseSisiController
         if (links == null || links.Count == 0)
             return OnError("stream_links", refresh_proxy: true);
 
-        return Json(links.ToDictionary(k => k.Key, k =>
-            $"{host}/sexvietop/video.m3u8?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(k.Key)}"));
+        var recomends = await RecomendsAsync(uri);
+        if (related)
+            return PlaylistResult(recomends, false, null, total_pages: 1);
+
+        return Json(new
+        {
+            qualitys = links.ToDictionary(k => k.Key, k =>
+                $"{host}/sexvietop/video.m3u8?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(k.Key)}"),
+            recomends
+        });
+    }
+
+    // Khoi "lien quan" cua trang detail -> playlist "tiep theo" trong player
+    async Task<List<PlaylistItem>> RecomendsAsync(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri) || !uri.Contains("/phim-sex/", StringComparison.OrdinalIgnoreCase))
+            return new List<PlaylistItem>();
+
+        string pageUrl = uri.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? uri : init.host + uri;
+        int qm = pageUrl.IndexOf('?');
+        if (qm >= 0)
+            pageUrl = pageUrl.Substring(0, qm);
+
+        var ms = Regex.Match(pageUrl, "/phim-sex/([a-z0-9-]+)", RegexOptions.IgnoreCase);
+        if (!ms.Success)
+            return new List<PlaylistItem>();
+
+        string slug = ms.Groups[1].Value;
+        string memKey = ipkey($"sxvt:recomends:{slug}");
+        if (hybridCache.TryGetValue(memKey, out List<PlaylistItem> hit) && hit != null)
+            return hit;
+
+        string json = await FetchJsonAsync(SxvtTo.SiteHost + "/ajax/suggestions/" + slug);
+        var list = SxvtTo.Related("sexvietop/vidosik", json ?? "") ?? new List<PlaylistItem>();
+        if (list.Count > 0)
+            hybridCache.Set(memKey, list, cacheTime(20));
+        return list;
     }
 
     async Task<Dictionary<string, string>> ResolveAsync(string uri)

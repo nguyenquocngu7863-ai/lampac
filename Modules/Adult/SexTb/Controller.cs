@@ -360,7 +360,7 @@ public class SexTbController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("sextb/vidosik")]
-    async public Task<ActionResult> Vidosik(string uri)
+    async public Task<ActionResult> Vidosik(string uri, bool related)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
@@ -385,7 +385,13 @@ public class SexTbController : BaseSisiController
         // play la cache hit — resolve luc bam tung treo > 10 s.
         string warmUrl = uri.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? uri : SexTbTo.SiteHost + "/" + uri.Trim('/');
         _ = Task.Run(() => EmbedsAsync(warmUrl));
-        return Json(dict);
+
+        // Khoi "lien quan" cua trang detail -> playlist "tiep theo" trong player
+        var recomends = await GetRelatedAsync(SexTbTo.NormalizePageUrl(warmUrl) ?? warmUrl);
+        if (related)
+            return PlaylistResult(recomends, false, null, total_pages: 1);
+
+        return Json(new { qualitys = dict, recomends });
     }
 
     // Server + episode id tu trang detail (nut btn-player data-source).

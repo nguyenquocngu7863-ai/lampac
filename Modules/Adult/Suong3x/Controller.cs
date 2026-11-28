@@ -265,7 +265,7 @@ public class Suong3xController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("suong3x/vidosik")]
-    async public Task<ActionResult> Vidosik(string uri)
+    async public Task<ActionResult> Vidosik(string uri, bool related)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
@@ -277,16 +277,38 @@ public class Suong3xController : BaseSisiController
         // Embed co the tra HLS hoac MP4 (mp4 cua xvideos CDN) -> route + nhan tuong ung
         bool hls = m3u8.IndexOf(".m3u8", StringComparison.OrdinalIgnoreCase) >= 0;
 
-        return Json(new Dictionary<string, string>(StringComparer.Ordinal)
+        var recomends = await RecomendsAsync(uri);
+        if (related)
+            return PlaylistResult(recomends, false, null, total_pages: 1);
+
+        return Json(new
         {
-            // duoi .m3u8/.mp4 la BAT BUOC: app chon player theo duoi URL,
-            // thieu duoi -> coi la file thuong -> "no supported source"
+            qualitys = new Dictionary<string, string>(StringComparer.Ordinal)
             {
-                hls ? "HLS" : "MP4",
-                $"{host}/suong3x/" + (hls ? "video.m3u8" : "video.mp4")
-                    + $"?uri={HttpUtility.UrlEncode(uri)}&q=" + (hls ? "HLS" : "MP4")
-            }
+                // duoi .m3u8/.mp4 la BAT BUOC: app chon player theo duoi URL,
+                // thieu duoi -> coi la file thuong -> "no supported source"
+                {
+                    hls ? "HLS" : "MP4",
+                    $"{host}/suong3x/" + (hls ? "video.m3u8" : "video.mp4")
+                        + $"?uri={HttpUtility.UrlEncode(uri)}&q=" + (hls ? "HLS" : "MP4")
+                }
+            },
+            recomends
         });
+    }
+
+    // Khoi "lien quan" cua trang detail -> playlist "tiep theo" trong player
+    async Task<List<PlaylistItem>> RecomendsAsync(string uri)
+    {
+        string memKey = ipkey($"suong3x:recomends:{uri}");
+        if (hybridCache.TryGetValue(memKey, out List<PlaylistItem> hit) && hit != null)
+            return hit;
+
+        var (_, playlists) = await DetailInfoAsync(uri);
+        var list = playlists ?? new List<PlaylistItem>();
+        if (list.Count > 0)
+            hybridCache.Set(memKey, list, cacheTime(20));
+        return list;
     }
 
     [HttpGet]

@@ -187,7 +187,7 @@ public class TizamController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("tizam/vidosik")]
-    async public Task<ActionResult> Vidosik(string uri)
+    async public Task<ActionResult> Vidosik(string uri, bool related)
     {
         if (await IsRequestBlocked(rch: true))
             return badInitMsg;
@@ -201,6 +201,9 @@ public class TizamController : BaseSisiController
 
             return e.Success(stream);
         });
+
+        if (related)
+            return PlaylistResult(cache.Value?.recomends, cache.ISingleCache, null, total_pages: 1);
 
         if (IsRhubFallback(cache))
             goto rhubFallback;

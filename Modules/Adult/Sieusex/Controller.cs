@@ -284,7 +284,7 @@ public class SieusexController : BaseSisiController
     // trang, khong token).
     [HttpGet, Staticache(manually: true)]
     [Route("sieusex/vidosik")]
-    async public Task<ActionResult> Vidosik(string uri)
+    async public Task<ActionResult> Vidosik(string uri, bool related)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
@@ -304,7 +304,25 @@ public class SieusexController : BaseSisiController
         string wurl = pageUrl;
         _ = Task.Run(async () => { try { await ResolvePlaylistAsync(wurl, 1); } catch { } });
 
-        return Json(dict);
+        var recomends = await RecomendsAsync(pageUrl);
+        if (related)
+            return PlaylistResult(recomends, false, null, total_pages: 1);
+
+        return Json(new { qualitys = dict, recomends });
+    }
+
+    // Khoi "lien quan" cua trang detail -> playlist "tiep theo" trong player
+    async Task<List<PlaylistItem>> RecomendsAsync(string pageUrl)
+    {
+        string memKey = ipkey($"sieusex:recomends:{pageUrl}");
+        if (hybridCache.TryGetValue(memKey, out List<PlaylistItem> hit) && hit != null)
+            return hit;
+
+        string html = await GetPageAsync(pageUrl);
+        var playlists = SieusexTo.PlaylistRelated("sieusex/vidosik", html ?? "", pageUrl) ?? new List<PlaylistItem>();
+        if (playlists.Count > 0)
+            hybridCache.Set(memKey, playlists, cacheTime(20));
+        return playlists;
     }
 
     async Task<(string postId, int servers)?> DetailInfoAsync(string pageUrl)

@@ -240,7 +240,7 @@ public class TellyHDController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("tellyhd/vidosik")]
-    async public Task<ActionResult> Vidosik(string uri)
+    async public Task<ActionResult> Vidosik(string uri, bool related)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
@@ -281,7 +281,14 @@ public class TellyHDController : BaseSisiController
                 + $"?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(key)}";
         }
 
-        return Json(dict);
+        // Khoi "lien quan" cua trang detail (da tai o tren) -> playlist "tiep theo"
+        var recomends = HdTo.Related(html ?? "");
+        recomends.RemoveAll(x => SamePage(x, pageUrl));
+
+        if (related)
+            return PlaylistResult(recomends, false, null, total_pages: 1);
+
+        return Json(new { qualitys = dict, recomends });
     }
 
     // Cache link da resolve theo (trang, server) — player co the goi lai URL

@@ -110,7 +110,7 @@ public class TxxxController : BaseSisiController
 
     [HttpGet, Staticache(manually: true)]
     [Route("txxx/vidosik")]
-    async public Task<ActionResult> Vidosik(string uri)
+    async public Task<ActionResult> Vidosik(string uri, bool related)
     {
         if (await IsRequestBlocked(rch: true))
             return badInitMsg;
@@ -130,7 +130,30 @@ public class TxxxController : BaseSisiController
             return e.Success(new StreamItem() { qualitys = qualitys });
         });
 
+        if (!cache.IsSuccess)
+            return OnError(cache.ErrorMsg);
+
+        // Khoi "lien quan" cua trang detail -> playlist "tiep theo" trong player
+        var recomends = await RecomendsAsync(videoId);
+
+        if (related)
+            return PlaylistResult(recomends, cache.ISingleCache, null, total_pages: 1);
+
+        cache.Value.recomends = recomends;
         return OnResult(cache);
+    }
+
+    async Task<List<PlaylistItem>> RecomendsAsync(string videoId)
+    {
+        var cache = await InvokeCacheResult<(List<PlaylistItem> playlists, int total_pages)>(
+            ipkey($"txxx:rel:{videoId}"), 180, async e =>
+        {
+            string json = await FetchAsync(TxxxTo.RelatedUrl(TxxxTo.SiteHost, videoId, 1), $"{TxxxTo.SiteHost}/videos/{videoId}/");
+            var (playlists, _) = TxxxTo.Playlist("txxx/vidosik", json ?? "");
+            return e.Success((playlists, 1));
+        });
+
+        return cache.IsSuccess ? cache.Value.playlists : new List<PlaylistItem>();
     }
 
     #region info (long-press popup menu)

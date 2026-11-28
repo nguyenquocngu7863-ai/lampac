@@ -315,7 +315,7 @@ public class SexNetVcController : BaseSisiController
     // ===== player =====
     [HttpGet, Staticache(manually: true)]
     [Route("sexnetvc/vidosik")]
-    async public Task<ActionResult> Vidosik(string uri)
+    async public Task<ActionResult> Vidosik(string uri, bool related)
     {
         if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
             return badInitMsg;
@@ -324,8 +324,38 @@ public class SexNetVcController : BaseSisiController
         if (links == null || links.Count == 0)
             return OnError("stream_links", refresh_proxy: true);
 
-        return Json(links.ToDictionary(k => k.Key, k =>
-            $"{host}/sexnetvc/video.m3u8?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(k.Key)}"));
+        var recomends = await RecomendsAsync(uri);
+        if (related)
+            return PlaylistResult(recomends, false, null, total_pages: 1);
+
+        return Json(new
+        {
+            qualitys = links.ToDictionary(k => k.Key, k =>
+                $"{host}/sexnetvc/video.m3u8?uri={HttpUtility.UrlEncode(uri)}&q={HttpUtility.UrlEncode(k.Key)}"),
+            recomends
+        });
+    }
+
+    // Khoi "lien quan" cua trang detail -> playlist "tiep theo" trong player
+    async Task<List<PlaylistItem>> RecomendsAsync(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return new List<PlaylistItem>();
+
+        string pageUrl = uri.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+            ? uri
+            : NvcTo.SiteHost + "/phim-sex/" + uri.Trim('/');
+
+        string memKey = ipkey($"nvc:recomends:{pageUrl}");
+        if (hybridCache.TryGetValue(memKey, out List<PlaylistItem> hit) && hit != null)
+            return hit;
+
+        string slug = pageUrl.TrimEnd('/').Split('/').Last().Split('?')[0];
+        string json = await GetHtmlAsync(NvcTo.SiteHost + "/ajax/suggestions/" + slug, pageUrl);
+
+        var playlists = NvcTo.Related("sexnetvc/vidosik", json) ?? new List<PlaylistItem>();
+        hybridCache.Set(memKey, playlists, cacheTime(20));
+        return playlists;
     }
 
     async Task<Dictionary<string, string>> ResolveAsync(string uri)
