@@ -59,7 +59,7 @@ public class JavtifulController : BaseSisiController
         try
         {
             string html = null;
-            await httpHydra.GetSpan(url, span =>
+            await httpHydra.GetSpan(JavtifulTo.Relay(url), span =>
             {
                 html = span.ToString();
             }, addheaders: HeadersModel.Init(
@@ -174,7 +174,7 @@ public class JavtifulController : BaseSisiController
         }
 
         string pageHtml = null;
-        await httpHydra.GetSpan(pageUrl, span =>
+        await httpHydra.GetSpan(JavtifulTo.Relay(pageUrl), span =>
         {
             pageHtml = span.ToString();
         }, addheaders: HeadersModel.Init(
@@ -209,7 +209,7 @@ public class JavtifulController : BaseSisiController
                 for (int attempt = 0; attempt < 2 && links.Count == 0; attempt++)
                 {
                     string body = null;
-                    await httpHydra.PostSpan(playUrl, "ticket=" + HttpUtility.UrlEncode(ticket), span =>
+                    await httpHydra.PostSpan(JavtifulTo.Relay(playUrl), "ticket=" + HttpUtility.UrlEncode(ticket), span =>
                     {
                         body = span.ToString();
                     }, addheaders: playHeaders, statusCodeOK: false);

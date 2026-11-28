@@ -69,7 +69,7 @@ BASE_ALLOW = (
     "jav.guru,sextb.net,thichsex.org,"
     "lh3-ggcontent.top,uptobox-ggcdn.top,javenglish.cc,javeng.b-cdn.net,"
     "javquick.com,vjav.com,tn.vjav.com,"
-    "qooglevideo.shop,xvideo.lat,bytecdn.cfd"
+    "qooglevideo.shop,xvideo.lat,bytecdn.cfd,javtiful.com"
 )
 
 

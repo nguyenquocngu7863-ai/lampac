@@ -78,6 +78,9 @@ export DOTNET_GCHeapHardLimit="${DOTNET_GCHeapHardLimit:-600000000}"
 # Tat relay: doi thanh XNHAU_RELAY=''  (dau '-' khong co ':' nen rong van thang).
 export XNHAU_RELAY="${XNHAU_RELAY-https://xn-relay.nguyenquocngu7863.workers.dev}"
 export JAVGURU_RELAY="${JAVGURU_RELAY-https://xn-relay.nguyenquocngu7863.workers.dev}"
+# JavTiful: cung ly do (TLS tu IP may bi reset: list 503 "playlists"). Host da
+# trong ALLOW cua worker; JAVTIFUL_RELAY rong -> fallback XNHAU_RELAY.
+export JAVTIFUL_RELAY="${JAVTIFUL_RELAY-https://xn-relay.nguyenquocngu7863.workers.dev}"
 export VNCCHICH2_RELAY="${VNCCHICH2_RELAY-https://xn-relay.nguyenquocngu7863.workers.dev}"
 # SexTb: site bat CF challenge voi moi request server-side (curl_cffi/.NET deu
 # bi tiep) -> di qua cung Worker. Bat buoc UA trinh duyet (Chrome) moi qua.

@@ -3,13 +3,13 @@
  * Dùng: https://<worker>/<host>/<path>?query  →  fetch https://<host>/<path>?query
  * - forward Range/Referer/Origin/UA (HLS segment + 206)
  * - cache GET ở edge (cacheEverything, TTL 1h) → xem lại không về origin
- * - chỉ cho host trong allowlist (env ALLOW, mặc định = xnhau.plus,xnhau.pub,xnhau.pink,xnhau.moda,jav.guru,sextb.net,thichsex.org,lh3-ggcontent.top,uptobox-ggcdn.top,javenglish.cc,javeng.b-cdn.net,javquick.com,vjav.com,tn.vjav.com,qooglevideo.shop,xvideo.lat,bytecdn.cfd) để không thành open relay
+ * - chỉ cho host trong allowlist (env ALLOW, mặc định = xnhau.plus,xnhau.pub,xnhau.pink,xnhau.moda,jav.guru,sextb.net,thichsex.org,lh3-ggcontent.top,uptobox-ggcdn.top,javenglish.cc,javeng.b-cdn.net,javquick.com,vjav.com,tn.vjav.com,qooglevideo.shop,xvideo.lat,bytecdn.cfd,javtiful.com) để không thành open relay
  */
 const UA =
   "Mozilla/5.0 (Linux; Android 14; SM-A525F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36";
 
 function allowed(host, env) {
-  const list = (env.ALLOW || "xnhau.plus,xnhau.pub,xnhau.pink,xnhau.moda,jav.guru,sextb.net,thichsex.org,lh3-ggcontent.top,uptobox-ggcdn.top,javenglish.cc,javeng.b-cdn.net,javquick.com,vjav.com,tn.vjav.com,qooglevideo.shop,xvideo.lat,bytecdn.cfd").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+  const list = (env.ALLOW || "xnhau.plus,xnhau.pub,xnhau.pink,xnhau.moda,jav.guru,sextb.net,thichsex.org,lh3-ggcontent.top,uptobox-ggcdn.top,javenglish.cc,javeng.b-cdn.net,javquick.com,vjav.com,tn.vjav.com,qooglevideo.shop,xvideo.lat,bytecdn.cfd,javtiful.com").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
   host = host.toLowerCase();
   return list.some((d) => host === d || host.endsWith("." + d));
 }

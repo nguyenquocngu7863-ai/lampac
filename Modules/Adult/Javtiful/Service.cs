@@ -10,6 +10,29 @@ public static class JavtifulTo
 {
     public static string SiteHost = "https://javtiful.com";
 
+    // javtiful.com chan TLS voi IP may nay (ECONNRESET / SSL_connect closed) — moi
+    // request toi site phai di qua Worker relay (egress Cloudflare). Host da nam
+    // trong ALLOW cua worker (`Tools/cf-relay`). Env rong -> di truc tiep.
+    static readonly string relayBase = System.Environment.GetEnvironmentVariable("JAVTIFUL_RELAY")?.TrimEnd('/')
+        ?? System.Environment.GetEnvironmentVariable("XNHAU_RELAY")?.TrimEnd('/');
+
+    public static string Relay(string url)
+    {
+        if (string.IsNullOrEmpty(relayBase) || string.IsNullOrEmpty(url)
+            || !url.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            return url;
+        if (url.StartsWith(relayBase, StringComparison.OrdinalIgnoreCase))
+            return url;
+        try
+        {
+            var u = new Uri(url);
+            if (!u.Host.EndsWith("javtiful.com", StringComparison.OrdinalIgnoreCase))
+                return url;
+            return $"{relayBase}/{u.Host}{u.PathAndQuery}";
+        }
+        catch { return url; }
+    }
+
     public static string ChromeUA = "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36";
 
     static string SlugifyVi(string s)

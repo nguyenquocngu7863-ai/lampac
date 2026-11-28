@@ -4,4 +4,4 @@ compatibility_date = "2026-01-01"
 
 # chỉ relay cho host này (đổi bằng: wrangler deploy --var ALLOW:"xnhau.pub,xnhau.pink,cdn.example")
 [vars]
-ALLOW = "xnhau.plus,xnhau.pub,xnhau.pink,xnhau.moda,jav.guru,sextb.net,thichsex.org,lh3-ggcontent.top,uptobox-ggcdn.top,javenglish.cc,javeng.b-cdn.net,javquick.com,vjav.com,tn.vjav.com,qooglevideo.shop,xvideo.lat,bytecdn.cfd"
+ALLOW = "xnhau.plus,xnhau.pub,xnhau.pink,xnhau.moda,jav.guru,sextb.net,thichsex.org,lh3-ggcontent.top,uptobox-ggcdn.top,javenglish.cc,javeng.b-cdn.net,javquick.com,vjav.com,tn.vjav.com,qooglevideo.shop,xvideo.lat,bytecdn.cfd,javtiful.com"

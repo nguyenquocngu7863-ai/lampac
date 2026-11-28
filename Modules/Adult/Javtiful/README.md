@@ -107,3 +107,23 @@ Khong co CSRF/token khac - chi can UA + Referer/Origin + `X-Requested-With`.
 
 Do 2026-10-21: `/javtiful/vidosik` -> 200 `{"MP4": ...}`; `/javtiful/video?...&q=MP4` -> 302 proxy
 -> 206 `video/mp4`, `ftypisom`.
+
+## Relay bắt buộc lại (2026-11-28)
+
+`javtiful.com` lại chặn TLS từ IP máy này (`SSL_connect closed` / `ECONNRESET`, curl_cffi + Node
++ .NET đều vậy) ⇒ `/javtiful` trả **503 `playlists`**. Nguyên nhân phụ: host **chưa nằm trong
+ALLOW** của Worker `xn-relay` (deploy.py `BASE_ALLOW` + `src/index.js` + `wrangler.toml`) nên
+request qua relay bị `403 host not allowed` — đúng nghi vấn "relay tự xoá site".
+
+Đã làm:
+1. `Tools/cf-relay`: thêm `javtiful.com` vào `BASE_ALLOW` (deploy.py), default trong `src/index.js`,
+   `wrangler.toml` → `python3 deploy.py` (18 host, `check: OK`).
+2. Module: `JavtifulTo.Relay(url)` wrap mọi URL host `javtiful.com` qua Worker, env
+   `JAVTIFUL_RELAY` (fallback `XNHAU_RELAY`; rỗng = đi trực tiếp). Áp cho: GET list/detail,
+   POST `/vn/video/{id}/playback` (ticket), và link stream trong `/javtiful/video`.
+
+Đo sau fix: `/javtiful` **200 56.5KB 0.59s** (23 item) · pg2 200 · search 200 · sort 200 ·
+`/vidosik` 200 `{qualitys:{MP4}, recomends:20}` 0.64s · stream **206 0.7s** ·
+ffprobe qua `/proxy/`: **h264 1280x720 + aac**.
+`play.sh` báo "KHÔNG RA STREAM" vì URL `/proxy/<hash>` **không đuôi** + 302 (bẫy đã biết),
+không phải lỗi module.
