@@ -580,6 +580,19 @@ public static class JavGuruTo
         if (IsDeadPlayer(player))
             return res;
 
+        // JuicyCodes: trang chi co `_juicycodes("<payload>")` (obfuscator.io, giai ma
+        // bang bundle player.js cua ho) nen curl KHONG bao gio thay m3u8. Di Chrome:
+        // no chay payload -> JWPlayer -> tai master. Dung cho ca rtype moi chua biet
+        // vi nhan dien theo noi dung trang, khong theo ten tham so.
+        if (player.Contains("_juicycodes(", StringComparison.Ordinal))
+        {
+            var jc = await JcSourceAsync(NoFollow(gateway), referer, deadline);
+            if (jc.Count == 0)
+                return res;
+
+            return jc.Select(x => (x.url, x.tag, (string)null)).ToList();
+        }
+
         // ROLLBACK ve dung nhu luc 1080p chay on (truoc khi lam JK):
         // chi player P.A.C.K.E.R (maxstream/JK) moi di duong giai-nen.
         // Turbo (TV) va server khac giu nguyen duong data-hash/m3u8 nhu cu —
@@ -693,6 +706,13 @@ public static class JavGuruTo
 
         if (Regex.IsMatch(gateway, @"[?&][oex]r=[0-9a-z]+", RegexOptions.IgnoreCase))
             return KindHls;   // JK (maxstream) / LU (lulustream) / SB (streamhg)
+
+        // JuicyCodes (juicy.codes / oppainet.net) — server moi STREAM VI (?cd=),
+        // STREAM AV (?gd=). Gateway tra trang nap `_juicycodes("...")` obfuscate;
+        // sau khi giai ma la config JWPlayer + `sources.file` = HLS tren
+        // `<mirror>.oppainet.net/stream/variant/...m3u8`. Chi phat HLS.
+        if (IsJcGateway(gateway))
+            return KindHls;
 
         return "";
     }
@@ -823,6 +843,13 @@ public static bool IsVoGateway(string gateway)
        && Regex.IsMatch(gateway, @"[?&]t[dr]=[0-9a-z]+",
            RegexOptions.IgnoreCase);
 
+// JuicyCodes: rtype g (STREAM AV, ?gd=) va c (STREAM VI, ?cd=). Rtype moi cung
+// roi vao day neu trang tra `_juicycodes(` — nhanh trong `Streams`.
+public static bool IsJcGateway(string gateway)
+    => !string.IsNullOrEmpty(gateway)
+       && Regex.IsMatch(gateway, @"[?&][gc][dr]=[0-9a-z]+",
+           RegexOptions.IgnoreCase);
+
 public static bool IsVoServer(string label)
     => !string.IsNullOrEmpty(label)
        && label.IndexOf("VO", StringComparison.OrdinalIgnoreCase) >= 0;
@@ -838,6 +865,113 @@ public static bool IsVoServer(string label)
     // follow 302 sang trang embed nhu trinh duyet that. `sub` la deadline
     // rieng cua server nay (12s): het gio thi tra rong de chuoi fallback thu
     // server tiep theo, khong treo ca chuoi.
+    // JuicyCodes (juicy.codes): embed nap `_juicycodes("<payload>")`, payload chi
+    // giai duoc bang bundle player.js cua ho (obfuscator.io + base64 + bang ky tu
+    // sinh trong bundle) => port sang C# la ban sao chep mong manh. Di Chrome nhu VO:
+    // payload chay -> JuicyCodes.JWPlayer('jc-player', config) -> tai master tren
+    // `<mirror>.oppainet.net/stream/variant/<token>.m3u8`.
+    public static async Task<List<(string url, string tag)>> JcSourceAsync(
+        string pageUrl, string referer, long sub)
+    {
+        var res = new List<(string url, string tag)>();
+        if (string.IsNullOrEmpty(pageUrl))
+            return res;
+
+        try
+        {
+            using (var browser = new Shared.PlaywrightCore.PlaywrightBrowser())
+            {
+                var page = await browser.NewPageAsync("JavGuru",
+                    new Dictionary<string, string>
+                    {
+                        ["User-Agent"] = ChromeUA,
+                        ["Referer"] = referer ?? (SiteHost + "/")
+                    }, keepopen: false);
+
+                if (page == null)
+                    return res;
+
+                string got = null;
+                page.Request += (_, req) =>
+                {
+                    try
+                    {
+                        string u = req.Url;
+                        if (got != null)
+                            return;
+
+                        bool media = u.Contains(".m3u8") || u.Contains(".mp4");
+                        bool ad = u.IndexOf("ads", StringComparison.OrdinalIgnoreCase) >= 0
+                            || u.IndexOf("ima3.js", StringComparison.OrdinalIgnoreCase) >= 0
+                            || u.IndexOf("doubleclick", StringComparison.OrdinalIgnoreCase) >= 0;
+
+                        if (media && !ad)
+                            got = u;
+                    }
+                    catch { }
+                };
+
+                int ms = (int)Math.Max(8000,
+                    Math.Min(20000, sub - Environment.TickCount64));
+                await page.GotoAsync(NoFollow(pageUrl),
+                    new Microsoft.Playwright.PageGotoOptions
+                    {
+                        Timeout = ms,
+                        WaitUntil =
+                            Microsoft.Playwright.WaitUntilState.DOMContentLoaded
+                    });
+
+                // Poll config JWPlayer (id 'jc-player' cua JuicyCodes, 'a' cua VOE)
+                // + bat request media; cai nao toi truoc dung cai do.
+                string file = null;
+                for (int i = 0; i < 10; i++)
+                {
+                    try
+                    {
+                        file = await page.EvaluateAsync<string>(@"() => {
+                            var ids = ['jc-player', 'a', 'player'];
+                            for (var n = 0; n < ids.length; n++) {
+                                try {
+                                    var p = jwplayer(ids[n]);
+                                    var cfg = p && p.getConfig ? p.getConfig() : null;
+                                    var s = cfg && cfg.sources ? cfg.sources : null;
+                                    if (s && s.file) return s.file;
+                                    var pl = p && p.getPlaylist ? p.getPlaylist() : null;
+                                    var s2 = pl && pl[0] && pl[0].sources ? pl[0].sources : null;
+                                    if (s2 && s2[0] && s2[0].file) return s2[0].file;
+                                } catch (e) { }
+                            }
+                            return null;
+                        }");
+                    }
+                    catch { }
+
+                    if (!string.IsNullOrEmpty(file) || got != null)
+                        break;
+
+                    await Task.Delay(700);
+                }
+
+                try { await page.CloseAsync(); } catch { }
+
+                string best = !string.IsNullOrEmpty(file) ? file : got;
+                if (string.IsNullOrEmpty(best))
+                    return res;
+
+                string tag = best.IndexOf(".mp4", StringComparison.OrdinalIgnoreCase) >= 0
+                    ? "mp4" : "";
+
+                res.Add((best, tag));
+                return res;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"JavGuru: juicycodes loi {ex.Message}");
+            return res;
+        }
+    }
+
     public static async Task<List<(string url, string tag)>> VoSourceAsync(
         string pageUrl, string referer, long sub)
     {

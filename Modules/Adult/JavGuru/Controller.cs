@@ -336,7 +336,7 @@ public class JavGuruController : BaseSisiController
 
             async Task WarmOne(JavGuruServer s)
             {
-                string key = ipkey($"javguru:stream:{uri}:{s.Label}");
+                string key = ipkey($"javguru:stream2:{uri}:{s.Label}");
                 if (hybridCache.TryGetValue(key, out string _))
                     return;
                 string gw = JavGuruTo.GatewayUrl(s.PageUrl);
@@ -411,7 +411,9 @@ public class JavGuruController : BaseSisiController
         // REFERER cung URL — DoodStream bat buoc co Referer, cache rieng URL
         // se lam lan phat thu hai trong 10 phut chet (proxy khong Referer ->
         // CDN 302 sang host chet).
-        string streamKey = ipkey($"javguru:stream:{uri}:{srv}");
+        // v2: sau khi them JuicyCodes (AV/VI) — key cu co the la ket qua fallback
+        // sang server khac dang (vd VI tung tra mp4 cua DD), xoa khoi dung lai.
+        string streamKey = ipkey($"javguru:stream2:{uri}:{srv}");
         if (hybridCache.TryGetValue(streamKey, out string cachedRaw) && !string.IsNullOrEmpty(cachedRaw))
         {
             var c = SplitCached(cachedRaw);
@@ -512,7 +514,7 @@ public class JavGuruController : BaseSisiController
             // resolve lai tu dau.
             string raw = best.url + "\n" + (best.referer ?? "");
             hybridCache.Set(
-                ipkey($"javguru:stream:{uri}:{s.Label}"), raw, cacheTime(10));
+                ipkey($"javguru:stream2:{uri}:{s.Label}"), raw, cacheTime(10));
             hybridCache.Set(streamKey, raw, cacheTime(10));
 
             return Redirect(HostStreamProxy(best.url, headers));
