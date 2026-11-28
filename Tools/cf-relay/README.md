@@ -19,7 +19,7 @@ https://<worker>/<host>/<path>?<query>      →  https://<host>/<path>?<query>
 
 ## Host đang bật (ALLOW)
 
-`xnhau.pub,xnhau.pink,jav.guru,sextb.net,thichsex.org,lh3-ggcontent.top,uptobox-ggcdn.top,javenglish.cc,javeng.b-cdn.net,javquick.com`
+`xnhau.plus,xnhau.pub,xnhau.pink,xnhau.moda,jav.guru,sextb.net,thichsex.org,lh3-ggcontent.top,uptobox-ggcdn.top,javenglish.cc,javeng.b-cdn.net,javquick.com,vjav.com,tn.vjav.com,qooglevideo.shop,xvideo.lat,bytecdn.cfd`
 
 | module | env | ghi chú |
 |---|---|---|
@@ -39,13 +39,22 @@ Module phải gửi UA Chrome (`SexTbTo.ChromeUA`, `XNhauTo`…) thì mới 200.
 ## Deploy
 
 ```bash
-python3 Tools/cf-relay/deploy.py            # upload + smoke host dau tien
+python3 Tools/cf-relay/deploy.py                    # upload + smoke + check ca allowlist
+python3 Tools/cf-relay/deploy.py --add xnhau.video  # CỘNG THÊM host (không xoá host cũ)
 python3 Tools/cf-relay/deploy.py --test-host sextb.net
 ```
 
-- **`--test-host <host>` chỉ đổi host smoke, KHÔNG thay ALLOW** (sửa 2026-11-22: trước đó
-  nó ghi đè `allow` bằng đúng 1 host → jav.guru/xnhau/sextb bị `403 host not allowed`).
-  Muốn thêm host thì sửa biến `allow` trong `deploy.py`.
+- **Worker chỉ có MỘT biến `ALLOW`; mỗi lần upload Cloudflare THAY cả chuỗi** — không merge.
+  Vì vậy danh sách gốc nằm ở `BASE_ALLOW` trong `deploy.py`; `--add` và cả `--allow` (cũ) chỉ
+  **cộng thêm**, không bao giờ làm rơi host khác.
+- Cuối mỗi lần deploy, script tự probe **từng host** trong ALLOW và fail (exit 1) nếu host nào
+  trả `host not allowed`. Bỏ qua bằng `--no-check`.
+- **`--test-host <host>` chỉ đổi host smoke**, không đụng ALLOW (sửa 2026-11-22).
+- `termux-native/cf-relay` là **symlink** → `Tools/cf-relay`, không còn bản `deploy.py` cũ
+  (`allow = --allow or --test-host or "xnhau.pink"`) để deploy nhầm. `wrangler.toml` chỉ tham
+  khảo — **đừng `wrangler deploy`** (nó cũng thay nguyên ALLOW).
+- `xnhau-domain.sh` bước 5 gọi `deploy.py --add "<domain mới> <olds> <history>"`, không tự dựng
+  ALLOW nữa (trước 2026-11-28 nó xoá sextb/javquick/vjav/qooglevideo… mỗi lần đổi domain).
 - Token: `~/.secrets/cf-token` hoặc env `CF_TOKEN` (quyền *Edit Cloudflare Workers*).
 - `wrangler` **không chạy được trên Termux** (workerd báo `Unsupported platform: android arm64`)
   → deploy qua REST API như `deploy.py`.

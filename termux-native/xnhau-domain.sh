@@ -86,7 +86,7 @@ if [ "$SHOW" = 1 ]; then
   echo "module runtime  : $MOD_RUN ($(ls "$MOD_RUN" 2>/dev/null | tr '\n' ' '))"
   echo "module loaded   : $(grep -c 'loaded module: XNhau' "$NAT/lampac-native.log" 2>/dev/null) lần trong log hiện tại"
   echo "relay env       : $(grep -o '^export XNHAU_RELAY=[^ ]*' "$NAT/run-lampac.sh" 2>/dev/null | head -1 | cut -d= -f2-)"
-  echo "allowlist mặc định (index.js): $(grep -o 'env.ALLOW || "[^"]*"' "$RELAY_SRC/index.js" 2>/dev/null | cut -d'"' -f2)"
+  echo "allowlist mặc định (index.js): $(grep -o 'env.ALLOW || "[^"]*"' "$RELAY_SRC/src/index.js" 2>/dev/null | cut -d'"' -f2)"
   echo "app             : $(curl -s -m 3 -o /dev/null -w '%{http_code}' "$BASE/" 2>/dev/null) @ $BASE"
   echo -n "cookie          : "; curl -s -m 30 "$BASE/xnhau/check" 2>/dev/null; echo
   exit 0
@@ -341,23 +341,8 @@ say "    → $MOD_RUN"
 # ---------- 5. relay allowlist ----------
 if [ "$DO_RELAY" = 1 ]; then
   say "5/7 deploy Worker relay allowlist ..."
-  ALLOW=$(python3 - "$NEW" "$OLDS" "$HIST" "$KEEP_EXTRA" <<'PY'
-import sys
-new, olds, hist, extra = sys.argv[1:5]
-keep = [new]
-for grp in (olds, hist, extra):
-    for h in grp.replace(",", " ").split():
-        h = h.strip().lower()
-        if h and h not in keep:
-            keep.append(h)
-for h in ("jav.guru",):
-    if h not in keep:
-        keep.append(h)
-print(",".join(keep))
-PY
-)
-  say "    allow = $ALLOW"
-  if python3 "$RELAY_SRC/deploy.py" --allow "$ALLOW"; then
+  say "    --add $NEW (deploy.py tự cộng vào BASE_ALLOW)"
+  if python3 "$RELAY_SRC/deploy.py" --add "$NEW,$OLDS,$HIST,$KEEP_EXTRA"; then
     say "    worker OK"
   else
     say "    ⚠ deploy worker fail (kiểm tra ~/.secrets/cf-token). Module vẫn dùng domain mới,"
