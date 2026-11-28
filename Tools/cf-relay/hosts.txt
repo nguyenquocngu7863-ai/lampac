@@ -1,0 +1,19 @@
+# xn-relay allowlist — 1 host/dong. Them bang: python3 deploy.py --add <host>
+bytecdn.cfd
+jav.guru
+javeng.b-cdn.net
+javenglish.cc
+javquick.com
+javtiful.com
+lh3-ggcontent.top
+qooglevideo.shop
+sextb.net
+thichsex.org
+tn.vjav.com
+uptobox-ggcdn.top
+vjav.com
+xnhau.moda
+xnhau.pink
+xnhau.plus
+xnhau.pub
+xvideo.lat

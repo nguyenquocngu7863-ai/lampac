@@ -3,11 +3,16 @@
 workerd báo "Unsupported platform: android arm64").
 
 Token: ~/.secrets/cf-token (hoặc env CF_TOKEN). Cần quyền "Edit Cloudflare Workers".
-Dùng: python3 deploy.py [--add host1,host2] [--test-host host]
+Dùng:
+  python3 deploy.py                 # deploy, giữ NGUYÊN allowlist đang chạy
+  python3 deploy.py --add <host>    # thêm host (ghi luôn vào hosts.txt)
+  python3 deploy.py --remove <host> # gỡ host (hiếm khi cần)
+  python3 deploy.py --show          # in allowlist hiện tại, KHÔNG deploy
 
 Worker chỉ có MỘT biến `ALLOW`; mỗi lần upload Cloudflare THAY cả chuỗi, không merge.
-Vì vậy danh sách gốc nằm ở BASE_ALLOW dưới đây, và `--add` (hoặc `--allow` cũ) chỉ
-CỘNG THÊM — không bao giờ làm rơi host của module khác.
+Vì vậy allowlist = UNION của 4 nguồn: `hosts.txt` (nguồn duy nhất, commit vào repo)
++ `BASE_ALLOW` (seed cũ) + **ALLOW đang chạy trên Cloudflare** + `--add`.
+Sau upload còn đọc lại binding để verify đủ host, thiếu là exit 1.
 """
 import json
 import mimetypes
@@ -22,6 +27,9 @@ API = "https://api.cloudflare.com/client/v4"
 HERE = pathlib.Path(__file__).parent
 NAME = "xn-relay"
 SCRIPT = HERE / "src" / "index.js"
+# NGUON DUY NHAT cua allowlist (1 host/dong, dong bat dau '#' la comment).
+# `--add` ghi luon vao file nay nen lan deploy sau khong con phu thuoc `BASE_ALLOW`.
+HOSTS_FILE = HERE / "hosts.txt"
 
 
 def token():
@@ -85,23 +93,63 @@ def _split(s):
     return [h.strip().lower() for h in (s or "").replace(",", " ").split() if h.strip()]
 
 
-def allowlist():
-    """BASE_ALLOW + `--add` (+ `--allow` cũ) — luôn CỘNG THÊM, không thay thế.
+def read_hosts_file():
+    if not HOSTS_FILE.exists():
+        return []
+    out = []
+    for line in HOSTS_FILE.read_text().splitlines():
+        line = line.split("#", 1)[0].strip().lower()
+        if line:
+            out.append(line)
+    return out
 
-    (2026-11-22: `--test-host javquick.com` từng ghi đè còn 1 host;
-     2026-11-27: xnhau-domain.sh `--allow` xoá sextb/javquick/... — hai lần cùng
-     một nguyên nhân: deploy thay nguyên biến ALLOW.)
+
+def write_hosts_file(hosts):
+    body = "# xn-relay allowlist — 1 host/dong. Them bang: python3 deploy.py --add <host>\n"
+    body += "\n".join(sorted(set(hosts))) + "\n"
+    HOSTS_FILE.write_text(body)
+
+
+def live_allow(account):
+    """Doc ALLOW dang chay tren Cloudflare (khong bao gio de mat host)."""
+    try:
+        r = call("GET", f"/accounts/{account}/workers/scripts/{NAME}/settings")
+        for b in (r.get("result") or {}).get("bindings") or []:
+            if b.get("name") == "ALLOW":
+                return _split(b.get("text") or "")
+    except SystemExit as e:
+        print("canh bao: khong doc duoc ALLOW dang chay:", str(e)[:160])
+    return []
+
+
+def allowlist(account, extras):
+    """hosts.txt + BASE_ALLOW + ALLOW dang chay + `--add`/`--allow`, TRU `--remove`.
+
+    Moi nguon deu la UNION nen khong lan nao lam roi host cua module khac
+    (2026-11-22 `--test-host javquick.com`; 2026-11-27 `--allow` xoa sextb/...;
+    2026-11-28 javtiful thieu host). Ket qua duoc ghi lai vao hosts.txt.
     """
-    allow = _split(BASE_ALLOW)
-    for extra in (_arg("--add"), _arg("--allow")):
-        for h in _split(extra):
-            if h not in allow:
-                allow.append(h)
-    return allow
+    seen = []
+
+    def add(hosts):
+        for h in hosts:
+            if h and h not in seen:
+                seen.append(h)
+
+    add(read_hosts_file())
+    add(_split(BASE_ALLOW))
+    add(live_allow(account))
+    add(extras)
+
+    drop = set(_split(_arg("--remove")))
+    if drop:
+        print("remove:", ",".join(sorted(drop)))
+        seen = [h for h in seen if h not in drop]
+
+    return seen
 
 
 def main():
-    allow = allowlist()
     # --test-host CHI doi host smoke, KHONG dung toi ALLOW.
     smoke_override = _arg("--test-host")
 
@@ -111,6 +159,17 @@ def main():
         sys.exit("token không thấy account nào (thiếu quyền Account:Read?)")
     account = os.environ.get("CF_ACCOUNT_ID") or accounts[0]["id"]
     print(f"account: {account} ({accounts[0].get('name')})")
+
+    extras = _split(_arg("--add")) + _split(_arg("--allow"))
+    allow = allowlist(account, extras)
+
+    if "--show" in sys.argv:
+        print("live ALLOW (" + str(len(allow)) + " host):")
+        print(",".join(allow))
+        return
+
+    write_hosts_file(allow)
+    print("hosts.txt:", len(allow), "host")
 
     meta = {
         "main_module": "index.js",
@@ -126,6 +185,19 @@ def main():
 
     call("POST", f"/accounts/{account}/workers/scripts/{NAME}/subdomain",
          {"enabled": True, "previews_enabled": False})
+
+    # Verify binding vừa upload: ALLOW trên Cloudflare phải đủ host (chống "deploy
+    # site này xoá site kia" — lần trước chỉ in ra rồi thôi).
+    got = live_allow(account)
+    lost = [h for h in allow if h not in got]
+    spare = [h for h in got if h not in allow]
+    if lost or spare:
+        if lost:
+            print("verify ALLOW: THIẾU", ",".join(lost))
+        if spare:
+            print("verify ALLOW: THỪA", ",".join(spare))
+        sys.exit(1)
+    print("verify ALLOW:", len(got), "host khớp")
 
     sub = call("GET", f"/accounts/{account}/workers/subdomain")
     sd = (sub.get("result") or {}).get("subdomain")
