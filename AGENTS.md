@@ -127,6 +127,16 @@ vsee <đường-dẫn-ảnh> [prompt] [--model M]
   `play.sh`). Chẩn đoán kèm: chips rỗng với uri tuyệt đối nhưng OK với path-only → lỗi host mirror.
   Source of truth: repo `termux-popup.py` + `termux-popup.sh` → deploy
   `cp ~/lampac-clean/termux-popup.{py,sh} ~/lampac-native/` (đổi tên thành `popup.py`/`popup.sh`).
+- `sdbg <ls|find|extract|diff|unpack|audit>` — soi capture **ĐÃ LƯU**, offline, **không** bắn
+  request (cặp với `site.sh`/`x.sh`: hai cái kia lấy dữ liệu, cái này đọc lại):
+  `ls [host]` (host/file/status) · `find <regex> [--host H] [--type js] [--ctx N]` ·
+  `extract <file|--host H>` (gom m3u8/mp4, field player, iframe embed, path API, tham số token,
+  blob base64 đáng ngờ, cờ packer) · `diff <a> <b>` (chuẩn hoá hex/số/timestamp rồi unified diff) ·
+  `unpack <file>` (P.A.C.K.E.R → `~/lampac-native/tmp/unpacked/<stem>.unpacked.js`) ·
+  `audit [--host H]` (4xx/5xx, 0 byte, dấu Cloudflare, JSON hỏng).
+  Thay cho việc gõ tay grep/base64/python mỗi lần. Source of truth: repo `termux-native/sdbg.py` +
+  `termux-native/sdbg.sh` → deploy `cp ~/lampac-clean/termux-native/sdbg.{py,sh} ~/lampac-native/`
+  + shim `ln -sf ~/lampac-native/sdbg.sh ~/bin/sdbg`.
 - **OpenChamber (harness) — update** (đo 2026-11-26): `npm i -g @openchamber/web@<ver>` rồi
   **bắt buộc** chạy `~/bin/oc-env-fix` — vá shebang `#!/usr/bin/env node` → `$PREFIX/bin/env node`
   vì Termux không có `/usr` (không vá thì bin `openchamber` chết "bad interpreter"); script kiểm
