@@ -25,7 +25,8 @@
 
 | Маршрут | Назначение |
 |---------|------------|
-| **`phub`**, **`phubgay`**, **`phubsml`** | Основные и LGBT-разделы (см. **`Controllers/PornHub.cs`**). |
+| **`phub`**, **`phubgay`**, **`phubsml`** | Основные и LGBT-разделы (см. **`Controllers/PornHub.cs`**). `?rel=<uri detail>` — список «Похожие видео» (`total_pages: 1`). |
+| **`phub/genres`** | Popup long-press: diễn viên / người đăng / kênh / thể loại / thẻ + «Video liên quan». |
 | **`phub/vidosik`** | Карточка видео. |
 | **`phubprem`**, **`phubprem/vidosik`** | Premium (см. **`Controllers/PornHubPremium.cs`**). |
 

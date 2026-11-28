@@ -29,7 +29,7 @@ Công thức chung 1 module (đã chạy 20 lần, giữ nguyên):
 
 ### B. Việc khác còn treo
 - [x] Smoke lại **Vlxx** — done 2026-11-27 (host `.net`)
-- [ ] 4 module nhóm A **chưa có popup**: `BongaCams`, `Chaturbate`, `Runetki`, `Xhamster` (cam/tube, cần thiết kế riêng)
+- [ ] 4 module nhóm A **chưa có popup**: `BongaCams`, `Chaturbate`, `Runetki`, `Xhamster` (cam/tube, cần thiết kế riêng) — đo 2026-11-28: `PornHub` đã xong
 - [ ] `SupJav` — **PAUSED** (Cloudflare chặn toàn site): không probe
 - [ ] 8 module đang tắt: DuJav, JAVSnap, JavTsunami, PhimSexVN88, PhimSexViet113, SexHihi, Viet69kz, XvideosRED
 
@@ -458,8 +458,8 @@ Nguồn: `~/.config/opencode/skills/lampac-adult-module/references/card-thumbnai
       (mỗi module: `/<mod>/genres?uri=` + `?rel=<uri>` `total_pages:1`, SSRF guard, cache RAM 6h, smoke 6 endpoint, `play.sh` PASS).
       Nhóm B còn lại **0 module đang bật**; `PhimSexVN88`, `PhimSexViet113`, `SexHihi` đang `"enable": false`
       (muốn popup thì phải bật lại + dựng module trước), `SupJav` vẫn PAUSED.
-- [ ] **Popup 11 module nhóm A** (`BongaCams`, `Chaturbate`, `Ebalovo`, `HQporner`, `PornHub`,
-      `Porntrex`, `Runetki`, `Tizam`, `Xhamster`, `Xnxx`, `Xvideos`) — **để CUỐI**, site Nga/ít dùng.
+- [x] **Popup nhóm A** — xong dần: `Ebalovo`, `HQporner`, `Porntrex`, `Tizam`, `Xnxx`, `Xvideos` (trước đó) + **`PornHub` 2026-11-28** (`/phub/genres`: diễn viên/người đăng/kênh/thể loại/thẻ tiếng Anh + `?rel=` `tp=1`, `popup.sh phub` PASS).
+- [ ] **Popup 4 module nhóm A còn lại**: `BongaCams`, `Chaturbate`, `Runetki`, `Xhamster` — **để CUỐI**, site Nga/ít dùng.
 - [ ] **`SupJav`** — đã có bypass CF qua persistent Chrome profile (commit `33b7cbcc`) nhưng **chưa verify live**
       (module đang PAUSED). Cần: bật app → `/supjav` 200 → `vidosik` ra link → `play.sh` PASS.
 - [ ] **`XvideosRED`** — `manifest.enable:false` (tắt, nhóm A) → không tính vào kế hoạch.
@@ -555,3 +555,4 @@ Nguồn: `~/.config/opencode/skills/lampac-adult-module/references/card-thumbnai
 
 | 2026-11-27 | **Sxyprn (module mới — site khó: URL stream do JS sinh)** | SxyPrn/YourPorn: listing + tag + sort + search + popup + MP4 trực tiếp | Chọn sau khi lọc ThePornDude: site lớn nhất còn fetch được server-side và khó vì `/cdn/...vid` trong `data-vnfo` **không phải URL thật** (load thẳng → 404). Dịch ngược `/js/main2.js` → `getvsrc()`: `t[1] += "8/" + base64(sum(t[6]) + "-www.sxyprn.com-" + sum(t[7]))` (url-safe: `+`→`-`, `/`→`_`, `=`→`.`), `t[5] -= sum(t[6])+sum(t[7])` → `/cdn8/...` trả **302** sang `c7.trafficdeposit.com/vidi/...` (MP4 progressive 1.95 GB, `Accept-Ranges`, **không cần Referer/cookie**), path ký lại mỗi lần tải trang nên module tính lại lúc play + cache 20p. Đo offline: trang chủ `/` chỉ ~100 post và **không phân trang** (`?p=`, `?page=` cùng pool) → listing chính dùng `/All.html?page=` (8881 video, 30/trang, `sm=latest|trending|views|orgasmic` sort thật); `/popular/top-pop.html`, `/popular/top-viewed.html` (1 trang); tag `/<Tag>.html?page=&sm=` (offset 30); search `POST /php/livesearch.php` → tag gợi ý đầu. Parser loại post "EXTERNAL LINK" (không có `duration_small` `HH:MM:SS`). Popup: chip Diễn viên (`data-subkey` + `/Actor.html`) + Thể loại (`hash_link` label + `sm=trending`) + Liên quan; `?rel=` parse block sau `Related by:` (6 item). Verify: `/sxyprn` 30 `tp=297` · pg2 khác · `sort=views` khác thứ tự · tag Hardcore 30 `tp=3799`, pg2 khác · `search=blake` 30 · `c=top` 30 `tp=1` · genres 3 nhóm (23·54·1) · rel 6 `tp=1` · `popup.sh sxyprn` **PASS** · stream `ffprobe` `h264 1280x720 + aac` 7307 s, `ffmpeg -ss 0` và `-ss 7200` decode 3 s exit 0 · `check.sh` 0 error · đã copy runtime + restart |
 | 2026-11-28 | **Công cụ `sdbg` — soi capture offline** | Phần thiếu của bộ soi site: `site.sh`/`x.sh` lo fetch, `sdbg` lo đọc lại — `ls` / `find` / `extract` / `diff` / `unpack` / `audit`, không bắn request nào | Source `termux-native/sdbg.py` + `sdbg.sh` → deploy `~/lampac-native/`, shim `~/bin/sdbg`. Verify trên 158 host capture thật (57 MB): `audit` ra 18 host lỗi (404/502/0B/CF/JSON hỏng), `extract` bắt đúng `https://api.videplay.us/o/v-master.m3u8` + base64 token trong `javcc.me/embed.html`, `unpack` giải packer `play.phe69.shop`, `diff` chuẩn hoá hex/số/timestamp khi so 2 detail `amu.tizam.org` |
+| 2026-11-28 | **PornHub popup (phub/phubgay/phubsml)** | `/phub/genres?uri=` 4 nhóm chip + `?rel=` — site rt. trả UI tiếng Nga nên tên thể loại lấy từ JSON `/categories` (`id`/`english`/`slug`, cache 12h), thẻ dùng bản gốc tiếng Anh (bỏ anchor `data-translated`); item list phải mang `uri=<detail>` thì sisi.js mới gọi popup | `PornHubTo.Chips/CategoryNames/Related`; `Index` thêm `rel`, route `phub/genres`, `Uri()` hiểu `model=channels/<slug>`; verify: genres 4 nhóm/28 chip 1.1s · `?rel=` 35 item `tp=1` · rel pg2 rỗng · SSRF rỗng · `?c=35`/`model=pornstar|channels`/`search=` đều 200 · `popup.sh phub` **PASS** · `play.sh` 720p PHÁT ĐƯỢC · `check.sh` 0 error · đã copy runtime + restart |

@@ -45,6 +45,11 @@ public static class PornHubTo
                 url.Append(model);
                 url.Append("/videos/upload");
             }
+            else if (model.StartsWith("channels/"))
+            {
+                url.Append(model);
+                url.Append("/videos");
+            }
             else
             {
                 url.Append("model/");
@@ -221,7 +226,7 @@ public static class PornHubTo
             var pl = new PlaylistItem()
             {
                 name = title,
-                video = $"{video_uri}?vkey={vkey}",
+                video = $"{video_uri}?uri={HttpUtility.UrlEncode($"view_video.php?viewkey={vkey}")}&vkey={vkey}",
                 model = model,
                 picture = img,
                 preview = row.Match("data-mediabook=\"(https?://[^\"]+)\"") ?? row.Match("data-webm=\"(https?://[^\"]+)\""),
@@ -518,6 +523,168 @@ public static class PornHubTo
             memoryCache.Set(menuKey, menu, TimeSpan.FromDays(1));
 
         return menu;
+    }
+    #endregion
+
+    #region Info (popup long-press)
+    public record InfoChip(string kind, string slug, string name);
+
+    static readonly Regex rxAnchor = new Regex("<a\\b([^>]*?)href=\"([^\"]+)\"([^>]*)>(.*?)</a>", RegexOptions.Singleline | RegexOptions.Compiled);
+    static readonly Regex rxCatId = new Regex(@"[?&]c=(\d+)", RegexOptions.Compiled);
+    static readonly Regex rxCatSlug = new Regex(@"/categories/([^""?/]+)", RegexOptions.Compiled);
+    static readonly Regex rxCatJson = new Regex("\"id\":(\\d+),\"name\":\"(?:[^\"\\\\]|\\\\.)*\",\"english\":\"((?:[^\"\\\\]|\\\\.)*)\",\"slug\":\"((?:[^\"\\\\]|\\\\.)*)\"", RegexOptions.Compiled);
+    static readonly Regex rxHref = new Regex("^/(model|channels|pornstar)/([^/?#]+)", RegexOptions.Compiled);
+    static readonly Regex rxSearch = new Regex(@"[?&]search=([^&]+)", RegexOptions.Compiled);
+    static readonly Regex rxTag = new Regex("<[^>]+>", RegexOptions.Compiled);
+    static readonly Regex rxSpaces = new Regex(@"\s+", RegexOptions.Compiled);
+
+    static string AnchorText(string inner)
+    {
+        if (string.IsNullOrEmpty(inner))
+            return null;
+
+        string t = HttpUtility.HtmlDecode(rxSpaces.Replace(rxTag.Replace(inner, " "), " ")).Trim();
+        if (t.Length > 60)
+            t = t.Substring(0, 60).Trim();
+
+        return t.Length == 0 ? null : t;
+    }
+
+    static string Block(string html, string start, string end, int max = 16000)
+    {
+        int i = html.IndexOf(start, StringComparison.Ordinal);
+        if (i < 0)
+            return null;
+
+        int len = max;
+        if (!string.IsNullOrEmpty(end))
+        {
+            int j = html.IndexOf(end, i + start.Length, StringComparison.Ordinal);
+            if (j > i)
+                len = j - i;
+        }
+
+        if (i + len > html.Length)
+            len = html.Length - i;
+
+        return html.Substring(i, len);
+    }
+
+    /// <summary>Bảng id/slug -> tên tiếng Anh, lấy từ trang /categories (JSON id,name,english,slug).</summary>
+    public static void CategoryNames(ReadOnlySpan<char> html, Dictionary<string, string> idToName, Dictionary<string, int> slugToId)
+    {
+        if (html.IsEmpty)
+            return;
+
+        foreach (Match m in rxCatJson.Matches(html.ToString()))
+        {
+            string id = m.Groups[1].Value;
+            string name = Regex.Unescape(m.Groups[2].Value);
+            string slug = m.Groups[3].Value;
+
+            if (string.IsNullOrWhiteSpace(name))
+                continue;
+
+            idToName.TryAdd(id, name);
+            if (int.TryParse(id, out int n))
+                slugToId.TryAdd(slug, n);
+        }
+    }
+
+    /// <summary>Chip của trang detail: diễn viên, người đăng, kênh, thể loại (id số), thẻ (tên gốc tiếng Anh).</summary>
+    public static List<InfoChip> Chips(ReadOnlySpan<char> html, Dictionary<string, string> catNames, Dictionary<string, int> catSlugs)
+    {
+        var chips = new List<InfoChip>();
+        if (html.IsEmpty)
+            return chips;
+
+        string s = html.ToString();
+        string info = Block(s, "video-detailed-info", "relatedVideosListing") ?? s;
+
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        void Add(string kind, string slug, string name)
+        {
+            if (string.IsNullOrWhiteSpace(slug) || string.IsNullOrWhiteSpace(name))
+                return;
+
+            slug = slug.Trim();
+            if (!seen.Add(kind + "/" + slug))
+                return;
+
+            chips.Add(new InfoChip(kind, slug, name));
+        }
+
+        // diễn viên + người đăng + kênh (chỉ trong khối thông tin video)
+        foreach (Match m in rxAnchor.Matches(info))
+        {
+            Match h = rxHref.Match(m.Groups[2].Value);
+            if (!h.Success)
+                continue;
+
+            string kind = h.Groups[1].Value switch
+            {
+                "pornstar" => "pornstar",
+                "channels" => "channel",
+                _ => "model"
+            };
+
+            Add(kind, h.Groups[2].Value, AnchorText(m.Groups[4].Value));
+        }
+
+        // thể loại: ?c=<id> hoặc /categories/<slug> -> id -> tên tiếng Anh
+        string cats = Block(s, "categoriesWrapper", "tagsWrapper");
+        if (!string.IsNullOrEmpty(cats))
+        {
+            foreach (Match m in rxAnchor.Matches(cats))
+            {
+                string href = m.Groups[2].Value;
+                Match idm = rxCatId.Match(href);
+
+                string id = null;
+                if (idm.Success)
+                {
+                    id = idm.Groups[1].Value;
+                }
+                else
+                {
+                    Match sl = rxCatSlug.Match(href);
+                    if (sl.Success && catSlugs.TryGetValue(sl.Groups[1].Value, out int nid))
+                        id = nid.ToString();
+                }
+
+                if (id != null && catNames.TryGetValue(id, out string name))
+                    Add("cat", id, name);
+            }
+        }
+
+        // thẻ: bản gốc tiếng Anh (bản dịch có data-translated -> bỏ, tránh chữ Nga)
+        string tags = Block(s, "tagsWrapper", "relatedVideosListing");
+        if (!string.IsNullOrEmpty(tags))
+        {
+            foreach (Match m in rxAnchor.Matches(tags))
+            {
+                if (m.Groups[1].Value.Contains("data-translated", StringComparison.Ordinal)
+                    || m.Groups[3].Value.Contains("data-translated", StringComparison.Ordinal))
+                    continue;
+
+                Match q = rxSearch.Match(m.Groups[2].Value);
+                if (!q.Success)
+                    continue;
+
+                Add("tag", HttpUtility.UrlDecode(q.Groups[1].Value), AnchorText(m.Groups[4].Value));
+            }
+        }
+
+        return chips;
+    }
+
+    public static List<PlaylistItem> Related(ReadOnlySpan<char> html, string video_uri, string list_uri)
+    {
+        if (html.IsEmpty)
+            return null;
+
+        return Playlist(video_uri, list_uri, html, related: true);
     }
     #endregion
 
